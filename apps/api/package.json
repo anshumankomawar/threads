@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vp dev",
     "build": "tsc && vp build",
+    "test": "vp test",
     "start": "node dist/index.js"
   },
   "dependencies": {
     "@hono/node-server": "2.1.5",
-    "hono": "4.13.13"
+    "@hono/zod-validator": "0.9.1",
+    "hono": "4.13.13",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@hono/vite-build": "1.11.1",
