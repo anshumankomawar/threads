@@ -638,6 +638,9 @@ export function ThreadView({
       <div ref={scrollRef} className="thread-scroll" onMouseDown={onBackgroundMouseDown}>
         <article ref={docRef} className="thread-doc">
           {thread !== undefined && (thread.kind !== "response" || ask !== undefined) && (
+            <h1 className="thread-title">{thread.title}</h1>
+          )}
+          {thread !== undefined && (thread.kind !== "response" || ask !== undefined) && (
             <ThreadHeader
               thread={thread}
               ask={ask}

@@ -305,14 +305,16 @@ body * {
   background-color: var(--stroke-focused);
 }
 
-/* Delta's search palette: 560px wide, centered in the window, 120px from the top. */
-.search-overlay {
+/* Palettes (command palette, new thread palette): 560px wide, centered, 120px from the top. Sized after Delta's search palette. */
+/* A light dim behind palettes; clicking it closes them. */
+.palette-overlay {
   position: fixed;
   inset: 0;
   z-index: 20;
+  background-color: rgb(0 0 0 / 20%);
 }
 
-.search-panel {
+.palette {
   position: absolute;
   top: 120px;
   left: 50%;
@@ -328,7 +330,7 @@ body * {
   transform: translateX(-50%);
 }
 
-.search-input-row {
+.palette-input-row {
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -337,7 +339,7 @@ body * {
   border-bottom: 1px solid var(--panel-border);
 }
 
-.search-input {
+.palette-input {
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -349,11 +351,11 @@ body * {
   outline: none;
 }
 
-.search-input::placeholder {
+.palette-input::placeholder {
   color: var(--text-tertiary);
 }
 
-.search-tabs {
+.palette-tabs {
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -363,7 +365,7 @@ body * {
   border-bottom: 1px solid var(--panel-divider);
 }
 
-.search-tab {
+.palette-tab {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -378,34 +380,34 @@ body * {
   cursor: pointer;
 }
 
-.search-tab[aria-selected="true"] {
+.palette-tab[aria-selected="true"] {
   color: var(--accent);
   background-color: var(--accent-fill);
 }
 
-.search-tab-shortcut {
+.palette-tab-shortcut {
   padding-right: 2px;
   opacity: 0.8;
 }
 
-.search-results {
+.palette-results {
   min-height: 0;
   padding-top: 4px;
   overflow-y: auto;
 }
 
 /* Sections are 4px-padded groups split by a 1px divider. */
-.search-section {
+.palette-section {
   display: flex;
   flex-direction: column;
   padding-bottom: 4px;
 }
 
-.search-section + .search-section {
+.palette-section + .palette-section {
   border-top: 1px solid var(--panel-border);
 }
 
-.search-section-label {
+.palette-section-label {
   display: flex;
   align-items: center;
   height: 28px;
@@ -414,7 +416,7 @@ body * {
   font-size: 10px;
 }
 
-.search-row {
+.palette-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -426,11 +428,11 @@ body * {
   cursor: pointer;
 }
 
-.search-row[data-selected="true"] {
+.palette-row[data-selected="true"] {
   background-color: var(--panel-selected);
 }
 
-.search-row-label {
+.palette-row-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -438,7 +440,7 @@ body * {
   white-space: nowrap;
 }
 
-.search-row-shortcut {
+.palette-row-shortcut {
   flex-shrink: 0;
   color: var(--text-secondary);
   word-spacing: 2.5px;
@@ -473,19 +475,31 @@ body * {
   scroll-margin-top: 14px;
 }
 
+/* The thread's title, the same on every kind: a compact heading aligned with the text column. */
+.thread-title {
+  margin: 4px 0 -10px 37px;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.2px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 /* The viewport minus about one block, so the last entry can reach the top but never leave the screen. */
 .thread-overscroll {
   height: calc(100vh - 34px - 140px);
 }
 
-/* 20px avatar in a 22px column, set 2px into the first line so its top sits just above the name. */
+/* 20px avatar in a 22px column, starting just below the top of the name so the name leads the row. */
 .thread-avatar {
   display: flex;
   flex-shrink: 0;
   justify-content: center;
   width: 22px;
   height: 20px;
-  margin-top: 2px;
+  margin-top: 6px;
 }
 
 .thread-kind-marker,
@@ -790,9 +804,13 @@ body * {
   color: var(--urgent);
 }
 
-/* Today's date beside the Inbox label. */
-.section-date {
-  margin-left: 6px;
+/* Today's date on its own line under the Schedule header, clear of the header's hover fill. */
+.schedule-date {
+  display: flex;
+  align-items: center;
+  height: 18px;
+  margin: 2px 0 4px;
+  padding-left: 9px;
   color: var(--text-tertiary);
   font-size: 11px;
 }
@@ -1338,4 +1356,65 @@ body * {
 .resize-handle[data-edge="left"] {
   right: auto;
   left: -3px;
+}
+
+/* New thread palette: which step you're on, what you're assigning, and a disabled continue row. */
+.palette-step {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.palette-summary {
+  gap: 4px;
+  padding-right: 14px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.palette-summary-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+}
+
+.palette-row[data-disabled="true"] {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.palette-empty {
+  padding: 4px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* Invite step: a checkbox per person, the running count, and a continue row under the list. */
+.palette-check {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--icon-tertiary);
+  border-radius: 4px;
+}
+
+.palette-check[data-checked="true"] {
+  border-color: var(--accent);
+  color: #0f141a;
+  background-color: var(--accent);
+}
+
+.palette-summary-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+.palette-continue {
+  margin-top: 4px;
+  color: var(--text-secondary);
 }

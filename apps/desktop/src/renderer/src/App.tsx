@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { SearchPanel } from "./components/SearchPanel";
+import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
+import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { DetailsToggle, SearchButton, Sidebar, SidebarToggle } from "./components/Sidebar";
 import { PRIORITY_LABELS, STATUS_LABELS, type Entry, type Thread, type ThreadKind } from "./model";
@@ -52,11 +53,10 @@ function lastActivityByOthers(thread: Thread): number {
   return latest;
 }
 
-const NEW_TITLES: Record<ThreadKind, string> = {
-  response: "New Thread",
-  meeting: "New Meeting",
-  focus: "New Focus Block",
-};
+// A thread's title: the first line of its opening message.
+function firstLine(text: string): string {
+  return text.split("\n")[0].slice(0, 80);
+}
 
 function App(): React.JSX.Element {
   const [threads, setThreads] = useState<Thread[]>(sampleThreads);
@@ -96,31 +96,43 @@ function App(): React.JSX.Element {
   };
   const toggleSidebar = (): void => setSidebarOpen((open) => !open);
 
-  // A new response starts unassigned; a new meeting has you in it at the top of the next hour; a new focus
-  // block is yours and unscheduled. The first thing written in it becomes its title.
-  const newThread = (kind: ThreadKind = "response"): void => {
+  // Starting a thread opens the new-thread panel on the chosen kind.
+  const [newThreadKind, setNewThreadKind] = useState<ThreadKind | null>(null);
+  const openNew = (kind: ThreadKind = "response"): void => {
+    setSearchOpen(false);
+    setNewThreadKind(kind);
+  };
+
+  // The panel's text becomes the opening message (and its first line the title); a thread gets its assignee,
+  // a meeting has you in it, and meetings and focus blocks land at the chosen time.
+  const createThread = (draft: NewThreadDraft): void => {
     const now = Date.now();
-    const nextHour = new Date(now);
-    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
     const thread: Thread = {
       id: crypto.randomUUID(),
-      title: NEW_TITLES[kind],
-      kind,
+      kind: draft.kind,
+      title: firstLine(draft.text),
       requester: me,
-      assignee: null,
+      assignee: draft.assignee,
       status: "open",
       priority: "none",
       dueAtMs: null,
-      schedule:
-        kind === "meeting"
-          ? { startMs: nextHour.getTime(), endMs: nextHour.getTime() + 30 * 60_000 }
-          : null,
-      attendees: kind === "meeting" ? [me] : [],
+      schedule: draft.schedule,
+      attendees: draft.kind === "meeting" ? [me, ...draft.invitees] : [],
       updatedAtMs: now,
-      entries: [],
+      entries: [
+        {
+          kind: "message",
+          id: crypto.randomUUID(),
+          author: me,
+          text: draft.text,
+          createdAtMs: now,
+          decision: false,
+        },
+      ],
     };
     setThreads((current) => [thread, ...current]);
-    setActiveThreadId(thread.id);
+    openThread(thread.id);
+    setNewThreadKind(null);
   };
 
   // ⌘K opens search; ⌘N starts a thread, matching the shortcut search shows for it.
@@ -133,7 +145,7 @@ function App(): React.JSX.Element {
         setSearchOpen(true);
       } else if (key === "n") {
         event.preventDefault();
-        newThread();
+        openNew();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -164,8 +176,6 @@ function App(): React.JSX.Element {
       (now) => ({ kind: "event", id: crypto.randomUUID(), actor: me, text, createdAtMs: now }),
       () => change,
     );
-
-  const firstLine = (text: string): string => text.split("\n")[0].slice(0, 80);
 
   const actions: ThreadActions = {
     // With no thread selected, the first message starts one, and it becomes the ask.
@@ -272,7 +282,7 @@ function App(): React.JSX.Element {
           nowMs={nowMs}
           unreadIds={unreadIds}
           activeThreadId={activeThreadId}
-          onNewThread={() => newThread()}
+          onNewThread={() => openNew()}
           onOpenThread={openThread}
           onToggle={toggleSidebar}
           onSearch={() => setSearchOpen(true)}
@@ -299,10 +309,20 @@ function App(): React.JSX.Element {
         />
       </main>
       {detailsOpen && <DetailsPanel thread={activeThread} nowMs={nowMs} />}
+      {newThreadKind !== null && (
+        <NewThreadPalette
+          initialKind={newThreadKind}
+          people={PEOPLE}
+          me={me}
+          nowMs={nowMs}
+          onCreate={createThread}
+          onClose={() => setNewThreadKind(null)}
+        />
+      )}
       {searchOpen && (
-        <SearchPanel
+        <CommandPalette
           threads={threads}
-          onNewThread={newThread}
+          onNewThread={openNew}
           onOpenThread={openThread}
           onClose={() => setSearchOpen(false)}
         />

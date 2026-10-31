@@ -37,7 +37,7 @@ type Item = { id: string; label: string; shortcut?: string; run: () => void };
 type Section = { title: string; items: Item[] };
 
 // Delta's command palette: search input, filter tabs, then sectioned results.
-export function SearchPanel({
+export function CommandPalette({
   threads,
   onNewThread,
   onOpenThread,
@@ -116,18 +116,18 @@ export function SearchPanel({
 
   let index = 0;
   return (
-    <div className="search-overlay" onMouseDown={onClose}>
+    <div className="palette-overlay" onMouseDown={onClose}>
       <div
-        className="search-panel"
+        className="palette"
         role="dialog"
         aria-label="Search"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="search-input-row">
+        <div className="palette-input-row">
           <input
             ref={inputRef}
-            className="search-input"
+            className="palette-input"
             placeholder="Search..."
             spellCheck={false}
             value={query}
@@ -137,40 +137,40 @@ export function SearchPanel({
             }}
           />
         </div>
-        <div className="search-tabs" role="tablist">
+        <div className="palette-tabs" role="tablist">
           {TABS.map((item) => (
             <button
               key={item.id}
               type="button"
               role="tab"
-              className="search-tab"
+              className="palette-tab"
               aria-selected={tab === item.id}
               onClick={() => changeTab(item.id)}
             >
               <span>{item.label}</span>
-              <span className="search-tab-shortcut">{item.shortcut}</span>
+              <span className="palette-tab-shortcut">{item.shortcut}</span>
             </button>
           ))}
         </div>
-        <div className="search-results">
+        <div className="palette-results">
           {sections.map((section) => (
-            <div key={section.title} className="search-section">
-              <div className="search-section-label">{section.title}</div>
+            <div key={section.title} className="palette-section">
+              <div className="palette-section-label">{section.title}</div>
               {section.items.map((item) => {
                 const itemIndex = index++;
                 return (
                   <div
                     key={item.id}
-                    className="search-row"
+                    className="palette-row"
                     data-selected={itemIndex === selectedIndex}
                     role="option"
                     aria-selected={itemIndex === selectedIndex}
                     onMouseMove={() => setSelected(itemIndex)}
                     onClick={item.run}
                   >
-                    <span className="search-row-label">{item.label}</span>
+                    <span className="palette-row-label">{item.label}</span>
                     {item.shortcut !== undefined && (
-                      <span className="search-row-shortcut">{item.shortcut}</span>
+                      <span className="palette-row-shortcut">{item.shortcut}</span>
                     )}
                   </div>
                 );

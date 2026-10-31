@@ -240,6 +240,13 @@ function DayView({
 
   return (
     <>
+      <div className="schedule-date">
+        {new Date(nowMs).toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        })}
+      </div>
       <ul className="thread-list timeline" aria-label="Today">
         {timeline}
       </ul>
@@ -247,29 +254,48 @@ function DayView({
   );
 }
 
-// The inbox section: today's date in the header, the day view beneath.
-function InboxSection({
-  day,
-  nowMs,
+// What needs addressing today but has no time on the timeline: due, overdue, urgent or unassigned threads,
+// and focus blocks you haven't planned.
+function InboxList({
+  items,
   activeThreadId,
   unreadIds,
-  actions,
   onOpenThread,
 }: {
-  day: Day;
-  nowMs: number;
+  items: InboxItem[];
   activeThreadId: string | null;
   unreadIds: Set<string>;
-  actions: React.ReactNode;
   onOpenThread: (id: string) => void;
+}): React.JSX.Element {
+  if (items.length === 0) return <div className="sidebar-empty">Nothing else to address today</div>;
+  return (
+    <ul className="thread-list" aria-label="Inbox">
+      {items.map((item) => (
+        <ThreadRow
+          key={item.thread.id}
+          item={item}
+          active={item.thread.id === activeThreadId}
+          unread={unreadIds.has(item.thread.id)}
+          label={item.dueLabel}
+          onOpen={() => onOpenThread(item.thread.id)}
+        />
+      ))}
+    </ul>
+  );
+}
+
+// A collapsible sidebar section; hovering the header reveals the chevron and any actions.
+function SidebarSection({
+  title,
+  actions,
+  children,
+}: {
+  title: string;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const toggle = (): void => setCollapsed((value) => !value);
-  const date = new Date(nowMs).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
 
   return (
     <section className="sidebar-section">
@@ -282,22 +308,13 @@ function InboxSection({
         onClick={toggle}
         onKeyDown={(event) => activateOnKey(event, toggle)}
       >
-        <span>Inbox</span>
-        <span className="section-date">{date}</span>
+        <span>{title}</span>
         <span className="section-chevron">
           <ChevronDown {...ICON_PROPS} />
         </span>
-        <span className="section-actions">{actions}</span>
+        {actions !== undefined && <span className="section-actions">{actions}</span>}
       </div>
-      {!collapsed && (
-        <DayView
-          day={day}
-          nowMs={nowMs}
-          activeThreadId={activeThreadId}
-          unreadIds={unreadIds}
-          onOpenThread={onOpenThread}
-        />
-      )}
+      {!collapsed && children}
     </section>
   );
 }
@@ -346,11 +363,17 @@ export function Sidebar({
         </span>
       </div>
       <div className="sidebar-content">
-        <InboxSection
-          day={day}
-          nowMs={nowMs}
-          activeThreadId={activeThreadId}
-          unreadIds={unreadIds}
+        <SidebarSection title="Schedule">
+          <DayView
+            day={day}
+            nowMs={nowMs}
+            activeThreadId={activeThreadId}
+            unreadIds={unreadIds}
+            onOpenThread={onOpenThread}
+          />
+        </SidebarSection>
+        <SidebarSection
+          title="Inbox"
           actions={
             <>
               <button
@@ -374,8 +397,14 @@ export function Sidebar({
               </button>
             </>
           }
-          onOpenThread={onOpenThread}
-        />
+        >
+          <InboxList
+            items={day.unscheduled}
+            activeThreadId={activeThreadId}
+            unreadIds={unreadIds}
+            onOpenThread={onOpenThread}
+          />
+        </SidebarSection>
       </div>
       {handle}
     </aside>
