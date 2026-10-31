@@ -1,5 +1,5 @@
 import { userInfo } from "node:os";
 import { createApp } from "./app.ts";
 
-// Seeded with the sample team, addressed to whoever runs it (the desktop app uses the same username).
-export default createApp({ seed: { id: userInfo().username, name: "You" } });
+// You are whoever runs it (the desktop app uses the same username): alone in "local", with the sample team in "sample".
+export default createApp({ me: { id: userInfo().username, name: "You" } });

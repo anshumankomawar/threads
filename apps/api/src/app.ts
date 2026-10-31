@@ -75,34 +75,50 @@ function describeEdits(thread: Thread, edits: Edits, actor: Person): string[] {
   return lines;
 }
 
+// Each workspace is its own set of people and threads. The app starts on "local", which begins empty (just
+// you); "sample" is the demo team with their threads, for seeing the UX with data in it.
+const WORKSPACES = ["local", "sample"] as const;
+export type Workspace = (typeof WORKSPACES)[number];
+
 export type AppOptions = {
   now?: () => number;
-  // Fills the store with the sample team and their threads, addressed to `me`.
-  seed?: Person;
+  // Who runs the app: you're in both workspaces, and the sample threads are addressed to you.
+  me?: Person;
 };
 
-// Data lives in memory for now, so it's gone (or reseeded) when the server restarts.
-export function createApp({ now = Date.now, seed }: AppOptions = {}) {
-  const store: Store = { people: new Map(), threads: new Map(), inboxes: new Map() };
-  if (seed !== undefined) {
-    for (const person of samplePeople(seed)) store.people.set(person.id, person);
-    for (const thread of sampleThreads(seed, now())) store.threads.set(thread.id, thread);
+const emptyStore = (): Store => ({ people: new Map(), threads: new Map(), inboxes: new Map() });
+
+// Data lives in memory for now, so it's gone (or reseeded) when the server restarts. Requests pick a workspace
+// with the X-Workspace header.
+export function createApp({ now = Date.now, me }: AppOptions = {}) {
+  const stores: Record<Workspace, Store> = { local: emptyStore(), sample: emptyStore() };
+  if (me !== undefined) {
+    stores.local.people.set(me.id, me);
+    for (const person of samplePeople(me)) stores.sample.people.set(person.id, person);
+    for (const thread of sampleThreads(me, now())) stores.sample.threads.set(thread.id, thread);
   }
-  const app = new Hono();
+  const app = new Hono<{ Variables: { store: Store } }>();
   // The desktop renderer runs on its own dev origin (or file://), so it needs CORS to reach the API.
   app.use(cors());
+  app.use(async (c, next) => {
+    const workspace = c.req.header("X-Workspace") ?? "local";
+    if (!(WORKSPACES as readonly string[]).includes(workspace))
+      return c.json({ error: `Unknown workspace: ${workspace}` }, 400);
+    c.set("store", stores[workspace as Workspace]);
+    await next();
+  });
 
   const missingUser = (id: string): { error: string } => ({ error: `User not found: ${id}` });
   const missingThread = { error: "Thread not found" };
 
-  const save = (thread: Thread): Thread => {
+  const save = (store: Store, thread: Thread): Thread => {
     store.threads.set(thread.id, thread);
     return thread;
   };
 
   app.get("/", (c) => c.text("Hello Hono!"));
 
-  app.get("/users", (c) => c.json([...store.people.values()]));
+  app.get("/users", (c) => c.json([...c.var.store.people.values()]));
 
   app.post("/users", validate("json", createUserBody), (c) => {
     const { firstName, lastName, level, role } = c.req.valid("json");
@@ -112,13 +128,13 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
       level,
       role,
     };
-    store.people.set(person.id, person);
+    c.var.store.people.set(person.id, person);
     return c.json(person, 201);
   });
 
   // Every thread, most recently active first.
   app.get("/threads", (c) =>
-    c.json([...store.threads.values()].sort((a, b) => b.updatedAtMs - a.updatedAtMs)),
+    c.json([...c.var.store.threads.values()].sort((a, b) => b.updatedAtMs - a.updatedAtMs)),
   );
 
   app.post("/threads", validate("json", createThreadBody), (c) => {
@@ -128,9 +144,9 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
       ...(body.assignee === null ? [] : [body.assignee]),
       ...body.invitees,
     ];
-    const unknown = ids.find((id) => !store.people.has(id));
+    const unknown = ids.find((id) => !c.var.store.people.has(id));
     if (unknown !== undefined) return c.json(missingUser(unknown), 404);
-    const person = (id: string): Person => store.people.get(id)!;
+    const person = (id: string): Person => c.var.store.people.get(id)!;
     const creator = person(body.creator);
     const createdAtMs = now();
     const thread: Thread = {
@@ -161,23 +177,23 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
         },
       ],
     };
-    return c.json(save(thread), 201);
+    return c.json(save(c.var.store, thread), 201);
   });
 
   app.get("/threads/:threadId", (c) => {
-    const thread = store.threads.get(c.req.param("threadId"));
+    const thread = c.var.store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     return c.json(thread);
   });
 
   // Applies the edits and records an activity line for each real change.
   app.patch("/threads/:threadId", validate("json", editThreadBody), (c) => {
-    const thread = store.threads.get(c.req.param("threadId"));
+    const thread = c.var.store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     const { actor: actorId, assignee: assigneeId, ...rest } = c.req.valid("json");
-    const actor = store.people.get(actorId);
+    const actor = c.var.store.people.get(actorId);
     if (actor === undefined) return c.json(missingUser(actorId), 404);
-    const assignee = assigneeId === undefined ? undefined : store.people.get(assigneeId);
+    const assignee = assigneeId === undefined ? undefined : c.var.store.people.get(assigneeId);
     if (assigneeId !== undefined && assignee === undefined)
       return c.json(missingUser(assigneeId), 404);
     const edits: Edits = { ...rest, ...(assignee === undefined ? {} : { assignee }) };
@@ -192,16 +208,21 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
       createdAtMs: updatedAtMs,
     }));
     return c.json(
-      save({ ...thread, ...edits, updatedAtMs, entries: [...thread.entries, ...events] }),
+      save(c.var.store, {
+        ...thread,
+        ...edits,
+        updatedAtMs,
+        entries: [...thread.entries, ...events],
+      }),
     );
   });
 
   // A reply, or a resolution, which also marks the thread done.
   app.post("/threads/:threadId/entries", validate("json", createEntryBody), (c) => {
-    const thread = store.threads.get(c.req.param("threadId"));
+    const thread = c.var.store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     const { kind, author: authorId, text } = c.req.valid("json");
-    const author = store.people.get(authorId);
+    const author = c.var.store.people.get(authorId);
     if (author === undefined) return c.json(missingUser(authorId), 404);
     const createdAtMs = now();
     const id = crypto.randomUUID();
@@ -210,7 +231,7 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
         ? { kind, id, author, text, createdAtMs, decision: false }
         : { kind, id, author, text, createdAtMs };
     return c.json(
-      save({
+      save(c.var.store, {
         ...thread,
         status: kind === "resolution" ? "done" : thread.status,
         updatedAtMs: createdAtMs,
@@ -222,14 +243,14 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
 
   // Bookmarks a message as a decision, or removes the bookmark.
   app.patch("/threads/:threadId/entries/:entryId", validate("json", editEntryBody), (c) => {
-    const thread = store.threads.get(c.req.param("threadId"));
+    const thread = c.var.store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     const entryId = c.req.param("entryId");
     const target = thread.entries.find((entry) => entry.id === entryId);
     if (target?.kind !== "message") return c.json({ error: "Message not found" }, 404);
     const { decision } = c.req.valid("json");
     return c.json(
-      save({
+      save(c.var.store, {
         ...thread,
         entries: thread.entries.map((entry) =>
           entry.id === entryId && entry.kind === "message" ? { ...entry, decision } : entry,
@@ -240,18 +261,18 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
 
   app.post("/inboxes", validate("json", createInboxBody), (c) => {
     const { userId } = c.req.valid("json");
-    if (!store.people.has(userId)) return c.json(missingUser(userId), 404);
-    if (store.inboxes.has(userId)) return c.json({ error: "User already has an inbox" }, 409);
+    if (!c.var.store.people.has(userId)) return c.json(missingUser(userId), 404);
+    if (c.var.store.inboxes.has(userId)) return c.json({ error: "User already has an inbox" }, 409);
     const inbox = { id: crypto.randomUUID(), userId, createdAtMs: now() };
-    store.inboxes.set(userId, inbox);
+    c.var.store.inboxes.set(userId, inbox);
     return c.json(inbox, 201);
   });
 
   app.get("/inboxes/:userId", (c) => {
     const userId = c.req.param("userId");
-    const inbox = store.inboxes.get(userId);
+    const inbox = c.var.store.inboxes.get(userId);
     if (inbox === undefined) return c.json({ error: "Inbox not found" }, 404);
-    const items = openThreadsFor(store.threads.values(), userId).map(
+    const items = openThreadsFor(c.var.store.threads.values(), userId).map(
       ({ entries: _entries, ...summary }) => summary,
     );
     return c.json({ ...inbox, items });
@@ -259,10 +280,10 @@ export function createApp({ now = Date.now, seed }: AppOptions = {}) {
 
   app.get("/users/:userId/schedule", validate("query", scheduleQuery), (c) => {
     const userId = c.req.param("userId");
-    if (!store.people.has(userId)) return c.json(missingUser(userId), 404);
+    if (!c.var.store.people.has(userId)) return c.json(missingUser(userId), 404);
     const nowMs = now();
     const date = c.req.valid("query").date ?? new Date(nowMs).toISOString().slice(0, 10);
-    return c.json(buildSchedule(openThreadsFor(store.threads.values(), userId), date, nowMs));
+    return c.json(buildSchedule(openThreadsFor(c.var.store.threads.values(), userId), date, nowMs));
   });
 
   return app;

@@ -346,13 +346,24 @@ test("editEntry bookmarks a message as a decision, and only messages", async () 
   expect((await send("PATCH", `/threads/${id}/entries/nope`, { decision: true })).status).toBe(404);
 });
 
-test("a seeded app has the sample team and their threads, addressed to you", async () => {
-  app = createApp({ now: () => clock, seed: { id: "me", name: "You" } });
-  const people = (await (await send("GET", "/users")).json()) as { id: string }[];
+test("the local workspace starts with just you; the sample workspace has the team and their threads", async () => {
+  app = createApp({ now: () => clock, me: { id: "me", name: "You" } });
+  const get = async (path: string, workspace?: string): Promise<unknown> =>
+    (
+      await app.request(path, {
+        headers: workspace === undefined ? {} : { "X-Workspace": workspace },
+      })
+    ).json();
+
+  expect(await get("/users")).toEqual([{ id: "me", name: "You" }]);
+  expect(await get("/threads")).toEqual([]);
+
+  const people = (await get("/users", "sample")) as { id: string }[];
   expect(people[0]).toEqual({ id: "me", name: "You" });
-  const threads = (await (await send("GET", "/threads")).json()) as {
+  const threads = (await get("/threads", "sample")) as {
     id: string;
     assignee: { id: string } | null;
   }[];
   expect(threads.find((thread) => thread.id === "rate-limits")?.assignee?.id).toBe("me");
+  expect((await app.request("/threads", { headers: { "X-Workspace": "nope" } })).status).toBe(400);
 });

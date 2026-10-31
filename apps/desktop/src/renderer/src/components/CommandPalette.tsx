@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Thread, ThreadKind } from "model";
+import type { Workspace } from "../api";
 
 type Tab = "all" | ThreadKind;
 
@@ -39,11 +40,15 @@ type Section = { title: string; items: Item[] };
 // Delta's command palette: search input, filter tabs, then sectioned results.
 export function CommandPalette({
   threads,
+  workspace,
+  onSwitchWorkspace,
   onNewThread,
   onOpenThread,
   onClose,
 }: {
   threads: Thread[];
+  workspace: Workspace;
+  onSwitchWorkspace: (workspace: Workspace) => void;
   onNewThread: (kind: ThreadKind) => void;
   onOpenThread: (id: string) => void;
   onClose: () => void;
@@ -73,6 +78,27 @@ export function CommandPalette({
         run: run(() => onNewThread(action.kind)),
       })),
     },
+    // Flip between your own data and the demo team's.
+    ...(tab === "all"
+      ? [
+          {
+            title: "Data",
+            items: [
+              workspace === "local"
+                ? {
+                    id: "workspace-sample",
+                    label: "Show Sample Data",
+                    run: run(() => onSwitchWorkspace("sample")),
+                  }
+                : {
+                    id: "workspace-local",
+                    label: "Show Local Data",
+                    run: run(() => onSwitchWorkspace("local")),
+                  },
+            ],
+          },
+        ]
+      : []),
     ...kinds.map((kind) => ({
       title: SECTION_TITLES[kind],
       items: threads

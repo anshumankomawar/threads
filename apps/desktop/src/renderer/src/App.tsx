@@ -10,7 +10,7 @@ import {
   type Thread,
   type ThreadKind,
 } from "model";
-import { api } from "./api";
+import { createApi, type Workspace } from "./api";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
 import { me } from "./me";
 import { buildDay } from "./inbox";
@@ -59,6 +59,17 @@ function lastActivityByOthers(thread: Thread): number {
   return latest;
 }
 
+const WORKSPACE_KEY = "workspace";
+
+// Which workspace to show, remembered across launches. Starts on your own (empty) local data.
+function savedWorkspace(): Workspace {
+  try {
+    return localStorage.getItem(WORKSPACE_KEY) === "sample" ? "sample" : "local";
+  } catch {
+    return "local";
+  }
+}
+
 // Until the first load, or if the API isn't running.
 type Load = { state: "loading" } | { state: "failed"; error: string } | { state: "ready" };
 
@@ -66,7 +77,9 @@ function App(): React.JSX.Element {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [load, setLoad] = useState<Load>({ state: "loading" });
-  const [activeThreadId, setActiveThreadId] = useState<string | null>("rate-limits");
+  const [workspace, setWorkspace] = useState<Workspace>(savedWorkspace);
+  const api = createApi(workspace);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(true);
@@ -88,8 +101,9 @@ function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     let retry = 0;
+    const source = createApi(workspace);
     const fetchAll = (): void => {
-      Promise.all([api.threads(), api.people()]).then(
+      Promise.all([source.threads(), source.people()]).then(
         ([loaded, team]) => {
           if (cancelled) return;
           setThreads(loaded);
@@ -116,7 +130,21 @@ function App(): React.JSX.Element {
       cancelled = true;
       window.clearTimeout(retry);
     };
-  }, []);
+  }, [workspace]);
+
+  // Switching between your data and the sample data starts fresh on the other set.
+  const switchWorkspace = (next: Workspace): void => {
+    try {
+      localStorage.setItem(WORKSPACE_KEY, next);
+    } catch {
+      // Not remembered; it still switches for this session.
+    }
+    setLoad({ state: "loading" });
+    setThreads([]);
+    setPeople([]);
+    setActiveThreadId(null);
+    setWorkspace(next);
+  };
 
   // Swaps in the server's copy of a thread after a change, adding it if it's new.
   const replace = (thread: Thread): void =>
@@ -279,6 +307,8 @@ function App(): React.JSX.Element {
       {searchOpen && (
         <CommandPalette
           threads={threads}
+          workspace={workspace}
+          onSwitchWorkspace={switchWorkspace}
           onNewThread={openNew}
           onOpenThread={openThread}
           onClose={() => setSearchOpen(false)}
