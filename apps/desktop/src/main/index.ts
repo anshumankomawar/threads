@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from "electron";
+import { app, shell, BrowserWindow, nativeTheme } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
@@ -10,6 +10,15 @@ function createWindow(): void {
     height: 670,
     show: false,
     autoHideMenuBar: true,
+    // Cursor's dark glass backdrop: native sidebar vibrancy under a 25% black tint.
+    ...(process.platform === "darwin"
+      ? {
+          titleBarStyle: "hidden",
+          vibrancy: "sidebar",
+          visualEffectState: "active",
+          backgroundColor: "#40000000",
+        }
+      : {}),
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -18,7 +27,12 @@ function createWindow(): void {
   });
 
   mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
+    // In dev, open without stealing focus so the window manager doesn't jump workspaces.
+    if (is.dev) {
+      mainWindow.showInactive();
+    } else {
+      mainWindow.show();
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -42,15 +56,15 @@ void app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.electron");
 
+  // Dark mode only for now, so the vibrancy material renders dark.
+  nativeTheme.themeSource = "dark";
+
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.
   // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
   app.on("browser-window-created", (_, window) => {
     optimizer.watchWindowShortcuts(window);
   });
-
-  // IPC test
-  ipcMain.on("ping", () => console.log("pong"));
 
   createWindow();
 
