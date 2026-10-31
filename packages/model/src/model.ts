@@ -81,3 +81,22 @@ export type Thread = {
   updatedAtMs: number;
   entries: Entry[];
 };
+
+// Every meeting's video call link, until meetings get real ones.
+export const DUMMY_ZOOM_LINK = "zoom.us/j/0000000000";
+
+type Message = Extract<Entry, { kind: "message" }>;
+
+export function lastMessage(thread: Thread): Message | undefined {
+  return thread.entries.findLast((entry): entry is Message => entry.kind === "message");
+}
+
+// Whose turn it is, which decides whose inbox the thread is in: the assignee's reply sends it back to whoever asked,
+// and anything else leaves it with the assignee. With no assignee it stays with whoever asked. Meetings aren't turns.
+export function waitingOn(thread: Thread): string | null {
+  if (thread.kind === "meeting") return null;
+  if (thread.assignee === null) return thread.requester.id;
+  return lastMessage(thread)?.author.id === thread.assignee.id
+    ? thread.requester.id
+    : thread.assignee.id;
+}

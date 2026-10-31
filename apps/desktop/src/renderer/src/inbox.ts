@@ -1,7 +1,16 @@
-import type { Person, Priority, Relationship, Thread } from "model";
+import {
+  lastMessage,
+  waitingOn,
+  type Person,
+  type Priority,
+  type Relationship,
+  type Thread,
+} from "model";
 
 export type InboxItem = {
   thread: Thread;
+  // Who last wrote to you in a response, unless that was you.
+  from: Person | null;
   reason: string;
   dueLabel: string | null;
   overdue: boolean;
@@ -48,12 +57,16 @@ function shortDate(atMs: number, nowMs: number): string {
 function isMine(thread: Thread, me: Person): boolean {
   if (thread.kind === "meeting") return thread.attendees.some((person) => person.id === me.id);
   if (thread.kind === "focus") return thread.requester.id === me.id;
-  return (
-    thread.assignee?.id === me.id || (thread.assignee === null && thread.requester.id === me.id)
-  );
+  return thread.assignee?.id === me.id || waitingOn(thread) === me.id;
 }
 
-function reasonFor(thread: Thread, me: Person, relationship: Relationship, nowMs: number): string {
+function reasonFor(
+  thread: Thread,
+  me: Person,
+  sender: Person,
+  relationship: Relationship,
+  nowMs: number,
+): string {
   if (thread.kind === "focus") return "Your focus block";
   if (thread.kind === "meeting") {
     const others = thread.attendees
@@ -68,8 +81,8 @@ function reasonFor(thread: Thread, me: Person, relationship: Relationship, nowMs
     relationship === "manager"
       ? "From your manager"
       : relationship === "lead"
-        ? `From ${thread.requester.name} (lead)`
-        : `From ${thread.requester.name}`,
+        ? `From ${sender.name} (lead)`
+        : `From ${sender.name}`,
     due !== null && due < nowMs
       ? "overdue"
       : days === 0
@@ -83,7 +96,7 @@ function reasonFor(thread: Thread, me: Person, relationship: Relationship, nowMs
     .join(" · ");
 }
 
-// Higher scores come first: the priority set on the thread, who asked (by org relationship), and how soon it's due.
+// Higher scores come first: the priority set on the thread, who it's from (by org relationship), and how soon it's due.
 function score(thread: Thread, relationship: Relationship, nowMs: number): number {
   if (thread.kind === "response" && thread.assignee === null) return Infinity;
   const days = thread.dueAtMs === null ? null : daysUntil(thread.dueAtMs, nowMs);
@@ -94,10 +107,11 @@ function score(thread: Thread, relationship: Relationship, nowMs: number): numbe
   );
 }
 
-// Rule-based plan for your day. Everything is a thread: responses assigned to you, meetings you're in, and your
-// focus blocks. Anything scheduled today sits on the timeline; responses assigned to you (or still needing an
-// assignee) and unplanned focus work wait in Unscheduled, which is your inbox; the rest is Later: meetings and focus
-// blocks on other days, and responses you've scheduled for a later day, unless they need attention today.
+// Rule-based plan for your day. Everything is a thread: responses assigned to you or waiting on you, meetings you're
+// in, and your focus blocks. What's scheduled today sits on the timeline, though a response's slot is only its
+// assignee's. Responses waiting on you and unplanned focus work are in Unscheduled, which is your inbox. The rest is
+// Later: meetings and focus blocks on other days, responses you're waiting to hear back on, and responses you've
+// scheduled for a later day, unless they need attention today.
 export function buildDay(
   threads: Thread[],
   me: Person,
@@ -112,26 +126,32 @@ export function buildDay(
 
   for (const thread of threads) {
     if (thread.status === "done" || !isMine(thread, me)) continue;
-    const relationship = relationshipTo(thread.requester);
+    const sender = lastMessage(thread)?.author ?? thread.requester;
+    const relationship = relationshipTo(sender);
     const due = thread.dueAtMs;
     const when = thread.schedule?.startMs ?? due;
     const overdue = thread.kind === "response" && due !== null && due < nowMs;
     const item = {
       thread,
-      reason: reasonFor(thread, me, relationship, nowMs),
+      from: thread.kind === "response" && sender.id !== me.id ? sender : null,
+      reason: reasonFor(thread, me, sender, relationship, nowMs),
       dueLabel: overdue ? "Overdue" : when === null ? null : shortDate(when, nowMs),
       overdue,
       score: score(thread, relationship, nowMs),
     };
+    const scheduleIsMine =
+      thread.kind !== "response" || thread.assignee === null || thread.assignee.id === me.id;
 
-    if (thread.schedule !== null && isToday(thread.schedule.startMs)) {
+    if (scheduleIsMine && thread.schedule !== null && isToday(thread.schedule.startMs)) {
       timeline.push(item);
     } else if (
       (thread.kind === "focus" && thread.schedule === null) ||
       (thread.kind === "response" &&
-        (thread.schedule === null ||
-          thread.schedule.startMs < today ||
+        waitingOn(thread) === me.id &&
+        (!scheduleIsMine ||
           thread.assignee === null ||
+          thread.schedule === null ||
+          thread.schedule.startMs < today ||
           overdue ||
           (due !== null && isToday(due)) ||
           thread.priority === "urgent"))

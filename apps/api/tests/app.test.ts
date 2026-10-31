@@ -1,3 +1,4 @@
+import { sampleThreads } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 
@@ -228,6 +229,49 @@ test("getInbox lists the user's open threads, most pressing first", async () => 
   expect(inbox.userId).toBe(user);
   expect(inbox.items.map((item) => item.id)).toEqual([urgent, dueSoon, dueLate, plain]);
   expect(inbox.items[0]).not.toHaveProperty("entries");
+});
+
+test("only a new meeting gets a video call, with the dummy Zoom link", async () => {
+  const user = await createUser();
+  const create = async (kind: string): Promise<Body> =>
+    read(await send("POST", "/threads", { kind, creator: user, text: "Text" }));
+  const entryKinds = (thread: Body): string[] => thread.entries.map((entry) => entry.kind);
+
+  const meeting = await create("meeting");
+  expect(entryKinds(meeting)).toEqual(["message", "call"]);
+  expect(meeting.entries[1]).toMatchObject({ kind: "call", link: "zoom.us/j/0000000000" });
+  expect(entryKinds(await create("response"))).toEqual(["message"]);
+  expect(entryKinds(await create("focus"))).toEqual(["message"]);
+});
+
+test("the sample meetings all have the dummy Zoom link", async () => {
+  const links = sampleThreads({ id: "me", name: "You" }, NOW)
+    .filter((thread) => thread.kind === "meeting")
+    .map((thread) => thread.entries.find((entry) => entry.kind === "call"));
+  expect(links.length).toBeGreaterThan(0);
+  for (const link of links) expect(link).toMatchObject({ link: "zoom.us/j/0000000000" });
+});
+
+test("getInbox follows whose turn it is as people reply", async () => {
+  const [asker, assignee] = [await createUser(), await createUser("Sam")];
+  await send("POST", "/inboxes", { userId: asker });
+  await send("POST", "/inboxes", { userId: assignee });
+  const id = await createThread(asker, assignee);
+  const inboxOf = async (user: string): Promise<string[]> =>
+    (await read(await send("GET", `/inboxes/${user}`))).items.map((item) => item.id);
+  const reply = (author: string): Response | Promise<Response> =>
+    send("POST", `/threads/${id}/entries`, { kind: "message", author, text: "Reply" });
+
+  expect(await inboxOf(assignee)).toEqual([id]);
+  expect(await inboxOf(asker)).toEqual([]);
+
+  await reply(assignee);
+  expect(await inboxOf(asker)).toEqual([id]);
+  expect(await inboxOf(assignee)).toEqual([]);
+
+  await reply(asker);
+  expect(await inboxOf(assignee)).toEqual([id]);
+  expect(await inboxOf(asker)).toEqual([]);
 });
 
 test("getInbox returns 404 until the inbox is created", async () => {

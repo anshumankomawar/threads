@@ -1,12 +1,13 @@
-import type {
-  Entry,
-  Person,
-  Priority,
-  Relationship,
-  Schedule,
-  Status,
-  Thread,
-  ThreadKind,
+import {
+  DUMMY_ZOOM_LINK,
+  type Entry,
+  type Person,
+  type Priority,
+  type Relationship,
+  type Schedule,
+  type Status,
+  type Thread,
+  type ThreadKind,
 } from "./model";
 
 // Fictional teammates for demo threads until real data exists.
@@ -317,7 +318,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
           "Agenda: walk through the new onboarding screens, then decide whether the empty states ship this sprint.",
           20 * HOUR,
         ],
-        ["call", "meet.threads.app/dsg-onbd-wkly", 20 * HOUR],
+        ["call", DUMMY_ZOOM_LINK, 20 * HOUR],
         [
           "notes",
           {
@@ -356,7 +357,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
           "Let's go over the Q4 plan before I send it to finance. Bring anything you want changed.",
           35 * MINUTE,
         ],
-        ["call", "meet.threads.app/hc-q4-review", 35 * MINUTE],
+        ["call", DUMMY_ZOOM_LINK, 35 * MINUTE],
         [
           "notes",
           {
@@ -393,6 +394,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
           "Goal: renew for another year and scope the seat expansion. I'll lead, you cover usage and escalations.",
           23 * HOUR,
         ],
+        ["call", DUMMY_ZOOM_LINK, 23 * HOUR],
       ],
     ),
 
@@ -413,7 +415,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
           "Agenda: final check on the Q4 pricing page, the legal sign-off on the discount line, and the launch-day support plan.",
           2 * DAY,
         ],
-        ["call", "meet.threads.app/pricing-launch", 2 * DAY],
+        ["call", DUMMY_ZOOM_LINK, 2 * DAY],
         [
           "notes",
           {

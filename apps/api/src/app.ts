@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
+  DUMMY_ZOOM_LINK,
   localPeople,
   PRIORITY_LABELS,
   samplePeople,
@@ -12,7 +13,7 @@ import {
   type Thread,
 } from "model";
 import { z } from "zod";
-import { openThreadsFor } from "./inbox.ts";
+import { inboxThreadsFor, openThreadsFor } from "./inbox.ts";
 import {
   createEntryBody,
   createInboxBody,
@@ -191,6 +192,16 @@ export function createWorkspaceApp(
           createdAtMs,
           decision: false,
         },
+        ...(body.kind === "meeting"
+          ? [
+              {
+                kind: "call" as const,
+                id: crypto.randomUUID(),
+                link: DUMMY_ZOOM_LINK,
+                createdAtMs,
+              },
+            ]
+          : []),
       ],
     };
     return c.json(save(thread), 201);
@@ -288,7 +299,7 @@ export function createWorkspaceApp(
     const userId = c.req.param("userId");
     const inbox = store.inboxes.get(userId);
     if (inbox === undefined) return c.json({ error: "Inbox not found" }, 404);
-    const items = openThreadsFor(store.threads.values(), userId).map(
+    const items = inboxThreadsFor(store.threads.values(), userId).map(
       ({ entries: _entries, ...summary }) => summary,
     );
     return c.json({ ...inbox, items });

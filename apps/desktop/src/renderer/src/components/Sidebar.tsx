@@ -255,8 +255,8 @@ function DayView({
   );
 }
 
-// What needs addressing but has no time on the timeline: threads assigned to you or needing an assignee, and focus
-// blocks you haven't planned.
+// What needs addressing but has no time on the timeline: threads waiting on you, labelled with who they're from, and
+// focus blocks you haven't planned.
 function InboxList({
   items,
   activeThreadId,
@@ -277,7 +277,7 @@ function InboxList({
           item={item}
           active={item.thread.id === activeThreadId}
           unread={unreadIds.has(item.thread.id)}
-          label={item.dueLabel}
+          label={item.from === null ? item.dueLabel : item.from.name.split(" ")[0]}
           onOpen={() => onOpenThread(item.thread.id)}
         />
       ))}
