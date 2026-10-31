@@ -256,6 +256,11 @@ body * {
   background-color: var(--bg-tertiary);
 }
 
+/* A top-level destination such as Organization: no icon, lined up with the section labels. */
+.sidebar-nav-row {
+  padding-left: 9px;
+}
+
 /* Clipped labels fade out over the last 24px instead of using an ellipsis. */
 .sidebar-row-label {
   min-width: 0;
@@ -1544,11 +1549,6 @@ body * {
 }
 
 /* Pinned under the scrolling sections, so the org view stays one click away. */
-.sidebar-footer {
-  flex-shrink: 0;
-  border-top: 1px solid var(--stroke-tertiary);
-}
-
 /* Org: who reports to whom, laid out where a thread's page would be. */
 .org {
   display: flex;

@@ -354,7 +354,7 @@ function App(): React.JSX.Element {
               <SearchButton onSearch={() => setSearchOpen(true)} />
             </>
           )}
-          <span className="topbar-title">{orgOpen ? "Org" : activeThread?.title}</span>
+          <span className="topbar-title">{orgOpen ? "Organization" : activeThread?.title}</span>
           <span className="topbar-end">
             <button
               type="button"

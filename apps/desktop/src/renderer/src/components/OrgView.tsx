@@ -64,11 +64,11 @@ export function OrgView({ people, me }: { people: Person[]; me: Person }): React
 
   return (
     <div className="org">
-      <h1 className="org-title">Org</h1>
+      <h1 className="org-title">Organization</h1>
       <p className="org-summary">
         {hasReportingLines ? summary : `${summary} · No reporting lines set yet`}
       </p>
-      <ul className="org-tree" role="tree" aria-label="Org">
+      <ul className="org-tree" role="tree" aria-label="Organization">
         {tree.map((node) => (
           <OrgBranch key={node.person.id} node={node} me={me} />
         ))}

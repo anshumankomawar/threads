@@ -95,7 +95,7 @@ export function CommandPalette({
     // Who you're viewing as, and where the data comes from.
     ...(tab === "all"
       ? [
-          { title: "Views", items: [{ id: "org", label: "Org", run: run(onOpenOrg) }] },
+          { title: "Views", items: [{ id: "org", label: "Organization", run: run(onOpenOrg) }] },
           {
             title: "Data",
             items: [

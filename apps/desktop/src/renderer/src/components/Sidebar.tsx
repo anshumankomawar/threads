@@ -3,7 +3,6 @@ import {
   ChevronDown,
   Ellipsis,
   MessageSquare,
-  Network,
   Plus,
   Search,
   SquarePen,
@@ -368,6 +367,17 @@ export function Sidebar({
         </span>
       </div>
       <div className="sidebar-content">
+        {/* Org opens in the main area, like a thread. */}
+        <div
+          className="sidebar-row sidebar-nav-row"
+          data-active={orgOpen}
+          role="button"
+          tabIndex={0}
+          onClick={onToggleOrg}
+          onKeyDown={(event) => activateOnKey(event, onToggleOrg)}
+        >
+          <span className="sidebar-row-label">Organization</span>
+        </div>
         <SidebarSection title="Schedule">
           <DayView
             day={day}
@@ -410,21 +420,6 @@ export function Sidebar({
             onOpenThread={onOpenThread}
           />
         </SidebarSection>
-      </div>
-      <div className="sidebar-footer">
-        <div
-          className="sidebar-row"
-          data-active={orgOpen}
-          role="button"
-          tabIndex={0}
-          onClick={onToggleOrg}
-          onKeyDown={(event) => activateOnKey(event, onToggleOrg)}
-        >
-          <span className="kind-marker">
-            <Network size={12} strokeWidth={1.7} aria-hidden />
-          </span>
-          <span className="sidebar-row-label">Org</span>
-        </div>
       </div>
       {handle}
     </aside>
