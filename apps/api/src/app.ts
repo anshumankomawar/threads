@@ -135,7 +135,7 @@ export function createWorkspaceApp(
 
   app.post("/users", validate("json", createUserBody), (c) => {
     const { firstName, lastName, level, role, manager } = c.req.valid("json");
-    if (manager !== undefined && !c.var.store.people.has(manager))
+    if (manager !== undefined && !store.people.has(manager))
       return c.json(missingUser(manager), 404);
     const person: Person = {
       id: crypto.randomUUID(),

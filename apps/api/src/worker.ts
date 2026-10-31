@@ -57,6 +57,13 @@ export class Workspace extends DurableObject<Env> {
       else if (row.kind === "thread") store.threads.set(row.key, value as Thread);
       else store.inboxes.set(row.key, value as Inbox);
     }
+    // The seeded people follow the code (their levels and managers can change), since nothing edits them
+    // through the API. Threads and people added through the API stay as stored.
+    for (const person of seedStore(name, SAMPLE_ME, Date.now()).people.values()) {
+      if (JSON.stringify(store.people.get(person.id)) === JSON.stringify(person)) continue;
+      this.#save({ kind: "person", key: person.id, value: person });
+      store.people.set(person.id, person);
+    }
     return store;
   }
 
