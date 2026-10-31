@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, nativeTheme } from "electron";
+import { app, shell, BrowserWindow, nativeTheme, systemPreferences } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
@@ -58,6 +58,15 @@ void app.whenReady().then(() => {
 
   // Dark mode only for now, so the vibrancy material renders dark.
   nativeTheme.themeSource = "dark";
+
+  // Stop the text caret blinking: Chromium reads these macOS defaults and treats an "on" period
+  // over 60s as always visible. registerDefaults applies to this app only and isn't persisted.
+  if (process.platform === "darwin") {
+    systemPreferences.registerDefaults({
+      NSTextInsertionPointBlinkPeriodOn: 1e9,
+      NSTextInsertionPointBlinkPeriodOff: 0,
+    });
+  }
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

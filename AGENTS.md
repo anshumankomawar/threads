@@ -1,6 +1,6 @@
 # Branch Rule
 
-All AI-written code must go on the `vibing` branch. Before writing or editing code, check the current branch with `git branch --show-current`; if it is not `vibing`, switch with `git switch vibing` (create it with `git switch -c vibing` if missing). Never commit AI-written code to `main` or any other branch.
+All AI-written code must go on the `prototype` branch. Before writing or editing code, check the current branch with `git branch --show-current`; if it is not `prototype`, switch with `git switch prototype` (create it with `git switch -c prototype` if missing). Never commit AI-written code to `main` or any other branch.
 
 <!--VITE PLUS START-->
 

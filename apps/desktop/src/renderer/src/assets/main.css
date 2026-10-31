@@ -7,15 +7,28 @@
   --text-primary: var(--base);
   --text-secondary: color-mix(in srgb, var(--base) 74%, transparent);
   --text-tertiary: color-mix(in srgb, var(--base) 60%, transparent);
-  --text-quaternary: color-mix(in srgb, var(--base) 36%, transparent);
-  --icon-secondary: color-mix(in srgb, var(--base) 66%, transparent);
+  /* Delta's hover and selected fills: about 5% and 9% of the way from background to text. */
+  --bg-tertiary: color-mix(in srgb, var(--base) 9%, transparent);
+  --bg-quaternary: color-mix(in srgb, var(--base) 5%, transparent);
   --icon-tertiary: color-mix(in srgb, var(--base) 52%, transparent);
-  --icon-quaternary: color-mix(in srgb, var(--base) 28%, transparent);
-  --bg-tertiary: color-mix(in srgb, var(--base) 8%, transparent);
-  --bg-quaternary: color-mix(in srgb, var(--base) 6%, transparent);
   --stroke-tertiary: color-mix(in srgb, var(--base) 8%, transparent);
   --stroke-focused: color-mix(in srgb, var(--base) 15%, transparent);
   --scrollbar-thumb: var(--stroke-tertiary);
+
+  /* Search palette surfaces: neutral versions of Delta's panel, border, divider and selection.
+     Values are calibrated so they render at Delta's on-screen levels (Electron output comes out ~1.27x brighter). */
+  --panel: #171717;
+  --panel-border: #212121;
+  --panel-divider: #1c1c1c;
+  --panel-selected: #222222;
+  --accent: #78aee7;
+  --accent-fill: #1f252c;
+
+  /* Task status colors (from Cursor Dark's palette) and urgency. */
+  --status-progress: oklch(0.811 0.118 71.255);
+  --status-waiting: oklch(0.681 0.131 252.629);
+  --status-done: oklch(0.713 0.094 155.438);
+  --urgent: oklch(0.712 0.177 12.651);
 }
 
 *,
@@ -30,11 +43,11 @@ body {
   overflow: hidden;
   user-select: none;
   color: var(--text-primary);
-  /* Cursor's dark glass surface, painted over the window vibrancy. */
-  background: rgb(0 0 0 / 42%);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 13px;
-  line-height: 18px;
+  /* Dark glass surface over the window vibrancy (darker than Cursor's 42%). */
+  background: rgb(0 0 0 / 62%);
+  font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 12px;
+  line-height: 16px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -48,14 +61,14 @@ body * {
   height: 100%;
 }
 
-/* Cursor's window drag strip: a fixed 40px overlay, so it adds no layout height. */
+/* Window drag strip: a fixed overlay over the 34px top bar, so it adds no layout height. */
 .titlebar {
   position: fixed;
   top: 0;
   right: 0;
   left: 0;
   z-index: 10;
-  height: 40px;
+  height: 34px;
   pointer-events: none;
   -webkit-app-region: drag;
 }
@@ -70,7 +83,7 @@ body * {
   -webkit-app-region: no-drag;
 }
 
-/* Cursor's left sidebar: width set inline (260px default). */
+/* Delta's compact sidebar: width set inline (268px default), glass colors from Cursor Dark. */
 .sidebar {
   position: relative;
   display: flex;
@@ -78,134 +91,141 @@ body * {
   flex-shrink: 0;
   min-width: 0;
   height: 100%;
-  letter-spacing: -0.08px;
   background-color: color-mix(in srgb, var(--sidebar) 36%, transparent);
   border-right: 1px solid var(--stroke-tertiary);
 }
 
-/* The row the traffic lights sit in; the drag strip covers it. */
-.sidebar-topbar {
-  flex-shrink: 0;
-  height: 40px;
-}
-
-.sidebar-header {
+/* Delta's top bar: 33px plus a 1px divider; each column draws its own so they line up while resizing. */
+.topbar {
   display: flex;
-  flex-direction: column;
   flex-shrink: 0;
-  gap: 1px;
-  padding: 8px 8px 12px;
-  border-bottom: 1px solid transparent;
+  align-items: center;
+  gap: 2.5px;
+  height: 34px;
+  border-bottom: 1px solid var(--stroke-tertiary);
 }
 
-/* Cursor's primary action row ("New Chat"). */
-.nav-row {
-  position: relative;
+/* Keeps Delta's 14px gap between the last traffic light (larger on macOS 26) and the toggle icon. */
+.sidebar-topbar,
+.main-topbar[data-sidebar-open="false"] {
+  padding-left: 78px;
+}
+
+.topbar-button {
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 30px;
-  padding: 5px 4px;
-  border-radius: 8px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  text-align: start;
-  background-color: transparent;
-  cursor: pointer;
-  outline: none;
-}
-
-.nav-row:hover:not([data-active="true"]) {
-  background-color: var(--bg-quaternary);
-}
-
-.nav-row[data-active="true"] {
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
   color: var(--text-primary);
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-button:hover {
   background-color: var(--bg-tertiary);
 }
 
-.nav-row-icon {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: var(--icon-secondary);
+.topbar-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.nav-row-label {
-  flex-grow: 1;
-  line-height: 18px;
+.main-topbar[data-sidebar-open="true"] {
+  padding-left: 12px;
 }
 
-/* Scrolling list area, faded at the bottom (and top once scrolled). The 10px inset is measured from Cursor's rendered sidebar. */
 .sidebar-content {
   display: flex;
   flex-direction: column;
   flex-grow: 1;
-  gap: 1px;
   min-height: 0;
-  padding-inline: 10px;
   overflow-y: auto;
-  outline: none;
-  mask-image: linear-gradient(#000 calc(100% - 36px), transparent);
 }
 
-.sidebar-content[data-at-end="true"] {
-  mask-image: none;
-}
-
-.sidebar-content[data-scrolled="true"] {
-  mask-image: linear-gradient(transparent, #000 18px calc(100% - 36px), transparent);
-}
-
-.sidebar-content[data-scrolled="true"][data-at-end="true"] {
-  mask-image: linear-gradient(transparent, #000 18px);
-}
-
-.sidebar-group {
+.sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  border-radius: 8px;
 }
 
-/* Cursor's section label ("Projects", "Repositories"). */
-.group-label {
-  position: relative;
+/* Delta's 6px gap sits between sections only; the first header starts right under the top bar. */
+.sidebar-section + .sidebar-section {
+  margin-top: 6px;
+}
+
+/* Delta's section header: hover reveals a chevron and the section's buttons. */
+.sidebar-section-label {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 4px 2px 4px 6px;
-  border-radius: 4px;
-  color: var(--text-tertiary);
-  font-size: 12px;
+  height: 28px;
+  padding: 0 8px 0 9px;
+  color: var(--text-secondary);
+  cursor: pointer;
   outline: none;
 }
 
-.group-label-text {
-  overflow: hidden;
-  line-height: 16px;
-  letter-spacing: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sidebar-section-label:hover {
+  background-color: var(--bg-quaternary);
+}
+
+.section-chevron {
+  display: flex;
+  margin-left: 6px;
+  color: var(--icon-tertiary);
+  visibility: hidden;
+}
+
+.sidebar-section-label[data-collapsed="true"] .section-chevron {
+  transform: rotate(-90deg);
+}
+
+.section-actions {
+  display: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.sidebar-section-label:hover .section-chevron {
+  visibility: visible;
+}
+
+.sidebar-section-label:hover .section-actions {
+  display: flex;
+}
+
+/* Delta's 22px icon buttons; only the row behind them shows a hover fill. */
+.icon-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-primary);
+  background: transparent;
+  cursor: pointer;
 }
 
 .sidebar-empty {
-  padding: 4px 7px;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-left: 30px;
   color: var(--text-tertiary);
-  font-size: 12px;
-  font-weight: 500;
 }
 
 .thread-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   padding: 0;
   list-style: none;
 }
@@ -215,141 +235,48 @@ body * {
   list-style: none;
 }
 
-/* Cursor's agent row: fill and icon color come from per-state custom properties. */
-.thread-row {
-  --row-fill: transparent;
-  --row-icon: var(--icon-secondary);
-  --status-opacity: 0.88;
-
+/* Delta's rows: 28px, full-width fill with no rounding, labels at 31px. */
+.sidebar-row {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 28px;
-  padding: 5px 4px;
-  border-radius: 8px;
-  color: var(--text-secondary);
-  font-size: 13px;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px 0 31px;
+  color: var(--text-primary);
   cursor: pointer;
   outline: none;
 }
 
-.thread-row::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 8px;
-  background-color: var(--row-fill);
-  pointer-events: none;
+.sidebar-row:hover:not([data-active="true"]) {
+  background-color: var(--bg-quaternary);
 }
 
-.thread-row:hover {
-  --status-opacity: 1;
+.sidebar-row[data-active="true"] {
+  background-color: var(--bg-tertiary);
 }
 
-.thread-row:hover:not([data-active="true"]) {
-  --row-fill: var(--bg-quaternary);
-}
-
-.thread-row[data-active="true"] {
-  --row-fill: var(--bg-tertiary);
-  --row-icon: var(--base);
-  --status-opacity: 1;
-
-  color: var(--text-primary);
-}
-
-.thread-row-icon {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  color: var(--row-icon);
-}
-
-.status-dot-box {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  opacity: var(--status-opacity);
-}
-
-.status-dot {
-  flex-shrink: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: color-mix(in srgb, var(--icon-quaternary) 55%, transparent);
-}
-
-.thread-row-title-wrap {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-basis: 0;
-  flex-direction: column;
-  flex-grow: 1;
+/* Clipped labels fade out over the last 24px instead of using an ellipsis. */
+.sidebar-row-label {
   min-width: 0;
-}
-
-/* Clipped titles fade out over the last 24px instead of using an ellipsis. */
-.thread-row-title {
-  display: block;
-  min-width: 0;
-  margin-block: 1px;
   overflow: hidden;
-  line-height: 18px;
-  text-overflow: clip;
   white-space: nowrap;
 }
 
-.thread-row-title[data-overflowing] {
+.sidebar-row-label[data-overflowing] {
   mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
-}
-
-.thread-row-meta {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-  height: 20px;
-  margin-inline-start: auto;
-}
-
-.thread-row-time {
-  width: 26px;
-  margin-inline-end: 2px;
-  color: var(--text-tertiary);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  line-height: 18px;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.thread-row-time[data-long="true"] {
-  font-size: 12px;
-  letter-spacing: 0;
 }
 
 /* Cursor's main chat surface, darker than the sidebar. */
 .main {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
   background-color: color-mix(in srgb, var(--chrome) 72%, transparent);
 }
 
-/* Cursor's sidebar resize handle: 4px hit area straddling the border, 2px line on hover. */
+/* Sidebar resize handle: 4px hit area straddling the border. */
 .resize-handle {
   position: absolute;
   top: 0;
@@ -362,17 +289,1053 @@ body * {
   cursor: col-resize;
 }
 
+/* Sits exactly on the sidebar's 1px border, so hover and drag only recolor it. */
 .resize-handle::after {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 1px;
-  width: 2px;
+  left: 2px;
+  width: 1px;
   background-color: transparent;
 }
 
 .resize-handle:hover::after,
 .resize-handle[data-resizing="true"]::after {
   background-color: var(--stroke-focused);
+}
+
+/* Delta's search palette: 560px wide, centered in the window, 120px from the top. */
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+.search-panel {
+  position: absolute;
+  top: 120px;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-height: 474px;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background-color: var(--panel);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+  transform: translateX(-50%);
+}
+
+.search-input-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 37px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  background: transparent;
+  outline: none;
+}
+
+.search-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.search-tabs {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  height: 35px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--panel-divider);
+}
+
+.search-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 10.5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.search-tab[aria-selected="true"] {
+  color: var(--accent);
+  background-color: var(--accent-fill);
+}
+
+.search-tab-shortcut {
+  padding-right: 2px;
+  opacity: 0.8;
+}
+
+.search-results {
+  min-height: 0;
+  padding-top: 4px;
+  overflow-y: auto;
+}
+
+/* Sections are 4px-padded groups split by a 1px divider. */
+.search-section {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 4px;
+}
+
+.search-section + .search-section {
+  border-top: 1px solid var(--panel-border);
+}
+
+.search-section-label {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding-left: 10px;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 27.5px;
+  margin: 0 4px;
+  padding: 0 8px 1px 6px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.search-row[data-selected="true"] {
+  background-color: var(--panel-selected);
+}
+
+.search-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-row-shortcut {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  word-spacing: 2.5px;
+}
+
+/* Delta's thread layout: one left-aligned document; avatars at 15px, text at 52px, about 706px wide. */
+/* Holds the scrolling document and the minimap that floats over its right edge. */
+.thread-view {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.thread-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.thread-doc {
+  display: flex;
+  flex-direction: column;
+  gap: 20.5px;
+  max-width: 773px;
+  padding: 13.75px 15px 48px;
+}
+
+.thread-block {
+  display: flex;
+  gap: 15px;
+  scroll-margin-top: 14px;
+}
+
+/* The viewport minus about one block, so the last entry can reach the top but never leave the screen. */
+.thread-overscroll {
+  height: calc(100vh - 34px - 140px);
+}
+
+/* 20px avatar in a 22px column, set 2px into the first line so its top sits just above the name. */
+.thread-avatar {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  margin-top: 2px;
+}
+
+.thread-kind-marker,
+.thread-resolution-marker {
+  width: 20px;
+  margin-inline: 1px;
+}
+
+.thread-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Author line, on the avatar's row. */
+.thread-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 21px;
+}
+
+.thread-author {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.thread-time {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.thread-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 21px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.thread-reply {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+}
+
+.thread-reply-editor {
+  min-height: 21px;
+  outline: none;
+  cursor: text;
+}
+
+.thread-reply-editor p {
+  margin: 0;
+}
+
+.thread-reply-editor p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+/* Task properties under the ask: compact chips like the search tabs, each opening a small menu. */
+.thread-properties {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.chip-anchor {
+  position: relative;
+  display: inline-flex;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 7px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chip:hover,
+.chip[aria-expanded="true"] {
+  background-color: var(--bg-quaternary);
+}
+
+.chip[data-tone="muted"] {
+  color: var(--text-tertiary);
+}
+
+.chip[data-tone="urgent"] {
+  color: var(--urgent);
+}
+
+.chip[data-tone="static"] {
+  cursor: default;
+}
+
+.chip[data-tone="static"]:hover {
+  background: transparent;
+}
+
+/* The assignee sits inline in the author line, so it drops the border. */
+.chip[data-tone="assignee"] {
+  height: 21px;
+  padding: 0 4px;
+  border-color: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.chip-action {
+  margin-left: 4px;
+}
+
+.chip-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background-color: var(--panel);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+}
+
+.chip-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  margin: 0 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.chip-menu-row:hover {
+  background-color: var(--panel-selected);
+}
+
+/* Status: a hollow ring while open, filled colors as work moves along. */
+.status-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--icon-tertiary);
+  border-radius: 50%;
+}
+
+.status-dot[data-status="in_progress"] {
+  border-color: var(--status-progress);
+  background-color: var(--status-progress);
+}
+
+.status-dot[data-status="waiting"] {
+  border-color: var(--status-waiting);
+  background-color: var(--status-waiting);
+}
+
+.status-dot[data-status="done"] {
+  border-color: var(--status-done);
+  background-color: var(--status-done);
+}
+
+.thread-ask-arrow {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.decision-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: var(--accent);
+  font-size: 10.5px;
+  background-color: var(--accent-fill);
+}
+
+/* Bookmark to mark a message as a decision; shows on hover, or when set. */
+.thread-message-action {
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  opacity: 0;
+}
+
+.thread-message:hover .thread-message-action,
+.thread-message-action:focus-visible {
+  opacity: 1;
+}
+
+.thread-message-action:hover {
+  color: var(--text-primary);
+}
+
+/* Activity lines: muted, and tighter to the messages around them. */
+.thread-event {
+  margin-block: -6px;
+}
+
+.thread-event-marker {
+  align-items: center;
+  justify-content: center;
+}
+
+.thread-event-marker > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--icon-tertiary);
+}
+
+.thread-event-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  line-height: 22px;
+}
+
+.thread-event-actor {
+  color: var(--text-secondary);
+}
+
+/* The resolution that closes the thread. */
+.thread-resolution-marker {
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--status-done);
+  background-color: color-mix(in srgb, var(--status-done) 18%, transparent);
+}
+
+.thread-resolution .thread-author {
+  color: var(--status-done);
+}
+
+/* Inbox: Now / Today / Later groups, labels aligned with the row text. */
+.inbox-group-label {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding-left: 31px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+/* Unread: a dot after the title (the indent shows the kind), plus a medium-weight title. */
+.unread-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background-color: var(--status-waiting);
+}
+
+.sidebar-row:has(.unread-dot) .sidebar-row-label {
+  font-weight: 500;
+}
+
+/* Due date or start time on the right. */
+.sidebar-row-meta {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-right: 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-row-meta[data-overdue="true"] {
+  color: var(--urgent);
+}
+
+/* Today's date beside the Inbox label. */
+.section-date {
+  margin-left: 6px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+/* Day timeline: hour headings with a hairline, earlier hours and finished blocks dimmed. */
+.timeline-hour {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 22px;
+  padding: 0 10px 0 31px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  list-style: none;
+}
+
+.timeline-hour::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background-color: var(--stroke-tertiary);
+}
+
+.timeline-hour[data-past="true"],
+.sidebar-row[data-past="true"] {
+  opacity: 0.5;
+}
+
+/* The current time: a line across the timeline with the time on the left. */
+.timeline-now {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 14px;
+  padding: 0 10px 0 9px;
+  color: var(--status-waiting);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  list-style: none;
+}
+
+.timeline-now::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background-color: var(--status-waiting);
+}
+
+.timeline-now-time {
+  flex-shrink: 0;
+  min-width: 18px;
+}
+
+/* Kind marker for meetings and focus blocks, in the row's left indent. */
+.kind-marker {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  display: flex;
+  color: var(--icon-tertiary);
+  transform: translateY(-50%);
+}
+
+/* Meeting header: a calendar marker in place of an avatar, attendees under the title. */
+.thread-kind-marker {
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background-color: var(--bg-tertiary);
+}
+
+.thread-attendees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+}
+
+.thread-attendee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* Pretend video call: participant tiles and a join bar, in the palette's surfaces. */
+/* Sized to its tiles rather than the text column. */
+.call-card {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background-color: var(--panel);
+}
+
+.call-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+}
+
+.call-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112px;
+  height: 63px;
+  border-radius: 5px;
+  background-color: color-mix(in srgb, var(--base) 4%, #0e0e0e);
+}
+
+.call-tile .identicon {
+  border-radius: 50%;
+}
+
+.call-tile-name {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: fit-content;
+  max-width: calc(100% - 8px);
+  padding: 0 4px;
+  overflow: hidden;
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background-color: rgb(0 0 0 / 55%);
+}
+
+.call-tile-name > svg {
+  color: var(--urgent);
+}
+
+.call-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 4px 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.call-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.call-join {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 4px;
+  color: #0f141a;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  background-color: var(--accent);
+  cursor: pointer;
+}
+
+.call-join:disabled {
+  color: var(--text-tertiary);
+  background-color: var(--bg-tertiary);
+  cursor: default;
+}
+
+.call-card[data-ended="true"] .call-tiles {
+  opacity: 0.55;
+}
+
+/* Meeting notes: summary, decisions and action items. */
+.thread-notes-marker {
+  color: var(--accent);
+  background-color: var(--accent-fill);
+}
+
+.notes-section {
+  margin-top: 10px;
+}
+
+.notes-label {
+  margin-bottom: 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 20px;
+  user-select: text;
+}
+
+.notes-actions {
+  padding-left: 0;
+  list-style: none;
+}
+
+.notes-actions > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notes-check {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--icon-tertiary);
+  border-radius: 50%;
+}
+
+.notes-action-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.notes-owner {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* Right-aligned top bar actions (the details toggle). */
+.topbar-end {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2.5px;
+  margin-left: auto;
+  padding-right: 8px;
+}
+
+/* Details panel: the task at a glance, on the same glass as the left sidebar. */
+.details {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  height: 100%;
+  background-color: color-mix(in srgb, var(--sidebar) 36%, transparent);
+  border-left: 1px solid var(--stroke-tertiary);
+}
+
+.details-topbar {
+  padding-left: 12px;
+  color: var(--text-secondary);
+}
+
+.details-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 16px;
+  overflow-y: auto;
+}
+
+.details-empty {
+  padding: 12px;
+  color: var(--text-tertiary);
+}
+
+.details-section {
+  display: flex;
+  flex-direction: column;
+  padding: 0 12px;
+}
+
+.details-section + .details-section {
+  margin-top: 6px;
+}
+
+.details-section-label {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  color: var(--text-secondary);
+}
+
+.details-row {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.details-label {
+  flex-shrink: 0;
+  width: 84px;
+  color: var(--text-tertiary);
+}
+
+.details-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+.details-value [data-overdue="true"] {
+  color: var(--urgent);
+}
+
+.details-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-primary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.details-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
+.details-time,
+.details-stats {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* Latest update and list items jump to their place in the thread. */
+.details-latest,
+.details-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  margin-left: -6px;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 17px;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+  box-sizing: content-box;
+}
+
+.details-latest:hover,
+.details-item:hover {
+  background-color: var(--bg-quaternary);
+}
+
+.details-latest-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.details-latest-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-secondary);
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.details-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.details-actions > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 12px;
+  line-height: 17px;
+}
+
+.details-actions .notes-check {
+  margin-top: 2.5px;
+}
+
+.details-action-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-primary);
+}
+
+.details-action-text .details-person {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+/* Thread minimap: one tick per entry, right-aligned and centered on the thread. */
+.minimap {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  transform: translateY(-50%);
+}
+
+.minimap-tick {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 32px;
+  height: 10px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.minimap-tick::after {
+  content: "";
+  width: var(--tick-length);
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--icon-tertiary);
+  opacity: 0.45;
+  transition: width 120ms ease-out;
+}
+
+.minimap-tick[data-active="true"]::after {
+  background-color: var(--text-primary);
+  opacity: 1;
+}
+
+.minimap-tick[data-decision="true"]::after {
+  background-color: var(--accent);
+  opacity: 1;
+}
+
+.minimap-tick[data-hovered="true"]::after {
+  background-color: var(--text-primary);
+  opacity: 1;
+}
+
+/* Hover card: the entry's text, who and when, then the shortcuts. */
+.minimap-card {
+  position: absolute;
+  right: 38px;
+  width: 300px;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background-color: var(--panel);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+  transform: translateY(-14px);
+  pointer-events: none;
+}
+
+.minimap-card-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 19px;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+
+.minimap-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-divider);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.minimap-card-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+
+.minimap-card-time {
+  color: var(--text-tertiary);
+}
+
+.minimap-card-hints {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-divider);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* On a right-hand panel the handle straddles its left border instead. */
+.resize-handle[data-edge="left"] {
+  right: auto;
+  left: -3px;
 }
