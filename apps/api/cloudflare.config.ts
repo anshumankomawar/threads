@@ -2,7 +2,8 @@ import { bindings, defineConfig, exports } from "cf/config";
 import * as entrypoint from "./src/worker.ts" with { type: "cf-worker" };
 
 // The threads API as a Worker: a Hono app in front of one SQLite Durable Object per workspace.
-export default defineConfig({
+// Local dev (mode "development") also serves the sample workspace; the deployed Worker serves only the shared one.
+export default defineConfig(({ mode }) => ({
   // The Threads Cloudflare account.
   accountId: "80308317b4a59eb5d4880895142af795",
   worker: {
@@ -17,6 +18,7 @@ export default defineConfig({
     env: {
       // Bearer token the hosted API requires; leave it unset locally to keep the API open.
       API_TOKEN: bindings.secret(),
+      SAMPLE_WORKSPACE: bindings.text(mode === "development" ? "on" : "off"),
     },
   },
-});
+}));

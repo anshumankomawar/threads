@@ -92,13 +92,20 @@ export const emptyStore = (): Store => ({
   inboxes: new Map(),
 });
 
-// A workspace's starting data. `me` is who the sample threads are addressed to.
-export function seedStore(workspace: WorkspaceName, me: Person, nowMs: number): Store {
+// A workspace's starting data. `me` is who the sample threads are addressed to, and `utcOffsetMinutes` the time zone
+// their times are laid out in (this runtime's own when omitted).
+export function seedStore(
+  workspace: WorkspaceName,
+  me: Person,
+  nowMs: number,
+  utcOffsetMinutes?: number,
+): Store {
   const store = emptyStore();
   const people = workspace === "local" ? localPeople() : samplePeople(me);
   for (const person of people) store.people.set(person.id, person);
   if (workspace === "sample")
-    for (const thread of sampleThreads(me, nowMs)) store.threads.set(thread.id, thread);
+    for (const thread of sampleThreads(me, nowMs, utcOffsetMinutes))
+      store.threads.set(thread.id, thread);
   return store;
 }
 

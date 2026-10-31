@@ -65,18 +65,22 @@ type Draft =
   | ["notes", Omit<Extract<Entry, { kind: "notes" }>, "kind" | "id" | "createdAtMs">, number];
 
 // Today at the given time.
-function todayAt(nowMs: number, hour: number, minute = 0): number {
-  const date = new Date(nowMs);
-  date.setHours(hour, minute, 0, 0);
-  return date.getTime();
+// "Now" in the viewer's time zone, so "10 AM today" means 10 AM where they are, even when a server in UTC seeds
+// the data.
+type Clock = { nowMs: number; offsetMs: number };
+
+function todayAt(clock: Clock, hour: number, minute = 0): number {
+  const date = new Date(clock.nowMs + clock.offsetMs);
+  date.setUTCHours(hour, minute, 0, 0);
+  return date.getTime() - clock.offsetMs;
 }
 
 // Next occurrence of a weekday (0 = Sunday) at the given hour, at least a day out.
-function nextWeekday(nowMs: number, weekday: number, hour: number): number {
-  const date = new Date(nowMs + DAY);
-  date.setHours(hour, 0, 0, 0);
-  while (date.getDay() !== weekday) date.setDate(date.getDate() + 1);
-  return date.getTime();
+function nextWeekday(clock: Clock, weekday: number, hour: number): number {
+  const date = new Date(clock.nowMs + clock.offsetMs + DAY);
+  date.setUTCHours(hour, 0, 0, 0);
+  while (date.getUTCDay() !== weekday) date.setUTCDate(date.getUTCDate() + 1);
+  return date.getTime() - clock.offsetMs;
 }
 
 type Line = [Person, string, { decision?: boolean }?] | ["event", Person, string];
@@ -145,13 +149,19 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
 
 // A day's worth of threads: responses to asks, meetings, and focus blocks, carried from start to completion.
 // `me` is whoever runs the app, so the sample asks, meetings and focus blocks are addressed to them.
-export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
+// `utcOffsetMinutes` is the viewer's time zone (minutes ahead of UTC); it defaults to this runtime's own.
+export function sampleThreads(
+  me: Person,
+  nowMs = Date.now(),
+  utcOffsetMinutes = -new Date(nowMs).getTimezoneOffset(),
+): Thread[] {
+  const clock: Clock = { nowMs, offsetMs: utcOffsetMinutes * 60_000 };
   return [
     // Responses: someone's ask, worked through to a resolution.
     thread(
       "headcount-plan",
       "Approve Q4 headcount plan",
-      { requester: priya, assignee: me, priority: "high", dueAtMs: todayAt(nowMs, 23) },
+      { requester: priya, assignee: me, priority: "high", dueAtMs: todayAt(clock, 23) },
       nowMs,
       [
         [
@@ -169,8 +179,8 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
         requester: maya,
         assignee: me,
         priority: "medium",
-        dueAtMs: nextWeekday(nowMs, 1, 10),
-        schedule: block(todayAt(nowMs, 11), 45),
+        dueAtMs: nextWeekday(clock, 1, 10),
+        schedule: block(todayAt(clock, 11), 45),
       },
       nowMs,
       [
@@ -197,7 +207,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
         status: "in_progress",
         priority: "medium",
         dueAtMs: nowMs + DAY,
-        schedule: block(todayAt(nowMs, 14), 30),
+        schedule: block(todayAt(clock, 14), 30),
       },
       nowMs,
       [
@@ -232,7 +242,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
         assignee: daniel,
         status: "waiting",
         priority: "high",
-        dueAtMs: nextWeekday(nowMs, 4, 17),
+        dueAtMs: nextWeekday(clock, 4, 17),
       },
       nowMs,
       [
@@ -307,7 +317,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       {
         kind: "meeting",
         requester: daniel,
-        schedule: block(todayAt(nowMs, 10), 30),
+        schedule: block(todayAt(clock, 10), 30),
         attendees: [daniel, maya, me],
       },
       nowMs,
@@ -336,7 +346,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
             ],
           },
           // Written up just after the 10:00 call.
-          Math.max(MINUTE, nowMs - todayAt(nowMs, 10, 35)),
+          Math.max(MINUTE, nowMs - todayAt(clock, 10, 35)),
         ],
       ],
     ),
@@ -346,7 +356,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       {
         kind: "meeting",
         requester: priya,
-        schedule: block(todayAt(nowMs, 16), 30),
+        schedule: block(todayAt(clock, 16), 30),
         attendees: [priya, me],
       },
       nowMs,
@@ -383,7 +393,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       {
         kind: "meeting",
         requester: maya,
-        schedule: block(nextWeekday(nowMs, 1, 10), 45),
+        schedule: block(nextWeekday(clock, 1, 10), 45),
         attendees: [maya, priya, me],
       },
       nowMs,
@@ -404,7 +414,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       {
         kind: "meeting",
         requester: priya,
-        schedule: block(todayAt(nowMs, 15) - DAY, 45),
+        schedule: block(todayAt(clock, 15) - DAY, 45),
         attendees: [priya, daniel, jordan, me],
       },
       nowMs,
@@ -453,7 +463,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
         status: "waiting",
         priority: "high",
         dueAtMs: nowMs + 3 * DAY,
-        schedule: block(todayAt(nowMs, 15), 60),
+        schedule: block(todayAt(clock, 15), 60),
       },
       nowMs,
       conversation(4 * DAY, 5 * HOUR, [
@@ -533,7 +543,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
         assignee: me,
         status: "in_progress",
         priority: "urgent",
-        dueAtMs: todayAt(nowMs, 23),
+        dueAtMs: todayAt(clock, 23),
       },
       nowMs,
       conversation(3 * HOUR, 12 * MINUTE, [
@@ -663,7 +673,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "search-ranking",
       "Implement thread search ranking",
-      { kind: "focus", requester: me, schedule: block(todayAt(nowMs, 12), 90) },
+      { kind: "focus", requester: me, schedule: block(todayAt(clock, 12), 90) },
       nowMs,
       [
         [

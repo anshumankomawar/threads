@@ -1,28 +1,43 @@
 import type { Entry, Person, Thread } from "model";
 import type { NewThreadDraft } from "./components/NewThreadPalette";
 
-// The Hono API (apps/api): the local Worker by default, or the hosted one when VITE_API_URL is set.
-export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:3030";
-const API_TOKEN = import.meta.env.VITE_API_TOKEN;
+// Where the app's data comes from: the shared workspace on the hosted API, or your local Worker (apps/api) with
+// either an empty workspace for testing or the demo team.
+export type DataSource = "cloudflare" | "local" | "sample";
 
-// "local" starts empty and holds what you create; "sample" is the demo team with their threads.
-export type Workspace = "local" | "sample";
+export const SOURCE_LABELS: Record<DataSource, string> = {
+  cloudflare: "Cloudflare",
+  local: "Local",
+  sample: "Sample",
+};
+
+const LOCAL_URL = "http://127.0.0.1:3030";
+const HOSTED_URL = import.meta.env.VITE_API_URL;
+const HOSTED_TOKEN = import.meta.env.VITE_API_TOKEN;
+
+// Cloudflare is offered once apps/desktop/.env.local has the hosted URL and token.
+export const CLOUDFLARE_AVAILABLE = Boolean(HOSTED_URL && HOSTED_TOKEN);
+
+type Server = { url: string; token?: string; workspace: "local" | "sample" };
+
+export function serverFor(source: DataSource): Server {
+  if (source === "cloudflare" && HOSTED_URL)
+    return { url: HOSTED_URL, token: HOSTED_TOKEN, workspace: "local" };
+  return { url: LOCAL_URL, workspace: source === "sample" ? "sample" : "local" };
+}
 
 type ThreadEdits = Partial<
   Pick<Thread, "title" | "status" | "priority" | "dueAtMs" | "schedule">
 > & { assignee?: string };
 
-async function send<T>(
-  workspace: Workspace,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+async function send<T>(server: Server, method: string, path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`${server.url}${path}`, {
     method,
     headers: {
-      "X-Workspace": workspace,
-      ...(API_TOKEN === undefined ? {} : { Authorization: `Bearer ${API_TOKEN}` }),
+      "X-Workspace": server.workspace,
+      // So a freshly seeded workspace lays out "10 AM today" in your time zone.
+      "X-UTC-Offset": String(-new Date().getTimezoneOffset()),
+      ...(server.token === undefined ? {} : { Authorization: `Bearer ${server.token}` }),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -34,10 +49,11 @@ async function send<T>(
   return response.json() as Promise<T>;
 }
 
-// Requests against one workspace, made as `me`.
-export const createApi = (workspace: Workspace, me: Person) => {
+// Requests against one data source, made as `me`.
+export const createApi = (source: DataSource, me: Person) => {
+  const server = serverFor(source);
   const request = <T>(method: string, path: string, body?: unknown): Promise<T> =>
-    send<T>(workspace, method, path, body);
+    send<T>(server, method, path, body);
   return {
     people: (): Promise<Person[]> => request("GET", "/users"),
     threads: (): Promise<Thread[]> => request("GET", "/threads"),

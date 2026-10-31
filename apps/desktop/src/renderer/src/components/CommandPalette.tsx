@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Person, Thread, ThreadKind } from "model";
-import type { Workspace } from "../api";
+import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
 
 type Tab = "all" | ThreadKind;
 
@@ -17,6 +17,14 @@ const NEW_ACTIONS: { kind: ThreadKind; label: string; shortcut?: string }[] = [
   { kind: "meeting", label: "New Meeting" },
   { kind: "focus", label: "New Focus Block" },
 ];
+
+const SOURCES: DataSource[] = ["cloudflare", "local", "sample"];
+
+const SOURCE_HINTS: Record<DataSource, string> = {
+  cloudflare: "Shared",
+  local: "Local Worker",
+  sample: "Demo team",
+};
 
 const SECTION_TITLES: Record<ThreadKind, string> = {
   response: "Threads",
@@ -40,9 +48,9 @@ type Section = { title: string; items: Item[] };
 // Delta's command palette: search input, filter tabs, then sectioned results.
 export function CommandPalette({
   threads,
-  workspace,
+  source,
   me,
-  onSwitchWorkspace,
+  onSwitchSource,
   onViewAs,
   onOpenOrg,
   onNewThread,
@@ -50,9 +58,9 @@ export function CommandPalette({
   onClose,
 }: {
   threads: Thread[];
-  workspace: Workspace;
+  source: DataSource;
   me: Person;
-  onSwitchWorkspace: (workspace: Workspace) => void;
+  onSwitchSource: (source: DataSource) => void;
   onViewAs: () => void;
   onOpenOrg: () => void;
   onNewThread: (kind: ThreadKind) => void;
@@ -84,7 +92,7 @@ export function CommandPalette({
         run: run(() => onNewThread(action.kind)),
       })),
     },
-    // Who you're viewing as, and whose data: your own or the demo team's.
+    // Who you're viewing as, and where the data comes from.
     ...(tab === "all"
       ? [
           { title: "Views", items: [{ id: "org", label: "Org", run: run(onOpenOrg) }] },
@@ -97,17 +105,14 @@ export function CommandPalette({
                 shortcut: "⌘ U",
                 run: onViewAs,
               },
-              workspace === "local"
-                ? {
-                    id: "workspace-sample",
-                    label: "Show Sample Data",
-                    run: run(() => onSwitchWorkspace("sample")),
-                  }
-                : {
-                    id: "workspace-local",
-                    label: "Show Local Data",
-                    run: run(() => onSwitchWorkspace("local")),
-                  },
+              ...SOURCES.filter(
+                (option) => option !== source && (option !== "cloudflare" || CLOUDFLARE_AVAILABLE),
+              ).map((option) => ({
+                id: `source-${option}`,
+                label: `Use ${SOURCE_LABELS[option]} Data`,
+                shortcut: SOURCE_HINTS[option],
+                run: run(() => onSwitchSource(option)),
+              })),
             ],
           },
         ]

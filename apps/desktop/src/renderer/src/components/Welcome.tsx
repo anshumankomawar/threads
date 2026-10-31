@@ -1,6 +1,6 @@
 import { CalendarDays, MessageSquare, Search, Target } from "lucide-react";
 import type { Person, ThreadKind } from "model";
-import type { Workspace } from "../api";
+import { SOURCE_LABELS, type DataSource } from "../api";
 
 const ICON_PROPS = { size: 15, strokeWidth: 1.7, "aria-hidden": true } as const;
 
@@ -15,7 +15,7 @@ function greeting(nowMs: number): string {
 // layout: a greeting, how full today is, and a few ways to get going.
 export function Welcome({
   me,
-  workspace,
+  source,
   todayCount,
   nowMs,
   onNewThread,
@@ -23,7 +23,7 @@ export function Welcome({
   onViewAs,
 }: {
   me: Person;
-  workspace: Workspace;
+  source: DataSource;
   // Open items on today's schedule and inbox.
   todayCount: number;
   nowMs: number;
@@ -76,7 +76,7 @@ export function Welcome({
         ))}
       </div>
       <button type="button" className="welcome-viewer" onClick={onViewAs}>
-        Viewing {workspace === "local" ? "local" : "sample"} data as {me.name} · Switch ⌘ U
+        Viewing {SOURCE_LABELS[source]} as {me.name} · Switch ⌘ U
       </button>
     </div>
   );

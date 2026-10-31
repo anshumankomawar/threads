@@ -1682,3 +1682,9 @@ body * {
 .org {
   zoom: var(--content-zoom, 1);
 }
+
+/* Which data source you're on, ahead of who you're viewing as. */
+.view-as-source {
+  margin-right: 4px;
+  color: var(--text-tertiary);
+}

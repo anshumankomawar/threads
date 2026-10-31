@@ -39,11 +39,11 @@ export class Workspace extends DurableObject<Env> {
     );
   }
 
-  // Loads the stored workspace, or seeds it the first time.
-  #load(name: WorkspaceName): Store {
+  // Loads the stored workspace, or seeds it the first time in the requester's time zone.
+  #load(name: WorkspaceName, utcOffsetMinutes: number | undefined): Store {
     const rows = this.ctx.storage.sql.exec<Row>("SELECT kind, key, value FROM records").toArray();
     if (rows.length === 0) {
-      const store = seedStore(name, SAMPLE_ME, Date.now());
+      const store = seedStore(name, SAMPLE_ME, Date.now(), utcOffsetMinutes);
       for (const value of store.people.values())
         this.#save({ kind: "person", key: value.id, value });
       for (const value of store.threads.values())
@@ -69,7 +69,12 @@ export class Workspace extends DurableObject<Env> {
 
   // Answers one API request for this workspace.
   handle(name: WorkspaceName, request: Request): Promise<Response> | Response {
-    this.#app ??= createWorkspaceApp(this.#load(name), { onWrite: (write) => this.#save(write) });
+    const offset = Number(request.headers.get("X-UTC-Offset"));
+    const utcOffsetMinutes =
+      request.headers.has("X-UTC-Offset") && Number.isFinite(offset) ? offset : undefined;
+    this.#app ??= createWorkspaceApp(this.#load(name, utcOffsetMinutes), {
+      onWrite: (write) => this.#save(write),
+    });
     return this.#app.fetch(request);
   }
 }
@@ -92,6 +97,8 @@ app.use(async (c, next) => {
 app.all("*", async (c): Promise<Response> => {
   const name = c.req.header("X-Workspace") ?? "local";
   if (!isWorkspaceName(name)) return c.json({ error: `Unknown workspace: ${name}` }, 400);
+  if (name === "sample" && c.env.SAMPLE_WORKSPACE !== "on")
+    return c.json({ error: "The sample workspace is only served locally" }, 404);
   const { exports } = c.executionCtx as ExecutionContext;
   const stub = exports.Workspace.getByName(name);
   const response: Response = await stub.handle(name, c.req.raw);

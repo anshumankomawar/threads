@@ -10,7 +10,7 @@ import {
   type Thread,
   type ThreadKind,
 } from "model";
-import { API_URL, createApi, type Workspace } from "./api";
+import { CLOUDFLARE_AVAILABLE, createApi, serverFor, SOURCE_LABELS, type DataSource } from "./api";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
 import { MeContext } from "./me";
 import { Identicon } from "./components/Identicon";
@@ -63,15 +63,18 @@ function lastActivityByOthers(thread: Thread, me: Person): number {
   return latest;
 }
 
-const WORKSPACE_KEY = "workspace";
+const SOURCE_KEY = "data-source";
 
-// Which workspace to show, remembered across launches. Starts on your own (empty) local data.
-function savedWorkspace(): Workspace {
+// Where data comes from, remembered across launches. Starts on Cloudflare when it's set up, otherwise local.
+function savedSource(): DataSource {
   try {
-    return localStorage.getItem(WORKSPACE_KEY) === "sample" ? "sample" : "local";
+    const saved = localStorage.getItem(SOURCE_KEY);
+    if (saved === "local" || saved === "sample") return saved;
+    if (saved === "cloudflare" && CLOUDFLARE_AVAILABLE) return saved;
   } catch {
-    return "local";
+    // Fall through to the default.
   }
+  return CLOUDFLARE_AVAILABLE ? "cloudflare" : "local";
 }
 
 // The main content's zoom, changed with ⌘+, ⌘- and ⌘0; the sidebar and top bar stay as they are.
@@ -89,12 +92,12 @@ function savedContentZoom(): number {
   }
 }
 
-// Who you last viewed each workspace as.
-const viewerKey = (workspace: Workspace): string => `viewer:${workspace}`;
+// Who you last viewed each data source as.
+const viewerKey = (source: DataSource): string => `viewer:${source}`;
 
-function savedViewer(workspace: Workspace): string | null {
+function savedViewer(source: DataSource): string | null {
   try {
-    return localStorage.getItem(viewerKey(workspace));
+    return localStorage.getItem(viewerKey(source));
   } catch {
     return null;
   }
@@ -115,12 +118,12 @@ function App(): React.JSX.Element {
   const [threads, setThreads] = useState<Thread[]>([]);
   const [people, setPeople] = useState<Person[]>([]);
   const [load, setLoad] = useState<Load>({ state: "loading" });
-  const [workspace, setWorkspace] = useState<Workspace>(savedWorkspace);
-  const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedWorkspace()));
+  const [source, setSource] = useState<DataSource>(savedSource);
+  const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedSource()));
   const fallbackMe = useContext(MeContext);
-  // You view the app as the chosen person, or the workspace's first person until you pick one.
+  // You view the app as the chosen person, or the first person in the data until you pick one.
   const me = people.find((person) => person.id === viewerId) ?? people[0] ?? fallbackMe;
-  const api = createApi(workspace, me);
+  const api = createApi(source, me);
   const [viewAsOpen, setViewAsOpen] = useState(false);
   const [contentZoom, setContentZoom] = useState(savedContentZoom);
 
@@ -153,9 +156,9 @@ function App(): React.JSX.Element {
     let cancelled = false;
     let retry = 0;
     // Reading needs no particular viewer.
-    const source = createApi(workspace, fallbackMe);
+    const reader = createApi(source, fallbackMe);
     const fetchAll = (): void => {
-      Promise.all([source.threads(), source.people()]).then(
+      Promise.all([reader.threads(), reader.people()]).then(
         ([loaded, team]) => {
           if (cancelled) return;
           setThreads(loaded);
@@ -182,23 +185,23 @@ function App(): React.JSX.Element {
       cancelled = true;
       window.clearTimeout(retry);
     };
-  }, [workspace, fallbackMe]);
+  }, [source, fallbackMe]);
 
-  // Switching between your data and the sample data starts fresh on the other set.
-  const switchWorkspace = (next: Workspace): void => {
-    remember(WORKSPACE_KEY, next);
+  // Switching data sources starts fresh on the other one.
+  const switchSource = (next: DataSource): void => {
+    remember(SOURCE_KEY, next);
     setLoad({ state: "loading" });
     setThreads([]);
     setPeople([]);
     setActiveThreadId(null);
     setViewerId(savedViewer(next));
-    setWorkspace(next);
+    setSource(next);
   };
 
   // Viewing as someone else shows the app from their side, with everything already seen.
   const viewAs = (person: Person): void => {
     setViewAsOpen(false);
-    remember(viewerKey(workspace), person.id);
+    remember(viewerKey(source), person.id);
     setViewerId(person.id);
     setLastSeen(Object.fromEntries(threads.map((thread) => [thread.id, thread.updatedAtMs])));
   };
@@ -320,7 +323,7 @@ function App(): React.JSX.Element {
         <div className="app-status">
           {load.state === "loading"
             ? "Loading…"
-            : `Waiting for the API at ${API_URL} (vp run api#dev)… ${load.error}`}
+            : `Waiting for the ${SOURCE_LABELS[source]} API at ${serverFor(source).url}${source === "cloudflare" ? "" : " (vp run api#dev)"}… ${load.error}`}
         </div>
       </>
     );
@@ -359,6 +362,7 @@ function App(): React.JSX.Element {
               aria-label={`Viewing as ${me.name}. Switch user`}
               onClick={() => setViewAsOpen(true)}
             >
+              <span className="view-as-source">{SOURCE_LABELS[source]}</span>
               <Identicon seed={me.id} size={14} />
               <span>{me.name}</span>
             </button>
@@ -370,7 +374,7 @@ function App(): React.JSX.Element {
         ) : activeThread === undefined ? (
           <Welcome
             me={me}
-            workspace={workspace}
+            source={source}
             todayCount={day.timeline.length + day.unscheduled.length}
             nowMs={nowMs}
             onNewThread={openNew}
@@ -400,9 +404,9 @@ function App(): React.JSX.Element {
       {searchOpen && (
         <CommandPalette
           threads={threads}
-          workspace={workspace}
+          source={source}
           me={me}
-          onSwitchWorkspace={switchWorkspace}
+          onSwitchSource={switchSource}
           onViewAs={() => {
             setSearchOpen(false);
             setViewAsOpen(true);
