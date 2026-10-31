@@ -9,4 +9,6 @@ export default defineConfig({
     build({ entry: "src/index.ts" }),
     devServer({ adapter: nodeAdapter, entry: "src/index.ts" }),
   ],
+  // The desktop app expects the API here.
+  server: { host: "127.0.0.1", port: 3030, strictPort: true },
 });

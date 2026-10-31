@@ -3,11 +3,17 @@ import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPal
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { DetailsToggle, SearchButton, Sidebar, SidebarToggle } from "./components/Sidebar";
-import { PRIORITY_LABELS, STATUS_LABELS, type Entry, type Thread, type ThreadKind } from "./model";
+import {
+  relationshipTo,
+  UNREAD_THREAD_IDS,
+  type Person,
+  type Thread,
+  type ThreadKind,
+} from "model";
+import { api } from "./api";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
 import { me } from "./me";
 import { buildDay } from "./inbox";
-import { PEOPLE, relationshipTo, sampleThreads, UNREAD_THREAD_IDS } from "./sampleThreads";
 
 // Mouse moves within this many pixels of the top nudge the drag-region resync element.
 const DRAG_RESYNC_ZONE_PX = 96;
@@ -53,25 +59,18 @@ function lastActivityByOthers(thread: Thread): number {
   return latest;
 }
 
-// A thread's title: the first line of its opening message.
-function firstLine(text: string): string {
-  return text.split("\n")[0].slice(0, 80);
-}
+// Until the first load, or if the API isn't running.
+type Load = { state: "loading" } | { state: "failed"; error: string } | { state: "ready" };
 
 function App(): React.JSX.Element {
-  const [threads, setThreads] = useState<Thread[]>(sampleThreads);
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [load, setLoad] = useState<Load>({ state: "loading" });
   const [activeThreadId, setActiveThreadId] = useState<string | null>("rate-limits");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(true);
-  const [lastSeen, setLastSeen] = useState<Record<string, number>>(() =>
-    Object.fromEntries(
-      threads.map((thread) => [
-        thread.id,
-        UNREAD_THREAD_IDS.includes(thread.id) ? 0 : thread.updatedAtMs,
-      ]),
-    ),
-  );
+  const [lastSeen, setLastSeen] = useState<Record<string, number>>({});
   const nowMs = useNow(60_000);
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
   const day = buildDay(threads, me, relationshipTo, nowMs);
@@ -83,6 +82,60 @@ function App(): React.JSX.Element {
       )
       .map((thread) => thread.id),
   );
+
+  // Everything comes from the API; the sample's unread threads start unseen. The API may still be starting
+  // (both launch together), so keep retrying until it answers.
+  useEffect(() => {
+    let cancelled = false;
+    let retry = 0;
+    const fetchAll = (): void => {
+      Promise.all([api.threads(), api.people()]).then(
+        ([loaded, team]) => {
+          if (cancelled) return;
+          setThreads(loaded);
+          setPeople(team);
+          setLastSeen(
+            Object.fromEntries(
+              loaded.map((thread) => [
+                thread.id,
+                UNREAD_THREAD_IDS.includes(thread.id) ? 0 : thread.updatedAtMs,
+              ]),
+            ),
+          );
+          setLoad({ state: "ready" });
+        },
+        (error: unknown) => {
+          if (cancelled) return;
+          setLoad({ state: "failed", error: String(error) });
+          retry = window.setTimeout(fetchAll, 1000);
+        },
+      );
+    };
+    fetchAll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retry);
+    };
+  }, []);
+
+  // Swaps in the server's copy of a thread after a change, adding it if it's new.
+  const replace = (thread: Thread): void =>
+    setThreads((current) =>
+      current.some((existing) => existing.id === thread.id)
+        ? current.map((existing) => (existing.id === thread.id ? thread : existing))
+        : [thread, ...current],
+    );
+  const sync = (request: Promise<Thread>): Promise<Thread> =>
+    request.then(
+      (thread) => {
+        replace(thread);
+        return thread;
+      },
+      (error: unknown) => {
+        console.error(error);
+        throw error;
+      },
+    );
 
   // Opening a thread marks it, and the one you're leaving, as seen.
   const openThread = (id: string | null): void => {
@@ -103,36 +156,10 @@ function App(): React.JSX.Element {
     setNewThreadKind(kind);
   };
 
-  // The panel's text becomes the opening message (and its first line the title); a thread gets its assignee,
-  // a meeting has you in it, and meetings and focus blocks land at the chosen time.
+  // The server turns the panel's text into the opening message (and its first line the title).
   const createThread = (draft: NewThreadDraft): void => {
-    const now = Date.now();
-    const thread: Thread = {
-      id: crypto.randomUUID(),
-      kind: draft.kind,
-      title: firstLine(draft.text),
-      requester: me,
-      assignee: draft.assignee,
-      status: "open",
-      priority: "none",
-      dueAtMs: null,
-      schedule: draft.schedule,
-      attendees: draft.kind === "meeting" ? [me, ...draft.invitees] : [],
-      updatedAtMs: now,
-      entries: [
-        {
-          kind: "message",
-          id: crypto.randomUUID(),
-          author: me,
-          text: draft.text,
-          createdAtMs: now,
-          decision: false,
-        },
-      ],
-    };
-    setThreads((current) => [thread, ...current]);
-    openThread(thread.id);
     setNewThreadKind(null);
+    void sync(api.createThread(draft)).then((thread) => openThread(thread.id));
   };
 
   // ⌘K opens search; ⌘N starts a thread, matching the shortcut search shows for it.
@@ -152,125 +179,55 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const updateThread = (id: string, change: (thread: Thread) => Thread): void =>
-    setThreads((current) => current.map((thread) => (thread.id === id ? change(thread) : thread)));
-
-  // Appends an entry to the active thread and bumps its activity time.
-  const append = (
-    entry: (now: number) => Entry,
-    change?: (thread: Thread) => Partial<Thread>,
-  ): void => {
-    if (activeThread === undefined) return;
-    const now = Date.now();
-    updateThread(activeThread.id, (thread) => ({
-      ...thread,
-      ...change?.(thread),
-      updatedAtMs: now,
-      entries: [...thread.entries, entry(now)],
-    }));
+  // Property changes go to the server, which records them in the thread as activity lines.
+  const edit = (edits: Parameters<typeof api.editThread>[1]): void => {
+    if (activeThread !== undefined) void sync(api.editThread(activeThread.id, edits));
   };
-
-  // Property changes are recorded in the thread as activity lines.
-  const logEvent = (text: string, change: Partial<Thread>): void =>
-    append(
-      (now) => ({ kind: "event", id: crypto.randomUUID(), actor: me, text, createdAtMs: now }),
-      () => change,
-    );
 
   const actions: ThreadActions = {
     // With no thread selected, the first message starts one, and it becomes the ask.
     onSend: (text) => {
-      const message = (now: number): Entry => ({
-        kind: "message",
-        id: crypto.randomUUID(),
-        author: me,
-        text,
-        createdAtMs: now,
-        decision: false,
-      });
       if (activeThread === undefined) {
-        const now = Date.now();
-        const thread: Thread = {
-          id: crypto.randomUUID(),
-          title: firstLine(text),
-          kind: "response",
-          requester: me,
-          assignee: null,
-          status: "open",
-          priority: "none",
-          dueAtMs: null,
-          schedule: null,
-          attendees: [],
-          updatedAtMs: now,
-          entries: [message(now)],
-        };
-        setThreads((current) => [thread, ...current]);
-        setActiveThreadId(thread.id);
+        void sync(
+          api.createThread({
+            kind: "response",
+            text,
+            assignee: null,
+            invitees: [],
+            schedule: null,
+          }),
+        ).then((thread) => setActiveThreadId(thread.id));
         return;
       }
-      append(message, (thread) => (thread.entries.length === 0 ? { title: firstLine(text) } : {}));
+      void sync(api.addEntry(activeThread.id, "message", text));
     },
-    onResolve: (text) =>
-      append(
-        (now) => ({
-          kind: "resolution",
-          id: crypto.randomUUID(),
-          author: me,
-          text,
-          createdAtMs: now,
-        }),
-        () => ({ status: "done" }),
-      ),
-    onReopen: () => logEvent("reopened this", { status: "open" }),
-    onSetStatus: (status) => {
-      if (status !== activeThread?.status)
-        logEvent(`changed status to ${STATUS_LABELS[status]}`, { status });
+    onResolve: (text) => {
+      if (activeThread !== undefined) void sync(api.addEntry(activeThread.id, "resolution", text));
     },
-    onSetPriority: (priority) => {
-      if (priority !== activeThread?.priority)
-        logEvent(
-          priority === "none"
-            ? "removed the priority"
-            : `set priority to ${PRIORITY_LABELS[priority]}`,
-          { priority },
-        );
-    },
-    onSetDue: (dueAtMs) => {
-      const label =
-        dueAtMs === null
-          ? "removed the due date"
-          : `set the due date to ${new Date(dueAtMs).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}`;
-      logEvent(label, { dueAtMs });
-    },
-    onSetAssignee: (person) => {
-      if (person.id !== activeThread?.assignee?.id)
-        logEvent(person.id === me.id ? "took this on" : `assigned this to ${person.name}`, {
-          assignee: person,
-        });
-    },
-    onSetSchedule: (schedule) => {
-      const label =
-        schedule === null
-          ? "removed it from the schedule"
-          : `scheduled this for ${new Date(schedule.startMs).toLocaleString(undefined, {
-              weekday: "short",
-              hour: "numeric",
-              minute: "2-digit",
-            })}`;
-      logEvent(label, { schedule });
-    },
+    onReopen: () => edit({ status: "open" }),
+    onSetStatus: (status) => edit({ status }),
+    onSetPriority: (priority) => edit({ priority }),
+    onSetDue: (dueAtMs) => edit({ dueAtMs }),
+    onSetAssignee: (person) => edit({ assignee: person.id }),
+    onSetSchedule: (schedule) => edit({ schedule }),
     onToggleDecision: (entryId) => {
-      if (activeThread === undefined) return;
-      updateThread(activeThread.id, (thread) => ({
-        ...thread,
-        entries: thread.entries.map((entry) =>
-          entry.id === entryId && entry.kind === "message"
-            ? { ...entry, decision: !entry.decision }
-            : entry,
-        ),
-      }));
+      const entry = activeThread?.entries.find((candidate) => candidate.id === entryId);
+      if (activeThread === undefined || entry?.kind !== "message") return;
+      void sync(api.setDecision(activeThread.id, entryId, !entry.decision));
     },
   };
+
+  if (load.state !== "ready")
+    return (
+      <>
+        <div aria-hidden className="titlebar" />
+        <div className="app-status">
+          {load.state === "loading"
+            ? "Loading…"
+            : `Waiting for the API at 127.0.0.1:3030 (vp run api#dev)… ${load.error}`}
+        </div>
+      </>
+    );
 
   return (
     <>
@@ -304,7 +261,7 @@ function App(): React.JSX.Element {
         <ThreadView
           key={activeThread?.id ?? "new"}
           thread={activeThread}
-          people={PEOPLE}
+          people={people}
           actions={actions}
         />
       </main>
@@ -312,7 +269,7 @@ function App(): React.JSX.Element {
       {newThreadKind !== null && (
         <NewThreadPalette
           initialKind={newThreadKind}
-          people={PEOPLE}
+          people={people}
           me={me}
           nowMs={nowMs}
           onCreate={createThread}

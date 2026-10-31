@@ -1,4 +1,4 @@
-import type { Thread } from "./model.ts";
+import type { Thread } from "model";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;

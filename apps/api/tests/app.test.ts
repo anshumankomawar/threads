@@ -11,7 +11,7 @@ let clock: number;
 
 beforeEach(() => {
   clock = NOW;
-  app = createApp(() => clock);
+  app = createApp({ now: () => clock });
 });
 
 function send(method: string, path: string, body?: unknown): Response | Promise<Response> {
@@ -26,7 +26,7 @@ type Body = {
   id: string;
   error: string;
   userId: string;
-  messages: unknown[];
+  entries: { id: string; kind: string; text?: string; decision?: boolean }[];
   items: { id: string }[];
 };
 
@@ -44,14 +44,13 @@ async function createUser(firstName = "Priya"): Promise<string> {
 }
 
 async function createThread(creator: string, recipient: string, text = "Review"): Promise<string> {
-  const response = await send("POST", "/threads", {
-    creator,
-    recipient,
-    initialMessage: text,
-  });
+  const response = await send("POST", "/threads", { creator, assignee: recipient, text });
   expect(response.status).toBe(201);
   return (await read(response)).id;
 }
+
+const edit = (id: string, actor: string, edits: object): Promise<Response> =>
+  Promise.resolve(send("PATCH", `/threads/${id}`, { actor, ...edits }));
 
 test("the root route responds", async () => {
   const response = await send("GET", "/");
@@ -59,7 +58,7 @@ test("the root route responds", async () => {
   expect(await response.text()).toBe("Hello Hono!");
 });
 
-test("createUser returns the user with an id", async () => {
+test("createUser returns the person with an id and full name", async () => {
   const response = await send("POST", "/users", {
     firstName: "Priya",
     lastName: "Shah",
@@ -69,8 +68,7 @@ test("createUser returns the user with an id", async () => {
   expect(response.status).toBe(201);
   expect(await response.json()).toEqual({
     id: expect.any(String),
-    firstName: "Priya",
-    lastName: "Shah",
+    name: "Priya Shah",
     level: "l2",
     role: "pm",
   });
@@ -90,35 +88,35 @@ test("createThread opens a thread titled from the first line of the message", as
   const [creator, recipient] = [await createUser(), await createUser("Sam")];
   const response = await send("POST", "/threads", {
     creator,
-    recipient,
-    initialMessage: "Can you review the rate limits?\nDetails below.",
+    assignee: recipient,
+    text: "Can you review the rate limits?\nDetails below.",
   });
   expect(response.status).toBe(201);
   const thread = await read(response);
   expect(thread).toMatchObject({
-    creatorId: creator,
-    recipientId: recipient,
+    kind: "response",
+    requester: { id: creator },
+    assignee: { id: recipient },
     title: "Can you review the rate limits?",
     status: "open",
-    createdAtMs: NOW,
+    attendees: [],
+    updatedAtMs: NOW,
   });
-  expect(thread.messages).toEqual([
+  expect(thread.entries).toEqual([
     {
+      kind: "message",
       id: expect.any(String),
-      authorId: creator,
+      author: expect.objectContaining({ id: creator }),
       text: "Can you review the rate limits?\nDetails below.",
       createdAtMs: NOW,
+      decision: false,
     },
   ]);
 });
 
 test("createThread rejects unknown users", async () => {
   const creator = await createUser();
-  const response = await send("POST", "/threads", {
-    creator,
-    recipient: "nobody",
-    initialMessage: "Hello",
-  });
+  const response = await send("POST", "/threads", { creator, assignee: "nobody", text: "Hello" });
   expect(response.status).toBe(404);
   expect((await read(response)).error).toContain("nobody");
 });
@@ -135,15 +133,14 @@ test("editThread changes only the given fields and bumps updatedAtMs", async () 
   const id = await createThread(creator, recipient);
   clock = NOW + 1000;
 
-  const response = await send("PATCH", `/threads/${id}`, { status: "waiting", dueAtMs: at(17) });
+  const response = await edit(id, recipient, { status: "waiting", dueAtMs: at(17) });
   expect(response.status).toBe(200);
   expect(await response.json()).toMatchObject({
     id,
     title: "Review",
-    recipientId: recipient,
+    assignee: { id: recipient },
     status: "waiting",
     dueAtMs: at(17),
-    createdAtMs: NOW,
     updatedAtMs: NOW + 1000,
   });
   expect(await (await send("GET", `/threads/${id}`)).json()).toMatchObject({ status: "waiting" });
@@ -152,10 +149,28 @@ test("editThread changes only the given fields and bumps updatedAtMs", async () 
 test("editThread reassigns to another user and clears nullable fields", async () => {
   const [creator, recipient] = [await createUser(), await createUser("Sam")];
   const id = await createThread(creator, recipient);
-  await send("PATCH", `/threads/${id}`, { dueAtMs: at(17) });
+  await edit(id, creator, { dueAtMs: at(17) });
 
-  const response = await send("PATCH", `/threads/${id}`, { recipient: creator, dueAtMs: null });
-  expect(await response.json()).toMatchObject({ recipientId: creator, dueAtMs: null });
+  const response = await edit(id, creator, { assignee: creator, dueAtMs: null });
+  expect(await response.json()).toMatchObject({ assignee: { id: creator }, dueAtMs: null });
+});
+
+test("editThread records an activity line for each change, and none for no-ops", async () => {
+  const [creator, recipient] = [await createUser(), await createUser("Sam")];
+  const id = await createThread(creator, recipient);
+  await edit(id, recipient, { status: "in_progress", priority: "high" });
+  await edit(id, recipient, { status: "in_progress" });
+  await edit(id, recipient, { assignee: recipient });
+  await edit(id, recipient, { status: "done" });
+  const thread = await read(await edit(id, creator, { status: "open" }));
+  expect(
+    thread.entries.filter((entry) => entry.kind === "event").map((entry) => entry.text),
+  ).toEqual([
+    "changed status to In progress",
+    "set priority to High",
+    "changed status to Done",
+    "reopened this",
+  ]);
 });
 
 test.each([
@@ -166,14 +181,15 @@ test.each([
 ])("editThread rejects %s", async (_, body) => {
   const user = await createUser();
   const id = await createThread(user, user);
-  expect((await send("PATCH", `/threads/${id}`, body)).status).toBe(400);
+  expect((await edit(id, user, body)).status).toBe(400);
 });
 
-test("editThread returns 404 for an unknown thread or recipient", async () => {
+test("editThread returns 404 for an unknown thread, assignee or actor", async () => {
   const user = await createUser();
   const id = await createThread(user, user);
-  expect((await send("PATCH", "/threads/nope", { status: "done" })).status).toBe(404);
-  expect((await send("PATCH", `/threads/${id}`, { recipient: "nobody" })).status).toBe(404);
+  expect((await edit("nope", user, { status: "done" })).status).toBe(404);
+  expect((await edit(id, user, { assignee: "nobody" })).status).toBe(404);
+  expect((await edit(id, "nobody", { status: "done" })).status).toBe(404);
 });
 
 test("createInbox makes one inbox per known user", async () => {
@@ -194,15 +210,15 @@ test("getInbox lists the user's open threads, most pressing first", async () => 
   const urgent = await createThread(creator, user, "urgent");
   const done = await createThread(creator, user, "done");
   await createThread(user, creator, "someone else's");
-  await send("PATCH", `/threads/${dueLate}`, { dueAtMs: at(17) });
-  await send("PATCH", `/threads/${dueSoon}`, { dueAtMs: at(10) });
-  await send("PATCH", `/threads/${urgent}`, { priority: "urgent" });
-  await send("PATCH", `/threads/${done}`, { status: "done" });
+  await edit(dueLate, user, { dueAtMs: at(17) });
+  await edit(dueSoon, user, { dueAtMs: at(10) });
+  await edit(urgent, user, { priority: "urgent" });
+  await edit(done, user, { status: "done" });
 
   const inbox = await read(await send("GET", `/inboxes/${user}`));
   expect(inbox.userId).toBe(user);
   expect(inbox.items.map((item) => item.id)).toEqual([urgent, dueSoon, dueLate, plain]);
-  expect(inbox.items[0]).not.toHaveProperty("messages");
+  expect(inbox.items[0]).not.toHaveProperty("entries");
 });
 
 test("getInbox returns 404 until the inbox is created", async () => {
@@ -217,10 +233,10 @@ test("getSchedule keeps user-set times and fits other threads around them", asyn
   const second = await createThread(creator, user, "second");
   const done = await createThread(creator, user, "done");
   const tomorrow = await createThread(creator, user, "tomorrow");
-  await send("PATCH", `/threads/${fixed}`, { schedule: { startMs: at(9, 30), endMs: at(10, 15) } });
-  await send("PATCH", `/threads/${first}`, { priority: "high" });
-  await send("PATCH", `/threads/${done}`, { status: "done" });
-  await send("PATCH", `/threads/${tomorrow}`, {
+  await edit(fixed, user, { schedule: { startMs: at(9, 30), endMs: at(10, 15) } });
+  await edit(first, user, { priority: "high" });
+  await edit(done, user, { status: "done" });
+  await edit(tomorrow, user, {
     schedule: { startMs: at(9) + 86_400_000, endMs: at(10) + 86_400_000 },
   });
 
@@ -264,4 +280,79 @@ test("getSchedule rejects bad dates and unknown users", async () => {
   const user = await createUser();
   expect((await send("GET", `/users/${user}/schedule?date=2026-13-45`)).status).toBe(400);
   expect((await send("GET", "/users/nobody/schedule")).status).toBe(404);
+});
+
+test("createThread makes a meeting with you and the invitees, at the chosen time", async () => {
+  const [creator, sam, maya] = [
+    await createUser(),
+    await createUser("Sam"),
+    await createUser("Maya"),
+  ];
+  const schedule = { startMs: at(10), endMs: at(10, 30) };
+  const response = await send("POST", "/threads", {
+    kind: "meeting",
+    creator,
+    text: "Pricing sync",
+    invitees: [sam, maya],
+    schedule,
+  });
+  expect(await response.json()).toMatchObject({
+    kind: "meeting",
+    assignee: null,
+    schedule,
+    attendees: [{ id: creator }, { id: sam }, { id: maya }],
+  });
+});
+
+test("createThread makes a focus block yours", async () => {
+  const user = await createUser();
+  const response = await send("POST", "/threads", { kind: "focus", creator: user, text: "Draft" });
+  expect(await response.json()).toMatchObject({ kind: "focus", assignee: { id: user } });
+});
+
+test("addEntry appends a reply, and a resolution marks the thread done", async () => {
+  const [creator, recipient] = [await createUser(), await createUser("Sam")];
+  const id = await createThread(creator, recipient);
+  clock = NOW + 1000;
+
+  const reply = await send("POST", `/threads/${id}/entries`, {
+    kind: "message",
+    author: recipient,
+    text: "On it",
+  });
+  expect(reply.status).toBe(201);
+  expect(await reply.json()).toMatchObject({ status: "open", updatedAtMs: NOW + 1000 });
+
+  const resolved = await read(
+    await send("POST", `/threads/${id}/entries`, {
+      kind: "resolution",
+      author: recipient,
+      text: "Shipped",
+    }),
+  );
+  expect(resolved).toMatchObject({ status: "done" });
+  expect(resolved.entries.map((entry) => entry.kind)).toEqual(["message", "message", "resolution"]);
+});
+
+test("editEntry bookmarks a message as a decision, and only messages", async () => {
+  const user = await createUser();
+  const id = await createThread(user, user);
+  const [first] = (await read(await send("GET", `/threads/${id}`))).entries;
+
+  const thread = await read(
+    await send("PATCH", `/threads/${id}/entries/${first.id}`, { decision: true }),
+  );
+  expect(thread.entries[0].decision).toBe(true);
+  expect((await send("PATCH", `/threads/${id}/entries/nope`, { decision: true })).status).toBe(404);
+});
+
+test("a seeded app has the sample team and their threads, addressed to you", async () => {
+  app = createApp({ now: () => clock, seed: { id: "me", name: "You" } });
+  const people = (await (await send("GET", "/users")).json()) as { id: string }[];
+  expect(people[0]).toEqual({ id: "me", name: "You" });
+  const threads = (await (await send("GET", "/threads")).json()) as {
+    id: string;
+    assignee: { id: string } | null;
+  }[];
+  expect(threads.find((thread) => thread.id === "rate-limits")?.assignee?.id).toBe("me");
 });

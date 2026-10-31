@@ -1,6 +1,12 @@
+// How someone relates to you in the org; drives inbox triage.
+export type Relationship = "manager" | "lead" | "teammate";
+
 export type Person = {
   id: string;
   name: string;
+  // Org details, set for people created through the API.
+  level?: string;
+  role?: "sde" | "pm";
 };
 
 export type Status = "open" | "in_progress" | "waiting" | "done";

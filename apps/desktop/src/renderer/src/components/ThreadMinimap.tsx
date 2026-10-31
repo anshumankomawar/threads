@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { formatRelativeTime } from "../format";
-import type { Entry, Person } from "../model";
+import type { Entry, Person } from "model";
 import { Identicon } from "./Identicon";
 
 const TICK_SPACING = 10;

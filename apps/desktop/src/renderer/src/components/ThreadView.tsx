@@ -24,7 +24,7 @@ import {
   type Schedule,
   type Status,
   type Thread,
-} from "../model";
+} from "model";
 import { DAY, formatClock, formatDue, formatRelativeTime, startOfDay } from "../format";
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";

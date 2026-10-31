@@ -11,7 +11,7 @@ import {
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useRef, useState } from "react";
 import type { Day, InboxItem } from "../inbox";
-import { KIND_LABELS, type ThreadKind } from "../model";
+import { KIND_LABELS, type ThreadKind } from "model";
 
 // Marks the element with data-overflowing when its text is clipped, which turns on the fade mask.
 function useOverflowFade<T extends HTMLElement>(): React.RefObject<T | null> {

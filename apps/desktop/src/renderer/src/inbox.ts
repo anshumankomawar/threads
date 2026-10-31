@@ -1,6 +1,4 @@
-import type { Person, Priority, Thread } from "./model";
-
-export type Relationship = "manager" | "lead" | "teammate";
+import type { Person, Priority, Relationship, Thread } from "model";
 
 export type InboxItem = {
   thread: Thread;

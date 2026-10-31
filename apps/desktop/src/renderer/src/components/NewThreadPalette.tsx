@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { formatClock, startOfDay, DAY } from "../format";
 import { Check } from "lucide-react";
-import type { Person, Schedule, ThreadKind } from "../model";
+import type { Person, Schedule, ThreadKind } from "model";
 import { Identicon } from "./Identicon";
 
 export type NewThreadDraft = {

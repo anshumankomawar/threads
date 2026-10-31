@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Thread, ThreadKind } from "../model";
+import type { Thread, ThreadKind } from "model";
 
 type Tab = "all" | ThreadKind;
 

@@ -1418,3 +1418,13 @@ body * {
   margin-top: 4px;
   color: var(--text-secondary);
 }
+
+/* Shown in place of the app while it loads, or if the API isn't running. */
+.app-status {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  padding: 0 32px;
+  color: var(--text-tertiary);
+  text-align: center;
+}

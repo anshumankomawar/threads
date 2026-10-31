@@ -1,13 +1,20 @@
-import type { Relationship } from "./inbox";
-import { me } from "./me";
-import type { Entry, Person, Priority, Schedule, Status, Thread, ThreadKind } from "./model";
+import type {
+  Entry,
+  Person,
+  Priority,
+  Relationship,
+  Schedule,
+  Status,
+  Thread,
+  ThreadKind,
+} from "./model";
 
 // Fictional teammates for demo threads until real data exists.
-const priya: Person = { id: "priya", name: "Priya Shah" };
-const daniel: Person = { id: "daniel", name: "Daniel Okafor" };
-const jordan: Person = { id: "jordan", name: "Jordan Lee" };
-const sam: Person = { id: "sam", name: "Sam Rivera" };
-const maya: Person = { id: "maya", name: "Maya Chen" };
+const priya: Person = { id: "priya", name: "Priya Shah", level: "l6", role: "pm" };
+const daniel: Person = { id: "daniel", name: "Daniel Okafor", level: "l4", role: "pm" };
+const jordan: Person = { id: "jordan", name: "Jordan Lee", level: "l6", role: "sde" };
+const sam: Person = { id: "sam", name: "Sam Rivera", level: "l4", role: "sde" };
+const maya: Person = { id: "maya", name: "Maya Chen", level: "l5", role: "pm" };
 
 // Your place in the sample org: Priya manages you, Jordan leads another team, the rest are teammates.
 export function relationshipTo(person: Person): Relationship {
@@ -19,8 +26,10 @@ export function relationshipTo(person: Person): Relationship {
 // Threads with activity you haven't seen yet when the app opens.
 export const UNREAD_THREAD_IDS = ["headcount-plan", "headcount-review"];
 
-// Everyone a thread can be assigned to.
-export const PEOPLE: Person[] = [me, priya, daniel, jordan, sam, maya];
+// Everyone on the sample team, with you first.
+export function samplePeople(me: Person): Person[] {
+  return [me, priya, daniel, jordan, sam, maya];
+}
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -113,7 +122,8 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
 }
 
 // A day's worth of threads: responses to asks, meetings, and focus blocks, carried from start to completion.
-export function sampleThreads(nowMs = Date.now()): Thread[] {
+// `me` is whoever runs the app, so the sample asks, meetings and focus blocks are addressed to them.
+export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
   return [
     // Responses: someone's ask, worked through to a resolution.
     thread(

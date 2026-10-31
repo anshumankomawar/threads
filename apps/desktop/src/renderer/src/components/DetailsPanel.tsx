@@ -6,7 +6,7 @@ import {
   type Entry,
   type Person,
   type Thread,
-} from "../model";
+} from "model";
 import { Identicon } from "./Identicon";
 import { useResizablePanel } from "./useResizablePanel";
 

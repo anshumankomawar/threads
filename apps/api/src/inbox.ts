@@ -1,4 +1,4 @@
-import type { Priority, Thread } from "./model.ts";
+import type { Priority, Thread } from "model";
 
 const PRIORITY_WEIGHT: Record<Priority, number> = {
   none: 0,
@@ -11,7 +11,7 @@ const PRIORITY_WEIGHT: Record<Priority, number> = {
 // A user's open threads, most pressing first: highest priority, then soonest due, then latest activity.
 export function openThreadsFor(threads: Iterable<Thread>, userId: string): Thread[] {
   return [...threads]
-    .filter((thread) => thread.recipientId === userId && thread.status !== "done")
+    .filter((thread) => thread.assignee?.id === userId && thread.status !== "done")
     .sort(
       (a, b) =>
         PRIORITY_WEIGHT[b.priority] - PRIORITY_WEIGHT[a.priority] ||
