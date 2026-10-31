@@ -14,6 +14,7 @@ import { createApi, type Workspace } from "./api";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
 import { MeContext } from "./me";
 import { Identicon } from "./components/Identicon";
+import { OrgView } from "./components/OrgView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { Welcome } from "./components/Welcome";
 import { buildDay } from "./inbox";
@@ -128,6 +129,7 @@ function App(): React.JSX.Element {
     remember(CONTENT_ZOOM_KEY, String(contentZoom));
   }, [contentZoom]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [orgOpen, setOrgOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -229,6 +231,12 @@ function App(): React.JSX.Element {
       ...(id === null ? {} : { [id]: now }),
     }));
     setActiveThreadId(id);
+    setOrgOpen(false);
+  };
+  // The org view takes the thread's place in the main area.
+  const openOrg = (): void => {
+    openThread(null);
+    setOrgOpen(true);
   };
   const toggleSidebar = (): void => setSidebarOpen((open) => !open);
 
@@ -327,8 +335,10 @@ function App(): React.JSX.Element {
           nowMs={nowMs}
           unreadIds={unreadIds}
           activeThreadId={activeThreadId}
+          orgOpen={orgOpen}
           onNewThread={() => openNew()}
           onOpenThread={openThread}
+          onToggleOrg={() => (orgOpen ? setOrgOpen(false) : openOrg())}
           onToggle={toggleSidebar}
           onSearch={() => setSearchOpen(true)}
         />
@@ -341,7 +351,7 @@ function App(): React.JSX.Element {
               <SearchButton onSearch={() => setSearchOpen(true)} />
             </>
           )}
-          <span className="topbar-title">{activeThread?.title}</span>
+          <span className="topbar-title">{orgOpen ? "Org" : activeThread?.title}</span>
           <span className="topbar-end">
             <button
               type="button"
@@ -355,7 +365,9 @@ function App(): React.JSX.Element {
             <DetailsToggle onToggle={() => setDetailsOpen((open) => !open)} />
           </span>
         </div>
-        {activeThread === undefined ? (
+        {orgOpen ? (
+          <OrgView people={people} me={me} />
+        ) : activeThread === undefined ? (
           <Welcome
             me={me}
             workspace={workspace}
@@ -395,6 +407,7 @@ function App(): React.JSX.Element {
             setSearchOpen(false);
             setViewAsOpen(true);
           }}
+          onOpenOrg={openOrg}
           onNewThread={openNew}
           onOpenThread={openThread}
           onClose={() => setSearchOpen(false)}

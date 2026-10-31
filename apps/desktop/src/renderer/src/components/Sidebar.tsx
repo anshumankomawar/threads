@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Ellipsis,
   MessageSquare,
+  Network,
   Plus,
   Search,
   SquarePen,
@@ -254,8 +255,8 @@ function DayView({
   );
 }
 
-// What needs addressing today but has no time on the timeline: due, overdue, urgent or unassigned threads,
-// and focus blocks you haven't planned.
+// What needs addressing but has no time on the timeline: threads assigned to you or needing an assignee, and focus
+// blocks you haven't planned.
 function InboxList({
   items,
   activeThreadId,
@@ -267,7 +268,7 @@ function InboxList({
   unreadIds: Set<string>;
   onOpenThread: (id: string) => void;
 }): React.JSX.Element {
-  if (items.length === 0) return <div className="sidebar-empty">Nothing else to address today</div>;
+  if (items.length === 0) return <div className="sidebar-empty">Nothing in your inbox</div>;
   return (
     <ul className="thread-list" aria-label="Inbox">
       {items.map((item) => (
@@ -324,8 +325,10 @@ export function Sidebar({
   nowMs,
   unreadIds,
   activeThreadId,
+  orgOpen,
   onNewThread,
   onOpenThread,
+  onToggleOrg,
   onToggle,
   onSearch,
 }: {
@@ -333,8 +336,10 @@ export function Sidebar({
   nowMs: number;
   unreadIds: Set<string>;
   activeThreadId: string | null;
+  orgOpen: boolean;
   onNewThread: () => void;
   onOpenThread: (id: string) => void;
+  onToggleOrg: () => void;
   onToggle: () => void;
   onSearch: () => void;
 }): React.JSX.Element {
@@ -405,6 +410,21 @@ export function Sidebar({
             onOpenThread={onOpenThread}
           />
         </SidebarSection>
+      </div>
+      <div className="sidebar-footer">
+        <div
+          className="sidebar-row"
+          data-active={orgOpen}
+          role="button"
+          tabIndex={0}
+          onClick={onToggleOrg}
+          onKeyDown={(event) => activateOnKey(event, onToggleOrg)}
+        >
+          <span className="kind-marker">
+            <Network size={12} strokeWidth={1.7} aria-hidden />
+          </span>
+          <span className="sidebar-row-label">Org</span>
+        </div>
       </div>
       {handle}
     </aside>

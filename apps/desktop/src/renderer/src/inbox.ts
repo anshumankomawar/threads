@@ -95,8 +95,9 @@ function score(thread: Thread, relationship: Relationship, nowMs: number): numbe
 }
 
 // Rule-based plan for your day. Everything is a thread: responses assigned to you, meetings you're in, and your
-// focus blocks. Anything scheduled today sits on the timeline; what's due today (or unplanned focus work) waits in
-// Unscheduled; the rest is Later.
+// focus blocks. Anything scheduled today sits on the timeline; responses assigned to you (or still needing an
+// assignee) and unplanned focus work wait in Unscheduled, which is your inbox; the rest is Later: meetings and focus
+// blocks on other days, and responses you've scheduled for a later day, unless they need attention today.
 export function buildDay(
   threads: Thread[],
   me: Person,
@@ -128,7 +129,9 @@ export function buildDay(
     } else if (
       (thread.kind === "focus" && thread.schedule === null) ||
       (thread.kind === "response" &&
-        (thread.assignee === null ||
+        (thread.schedule === null ||
+          thread.schedule.startMs < today ||
+          thread.assignee === null ||
           overdue ||
           (due !== null && isToday(due)) ||
           thread.priority === "urgent"))

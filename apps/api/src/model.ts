@@ -13,6 +13,7 @@ export const createUserBody = z.object({
   lastName: name,
   level: z.string().regex(/^l[1-9]\d*$/, "Expected a level like l1, l2, l3"),
   role: z.enum(["sde", "pm"]),
+  manager: id.optional(),
 });
 
 const schedule = z

@@ -122,12 +122,15 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
   app.get("/users", (c) => c.json([...c.var.store.people.values()]));
 
   app.post("/users", validate("json", createUserBody), (c) => {
-    const { firstName, lastName, level, role } = c.req.valid("json");
+    const { firstName, lastName, level, role, manager } = c.req.valid("json");
+    if (manager !== undefined && !c.var.store.people.has(manager))
+      return c.json(missingUser(manager), 404);
     const person: Person = {
       id: crypto.randomUUID(),
       name: `${firstName} ${lastName}`,
       level,
       role,
+      ...(manager === undefined ? {} : { managerId: manager }),
     };
     c.var.store.people.set(person.id, person);
     return c.json(person, 201);

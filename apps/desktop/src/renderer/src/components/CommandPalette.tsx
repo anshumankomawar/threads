@@ -44,6 +44,7 @@ export function CommandPalette({
   me,
   onSwitchWorkspace,
   onViewAs,
+  onOpenOrg,
   onNewThread,
   onOpenThread,
   onClose,
@@ -53,6 +54,7 @@ export function CommandPalette({
   me: Person;
   onSwitchWorkspace: (workspace: Workspace) => void;
   onViewAs: () => void;
+  onOpenOrg: () => void;
   onNewThread: (kind: ThreadKind) => void;
   onOpenThread: (id: string) => void;
   onClose: () => void;
@@ -85,6 +87,7 @@ export function CommandPalette({
     // Who you're viewing as, and whose data: your own or the demo team's.
     ...(tab === "all"
       ? [
+          { title: "Views", items: [{ id: "org", label: "Org", run: run(onOpenOrg) }] },
           {
             title: "Data",
             items: [

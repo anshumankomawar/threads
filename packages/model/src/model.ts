@@ -4,9 +4,11 @@ export type Relationship = "manager" | "lead" | "teammate";
 export type Person = {
   id: string;
   name: string;
-  // Org details, set for people created through the API.
+  // Org details. A higher level is more senior.
   level?: string;
   role?: "sde" | "pm";
+  // Who they report to, which places them in the org tree. Nobody's at the top.
+  managerId?: string;
 };
 
 export type Status = "open" | "in_progress" | "waiting" | "done";

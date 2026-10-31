@@ -10,6 +10,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "vp run typecheck:node && vp run typecheck:web",
+    "test": "vp test",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "vp run typecheck && electron-vite build",

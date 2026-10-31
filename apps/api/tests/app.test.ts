@@ -74,6 +74,15 @@ test("createUser returns the person with an id and full name", async () => {
   });
 });
 
+test("createUser can place the person under a manager, who must exist", async () => {
+  const manager = await createUser();
+  const fields = { firstName: "Sam", lastName: "Rivera", level: "l1", role: "sde" };
+  const response = await send("POST", "/users", { ...fields, manager });
+  expect(response.status).toBe(201);
+  expect(await response.json()).toMatchObject({ name: "Sam Rivera", managerId: manager });
+  expect((await send("POST", "/users", { ...fields, manager: "nobody" })).status).toBe(404);
+});
+
 test.each([
   ["a bad level", { level: "senior", role: "sde" }],
   ["a bad role", { level: "l1", role: "ceo" }],
@@ -356,14 +365,14 @@ test("the local workspace starts with a few people and no threads; the sample wo
     ).json();
 
   expect(await get("/users")).toEqual([
-    { id: "anshu", name: "Anshu" },
-    { id: "arjun", name: "Arjun" },
-    { id: "kk", name: "KK" },
+    { id: "anshu", name: "Anshu", level: "l1", managerId: "kk" },
+    { id: "arjun", name: "Arjun", level: "l1", managerId: "kk" },
+    { id: "kk", name: "KK", level: "l2" },
   ]);
   expect(await get("/threads")).toEqual([]);
 
   const people = (await get("/users", "sample")) as { id: string }[];
-  expect(people[0]).toEqual({ id: "me", name: "You" });
+  expect(people[0]).toEqual({ id: "me", name: "You", managerId: "priya" });
   const threads = (await get("/threads", "sample")) as {
     id: string;
     assignee: { id: string } | null;

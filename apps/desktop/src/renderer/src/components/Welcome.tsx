@@ -53,8 +53,8 @@ export function Welcome({
   });
   const summary =
     todayCount === 0
-      ? "Nothing on your plate today."
-      : `${todayCount} ${todayCount === 1 ? "thing" : "things"} on your plate today.`;
+      ? "Nothing on your plate."
+      : `${todayCount} ${todayCount === 1 ? "thing" : "things"} on your plate.`;
 
   return (
     <div className="welcome">

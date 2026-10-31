@@ -11,10 +11,22 @@ import type {
 
 // Fictional teammates for demo threads until real data exists.
 const priya: Person = { id: "priya", name: "Priya Shah", level: "l6", role: "pm" };
-const daniel: Person = { id: "daniel", name: "Daniel Okafor", level: "l4", role: "pm" };
+const maya: Person = { id: "maya", name: "Maya Chen", level: "l5", role: "pm", managerId: "priya" };
+const daniel: Person = {
+  id: "daniel",
+  name: "Daniel Okafor",
+  level: "l4",
+  role: "pm",
+  managerId: "maya",
+};
 const jordan: Person = { id: "jordan", name: "Jordan Lee", level: "l6", role: "sde" };
-const sam: Person = { id: "sam", name: "Sam Rivera", level: "l4", role: "sde" };
-const maya: Person = { id: "maya", name: "Maya Chen", level: "l5", role: "pm" };
+const sam: Person = {
+  id: "sam",
+  name: "Sam Rivera",
+  level: "l4",
+  role: "sde",
+  managerId: "jordan",
+};
 
 // Your place in the sample org: Priya manages you, Jordan leads another team, the rest are teammates.
 export function relationshipTo(person: Person): Relationship {
@@ -29,15 +41,15 @@ export const UNREAD_THREAD_IDS = ["headcount-plan", "headcount-review"];
 // The people the local workspace starts with, for trying the app as each of them. No threads yet.
 export function localPeople(): Person[] {
   return [
-    { id: "anshu", name: "Anshu" },
-    { id: "arjun", name: "Arjun" },
-    { id: "kk", name: "KK" },
+    { id: "anshu", name: "Anshu", level: "l1", managerId: "kk" },
+    { id: "arjun", name: "Arjun", level: "l1", managerId: "kk" },
+    { id: "kk", name: "KK", level: "l2" },
   ];
 }
 
 // Everyone on the sample team, with you first.
 export function samplePeople(me: Person): Person[] {
-  return [me, priya, daniel, jordan, sam, maya];
+  return [{ ...me, managerId: priya.id }, priya, daniel, jordan, sam, maya];
 }
 
 const MINUTE = 60_000;

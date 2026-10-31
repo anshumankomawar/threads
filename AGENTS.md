@@ -9,8 +9,8 @@ All AI-written code must go on the `prototype` branch. Before writing or editing
 - `vp run dev` at the root starts both.
 - `packages/model`: the thread model and sample data, shared by both apps.
 - electron-vite only hot-reloads the renderer. After changing `src/main` or `src/preload`, restart the desktop dev task. Sample-data shape changes need a renderer reload (⌘R), and API changes need an API restart.
-- Test the API with `vp test` in `apps/api`.
-- In the app, ⌘K opens the command palette (it also switches Local and Sample data), ⌘N starts a thread, ⌘U switches who you view the app as, and ⌘+ / ⌘- / ⌘0 zoom the main content.
+- Test the API with `vp test` in `apps/api`, and the desktop app's plan and org logic with `vp test` in `apps/desktop`.
+- In the app, ⌘K opens the command palette (it also opens the Org view and switches Local and Sample data), ⌘N starts a thread, ⌘U switches who you view the app as, and ⌘+ / ⌘- / ⌘0 zoom the main content.
 
 <!--VITE PLUS START-->
 
