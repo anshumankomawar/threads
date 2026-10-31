@@ -60,6 +60,12 @@ export const scheduleQuery = z.object({ date: z.iso.date().optional() });
 
 export type Inbox = { id: string; userId: string; createdAtMs: number };
 
+// One change to a workspace, as handed to a durable backing before it lands in the store.
+export type Write =
+  | { kind: "person"; key: string; value: Person }
+  | { kind: "thread"; key: string; value: Thread }
+  | { kind: "inbox"; key: string; value: Inbox };
+
 export type Store = {
   people: Map<string, Person>;
   threads: Map<string, Thread>;

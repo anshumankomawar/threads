@@ -1,8 +1,9 @@
 import type { Entry, Person, Thread } from "model";
 import type { NewThreadDraft } from "./components/NewThreadPalette";
 
-// The local Hono API (apps/api). It keeps everything in memory.
-const BASE = "http://127.0.0.1:3030";
+// The Hono API (apps/api): the local Worker by default, or the hosted one when VITE_API_URL is set.
+export const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:3030";
+const API_TOKEN = import.meta.env.VITE_API_TOKEN;
 
 // "local" starts empty and holds what you create; "sample" is the demo team with their threads.
 export type Workspace = "local" | "sample";
@@ -17,10 +18,11 @@ async function send<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const response = await fetch(`${BASE}${path}`, {
+  const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: {
       "X-Workspace": workspace,
+      ...(API_TOKEN === undefined ? {} : { Authorization: `Bearer ${API_TOKEN}` }),
       ...(body === undefined ? {} : { "Content-Type": "application/json" }),
     },
     body: body === undefined ? undefined : JSON.stringify(body),

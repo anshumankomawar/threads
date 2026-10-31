@@ -4,12 +4,15 @@ All AI-written code must go on the `prototype` branch. Before writing or editing
 
 # Running the App
 
-- `apps/api`: local Hono API on `http://127.0.0.1:3030` (IPv4 only; the desktop app connects there). Start it with `vp run api#dev`. Data lives in memory and resets on restart. Requests pick a workspace with the `X-Workspace` header: `local` (the default: Anshu, Arjun and KK, no threads) or `sample` (the demo team and threads from `packages/model`, addressed to the OS username).
-- `apps/desktop`: Electron app. Start it with `vp run desktop#dev`. It waits and retries until the API answers.
+- `apps/api`: Hono API running as a Cloudflare Worker, configured in `apps/api/cloudflare.config.ts`. Each workspace is a SQLite Durable Object (`src/worker.ts`). Requests pick a workspace with the `X-Workspace` header: `local` (the default: Anshu, Arjun and KK, no threads) or `sample` (the demo team and threads from `packages/model`). The routes live in `src/app.ts`.
+  - Local: `vp run api#dev` runs the Worker in the Workers runtime on `http://127.0.0.1:3030` (IPv4 only). Data persists in `apps/api/.cloudflare/state`; delete `.cloudflare/state/v3/do` with the API stopped to reset it.
+  - Hosted: https://threads-api.threads-app.workers.dev on the Threads Cloudflare account. Deploy with `vp run api#deploy` (`cf deploy`). Use the `cf` CLI, not Wrangler. The hosted API requires the `API_TOKEN` secret as a bearer token.
+  - After changing `cloudflare.config.ts`, regenerate types with `vpx cf workers types` in `apps/api`.
+- `apps/desktop`: Electron app. Start it with `vp run desktop#dev`. It waits and retries until the API answers. It uses the local API by default. `vp run desktop#dev:hosted` uses the hosted API instead, reading `VITE_API_URL` and `VITE_API_TOKEN` from `apps/desktop/.env.hosted.local` (gitignored; never commit the token).
 - `vp run dev` at the root starts both.
 - `packages/model`: the thread model and sample data, shared by both apps.
 - electron-vite only hot-reloads the renderer. After changing `src/main` or `src/preload`, restart the desktop dev task. Sample-data shape changes need a renderer reload (⌘R), and API changes need an API restart.
-- Test the API with `vp test` in `apps/api`, and the desktop app's plan and org logic with `vp test` in `apps/desktop`.
+- Test the API with `vp test` in `apps/api` (the tests run the routes over in-memory stores via `createApp`), and the desktop app's plan and org logic with `vp test` in `apps/desktop`.
 - In the app, ⌘K opens the command palette (it also opens the Org view and switches Local and Sample data), ⌘N starts a thread, ⌘U switches who you view the app as, and ⌘+ / ⌘- / ⌘0 zoom the main content.
 
 <!--VITE PLUS START-->

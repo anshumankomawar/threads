@@ -22,6 +22,7 @@ import {
   editThreadBody,
   scheduleQuery,
   type Store,
+  type Write,
 } from "./model.ts";
 import { buildSchedule } from "./schedule.ts";
 
@@ -78,48 +79,59 @@ function describeEdits(thread: Thread, edits: Edits, actor: Person): string[] {
 
 // Each workspace is its own set of people and threads. "local" starts with a few people and no threads, for
 // trying the app as each of them; "sample" is the demo team with their threads, for seeing the UX with data in it.
-const WORKSPACES = ["local", "sample"] as const;
-export type Workspace = (typeof WORKSPACES)[number];
+export const WORKSPACES = ["local", "sample"] as const;
+export type WorkspaceName = (typeof WORKSPACES)[number];
 
-export type AppOptions = {
+export const isWorkspaceName = (name: string): name is WorkspaceName =>
+  (WORKSPACES as readonly string[]).includes(name);
+
+export const emptyStore = (): Store => ({
+  people: new Map(),
+  threads: new Map(),
+  inboxes: new Map(),
+});
+
+// A workspace's starting data. `me` is who the sample threads are addressed to.
+export function seedStore(workspace: WorkspaceName, me: Person, nowMs: number): Store {
+  const store = emptyStore();
+  const people = workspace === "local" ? localPeople() : samplePeople(me);
+  for (const person of people) store.people.set(person.id, person);
+  if (workspace === "sample")
+    for (const thread of sampleThreads(me, nowMs)) store.threads.set(thread.id, thread);
+  return store;
+}
+
+export type WorkspaceOptions = {
   now?: () => number;
-  // Who runs the app: seeds both workspaces, with the sample threads addressed to you.
-  me?: Person;
+  // Called before each change lands in the store, so a durable backing can save it first.
+  onWrite?: (write: Write) => void;
 };
 
-const emptyStore = (): Store => ({ people: new Map(), threads: new Map(), inboxes: new Map() });
+// The API for one workspace, over its store.
+export function createWorkspaceApp(
+  store: Store,
+  { now = Date.now, onWrite }: WorkspaceOptions = {},
+) {
+  const app = new Hono();
 
-// Data lives in memory for now, so it's gone (or reseeded) when the server restarts. Requests pick a workspace
-// with the X-Workspace header.
-export function createApp({ now = Date.now, me }: AppOptions = {}) {
-  const stores: Record<Workspace, Store> = { local: emptyStore(), sample: emptyStore() };
-  if (me !== undefined) {
-    for (const person of localPeople()) stores.local.people.set(person.id, person);
-    for (const person of samplePeople(me)) stores.sample.people.set(person.id, person);
-    for (const thread of sampleThreads(me, now())) stores.sample.threads.set(thread.id, thread);
-  }
-  const app = new Hono<{ Variables: { store: Store } }>();
-  // The desktop renderer runs on its own dev origin (or file://), so it needs CORS to reach the API.
-  app.use(cors());
-  app.use(async (c, next) => {
-    const workspace = c.req.header("X-Workspace") ?? "local";
-    if (!(WORKSPACES as readonly string[]).includes(workspace))
-      return c.json({ error: `Unknown workspace: ${workspace}` }, 400);
-    c.set("store", stores[workspace as Workspace]);
-    await next();
-  });
+  const put = (write: Write): void => {
+    onWrite?.(write);
+    if (write.kind === "person") store.people.set(write.key, write.value);
+    else if (write.kind === "thread") store.threads.set(write.key, write.value);
+    else store.inboxes.set(write.key, write.value);
+  };
 
   const missingUser = (id: string): { error: string } => ({ error: `User not found: ${id}` });
   const missingThread = { error: "Thread not found" };
 
-  const save = (store: Store, thread: Thread): Thread => {
-    store.threads.set(thread.id, thread);
+  const save = (thread: Thread): Thread => {
+    put({ kind: "thread", key: thread.id, value: thread });
     return thread;
   };
 
   app.get("/", (c) => c.text("Hello Hono!"));
 
-  app.get("/users", (c) => c.json([...c.var.store.people.values()]));
+  app.get("/users", (c) => c.json([...store.people.values()]));
 
   app.post("/users", validate("json", createUserBody), (c) => {
     const { firstName, lastName, level, role, manager } = c.req.valid("json");
@@ -132,13 +144,13 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
       role,
       ...(manager === undefined ? {} : { managerId: manager }),
     };
-    c.var.store.people.set(person.id, person);
+    put({ kind: "person", key: person.id, value: person });
     return c.json(person, 201);
   });
 
   // Every thread, most recently active first.
   app.get("/threads", (c) =>
-    c.json([...c.var.store.threads.values()].sort((a, b) => b.updatedAtMs - a.updatedAtMs)),
+    c.json([...store.threads.values()].sort((a, b) => b.updatedAtMs - a.updatedAtMs)),
   );
 
   app.post("/threads", validate("json", createThreadBody), (c) => {
@@ -148,9 +160,9 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
       ...(body.assignee === null ? [] : [body.assignee]),
       ...body.invitees,
     ];
-    const unknown = ids.find((id) => !c.var.store.people.has(id));
+    const unknown = ids.find((id) => !store.people.has(id));
     if (unknown !== undefined) return c.json(missingUser(unknown), 404);
-    const person = (id: string): Person => c.var.store.people.get(id)!;
+    const person = (id: string): Person => store.people.get(id)!;
     const creator = person(body.creator);
     const createdAtMs = now();
     const thread: Thread = {
@@ -181,23 +193,23 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
         },
       ],
     };
-    return c.json(save(c.var.store, thread), 201);
+    return c.json(save(thread), 201);
   });
 
   app.get("/threads/:threadId", (c) => {
-    const thread = c.var.store.threads.get(c.req.param("threadId"));
+    const thread = store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     return c.json(thread);
   });
 
   // Applies the edits and records an activity line for each real change.
   app.patch("/threads/:threadId", validate("json", editThreadBody), (c) => {
-    const thread = c.var.store.threads.get(c.req.param("threadId"));
+    const thread = store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     const { actor: actorId, assignee: assigneeId, ...rest } = c.req.valid("json");
-    const actor = c.var.store.people.get(actorId);
+    const actor = store.people.get(actorId);
     if (actor === undefined) return c.json(missingUser(actorId), 404);
-    const assignee = assigneeId === undefined ? undefined : c.var.store.people.get(assigneeId);
+    const assignee = assigneeId === undefined ? undefined : store.people.get(assigneeId);
     if (assigneeId !== undefined && assignee === undefined)
       return c.json(missingUser(assigneeId), 404);
     const edits: Edits = { ...rest, ...(assignee === undefined ? {} : { assignee }) };
@@ -212,7 +224,7 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
       createdAtMs: updatedAtMs,
     }));
     return c.json(
-      save(c.var.store, {
+      save({
         ...thread,
         ...edits,
         updatedAtMs,
@@ -223,10 +235,10 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
 
   // A reply, or a resolution, which also marks the thread done.
   app.post("/threads/:threadId/entries", validate("json", createEntryBody), (c) => {
-    const thread = c.var.store.threads.get(c.req.param("threadId"));
+    const thread = store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     const { kind, author: authorId, text } = c.req.valid("json");
-    const author = c.var.store.people.get(authorId);
+    const author = store.people.get(authorId);
     if (author === undefined) return c.json(missingUser(authorId), 404);
     const createdAtMs = now();
     const id = crypto.randomUUID();
@@ -235,7 +247,7 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
         ? { kind, id, author, text, createdAtMs, decision: false }
         : { kind, id, author, text, createdAtMs };
     return c.json(
-      save(c.var.store, {
+      save({
         ...thread,
         status: kind === "resolution" ? "done" : thread.status,
         updatedAtMs: createdAtMs,
@@ -247,14 +259,14 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
 
   // Bookmarks a message as a decision, or removes the bookmark.
   app.patch("/threads/:threadId/entries/:entryId", validate("json", editEntryBody), (c) => {
-    const thread = c.var.store.threads.get(c.req.param("threadId"));
+    const thread = store.threads.get(c.req.param("threadId"));
     if (thread === undefined) return c.json(missingThread, 404);
     const entryId = c.req.param("entryId");
     const target = thread.entries.find((entry) => entry.id === entryId);
     if (target?.kind !== "message") return c.json({ error: "Message not found" }, 404);
     const { decision } = c.req.valid("json");
     return c.json(
-      save(c.var.store, {
+      save({
         ...thread,
         entries: thread.entries.map((entry) =>
           entry.id === entryId && entry.kind === "message" ? { ...entry, decision } : entry,
@@ -265,18 +277,18 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
 
   app.post("/inboxes", validate("json", createInboxBody), (c) => {
     const { userId } = c.req.valid("json");
-    if (!c.var.store.people.has(userId)) return c.json(missingUser(userId), 404);
-    if (c.var.store.inboxes.has(userId)) return c.json({ error: "User already has an inbox" }, 409);
+    if (!store.people.has(userId)) return c.json(missingUser(userId), 404);
+    if (store.inboxes.has(userId)) return c.json({ error: "User already has an inbox" }, 409);
     const inbox = { id: crypto.randomUUID(), userId, createdAtMs: now() };
-    c.var.store.inboxes.set(userId, inbox);
+    put({ kind: "inbox", key: userId, value: inbox });
     return c.json(inbox, 201);
   });
 
   app.get("/inboxes/:userId", (c) => {
     const userId = c.req.param("userId");
-    const inbox = c.var.store.inboxes.get(userId);
+    const inbox = store.inboxes.get(userId);
     if (inbox === undefined) return c.json({ error: "Inbox not found" }, 404);
-    const items = openThreadsFor(c.var.store.threads.values(), userId).map(
+    const items = openThreadsFor(store.threads.values(), userId).map(
       ({ entries: _entries, ...summary }) => summary,
     );
     return c.json({ ...inbox, items });
@@ -284,11 +296,36 @@ export function createApp({ now = Date.now, me }: AppOptions = {}) {
 
   app.get("/users/:userId/schedule", validate("query", scheduleQuery), (c) => {
     const userId = c.req.param("userId");
-    if (!c.var.store.people.has(userId)) return c.json(missingUser(userId), 404);
+    if (!store.people.has(userId)) return c.json(missingUser(userId), 404);
     const nowMs = now();
     const date = c.req.valid("query").date ?? new Date(nowMs).toISOString().slice(0, 10);
-    return c.json(buildSchedule(openThreadsFor(c.var.store.threads.values(), userId), date, nowMs));
+    return c.json(buildSchedule(openThreadsFor(store.threads.values(), userId), date, nowMs));
   });
 
+  return app;
+}
+
+export type AppOptions = {
+  now?: () => number;
+  // Seeds both workspaces, with the sample threads addressed to `me`; without it they start empty.
+  me?: Person;
+};
+
+// Every workspace in memory, picked per request with the X-Workspace header. Used by the tests; the deployed
+// Worker keeps each workspace in a Durable Object instead (src/worker.ts).
+export function createApp({ now = Date.now, me }: AppOptions = {}) {
+  const apps = Object.fromEntries(
+    WORKSPACES.map((name) => [
+      name,
+      createWorkspaceApp(me === undefined ? emptyStore() : seedStore(name, me, now()), { now }),
+    ]),
+  ) as Record<WorkspaceName, Hono>;
+  const app = new Hono();
+  app.use(cors());
+  app.all("*", (c) => {
+    const name = c.req.header("X-Workspace") ?? "local";
+    if (!isWorkspaceName(name)) return c.json({ error: `Unknown workspace: ${name}` }, 400);
+    return apps[name].fetch(c.req.raw);
+  });
   return app;
 }

@@ -10,7 +10,7 @@ import {
   type Thread,
   type ThreadKind,
 } from "model";
-import { createApi, type Workspace } from "./api";
+import { API_URL, createApi, type Workspace } from "./api";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
 import { MeContext } from "./me";
 import { Identicon } from "./components/Identicon";
@@ -320,7 +320,7 @@ function App(): React.JSX.Element {
         <div className="app-status">
           {load.state === "loading"
             ? "Loading…"
-            : `Waiting for the API at 127.0.0.1:3030 (vp run api#dev)… ${load.error}`}
+            : `Waiting for the API at ${API_URL} (vp run api#dev)… ${load.error}`}
         </div>
       </>
     );

@@ -3,7 +3,7 @@
     "target": "es2023",
     "module": "esnext",
     "lib": ["ES2023"],
-    "types": ["node"],
+    "types": [],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 
@@ -20,5 +20,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "cloudflare.config.ts", ".cloudflare/types"]
 }

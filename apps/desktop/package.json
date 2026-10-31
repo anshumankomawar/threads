@@ -13,6 +13,7 @@
     "test": "vp test",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
+    "dev:hosted": "electron-vite dev --mode hosted",
     "build": "vp run typecheck && electron-vite build",
     "postinstall": "install-electron && electron-builder install-app-deps",
     "build:unpack": "vp run build && electron-builder --dir",

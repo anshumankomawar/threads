@@ -1,14 +1,9 @@
-import build from "@hono/vite-build/node";
-import devServer from "@hono/vite-dev-server";
-import nodeAdapter from "@hono/vite-dev-server/node";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig } from "vite-plus";
 
-// Hono on Vite: the dev server runs the app on Node, and the build bundles it into a Node server.
+// Hono on Workers: the Cloudflare plugin runs the Worker and its Durable Objects in the Workers runtime locally.
 export default defineConfig({
-  plugins: [
-    build({ entry: "src/index.ts" }),
-    devServer({ adapter: nodeAdapter, entry: "src/index.ts" }),
-  ],
-  // The desktop app expects the API here.
+  plugins: [cloudflare()],
+  // The desktop app expects the local API here.
   server: { host: "127.0.0.1", port: 3030, strictPort: true },
 });
