@@ -53,6 +53,12 @@ async function createThread(creator: string, recipient: string, text = "Review")
   return (await read(response)).id;
 }
 
+test("the root route responds", async () => {
+  const response = await send("GET", "/");
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe("Hello Hono!");
+});
+
 test("createUser returns the user with an id", async () => {
   const response = await send("POST", "/users", {
     firstName: "Priya",

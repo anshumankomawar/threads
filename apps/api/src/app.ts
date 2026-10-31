@@ -31,6 +31,8 @@ export function createApp(now: () => number = Date.now) {
 
   const missingUser = (id: string): { error: string } => ({ error: `User not found: ${id}` });
 
+  app.get("/", (c) => c.text("Hello Hono!"));
+
   app.post("/users", validate("json", createUserBody), (c) => {
     const user = { id: crypto.randomUUID(), ...c.req.valid("json") };
     store.users.set(user.id, user);
