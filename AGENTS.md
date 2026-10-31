@@ -2,6 +2,16 @@
 
 All AI-written code must go on the `prototype` branch. Before writing or editing code, check the current branch with `git branch --show-current`; if it is not `prototype`, switch with `git switch prototype` (create it with `git switch -c prototype` if missing). Never commit AI-written code to `main` or any other branch.
 
+# Running the App
+
+- `apps/api`: local Hono API on `http://127.0.0.1:3030` (IPv4 only; the desktop app connects there). Start it with `vp run api#dev`. Data lives in memory and resets on restart. Requests pick a workspace with the `X-Workspace` header: `local` (the default: Anshu, Arjun and KK, no threads) or `sample` (the demo team and threads from `packages/model`, addressed to the OS username).
+- `apps/desktop`: Electron app. Start it with `vp run desktop#dev`. It waits and retries until the API answers.
+- `vp run dev` at the root starts both.
+- `packages/model`: the thread model and sample data, shared by both apps.
+- electron-vite only hot-reloads the renderer. After changing `src/main` or `src/preload`, restart the desktop dev task. Sample-data shape changes need a renderer reload (⌘R), and API changes need an API restart.
+- Test the API with `vp test` in `apps/api`.
+- In the app, ⌘K opens the command palette (it also switches Local and Sample data), ⌘N starts a thread, ⌘U switches who you view the app as, and ⌘+ / ⌘- / ⌘0 zoom the main content.
+
 <!--VITE PLUS START-->
 
 # Using Vite+, the Unified Toolchain for the Web

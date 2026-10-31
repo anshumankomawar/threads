@@ -14,7 +14,7 @@ import {
   Video,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { me } from "../me";
+import { useMe } from "../me";
 import {
   PRIORITY_LABELS,
   STATUS_LABELS,
@@ -541,6 +541,7 @@ function ReplyBlock({
   onSubmit: (text: string) => void;
   onCancel: () => void;
 }): React.JSX.Element {
+  const me = useMe();
   const handlersRef = useRef({ onSubmit, onCancel });
   useEffect(() => {
     handlersRef.current = { onSubmit, onCancel };
@@ -549,7 +550,8 @@ function ReplyBlock({
   const editor = useEditor({
     autofocus: "end",
     extensions: [
-      StarterKit.configure({ heading: false, horizontalRule: false }),
+      // No underline, so ⌘U stays the app's user picker.
+      StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
       Placeholder.configure({ placeholder }),
     ],
     editorProps: {
@@ -590,7 +592,7 @@ export function ThreadView({
   people,
   actions,
 }: {
-  thread: Thread | undefined;
+  thread: Thread;
   people: Person[];
   actions: ThreadActions;
 }): React.JSX.Element {
@@ -600,7 +602,7 @@ export function ThreadView({
   const focusReplyRef = useRef<(() => void) | null>(null);
   const nowMs = useNow(60_000);
   const [resolving, setResolving] = useState(false);
-  const entries = thread?.entries ?? [];
+  const entries = thread.entries;
   // The opening message moves into the header: a response's ask, a meeting's agenda, a focus block's note.
   const [first] = entries;
   const ask = first?.kind === "message" ? first : undefined;
@@ -613,13 +615,11 @@ export function ThreadView({
 
   const placeholder = resolving
     ? "How was this resolved?"
-    : thread?.kind === "meeting"
+    : thread.kind === "meeting"
       ? "Add notes…"
-      : thread?.kind === "focus"
+      : thread.kind === "focus"
         ? "Add a note…"
-        : ask === undefined
-          ? "What do you need? This becomes the ask."
-          : "Reply…";
+        : "Reply…";
 
   // Clicking empty space in the thread, including below the last block, puts the cursor in the reply.
   const onBackgroundMouseDown = (event: React.MouseEvent): void => {
@@ -637,19 +637,15 @@ export function ThreadView({
     <div className="thread-view">
       <div ref={scrollRef} className="thread-scroll" onMouseDown={onBackgroundMouseDown}>
         <article ref={docRef} className="thread-doc">
-          {thread !== undefined && (thread.kind !== "response" || ask !== undefined) && (
-            <h1 className="thread-title">{thread.title}</h1>
-          )}
-          {thread !== undefined && (thread.kind !== "response" || ask !== undefined) && (
-            <ThreadHeader
-              thread={thread}
-              ask={ask}
-              nowMs={nowMs}
-              people={people}
-              actions={actions}
-              onMarkDone={() => setResolving(true)}
-            />
-          )}
+          <h1 className="thread-title">{thread.title}</h1>
+          <ThreadHeader
+            thread={thread}
+            ask={ask}
+            nowMs={nowMs}
+            people={people}
+            actions={actions}
+            onMarkDone={() => setResolving(true)}
+          />
           {rest.map((entry) => {
             if (entry.kind === "message")
               return (
@@ -663,15 +659,13 @@ export function ThreadView({
             if (entry.kind === "event")
               return <EventLine key={entry.id} event={entry} nowMs={nowMs} />;
             if (entry.kind === "call")
-              return thread === undefined ? null : (
-                <CallBlock key={entry.id} call={entry} thread={thread} nowMs={nowMs} />
-              );
+              return <CallBlock key={entry.id} call={entry} thread={thread} nowMs={nowMs} />;
             if (entry.kind === "notes")
               return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
             return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
           })}
           <ReplyBlock
-            key={`${thread?.id ?? "new"}-${resolving ? "resolve" : "reply"}`}
+            key={`${thread.id}-${resolving ? "resolve" : "reply"}`}
             placeholder={placeholder}
             resolving={resolving}
             focusRef={focusReplyRef}

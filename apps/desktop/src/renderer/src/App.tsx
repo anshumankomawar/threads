@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -12,7 +12,10 @@ import {
 } from "model";
 import { createApi, type Workspace } from "./api";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
-import { me } from "./me";
+import { MeContext } from "./me";
+import { Identicon } from "./components/Identicon";
+import { ViewAsPalette } from "./components/ViewAsPalette";
+import { Welcome } from "./components/Welcome";
 import { buildDay } from "./inbox";
 
 // Mouse moves within this many pixels of the top nudge the drag-region resync element.
@@ -45,7 +48,7 @@ function useNow(intervalMs: number): number {
 }
 
 // When someone other than you last touched the thread. Calls and meeting notes count as others' activity.
-function lastActivityByOthers(thread: Thread): number {
+function lastActivityByOthers(thread: Thread, me: Person): number {
   let latest = 0;
   for (const entry of thread.entries) {
     const person =
@@ -70,6 +73,40 @@ function savedWorkspace(): Workspace {
   }
 }
 
+// The main content's zoom, changed with ⌘+, ⌘- and ⌘0; the sidebar and top bar stay as they are.
+const CONTENT_ZOOM_KEY = "content-zoom";
+const ZOOM_STEP = 0.1;
+const MIN_ZOOM = 0.7;
+const MAX_ZOOM = 2;
+
+function savedContentZoom(): number {
+  try {
+    const zoom = Number(localStorage.getItem(CONTENT_ZOOM_KEY));
+    return zoom >= MIN_ZOOM && zoom <= MAX_ZOOM ? zoom : 1;
+  } catch {
+    return 1;
+  }
+}
+
+// Who you last viewed each workspace as.
+const viewerKey = (workspace: Workspace): string => `viewer:${workspace}`;
+
+function savedViewer(workspace: Workspace): string | null {
+  try {
+    return localStorage.getItem(viewerKey(workspace));
+  } catch {
+    return null;
+  }
+}
+
+function remember(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Not remembered; it still applies for this session.
+  }
+}
+
 // Until the first load, or if the API isn't running.
 type Load = { state: "loading" } | { state: "failed"; error: string } | { state: "ready" };
 
@@ -78,11 +115,22 @@ function App(): React.JSX.Element {
   const [people, setPeople] = useState<Person[]>([]);
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [workspace, setWorkspace] = useState<Workspace>(savedWorkspace);
-  const api = createApi(workspace);
+  const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedWorkspace()));
+  const fallbackMe = useContext(MeContext);
+  // You view the app as the chosen person, or the workspace's first person until you pick one.
+  const me = people.find((person) => person.id === viewerId) ?? people[0] ?? fallbackMe;
+  const api = createApi(workspace, me);
+  const [viewAsOpen, setViewAsOpen] = useState(false);
+  const [contentZoom, setContentZoom] = useState(savedContentZoom);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--content-zoom", String(contentZoom));
+    remember(CONTENT_ZOOM_KEY, String(contentZoom));
+  }, [contentZoom]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [lastSeen, setLastSeen] = useState<Record<string, number>>({});
   const nowMs = useNow(60_000);
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
@@ -91,7 +139,8 @@ function App(): React.JSX.Element {
     threads
       .filter(
         (thread) =>
-          thread.id !== activeThreadId && lastActivityByOthers(thread) > (lastSeen[thread.id] ?? 0),
+          thread.id !== activeThreadId &&
+          lastActivityByOthers(thread, me) > (lastSeen[thread.id] ?? 0),
       )
       .map((thread) => thread.id),
   );
@@ -101,7 +150,8 @@ function App(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     let retry = 0;
-    const source = createApi(workspace);
+    // Reading needs no particular viewer.
+    const source = createApi(workspace, fallbackMe);
     const fetchAll = (): void => {
       Promise.all([source.threads(), source.people()]).then(
         ([loaded, team]) => {
@@ -130,20 +180,25 @@ function App(): React.JSX.Element {
       cancelled = true;
       window.clearTimeout(retry);
     };
-  }, [workspace]);
+  }, [workspace, fallbackMe]);
 
   // Switching between your data and the sample data starts fresh on the other set.
   const switchWorkspace = (next: Workspace): void => {
-    try {
-      localStorage.setItem(WORKSPACE_KEY, next);
-    } catch {
-      // Not remembered; it still switches for this session.
-    }
+    remember(WORKSPACE_KEY, next);
     setLoad({ state: "loading" });
     setThreads([]);
     setPeople([]);
     setActiveThreadId(null);
+    setViewerId(savedViewer(next));
     setWorkspace(next);
+  };
+
+  // Viewing as someone else shows the app from their side, with everything already seen.
+  const viewAs = (person: Person): void => {
+    setViewAsOpen(false);
+    remember(viewerKey(workspace), person.id);
+    setViewerId(person.id);
+    setLastSeen(Object.fromEntries(threads.map((thread) => [thread.id, thread.updatedAtMs])));
   };
 
   // Swaps in the server's copy of a thread after a change, adding it if it's new.
@@ -190,10 +245,23 @@ function App(): React.JSX.Element {
     void sync(api.createThread(draft)).then((thread) => openThread(thread.id));
   };
 
-  // ⌘K opens search; ⌘N starts a thread, matching the shortcut search shows for it.
+  // ⌘K opens search; ⌘N starts a thread, matching the shortcut search shows for it; ⌘U picks who to view as;
+  // ⌘+, ⌘- and ⌘0 zoom the main content.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (!event.metaKey || event.shiftKey || event.altKey) return;
+      if (!event.metaKey || event.altKey) return;
+      // ⌘+ is usually typed as ⌘= (with or without Shift).
+      const zoom = { "=": ZOOM_STEP, "+": ZOOM_STEP, "-": -ZOOM_STEP }[event.key];
+      if (zoom !== undefined || event.key === "0") {
+        event.preventDefault();
+        setContentZoom((current) =>
+          zoom === undefined
+            ? 1
+            : Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current + zoom)) * 10) / 10,
+        );
+        return;
+      }
+      if (event.shiftKey) return;
       const key = event.key.toLowerCase();
       if (key === "k") {
         event.preventDefault();
@@ -201,6 +269,11 @@ function App(): React.JSX.Element {
       } else if (key === "n") {
         event.preventDefault();
         openNew();
+      } else if (key === "u") {
+        event.preventDefault();
+        setSearchOpen(false);
+        setNewThreadKind(null);
+        setViewAsOpen(true);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -213,21 +286,8 @@ function App(): React.JSX.Element {
   };
 
   const actions: ThreadActions = {
-    // With no thread selected, the first message starts one, and it becomes the ask.
     onSend: (text) => {
-      if (activeThread === undefined) {
-        void sync(
-          api.createThread({
-            kind: "response",
-            text,
-            assignee: null,
-            invitees: [],
-            schedule: null,
-          }),
-        ).then((thread) => setActiveThreadId(thread.id));
-        return;
-      }
-      void sync(api.addEntry(activeThread.id, "message", text));
+      if (activeThread !== undefined) void sync(api.addEntry(activeThread.id, "message", text));
     },
     onResolve: (text) => {
       if (activeThread !== undefined) void sync(api.addEntry(activeThread.id, "resolution", text));
@@ -258,7 +318,7 @@ function App(): React.JSX.Element {
     );
 
   return (
-    <>
+    <MeContext value={me}>
       <div aria-hidden className="titlebar" />
       <DragRegionResync />
       {sidebarOpen && (
@@ -281,17 +341,38 @@ function App(): React.JSX.Element {
               <SearchButton onSearch={() => setSearchOpen(true)} />
             </>
           )}
-          <span className="topbar-title">{activeThread?.title ?? "New Thread"}</span>
+          <span className="topbar-title">{activeThread?.title}</span>
           <span className="topbar-end">
+            <button
+              type="button"
+              className="view-as-button"
+              aria-label={`Viewing as ${me.name}. Switch user`}
+              onClick={() => setViewAsOpen(true)}
+            >
+              <Identicon seed={me.id} size={14} />
+              <span>{me.name}</span>
+            </button>
             <DetailsToggle onToggle={() => setDetailsOpen((open) => !open)} />
           </span>
         </div>
-        <ThreadView
-          key={activeThread?.id ?? "new"}
-          thread={activeThread}
-          people={people}
-          actions={actions}
-        />
+        {activeThread === undefined ? (
+          <Welcome
+            me={me}
+            workspace={workspace}
+            todayCount={day.timeline.length + day.unscheduled.length}
+            nowMs={nowMs}
+            onNewThread={openNew}
+            onSearch={() => setSearchOpen(true)}
+            onViewAs={() => setViewAsOpen(true)}
+          />
+        ) : (
+          <ThreadView
+            key={activeThread.id}
+            thread={activeThread}
+            people={people}
+            actions={actions}
+          />
+        )}
       </main>
       {detailsOpen && <DetailsPanel thread={activeThread} nowMs={nowMs} />}
       {newThreadKind !== null && (
@@ -308,13 +389,26 @@ function App(): React.JSX.Element {
         <CommandPalette
           threads={threads}
           workspace={workspace}
+          me={me}
           onSwitchWorkspace={switchWorkspace}
+          onViewAs={() => {
+            setSearchOpen(false);
+            setViewAsOpen(true);
+          }}
           onNewThread={openNew}
           onOpenThread={openThread}
           onClose={() => setSearchOpen(false)}
         />
       )}
-    </>
+      {viewAsOpen && (
+        <ViewAsPalette
+          people={people}
+          me={me}
+          onPick={viewAs}
+          onClose={() => setViewAsOpen(false)}
+        />
+      )}
+    </MeContext>
   );
 }
 

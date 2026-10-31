@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, nativeTheme, systemPreferences } from "electron";
+import { app, shell, BrowserWindow, Menu, nativeTheme, systemPreferences } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
@@ -67,6 +67,26 @@ void app.whenReady().then(() => {
       NSTextInsertionPointBlinkPeriodOff: 0,
     });
   }
+
+  // The standard menus minus page zoom: ⌘+, ⌘- and ⌘0 go to the app, which zooms only the main content.
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      {
+        label: "View",
+        submenu: [
+          { role: "reload" },
+          { role: "forceReload" },
+          { role: "toggleDevTools" },
+          { type: "separator" },
+          { role: "togglefullscreen" },
+        ],
+      },
+      { role: "windowMenu" },
+    ]),
+  );
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

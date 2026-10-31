@@ -346,7 +346,7 @@ test("editEntry bookmarks a message as a decision, and only messages", async () 
   expect((await send("PATCH", `/threads/${id}/entries/nope`, { decision: true })).status).toBe(404);
 });
 
-test("the local workspace starts with just you; the sample workspace has the team and their threads", async () => {
+test("the local workspace starts with a few people and no threads; the sample workspace has the team and their threads", async () => {
   app = createApp({ now: () => clock, me: { id: "me", name: "You" } });
   const get = async (path: string, workspace?: string): Promise<unknown> =>
     (
@@ -355,7 +355,11 @@ test("the local workspace starts with just you; the sample workspace has the tea
       })
     ).json();
 
-  expect(await get("/users")).toEqual([{ id: "me", name: "You" }]);
+  expect(await get("/users")).toEqual([
+    { id: "anshu", name: "Anshu" },
+    { id: "arjun", name: "Arjun" },
+    { id: "kk", name: "KK" },
+  ]);
   expect(await get("/threads")).toEqual([]);
 
   const people = (await get("/users", "sample")) as { id: string }[];

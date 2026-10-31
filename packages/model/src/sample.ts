@@ -26,6 +26,15 @@ export function relationshipTo(person: Person): Relationship {
 // Threads with activity you haven't seen yet when the app opens.
 export const UNREAD_THREAD_IDS = ["headcount-plan", "headcount-review"];
 
+// The people the local workspace starts with, for trying the app as each of them. No threads yet.
+export function localPeople(): Person[] {
+  return [
+    { id: "anshu", name: "Anshu" },
+    { id: "arjun", name: "Arjun" },
+    { id: "kk", name: "KK" },
+  ];
+}
+
 // Everyone on the sample team, with you first.
 export function samplePeople(me: Person): Person[] {
   return [me, priya, daniel, jordan, sam, maya];

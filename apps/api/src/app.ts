@@ -2,6 +2,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
+  localPeople,
   PRIORITY_LABELS,
   samplePeople,
   sampleThreads,
@@ -75,14 +76,14 @@ function describeEdits(thread: Thread, edits: Edits, actor: Person): string[] {
   return lines;
 }
 
-// Each workspace is its own set of people and threads. The app starts on "local", which begins empty (just
-// you); "sample" is the demo team with their threads, for seeing the UX with data in it.
+// Each workspace is its own set of people and threads. "local" starts with a few people and no threads, for
+// trying the app as each of them; "sample" is the demo team with their threads, for seeing the UX with data in it.
 const WORKSPACES = ["local", "sample"] as const;
 export type Workspace = (typeof WORKSPACES)[number];
 
 export type AppOptions = {
   now?: () => number;
-  // Who runs the app: you're in both workspaces, and the sample threads are addressed to you.
+  // Who runs the app: seeds both workspaces, with the sample threads addressed to you.
   me?: Person;
 };
 
@@ -93,7 +94,7 @@ const emptyStore = (): Store => ({ people: new Map(), threads: new Map(), inboxe
 export function createApp({ now = Date.now, me }: AppOptions = {}) {
   const stores: Record<Workspace, Store> = { local: emptyStore(), sample: emptyStore() };
   if (me !== undefined) {
-    stores.local.people.set(me.id, me);
+    for (const person of localPeople()) stores.local.people.set(person.id, person);
     for (const person of samplePeople(me)) stores.sample.people.set(person.id, person);
     for (const thread of sampleThreads(me, now())) stores.sample.threads.set(thread.id, thread);
   }

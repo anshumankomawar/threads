@@ -1,6 +1,5 @@
 import type { Entry, Person, Thread } from "model";
 import type { NewThreadDraft } from "./components/NewThreadPalette";
-import { me } from "./me";
 
 // The local Hono API (apps/api). It keeps everything in memory.
 const BASE = "http://127.0.0.1:3030";
@@ -33,8 +32,8 @@ async function send<T>(
   return response.json() as Promise<T>;
 }
 
-// Requests against one workspace.
-export const createApi = (workspace: Workspace) => {
+// Requests against one workspace, made as `me`.
+export const createApi = (workspace: Workspace, me: Person) => {
   const request = <T>(method: string, path: string, body?: unknown): Promise<T> =>
     send<T>(workspace, method, path, body);
   return {

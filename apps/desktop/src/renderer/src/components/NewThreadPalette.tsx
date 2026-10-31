@@ -187,8 +187,9 @@ export function NewThreadPalette({
       const delta = event.key === "ArrowDown" ? 1 : -1;
       setSelected((selectedIndex + delta + options.length) % options.length);
     } else if (event.key === "Backspace" && filter.length === 0) {
+      // Holding Backspace clears the filter and stops there; a fresh press on the empty field steps back.
       event.preventDefault();
-      back();
+      if (!event.repeat) back();
     } else if (step === "invite") {
       const option = options[selectedIndex];
       // Space toggles the highlighted person, Enter moves on to picking a time.

@@ -1,4 +1,7 @@
 import type { Person } from "model";
+import { createContext, useContext } from "react";
 
-// The local user, as an author of messages.
-export const me: Person = { id: window.user.username, name: "You" };
+// Who you're viewing the app as. Starts as the local user; the View As palette switches it for testing.
+export const MeContext = createContext<Person>({ id: window.user.username, name: "You" });
+
+export const useMe = (): Person => useContext(MeContext);

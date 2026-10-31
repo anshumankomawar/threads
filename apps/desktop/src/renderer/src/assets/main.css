@@ -1428,3 +1428,123 @@ body * {
   color: var(--text-tertiary);
   text-align: center;
 }
+
+/* Who you're viewing the app as; opens the View As palette. */
+.view-as-button {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 22px;
+  margin-right: 4px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.view-as-button:hover {
+  color: var(--text-primary);
+}
+
+.palette-current {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--accent);
+}
+
+/* Welcome: the main view with no thread open, laid out where a thread's page would be. */
+.welcome {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  min-height: 0;
+  padding: 17.75px 15px 48px 52px;
+  overflow-y: auto;
+}
+
+.welcome-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.2px;
+}
+
+.welcome-summary {
+  margin: 2px 0 0;
+  color: var(--text-tertiary);
+}
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 360px);
+  margin-top: 24px;
+}
+
+.welcome-action {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  height: 30px;
+  margin-left: -8px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.welcome-action:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.welcome-action-icon {
+  display: flex;
+  color: var(--icon-tertiary);
+}
+
+.welcome-action:hover .welcome-action-icon {
+  color: var(--text-secondary);
+}
+
+.welcome-action-label {
+  flex: 1;
+}
+
+.welcome-shortcut {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.welcome-viewer {
+  margin-top: 20px;
+  padding: 0;
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.welcome-viewer:hover {
+  color: var(--text-secondary);
+}
+
+/* The main content zooms on its own (⌘+, ⌘-, ⌘0); the sidebar, top bar and palettes keep their size. */
+.thread-doc,
+.welcome {
+  zoom: var(--content-zoom, 1);
+}

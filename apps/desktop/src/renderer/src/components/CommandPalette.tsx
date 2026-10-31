@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Thread, ThreadKind } from "model";
+import type { Person, Thread, ThreadKind } from "model";
 import type { Workspace } from "../api";
 
 type Tab = "all" | ThreadKind;
@@ -41,14 +41,18 @@ type Section = { title: string; items: Item[] };
 export function CommandPalette({
   threads,
   workspace,
+  me,
   onSwitchWorkspace,
+  onViewAs,
   onNewThread,
   onOpenThread,
   onClose,
 }: {
   threads: Thread[];
   workspace: Workspace;
+  me: Person;
   onSwitchWorkspace: (workspace: Workspace) => void;
+  onViewAs: () => void;
   onNewThread: (kind: ThreadKind) => void;
   onOpenThread: (id: string) => void;
   onClose: () => void;
@@ -78,12 +82,18 @@ export function CommandPalette({
         run: run(() => onNewThread(action.kind)),
       })),
     },
-    // Flip between your own data and the demo team's.
+    // Who you're viewing as, and whose data: your own or the demo team's.
     ...(tab === "all"
       ? [
           {
             title: "Data",
             items: [
+              {
+                id: "view-as",
+                label: `View As… (${me.name})`,
+                shortcut: "⌘ U",
+                run: onViewAs,
+              },
               workspace === "local"
                 ? {
                     id: "workspace-sample",
