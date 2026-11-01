@@ -11,7 +11,6 @@ import {
   Link2,
   MicOff,
   Plus,
-  RotateCcw,
   Sparkles,
   Target,
   Video,
@@ -42,7 +41,15 @@ import {
   type Status,
   type Thread,
 } from "model";
-import { DAY, formatClock, formatDue, formatRelativeTime, startOfDay } from "../format";
+import {
+  DAY,
+  formatClock,
+  formatDue,
+  formatRelativeTime,
+  formatWhen,
+  parseWhen,
+  startOfDay,
+} from "../format";
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -59,8 +66,6 @@ type NotesEntry = Extract<Entry, { kind: "notes" }>;
 
 export type ThreadActions = {
   onSend: (text: string) => void;
-  onResolve: (text: string) => void;
-  onReopen: () => void;
   onSetStatus: (status: Status) => void;
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueAtMs: number | null) => void;
@@ -198,14 +203,24 @@ function MenuChip<T>({
   tone,
   options,
   onSelect,
+  typed,
 }: {
   label: string;
   icon?: React.ReactNode;
   tone?: string;
   options: { label: string; value: T; icon?: React.ReactNode }[];
   onSelect: (value: T) => void;
+  // A field at the top of the menu for typing a value in words, with what it reads as.
+  typed?: { placeholder: string; parse: (text: string) => { label: string; value: T } | null };
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const parsed = typed?.parse(text) ?? null;
+  const choose = (value: T): void => {
+    onSelect(value);
+    setOpen(false);
+    setText("");
+  };
   const rootRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -239,15 +254,30 @@ function MenuChip<T>({
       </button>
       {open && (
         <div className="chip-menu" role="menu">
+          {typed !== undefined && (
+            <input
+              className="chip-menu-input"
+              placeholder={typed.placeholder}
+              spellCheck={false}
+              autoFocus
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && parsed !== null) choose(parsed.value);
+              }}
+            />
+          )}
+          {parsed !== null && (
+            <div className="chip-menu-row" role="menuitem" onClick={() => choose(parsed.value)}>
+              {parsed.label}
+            </div>
+          )}
           {options.map((option) => (
             <div
               key={option.label}
               className="chip-menu-row"
               role="menuitem"
-              onClick={() => {
-                onSelect(option.value);
-                setOpen(false);
-              }}
+              onClick={() => choose(option.value)}
             >
               {option.icon}
               {option.label}
@@ -272,17 +302,15 @@ function ThreadHeader({
   nowMs,
   people,
   actions,
-  onMarkDone,
 }: {
   thread: Thread;
   ask: MessageEntry | undefined;
   nowMs: number;
   people: Person[];
   actions: ThreadActions;
-  onMarkDone: () => void;
 }): React.JSX.Element {
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
-  const statuses = (Object.keys(STATUS_LABELS) as Status[]).filter((status) => status !== "done");
+  const statuses = Object.keys(STATUS_LABELS) as Status[];
   const priorities = Object.keys(PRIORITY_LABELS) as Priority[];
   const priorityTone =
     thread.priority === "urgent" ? "urgent" : thread.priority === "none" ? "muted" : undefined;
@@ -352,33 +380,52 @@ function ThreadHeader({
         )}
       </div>
       <div className="thread-properties">
-        {thread.kind !== "meeting" &&
-          (thread.status === "done" ? (
-            <span className="chip" data-tone="static">
-              <StatusDot status="done" />
-              Done
-            </span>
-          ) : (
-            <MenuChip
-              label={STATUS_LABELS[thread.status]}
-              icon={<StatusDot status={thread.status} />}
-              options={statuses.map((status) => ({
-                label: STATUS_LABELS[status],
-                value: status,
-                icon: <StatusDot status={status} />,
-              }))}
-              onSelect={actions.onSetStatus}
-            />
-          ))}
-        <MenuChip
-          label={
-            thread.schedule === null ? "Not scheduled" : formatSchedule(thread.schedule, nowMs)
-          }
-          icon={<Clock {...ICON_PROPS} />}
-          tone={thread.schedule === null ? "muted" : undefined}
-          options={scheduleOptions(thread.schedule, nowMs)}
-          onSelect={actions.onSetSchedule}
-        />
+        {thread.kind !== "meeting" && (
+          <MenuChip
+            label={STATUS_LABELS[thread.status]}
+            icon={<StatusDot status={thread.status} />}
+            options={statuses.map((status) => ({
+              label: STATUS_LABELS[status],
+              value: status,
+              icon: <StatusDot status={status} />,
+            }))}
+            onSelect={actions.onSetStatus}
+          />
+        )}
+        {isResponse ? (
+          // A response's slot is set when it lands on someone's schedule, so it only shows here.
+          <span
+            className="chip"
+            data-tone="static"
+            title="Slotted into the schedule it's waiting on"
+          >
+            <Clock {...ICON_PROPS} />
+            {thread.schedule === null ? "No slot yet" : formatSchedule(thread.schedule, nowMs)}
+          </span>
+        ) : (
+          <MenuChip
+            label={
+              thread.schedule === null ? "Not scheduled" : formatSchedule(thread.schedule, nowMs)
+            }
+            icon={<Clock {...ICON_PROPS} />}
+            tone={thread.schedule === null ? "muted" : undefined}
+            options={scheduleOptions(thread.schedule, nowMs)}
+            onSelect={actions.onSetSchedule}
+            typed={{
+              placeholder: "Type a time…",
+              parse: (text) => {
+                const lengthMs =
+                  thread.schedule === null
+                    ? 30 * 60_000
+                    : thread.schedule.endMs - thread.schedule.startMs;
+                const when = parseWhen(text, nowMs, lengthMs);
+                return when === null
+                  ? null
+                  : { label: formatWhen(when.startMs, nowMs), value: when };
+              },
+            }}
+          />
+        )}
         {isResponse && (
           <>
             <MenuChip
@@ -398,17 +445,6 @@ function ThreadHeader({
               onSelect={actions.onSetDue}
             />
           </>
-        )}
-        {thread.status === "done" ? (
-          <button type="button" className="chip chip-action" onClick={actions.onReopen}>
-            <RotateCcw {...ICON_PROPS} />
-            Reopen
-          </button>
-        ) : (
-          <button type="button" className="chip chip-action" onClick={onMarkDone}>
-            <Check {...ICON_PROPS} />
-            Mark done
-          </button>
         )}
       </div>
       {description !== "" && (
@@ -635,29 +671,24 @@ function ReplyFocus({
   return null;
 }
 
-// The next message, written in place at the end of the thread. Enter sends, Shift+Enter breaks the line;
-// in resolve mode the text becomes the resolution note and Escape backs out.
+// The next message, written in place at the end of the thread. Enter sends, Shift+Enter breaks the line.
 function ReplyBlock({
   placeholder,
-  resolving,
   focusRef,
   onSubmit,
-  onCancel,
   onBranch,
   threadId,
 }: {
   threadId: string;
   placeholder: string;
-  resolving: boolean;
   focusRef: React.RefObject<(() => void) | null>;
   onSubmit: (text: string) => void;
-  onCancel: () => void;
   onBranch: ThreadActions["onBranch"];
 }): React.JSX.Element {
   const me = useMe();
-  const handlersRef = useRef({ onSubmit, onCancel });
+  const handlersRef = useRef({ onSubmit });
   useEffect(() => {
-    handlersRef.current = { onSubmit, onCancel };
+    handlersRef.current = { onSubmit };
   });
 
   const editor = useEditor({
@@ -673,10 +704,6 @@ function ReplyBlock({
       handleKeyDown: (view, event) => {
         // The `#` menu, when open, gets keys first.
         if (offerKey(view.dom, event)) return true;
-        if (event.key === "Escape") {
-          handlersRef.current.onCancel();
-          return false;
-        }
         if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
         // Thread links go out as `[[thread:<id>]]`.
         const text = view.state.doc
@@ -736,11 +763,10 @@ function ReplyBlock({
   return (
     <div className="thread-block" onClick={() => editor?.commands.focus()}>
       <ReplyFocus editor={editor} focusRef={focusRef} />
-      {resolving ? <ResolutionMarker /> : <Avatar person={me} />}
+      <Avatar person={me} />
       <div className="thread-body">
         <div className="thread-meta">
-          <span className="thread-author">{resolving ? "Resolve" : me.name}</span>
-          {resolving && <span className="thread-time">Enter to mark done · Esc to cancel</span>}
+          <span className="thread-author">{me.name}</span>
         </div>
         <EditorContent editor={editor} className="thread-reply" />
       </div>
@@ -853,7 +879,6 @@ export function ThreadView({
   const docRef = useRef<HTMLElement>(null);
   const focusReplyRef = useRef<(() => void) | null>(null);
   const nowMs = useNow(60_000);
-  const [resolving, setResolving] = useState(false);
   const me = useMe();
   const entries = thread.entries;
   // The opening message moves into the header: a response's ask, a meeting's agenda, a focus block's note. Only the
@@ -987,13 +1012,8 @@ export function ThreadView({
       (entry.kind === "message" || entry.kind === "resolution") && entryPerson(entry)?.id !== me.id,
   ).length;
 
-  const placeholder = resolving
-    ? "How was this resolved?"
-    : thread.kind === "meeting"
-      ? "Add notes…"
-      : thread.kind === "focus"
-        ? "Add a note…"
-        : "Reply…";
+  const placeholder =
+    thread.kind === "meeting" ? "Add notes…" : thread.kind === "focus" ? "Add a note…" : "Reply…";
 
   // Clicking empty space in the thread, including below the last block, puts the cursor in the reply.
   const onBackgroundMouseDown = (event: React.MouseEvent): void => {
@@ -1023,7 +1043,6 @@ export function ThreadView({
               nowMs={nowMs}
               people={people}
               actions={actions}
-              onMarkDone={() => setResolving(true)}
             />
             {rest.map((entry, index) => {
               if (entry.kind === "message")
@@ -1051,19 +1070,10 @@ export function ThreadView({
               return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
             })}
             <ReplyBlock
-              key={`${thread.id}-${resolving ? "resolve" : "reply"}`}
+              key={thread.id}
               placeholder={placeholder}
-              resolving={resolving}
               focusRef={focusReplyRef}
-              onSubmit={(text) => {
-                if (resolving) {
-                  actions.onResolve(text);
-                  setResolving(false);
-                } else {
-                  actions.onSend(text);
-                }
-              }}
-              onCancel={() => setResolving(false)}
+              onSubmit={actions.onSend}
               onBranch={actions.onBranch}
               threadId={thread.id}
             />

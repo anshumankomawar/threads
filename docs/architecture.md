@@ -59,7 +59,8 @@ Data is normalized into flat records linked by id, like database rows:
 
 - **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree).
 - **Thread**: one ask, meeting or focus block. References people by id: `requesterId`, `assigneeId`,
-  `attendeeIds`. Has `status`, `priority`, `dueAtMs`, `schedule`, `createdAtMs`, `updatedAtMs`.
+  `attendeeIds`. Has `status` (`open`, `blocked`, `closed`), `priority`, `dueAtMs`, `schedule`, `createdAtMs`,
+  `updatedAtMs`.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
   `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
 
@@ -159,6 +160,17 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - A branch is an ordinary `response` thread with `branchedFromId` set, between the same people as its parent
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
+
+## Inbox, outbox and slots
+
+- A response is waiting on one person (`waitingOn` in `model.ts`, `Batch.waitingOn` on the server): the assignee,
+  until the assignee writes, then whoever asked. That person has it in their inbox; the other has it in their outbox.
+- Each time a response lands with someone (it's made, a reply hands it over, it's reassigned), the server gives it a
+  `schedule` slot on their schedule: `randomSlot` in `engine.ts`, a random half hour in working hours within three
+  days, standing in for real scheduling. Clients can't set a response's slot; meetings and focus blocks keep theirs.
+- `buildDay` in `inbox.ts` lays this out: a response waiting on you is on the timeline on its slot's day and in your
+  inbox until then; responses waiting on others are the outbox. The schedule can step to other days (`dayMs`).
+- Closing is a status change; nothing else closes a thread.
 
 ## How to make common changes
 

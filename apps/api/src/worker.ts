@@ -134,6 +134,7 @@ export class Workspace extends DurableObject<Env> {
     engine.load(rows, lastSyncId);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME, utcOffsetMinutes);
     refreshSeedPeople(engine, name, SAMPLE_ME);
+    engine.fillMissingSlots(utcOffsetMinutes);
     this.#engine = engine;
     return engine;
   }

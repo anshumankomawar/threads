@@ -163,7 +163,12 @@ const App = observer(function App(): React.JSX.Element {
   const [lastSeen, setLastSeen] = useState<Record<string, number>>({});
   const nowMs = useNow(60_000);
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
-  const day = buildDay(threads, me, relationshipTo, nowMs);
+  // The day the schedule shows, as days from today.
+  const [dayOffset, setDayOffset] = useState(0);
+  const shownDay = new Date(nowMs);
+  shownDay.setHours(0, 0, 0, 0);
+  shownDay.setDate(shownDay.getDate() + dayOffset);
+  const day = buildDay(threads, me, relationshipTo, nowMs, shownDay.getTime());
   const seenAt = (thread: Thread): number =>
     lastSeen[thread.id] ?? (UNREAD_THREAD_IDS.includes(thread.id) ? 0 : client.readyAtMs);
   const unreadIds = new Set(
@@ -330,8 +335,6 @@ const App = observer(function App(): React.JSX.Element {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
       onSend: (text) => client.addEntry(thread.id, "message", text, me),
-      onResolve: (text) => client.addEntry(thread.id, "resolution", text, me),
-      onReopen: () => edit({ status: "open" }),
       onSetStatus: (status) => edit({ status }),
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
@@ -397,6 +400,7 @@ const App = observer(function App(): React.JSX.Element {
             onToggleOrg={() => (orgOpen ? setOrgOpen(false) : openOrg())}
             onToggle={toggleSidebar}
             onSearch={() => setSearchOpen(true)}
+            onShiftDay={(days) => setDayOffset((offset) => (days === null ? 0 : offset + days))}
           />
         )}
         <main className="main">

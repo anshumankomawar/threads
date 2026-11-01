@@ -25,9 +25,9 @@
   --accent-fill: #1f252c;
 
   /* Task status colors (from Cursor Dark's palette) and urgency. */
-  --status-progress: oklch(0.811 0.118 71.255);
   --status-waiting: oklch(0.681 0.131 252.629);
-  --status-done: oklch(0.713 0.094 155.438);
+  --status-blocked: oklch(0.75 0.15 45);
+  --status-closed: oklch(0.713 0.094 155.438);
   --urgent: oklch(0.712 0.177 12.651);
 }
 
@@ -676,6 +676,19 @@ body * {
   background-color: var(--panel-selected);
 }
 
+.chip-menu-input {
+  height: 26px;
+  margin: 0 4px 4px;
+  padding: 0 6px;
+  border: none;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  outline: none;
+}
+
 /* Status: a hollow ring while open, filled colors as work moves along. */
 .status-dot {
   flex-shrink: 0;
@@ -685,19 +698,14 @@ body * {
   border-radius: 50%;
 }
 
-.status-dot[data-status="in_progress"] {
-  border-color: var(--status-progress);
-  background-color: var(--status-progress);
+.status-dot[data-status="blocked"] {
+  border-color: var(--status-blocked);
+  background-color: var(--status-blocked);
 }
 
-.status-dot[data-status="waiting"] {
-  border-color: var(--status-waiting);
-  background-color: var(--status-waiting);
-}
-
-.status-dot[data-status="done"] {
-  border-color: var(--status-done);
-  background-color: var(--status-done);
+.status-dot[data-status="closed"] {
+  border-color: var(--status-closed);
+  background-color: var(--status-closed);
 }
 
 .thread-ask-arrow {
@@ -739,12 +747,12 @@ body * {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: var(--status-done);
-  background-color: color-mix(in srgb, var(--status-done) 18%, transparent);
+  color: var(--status-closed);
+  background-color: color-mix(in srgb, var(--status-closed) 18%, transparent);
 }
 
 .thread-resolution .thread-author {
-  color: var(--status-done);
+  color: var(--status-closed);
 }
 
 /* Inbox: Now / Today / Later groups, labels aligned with the row text. */
@@ -796,7 +804,54 @@ body * {
   font-size: 11px;
 }
 
+.schedule-date-label {
+  padding: 0;
+  border: none;
+  color: inherit;
+  font: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.schedule-date-label:disabled {
+  cursor: default;
+}
+
+.schedule-date-label:not(:disabled):hover {
+  color: var(--text-primary);
+}
+
+/* Day arrows: quiet until the schedule is hovered. */
+.schedule-date-nav {
+  display: flex;
+  margin-left: auto;
+  opacity: 0;
+}
+
+.sidebar-section:hover .schedule-date-nav,
+.schedule-date-nav:focus-within {
+  opacity: 1;
+}
+
+.schedule-date-nav .icon-button {
+  width: 18px;
+  height: 18px;
+  color: var(--text-tertiary);
+}
+
+.schedule-date-nav .icon-button:hover {
+  color: var(--text-primary);
+}
+
 /* Day timeline: hour headings with a hairline, earlier hours and finished blocks dimmed. */
+/* The day's hours scroll inside a fixed height. */
+.timeline-scroll {
+  position: relative;
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
 .timeline-hour {
   display: flex;
   align-items: center;

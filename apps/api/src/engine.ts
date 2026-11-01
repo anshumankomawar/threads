@@ -16,6 +16,7 @@ import {
   type ModelName,
   type ModelRecords,
   type Person,
+  type Schedule,
   type SyncAction,
   type Thread,
   type ThreadChanges,
@@ -92,6 +93,52 @@ class Batch {
   put<Name extends ModelName>(modelName: Name, record: ModelRecords[Name]): void {
     this.writes.set(`${modelName}:${record.id}`, { modelName, id: record.id, data: record });
   }
+
+  // Who wrote a thread's latest message, counting staged writes.
+  lastMessageAuthor(threadId: string): string | undefined {
+    let latest: { authorId: string; createdAtMs: number } | undefined;
+    const consider = (entry: AnyRecord | null | undefined): void => {
+      if (entry === null || entry === undefined || !("kind" in entry) || entry.kind !== "message")
+        return;
+      if (entry.threadId !== threadId) return;
+      if (latest === undefined || entry.createdAtMs >= latest.createdAtMs) latest = entry;
+    };
+    for (const entry of this.#models.Entry.values())
+      if (!this.writes.has(`Entry:${entry.id}`)) consider(entry);
+    for (const write of this.writes.values()) if (write.modelName === "Entry") consider(write.data);
+    return latest?.authorId;
+  }
+
+  // Whose inbox a response is in, the same rule as `waitingOn` in the model.
+  waitingOn(threadId: string): string | null {
+    const thread = this.get("Thread", threadId);
+    if (thread === undefined || thread.kind !== "response") return null;
+    if (thread.assigneeId === null) return thread.requesterId;
+    return this.lastMessageAuthor(threadId) === thread.assigneeId
+      ? thread.requesterId
+      : thread.assigneeId;
+  }
+}
+
+const SLOT_MS = 30 * 60_000;
+const SLOT_WINDOW_MS = 3 * 24 * 60 * 60_000;
+
+// A random half-hour slot in working hours (9 to 6, in the given time zone) within the next three days: where a
+// response lands on the schedule of whoever it's waiting on. Random for now, to stand in for real scheduling.
+export function randomSlot(nowMs: number, offsetMinutes: number, random: () => number): Schedule {
+  const offsetMs = offsetMinutes * 60_000;
+  const slots: number[] = [];
+  for (
+    let start = Math.ceil(nowMs / SLOT_MS) * SLOT_MS;
+    start + SLOT_MS <= nowMs + SLOT_WINDOW_MS;
+    start += SLOT_MS
+  ) {
+    const hour = new Date(start + offsetMs).getUTCHours();
+    if (hour >= 9 && hour < 18) slots.push(start);
+  }
+  const startMs =
+    slots[Math.floor(random() * slots.length)] ?? Math.ceil(nowMs / SLOT_MS) * SLOT_MS;
+  return { startMs, endMs: startMs + SLOT_MS };
 }
 
 // --- Validation -------------------------------------------------------------------------------------------
@@ -115,7 +162,7 @@ const threadChanges = z
   .strictObject({
     title: z.string().trim().min(1).max(200),
     assigneeId: id,
-    status: z.enum(["open", "in_progress", "waiting", "done"]),
+    status: z.enum(["open", "blocked", "closed"]),
     priority: z.enum(["none", "low", "medium", "high", "urgent"]),
     dueAtMs: z.number().int().nullable(),
     schedule: schedule.nullable(),
@@ -177,7 +224,7 @@ function describeChanges(
     lines.push(`renamed this to “${changes.title}”`);
   if (changes.status !== undefined && changes.status !== thread.status)
     lines.push(
-      thread.status === "done" && changes.status === "open"
+      thread.status === "closed" && changes.status === "open"
         ? "reopened this"
         : `changed status to ${STATUS_LABELS[changes.status]}`,
     );
@@ -214,8 +261,18 @@ function describeChanges(
 
 // --- Engine -----------------------------------------------------------------------------------------------
 
+// The threads a transaction can change the turn of.
+function touchedThreads(transaction: TransactionInput): string[] {
+  if (transaction.type === "create")
+    return [transaction.modelName === "Thread" ? transaction.data.id : transaction.data.threadId];
+  if (transaction.type === "update") return [transaction.modelId];
+  return [];
+}
+
 export type EngineOptions = {
   now?: () => number;
+  // Picks response slots; injectable so tests are repeatable.
+  random?: () => number;
   storage?: EngineStorage;
   // Called after each committed batch with its sync actions, to broadcast them as a delta packet.
   onActions?: (actions: SyncAction[]) => void;
@@ -228,11 +285,18 @@ export class SyncEngine {
   readonly models = emptyModels();
   lastSyncId = 0;
   readonly #now: () => number;
+  readonly #random: () => number;
   readonly #storage: EngineStorage;
   onActions: ((actions: SyncAction[]) => void) | undefined;
 
-  constructor({ now = Date.now, storage = memoryStorage(), onActions }: EngineOptions = {}) {
+  constructor({
+    now = Date.now,
+    random = Math.random,
+    storage = memoryStorage(),
+    onActions,
+  }: EngineOptions = {}) {
     this.#now = now;
+    this.#random = random;
     this.#storage = storage;
     this.onActions = onActions;
   }
@@ -288,8 +352,21 @@ export class SyncEngine {
     const nowMs = this.#now();
     return this.write(
       (batch) => {
-        for (const transaction of fresh)
+        for (const transaction of fresh) {
+          // A response that lands in someone's inbox (made, replied to, reassigned) gets a slot on their schedule.
+          const threadIds = touchedThreads(transaction);
+          const before = threadIds.map((threadId) => batch.waitingOn(threadId));
           this.#apply(batch, actor, transaction, nowMs, utcOffsetMinutes);
+          threadIds.forEach((threadId, index) => {
+            const after = batch.waitingOn(threadId);
+            const thread = batch.get("Thread", threadId);
+            if (after === null || after === before[index] || thread === undefined) return;
+            batch.put("Thread", {
+              ...thread,
+              schedule: randomSlot(nowMs, utcOffsetMinutes, this.#random),
+            });
+          });
+        }
       },
       fresh.map((transaction) => transaction.id),
     );
@@ -370,7 +447,7 @@ export class SyncEngine {
       batch.put("Entry", entryFromCreate(data, actor.id, nowMs));
       batch.put("Thread", {
         ...thread,
-        status: data.kind === "resolution" ? "done" : thread.status,
+        status: data.kind === "resolution" ? "closed" : thread.status,
         updatedAtMs: nowMs,
       });
       return;
@@ -379,6 +456,8 @@ export class SyncEngine {
     const thread = batch.get("Thread", transaction.modelId);
     if (thread === undefined) throw new EngineError(404, "Thread not found");
     const { changes } = transaction;
+    if (thread.kind === "response" && changes.schedule !== undefined)
+      throw new EngineError(400, "A response's slot comes from the schedule it lands on");
     if (changes.assigneeId !== undefined && changes.assigneeId !== null)
       requirePerson(changes.assigneeId);
     const lines = describeChanges(thread, changes, actor, person, offsetMinutes);
@@ -394,6 +473,24 @@ export class SyncEngine {
         createdAtMs: nowMs,
       }),
     );
+  }
+
+  // Gives a slot to any open response that's waiting on someone but has none, such as one made before slots.
+  fillMissingSlots(offsetMinutes = 0): void {
+    const missing = [...this.models.Thread.values()].filter(
+      (thread) =>
+        thread.kind === "response" && thread.status !== "closed" && thread.schedule === null,
+    );
+    if (missing.length === 0) return;
+    const nowMs = this.#now();
+    this.write((batch) => {
+      for (const thread of missing)
+        if (batch.waitingOn(thread.id) !== null)
+          batch.put("Thread", {
+            ...thread,
+            schedule: randomSlot(nowMs, offsetMinutes, this.#random),
+          });
+    });
   }
 
   // --- Reads ---

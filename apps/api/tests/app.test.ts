@@ -1,7 +1,8 @@
-import type { SyncAction, Thread, TransactionInput } from "model";
+import type { SyncAction, Thread, ThreadRecord, TransactionInput } from "model";
 import { toThreads } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
+import { SyncEngine } from "../src/engine.ts";
 
 // A fixed clock: Monday 2026-11-02, 08:00 UTC.
 const NOW = Date.UTC(2026, 10, 2, 8);
@@ -9,10 +10,13 @@ const at = (hour: number, minute = 0): number => Date.UTC(2026, 10, 2, hour, min
 
 let app: ReturnType<typeof createApp>;
 let clock: number;
+// Where in the list of open slots a response lands: 0 is the first, just under 1 the last.
+let dice: number;
 
 beforeEach(() => {
   clock = NOW;
-  app = createApp({ now: () => clock });
+  dice = 0;
+  app = createApp({ now: () => clock, random: () => dice });
 });
 
 type Bootstrap = {
@@ -163,19 +167,19 @@ test("a focus block is the creator's own work", async () => {
 test("updates record an activity line for each real change, in the actor's words", async () => {
   await transact("anshu", [createThread("t1"), message("m1", "t1")]);
   clock = NOW + 1000;
-  await transact("arjun", [update("t1", { status: "in_progress", priority: "high" })]);
-  await transact("arjun", [update("t1", { status: "in_progress" })]);
+  await transact("arjun", [update("t1", { status: "blocked", priority: "high" })]);
+  await transact("arjun", [update("t1", { status: "blocked" })]);
   await transact("arjun", [update("t1", { assigneeId: "arjun" })]);
   await transact("arjun", [update("t1", { assigneeId: "kk" })]);
   const result = await thread("t1");
   expect(result).toMatchObject({
-    status: "in_progress",
+    status: "blocked",
     priority: "high",
     updatedAtMs: NOW + 1000,
   });
   expect(
     result?.entries.filter((entry) => entry.kind === "event").map((entry) => entry.text),
-  ).toEqual(["changed status to In progress", "set priority to High", "assigned this to KK"]);
+  ).toEqual(["changed status to Blocked", "set priority to High", "assigned this to KK"]);
 });
 
 test("a resolution closes the thread, and reopening says so", async () => {
@@ -188,7 +192,7 @@ test("a resolution closes the thread, and reopening says so", async () => {
       data: { id: "r1", threadId: "t1", kind: "resolution", text: "Shipped" },
     },
   ]);
-  expect((await thread("t1"))?.status).toBe("done");
+  expect((await thread("t1"))?.status).toBe("closed");
   await transact("anshu", [update("t1", { status: "open" })]);
   expect((await thread("t1"))?.entries.at(-1)).toMatchObject({
     kind: "event",
@@ -197,7 +201,7 @@ test("a resolution closes the thread, and reopening says so", async () => {
 });
 
 test("activity lines read in the actor's time zone", async () => {
-  await transact("anshu", [createThread("t1")]);
+  await transact("anshu", [createThread("t1", { kind: "focus", assigneeId: null })]);
   await transact(
     "anshu",
     [update("t1", { schedule: { startMs: at(17), endMs: at(17, 30) } })],
@@ -239,8 +243,8 @@ test.each([
     404,
   ],
   ["a duplicate thread id", "anshu", [createThread("t1")], 409],
-  ["a misspelled field", "anshu", [update("t1", { statuss: "done" })], 400],
-  ["a bad status", "anshu", [update("t1", { status: "closed" })], 400],
+  ["a misspelled field", "anshu", [update("t1", { statuss: "closed" })], 400],
+  ["a bad status", "anshu", [update("t1", { status: "finished" })], 400],
   ["a backwards schedule", "anshu", [update("t1", { schedule: { startMs: 2, endMs: 1 } })], 400],
 ])("rejects %s", async (_, actorId, transactions, status) => {
   await transact("anshu", [createThread("t1")]);
@@ -311,4 +315,62 @@ test("messages move to another thread, leaving an activity line where they were"
   // Not into a thread the message links to.
   await transact("anshu", [message("m4", "t1", "See [[thread:t2]]")]);
   expect((await transact("anshu", [move(["m4"], "t2")])).status).toBe(400);
+});
+
+test("a response gets a slot on the schedule of whoever it's waiting on, each time that changes", async () => {
+  // First open slot: 9:00 at UTC−7 is 16:00 UTC.
+  await transact("anshu", [createThread("t1"), message("m1", "t1")], -420);
+  expect((await thread("t1"))?.schedule).toEqual({ startMs: at(16), endMs: at(16, 30) });
+
+  // Anshu writing again leaves it with Arjun, in the same slot.
+  dice = 0.5;
+  await transact("anshu", [message("m2", "t1", "Any update?")], -420);
+  expect((await thread("t1"))?.schedule?.startMs).toBe(at(16));
+
+  // Arjun's reply sends it back to Anshu, in a new slot: working hours, within three days.
+  dice = 0.999;
+  await transact("arjun", [message("m3", "t1", "Done")], -420);
+  const slot = (await thread("t1"))?.schedule;
+  expect(slot).not.toBeNull();
+  expect(slot!.startMs).toBeGreaterThan(at(16));
+  expect(slot!.endMs).toBeLessThanOrEqual(NOW + 3 * 24 * 60 * 60_000);
+  expect(new Date(slot!.startMs - 420 * 60_000).getUTCHours()).toBeGreaterThanOrEqual(9);
+  expect(new Date(slot!.startMs - 420 * 60_000).getUTCHours()).toBeLessThan(18);
+
+  // Nobody sets a response's slot by hand.
+  const manual = await transact("anshu", [
+    update("t1", { schedule: { startMs: at(18), endMs: at(18, 30) } }),
+  ]);
+  expect(manual.status).toBe(400);
+});
+
+test("open responses from before slots get one when the workspace loads", () => {
+  const engine = new SyncEngine({ now: () => NOW, random: () => 0 });
+  const thread: ThreadRecord = {
+    id: "t1",
+    kind: "response",
+    title: "Old ask",
+    requesterId: "arjun",
+    assigneeId: "anshu",
+    attendeeIds: [],
+    status: "open",
+    priority: "none",
+    dueAtMs: null,
+    schedule: null,
+    branchedFromId: null,
+    createdAtMs: NOW,
+    updatedAtMs: NOW,
+  };
+  engine.load(
+    [
+      { modelName: "Person", data: { id: "anshu", name: "Anshu" } },
+      { modelName: "Person", data: { id: "arjun", name: "Arjun" } },
+      { modelName: "Thread", data: thread },
+      { modelName: "Thread", data: { ...thread, id: "t2", status: "closed" } },
+    ],
+    4,
+  );
+  engine.fillMissingSlots();
+  expect(engine.models.Thread.get("t1")?.schedule).toEqual({ startMs: at(9), endMs: at(9, 30) });
+  expect(engine.models.Thread.get("t2")?.schedule).toBeNull();
 });

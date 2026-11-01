@@ -198,7 +198,7 @@ export function sampleThreads(
       {
         requester: jordan,
         assignee: me,
-        status: "in_progress",
+        status: "open",
         priority: "medium",
         dueAtMs: nowMs + DAY,
         schedule: block(todayAt(clock, 14), 30),
@@ -234,7 +234,7 @@ export function sampleThreads(
       {
         requester: priya,
         assignee: daniel,
-        status: "waiting",
+        status: "blocked",
         priority: "high",
         dueAtMs: nextWeekday(clock, 4, 17),
       },
@@ -274,7 +274,7 @@ export function sampleThreads(
       {
         requester: jordan,
         assignee: sam,
-        status: "done",
+        status: "closed",
         priority: "urgent",
         dueAtMs: nowMs + 18 * HOUR,
       },
@@ -452,7 +452,7 @@ export function sampleThreads(
       {
         requester: priya,
         assignee: me,
-        status: "waiting",
+        status: "blocked",
         priority: "high",
         dueAtMs: nowMs + 3 * DAY,
         schedule: block(todayAt(clock, 15), 60),
@@ -525,7 +525,7 @@ export function sampleThreads(
       {
         requester: jordan,
         assignee: me,
-        status: "in_progress",
+        status: "open",
         priority: "urgent",
         dueAtMs: todayAt(clock, 23),
       },

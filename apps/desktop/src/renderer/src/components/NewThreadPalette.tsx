@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { formatClock, startOfDay, DAY } from "../format";
+import { formatClock, formatWhen, parseWhen, startOfDay, DAY } from "../format";
 import { Check } from "lucide-react";
 import type { Person, Schedule, ThreadKind } from "model";
 import { Identicon } from "./Identicon";
@@ -111,9 +111,26 @@ export function NewThreadPalette({
     person,
     value: person,
   }));
-  const options = (step === "invite" ? inviteOptions : pickOptions).filter((option) =>
-    matches(option.label),
-  );
+  // A time typed in words ("fri 3pm", "tomorrow 10:30 for 45m") comes first when picking when.
+  const lengthMs = (kind === "focus" ? 60 : 30) * 60_000;
+  const typed = step === "pick" && kind !== "response" ? parseWhen(filter, nowMs, lengthMs) : null;
+  const typedOption: Option[] =
+    typed === null
+      ? []
+      : [
+          {
+            id: "typed",
+            label: formatWhen(typed.startMs, nowMs),
+            hint: `${Math.round((typed.endMs - typed.startMs) / 60_000)} min`,
+            value: typed,
+          },
+        ];
+  const options = [
+    ...typedOption,
+    ...(step === "invite" ? inviteOptions : pickOptions).filter(
+      (option) => typed !== null || matches(option.label),
+    ),
+  ];
   const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));
   const title = text.trim().split("\n")[0];
   const isInvited = (person: Person): boolean =>
@@ -219,7 +236,7 @@ export function NewThreadPalette({
         ? "Invite people…"
         : kind === "response"
           ? "Assign to…"
-          : "When…";
+          : "When… (fri 3pm, tomorrow 10:30 for 45m)";
   const summary = step === "invite" ? "Invite to" : kind === "response" ? "Assign" : "Schedule";
   const nextLabel = (): string => {
     if (text.trim().length === 0) {

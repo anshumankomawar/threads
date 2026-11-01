@@ -11,14 +11,13 @@ export type Person = {
   managerId?: string;
 };
 
-export type Status = "open" | "in_progress" | "waiting" | "done";
+export type Status = "open" | "blocked" | "closed";
 export type Priority = "none" | "low" | "medium" | "high" | "urgent";
 
 export const STATUS_LABELS: Record<Status, string> = {
   open: "Open",
-  in_progress: "In progress",
-  waiting: "Waiting",
-  done: "Done",
+  blocked: "Blocked",
+  closed: "Closed",
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = {

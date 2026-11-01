@@ -1,6 +1,8 @@
 import {
   CalendarDays,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Ellipsis,
   MessageSquare,
   Plus,
@@ -176,22 +178,37 @@ function ThreadRow({
   );
 }
 
-// Your day: hour headings with today's scheduled threads under them and a line at the current time.
-// Unscheduled and Later are hidden for now.
+// A day: hour headings with that day's scheduled threads under them, and on today a line at the current time.
+// The arrows step a day back or forward; the date goes back to today.
 function DayView({
   day,
   nowMs,
   activeThreadId,
   unreadIds,
   onOpenThread,
+  onShiftDay,
 }: {
   day: Day;
   nowMs: number;
   activeThreadId: string | null;
   unreadIds: Set<string>;
   onOpenThread: (id: string) => void;
+  onShiftDay: (days: number | null) => void;
 }): React.JSX.Element {
-  const nowHour = new Date(nowMs).getHours();
+  const today = new Date(nowMs);
+  today.setHours(0, 0, 0, 0);
+  const isToday = day.dayMs === today.getTime();
+  // Before today every hour has passed; after it, none has.
+  const nowHour = isToday ? new Date(nowMs).getHours() : day.dayMs < today.getTime() ? 24 : -1;
+
+  // The whole day scrolls in a fixed height; opening a day brings the current hour (or 9 AM on other days) to the top.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const focusHour = isToday ? Math.max(0, new Date(nowMs).getHours() - 1) : 9;
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    const hour = scroller?.querySelector<HTMLElement>(`[data-hour="${focusHour}"]`);
+    if (scroller && hour) scroller.scrollTop = hour.offsetTop - scroller.offsetTop;
+  }, [day.dayMs, focusHour]);
   const row = (item: InboxItem, label: string | null, past = false): React.JSX.Element => (
     <ThreadRow
       key={item.thread.id}
@@ -214,17 +231,22 @@ function DayView({
     (_, i) => day.startHour + i,
   );
   const timeline: React.JSX.Element[] = [];
-  if (nowHour < day.startHour) timeline.push(nowLine);
+  if (isToday && nowHour < day.startHour) timeline.push(nowLine);
   for (const hour of hours) {
     timeline.push(
-      <li key={`hour-${hour}`} className="timeline-hour" data-past={hour < nowHour}>
+      <li
+        key={`hour-${hour}`}
+        className="timeline-hour"
+        data-past={hour < nowHour}
+        data-hour={hour}
+      >
         <span>{formatHour(hour)}</span>
       </li>,
     );
     const items = day.timeline.filter(
       (item) => new Date(item.thread.schedule?.startMs ?? 0).getHours() === hour,
     );
-    let nowShown = hour !== nowHour;
+    let nowShown = !isToday || hour !== nowHour;
     for (const item of items) {
       const schedule = item.thread.schedule;
       if (schedule === null) continue;
@@ -236,40 +258,72 @@ function DayView({
     }
     if (!nowShown) timeline.push(nowLine);
   }
-  if (nowHour > day.endHour) timeline.push(nowLine);
+  if (isToday && nowHour > day.endHour) timeline.push(nowLine);
 
   return (
     <>
       <div className="schedule-date">
-        {new Date(nowMs).toLocaleDateString(undefined, {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-        })}
+        <button
+          type="button"
+          className="schedule-date-label"
+          title={isToday ? undefined : "Back to today"}
+          disabled={isToday}
+          onClick={() => onShiftDay(null)}
+        >
+          {new Date(day.dayMs).toLocaleDateString(undefined, {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+          })}
+        </button>
+        <span className="schedule-date-nav">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Previous day"
+            onClick={() => onShiftDay(-1)}
+          >
+            <ChevronLeft {...ICON_PROPS} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Next day"
+            onClick={() => onShiftDay(1)}
+          >
+            <ChevronRight {...ICON_PROPS} />
+          </button>
+        </span>
       </div>
-      <ul className="thread-list timeline" aria-label="Today">
-        {timeline}
-      </ul>
+      <div ref={scrollRef} className="timeline-scroll">
+        <ul className="thread-list timeline" aria-label="Day">
+          {timeline}
+        </ul>
+      </div>
     </>
   );
 }
 
-// What needs addressing but has no time on the timeline: threads waiting on you, labelled with who they're from, and
-// focus blocks you haven't planned.
+// A list of threads labelled with a person: the inbox (what's waiting on you, by who it's from) or the outbox (what
+// you're waiting on, by who has it).
 function InboxList({
+  label,
+  empty,
   items,
   activeThreadId,
   unreadIds,
   onOpenThread,
 }: {
+  label: string;
+  empty: string;
   items: InboxItem[];
   activeThreadId: string | null;
   unreadIds: Set<string>;
   onOpenThread: (id: string) => void;
 }): React.JSX.Element {
-  if (items.length === 0) return <div className="sidebar-empty">Nothing in your inbox</div>;
+  if (items.length === 0) return <div className="sidebar-empty">{empty}</div>;
   return (
-    <ul className="thread-list" aria-label="Inbox">
+    <ul className="thread-list" aria-label={label}>
       {items.map((item) => (
         <ThreadRow
           key={item.thread.id}
@@ -330,6 +384,7 @@ export function Sidebar({
   onToggleOrg,
   onToggle,
   onSearch,
+  onShiftDay,
 }: {
   day: Day;
   nowMs: number;
@@ -341,6 +396,7 @@ export function Sidebar({
   onToggleOrg: () => void;
   onToggle: () => void;
   onSearch: () => void;
+  onShiftDay: (days: number | null) => void;
 }): React.JSX.Element {
   const { panelRef, width, handle } = useResizablePanel({
     storageKey: "sidebar-width",
@@ -385,6 +441,7 @@ export function Sidebar({
             activeThreadId={activeThreadId}
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}
+            onShiftDay={onShiftDay}
           />
         </SidebarSection>
         <SidebarSection
@@ -414,7 +471,19 @@ export function Sidebar({
           }
         >
           <InboxList
+            label="Inbox"
+            empty="Nothing in your inbox"
             items={day.unscheduled}
+            activeThreadId={activeThreadId}
+            unreadIds={unreadIds}
+            onOpenThread={onOpenThread}
+          />
+        </SidebarSection>
+        <SidebarSection title="Outbox">
+          <InboxList
+            label="Outbox"
+            empty="Nothing waiting on others"
+            items={day.outbox}
             activeThreadId={activeThreadId}
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}

@@ -40,7 +40,6 @@ function plan(fields: Partial<Thread>) {
 
 const IN_INBOX = { timeline: 0, inbox: 1, later: 0 };
 const ON_TIMELINE = { timeline: 1, inbox: 0, later: 0 };
-const IN_LATER = { timeline: 0, inbox: 0, later: 1 };
 const NOWHERE = { timeline: 0, inbox: 0, later: 0 };
 
 test.each<[string, Partial<Thread>]>([
@@ -58,8 +57,17 @@ test("a thread assigned to you and scheduled today sits on the timeline instead"
   expect(plan({ schedule: { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR } })).toEqual(ON_TIMELINE);
 });
 
-test("a thread you've scheduled for a later day stays out of today's inbox", () => {
-  expect(plan({ schedule: { startMs: NOW + DAY, endMs: NOW + DAY + HOUR } })).toEqual(IN_LATER);
+test("a response slotted for a later day waits in your inbox, and is on the timeline that day", () => {
+  const schedule = { startMs: NOW + DAY, endMs: NOW + DAY + HOUR };
+  expect(plan({ schedule })).toEqual(IN_INBOX);
+  const tomorrow = buildDay(
+    [thread({ schedule })],
+    me,
+    () => "teammate",
+    NOW,
+    NOW - 12 * HOUR + DAY,
+  );
+  expect(tomorrow.timeline).toHaveLength(1);
 });
 
 test("a later schedule doesn't hide a thread that needs attention today", () => {
@@ -79,7 +87,7 @@ test("a thread still needing an assignee stays in your inbox even with a later s
 
 test("threads assigned to someone else or already done aren't yours", () => {
   expect(plan({ assignee: other })).toEqual(NOWHERE);
-  expect(plan({ status: "done" })).toEqual(NOWHERE);
+  expect(plan({ status: "closed" })).toEqual(NOWHERE);
 });
 
 const arjun: Person = { id: "arjun", name: "Arjun Bulusu" };
@@ -126,10 +134,15 @@ test("replying back returns the thread to the assignee", () => {
   expect(inboxFrom(followedUp, arjun)).toBeNull();
 });
 
-test("a thread waiting on someone else stays on the assignee's plan as Later", () => {
+test("a thread waiting on someone else is in your outbox, labelled with who has it", () => {
   const answered = conversation([arjun, anshu]);
   const day = buildDay([answered], anshu, () => "teammate", NOW);
-  expect(day.later.map((item) => item.thread)).toEqual([answered]);
+  expect(day.outbox.map((item) => [item.thread, item.from?.name])).toEqual([
+    [answered, "Arjun Bulusu"],
+  ]);
+  expect(day.unscheduled).toEqual([]);
+  // Asking someone puts it in your outbox straight away.
+  expect(buildDay([conversation([arjun])], arjun, () => "teammate", NOW).outbox).toHaveLength(1);
 });
 
 test("activity lines don't change whose turn it is", () => {
@@ -156,12 +169,11 @@ test("a thread you assigned to yourself is in your inbox with no name on it", ()
   expect(inboxFrom(conversation([arjun, arjun], { assignee: arjun }), arjun)).toBe("nobody");
 });
 
-test("a slot today stays on the assignee's timeline while the reply waits with whoever asked", () => {
+test("a slot belongs to whoever the thread is waiting on", () => {
   const schedule = { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR };
   const answered = conversation([arjun, anshu], { schedule });
-  expect(buildDay([answered], anshu, () => "teammate", NOW).timeline).toHaveLength(1);
-  expect(buildDay([answered], arjun, () => "teammate", NOW).timeline).toHaveLength(0);
-  expect(inboxFrom(answered, arjun)).toBe("Anshu");
+  expect(buildDay([answered], arjun, () => "teammate", NOW).timeline).toHaveLength(1);
+  expect(buildDay([answered], anshu, () => "teammate", NOW).timeline).toHaveLength(0);
 });
 
 test("someone else's later schedule doesn't keep a reply out of your inbox", () => {
