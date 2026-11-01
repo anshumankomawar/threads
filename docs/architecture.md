@@ -184,12 +184,107 @@ automatically on load (`refreshSeedPeople`). To see new sample threads, reset th
   the token as a secrets file, or the secret may be dropped). Clients built against an older protocol need to pull
   and restart.
 
+## Following Linear's sync engine
+
+The reference is the write-up at https://github.com/wzhudev/reverse-linear-sync-engine (`README.md` is the full
+study, `SUMMARY.md` the overview). When adding a feature below, read the named chapter first and keep our names and
+structure aligned with it. Do not copy from `code/*.js` in that repo: those are Linear's minified production
+bundles, their proprietary code.
+
+### How our names map to LSE
+
+| LSE                                                                                                                          | Ours                                                                       | Notes                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ModelRegistry`, `__schemaHash`                                                                                              | `ModelRegistry`, `SCHEMA_HASH` (`packages/model/src/sync.ts`)              | Plain records plus a registry instead of decorators (`@ClientModel`, `@Property`); same metadata, no build-tool risk |
+| Object pool (MobX-observable models)                                                                                         | `ObjectPool` (MobX maps of records)                                        | Records are replaced whole, so only the maps are observable                                                          |
+| `SyncClient`                                                                                                                 | `SyncClient`                                                               | Same role: bootstrap, socket, `applyDelta`, `lastSyncId`                                                             |
+| `TransactionQueue`: `createdTransactions`, `queuedTransactions`, `executingTransactions`, `completedButUnsyncedTransactions` | Same names in `transactions.ts`                                            | Batching by microtask (`batchIndex`), persisted in `__transactions`                                                  |
+| `CreationTransaction`, `UpdatingTransaction`                                                                                 | `CreationTransaction`, `UpdateTransaction`                                 | `rebase`, `rollback`, `serialize`, `fromSerializedData` as in the write-up                                           |
+| GraphQL mutations returning `lastSyncId`                                                                                     | `POST /sync/transactions` with JSON `TransactionInput`s                    | One endpoint, all or nothing per batch                                                                               |
+| Sync actions `I U A D C G S V`                                                                                               | `I U D`                                                                    | Archive (`A`), unarchive (`V`), covering (`C`) and sync-group changes (`G`, `S`) not used yet                        |
+| `lastSyncId` global across all of Linear                                                                                     | `lastSyncId` per workspace (one Durable Object each)                       | Gaps mean a missed packet, never another workspace's change                                                          |
+| Handshake with `lastSyncId`, `userSyncGroups`                                                                                | `{ type: "handshake", lastSyncId }`                                        | No sync groups yet                                                                                                   |
+| `firstSyncId`, `subscribedSyncGroups` in database meta                                                                       | `lastSyncId`, `schemaHash` in `meta`                                       | Add `firstSyncId` with sync groups                                                                                   |
+| Server side effects (e.g. `IssueHistory`) in delta packets                                                                   | Activity `Entry`s, call links, status changes added by `SyncEngine.#apply` | Same principle: the delta can carry more than the transaction                                                        |
+| Last-writer-wins rebase of `UpdateTransaction`s                                                                              | `UpdateTransaction.rebase` called from `applyDelta`                        | Same                                                                                                                 |
+
 ## Not built yet
 
-Deliberately left out until there's a need; follow the LSE write-up when adding them.
+Each of these is left out until there's a need. To add one, follow its steps, keep the invariants above, and update
+this document in the same change.
 
-- **Undo/redo**: transaction-based, each transaction producing its inverse.
-- **Sync groups**: per-user or per-team visibility, which needs real accounts (Cloudflare Access, D1 for users and
-  orgs).
-- **Lazy and partial loading**: loading some models on demand, for workspaces too big to bootstrap whole.
-- **Deletions and archiving**: the protocol supports `D` actions, but no transaction type deletes or archives yet.
+### Undo and redo
+
+LSE (write-up, Chapter 5 "Undo & Redo"): undo is transaction-based. The UI registers an undoable operation; the
+transactions queued while it runs go on an undo stack. Undoing one calls its `undoTransaction`, which reverts the
+model and returns the inverse transaction for redo. An undo is itself a new transaction sent to the server, so other
+clients see it like any other change.
+
+Here:
+
+1. Give `UpdateTransaction` an `undoTransaction()` that returns a new `UpdateTransaction` setting its `original`
+   values back (and the redo is the same move the other way). Creation's inverse needs deletion (below), so start
+   with updates.
+2. Add an `UndoQueue` on `SyncClient` with `addOperation(label, fn)`: it records the transactions `fn` enqueues
+   (listen in `TransactionQueue.enqueue` while an operation is open), and `undo()` / `redo()` enqueue their
+   inverses without recording them.
+3. Wrap the UI actions in `App.tsx` that should be undoable in `addOperation`, and bind ⌘Z / ⇧⌘Z.
+4. Tests in `apps/desktop/tests/sync.test.ts`: undo restores the value locally and sends an update; redo reapplies.
+
+### Deleting and archiving
+
+LSE: `DeletionTransaction`, `ArchivalTransaction`, `UnarchiveTransaction`, with sync actions `D`, `A`, `V`. Model
+metadata says what happens to dependents (`onDelete`, `onArchive`; a `backReference` is deleted with its owner).
+
+Here:
+
+1. Add `type: "delete"` (and `"archive"`/`"unarchive"` if threads should be archived rather than removed) to
+   `TransactionInput` in `sync.ts` and to the zod union in `engine.ts`.
+2. In `SyncEngine`, let `Batch` stage deletions (a write whose `data` is `null` already becomes a `D` action in
+   `write`). Cascade in `#apply`: deleting a thread deletes its entries. For archiving, add an `archivedAtMs` field
+   and an `A`/`V` action, or treat it as an update, and decide whether bootstraps include archived models.
+3. Client: a `DeletionTransaction` that removes the model from the pool and restores it on rollback; `applyDelta`
+   already deletes on `D`. Handle a delete arriving for a model with pending updates (drop those updates).
+4. Add `onDelete` / cascade info to `ModelRegistry`, bump the schema version, and add tests on both sides.
+
+### Sync groups (who sees what)
+
+LSE (Chapter 2, "SyncGroup"; Chapter 4, "Applying Deltas"): every model belongs to sync groups (a user, a team, a
+role). A client subscribes to its groups (`subscribedSyncGroups`) and only receives models and delta packets for
+them. Joining a group triggers a partial bootstrap of its models; leaving removes them. `firstSyncId` records where
+a full bootstrap started.
+
+Here this needs real identities first: today the API token admits everyone and View As is only a UI choice.
+
+1. Add accounts: Cloudflare Access (or another auth layer) so each request carries a user, and D1 for global data
+   (users, orgs, memberships, teams).
+2. Decide the unit: one Durable Object per org, with teams as sync groups inside it, matches LSE's shape.
+3. Tag models with their group (for example `teamId` on threads), filter `/sync/bootstrap` and `/sync/deltas`
+   by the caller's groups, and send each socket only the actions for its groups (store the groups on the socket
+   with `serializeAttachment`).
+4. Add `G`/`S` actions (or a group-change message) so a client joining a team bootstraps that team's models and one
+   leaving drops them. Add `firstSyncId` and `subscribedSyncGroups` to the client's `meta`.
+
+### Lazy and partial loading
+
+LSE (Chapter 2, "Bootstrapping", "Lazy Hydration"): each model has a `loadStrategy`: `instant` (bootstrapped),
+`lazy` (fetched all at once when first needed), `partial` (fetched a subset at a time, e.g. document contents),
+`explicitlyRequested`, `local`. Partial models are found through partial indexes (for example, entries by
+`threadId`), and LSE supports full, partial and local bootstrapping. Properties can be lazy too, hydrated on access.
+
+Here every model is `instant`. Add this when bootstraps get slow:
+
+1. Mark large models (likely `Entry`) as `partial` in `ModelRegistry`.
+2. Leave them out of `/sync/bootstrap`; add a route that returns them by index (`/sync/models/Entry?threadId=`).
+3. In `SyncClient`, track which index values are loaded (in IndexedDB too); opening a thread loads its entries if
+   needed. `applyDelta` stores actions for unloaded parents in IndexedDB but needn't put them in the pool.
+4. The UI has to handle a thread whose entries are still loading.
+
+### Smaller gaps
+
+- **Batch limits**: LSE caps how many transactions it moves to executing and the size of a request. Ours caps a
+  batch at 100 transactions; add a size cap if batches get large.
+- **Ephemeral properties** (LSE's `ephemeralProperty`, not persisted): useful for presence such as "who's viewing".
+  Send those over the socket as their own messages; don't put them in the sync log.
+- **Schema migrations**: today a schema change makes clients rebuild their caches from the server, which is fine at
+  this size. LSE migrates IndexedDB in place; add that only if rebuilding gets slow.
