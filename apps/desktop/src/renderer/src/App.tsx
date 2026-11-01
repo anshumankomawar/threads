@@ -24,6 +24,7 @@ import {
 import type { SyncClient } from "./sync/syncClient";
 import { ThreadView, type MessageEntry, type ThreadActions } from "./components/ThreadView";
 import { MovePalette, type MoveTarget } from "./components/MovePalette";
+import { BlockedPalette } from "./components/BlockedPalette";
 import { MeContext } from "./me";
 import { ThreadLinksContext, type ThreadLinks } from "./threadLinks";
 import { Maximize2, Trash2, X } from "lucide-react";
@@ -339,7 +340,9 @@ const App = observer(function App(): React.JSX.Element {
     );
   };
 
-  // `/blocked`: a new thread asking someone for what this one needs, which blocks it until it closes.
+  // `/blocked`: the thread the form is for while it's open, and the new thread asking someone for what it needs,
+  // which blocks it until it closes.
+  const [blocking, setBlocking] = useState<Thread | null>(null);
   const createBlocker = (from: Thread, person: Person, text: string): void => {
     client.createThread(
       {
@@ -353,6 +356,7 @@ const App = observer(function App(): React.JSX.Element {
       },
       me,
     );
+    setBlocking(null);
   };
 
   // Messages on their way out of a thread, while you pick where they go.
@@ -397,7 +401,7 @@ const App = observer(function App(): React.JSX.Element {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
       onSend: (text) => client.addEntry(thread.id, "message", text, me),
-      onBlock: (person, text) => createBlocker(thread, person, text),
+      onBlocked: () => setBlocking(thread),
       // Closing something in your inbox finishes it there, so the next thread opens.
       onSetStatus: (status) => {
         edit({ status });
@@ -563,6 +567,15 @@ const App = observer(function App(): React.JSX.Element {
             nowMs={nowMs}
             onCreate={createThread}
             onClose={() => setNewThreadKind(null)}
+          />
+        )}
+        {blocking !== null && (
+          <BlockedPalette
+            people={people}
+            me={me}
+            blockedTitle={blocking.title}
+            onCreate={(person, text) => createBlocker(blocking, person, text)}
+            onClose={() => setBlocking(null)}
           />
         )}
         {moving !== null && (

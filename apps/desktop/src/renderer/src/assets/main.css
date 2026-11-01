@@ -1519,7 +1519,8 @@ body * {
   display: flex;
   flex-direction: column;
   width: min(100%, 420px);
-  margin-top: 24px;
+  /* The same gap as below the actions (.welcome-viewer). */
+  margin-top: 20px;
 }
 
 /* Up next: the same rows as the actions, under a quiet label. */
@@ -2131,89 +2132,19 @@ body * {
   font-size: 13px;
 }
 
-/* `/blocked`, in place of the reply: a marker like the resolution's, who it's on, then what's needed. */
-.blocked-form-marker {
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--status-blocked);
-  background-color: color-mix(in srgb, var(--status-blocked) 18%, transparent);
-}
-
-.blocked-form-person {
+/* Who a palette's next step is about, ahead of the input. */
+.palette-chip {
   display: inline-flex;
-  gap: 5px;
-  align-items: center;
-  height: 20px;
-  padding: 0 3px 0 5px;
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 12px;
-  background-color: var(--bg-tertiary);
-}
-
-.blocked-form-clear {
-  display: flex;
-  padding: 2px;
-  border: none;
-  border-radius: 3px;
-  color: var(--text-tertiary);
-  background: none;
-  cursor: pointer;
-}
-
-.blocked-form-clear:hover {
-  color: var(--text-primary);
-}
-
-.blocked-form-input {
-  width: 100%;
-  padding: 0;
-  border: none;
-  font: inherit;
-  color: var(--text-primary);
-  background: none;
-  outline: none;
-}
-
-.blocked-form-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.blocked-form-people {
-  display: flex;
-  flex-direction: column;
-  width: min(100%, 280px);
-  margin: 6px 0 0 -6px;
-}
-
-.blocked-form-option {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  height: 26px;
-  padding: 0 6px;
-  border: none;
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font: inherit;
-  text-align: left;
-  background: none;
-  cursor: pointer;
-}
-
-.blocked-form-option[aria-selected="true"] {
-  color: var(--text-primary);
-  background-color: var(--bg-tertiary);
-}
-
-.blocked-form-note {
-  display: flex;
+  flex-shrink: 0;
   gap: 6px;
   align-items: center;
-  margin-top: 6px;
-  color: var(--text-tertiary);
+  height: 22px;
+  margin-right: 8px;
+  padding: 0 8px 0 5px;
+  border-radius: 4px;
+  color: var(--text-primary);
   font-size: 12px;
+  background-color: var(--panel-selected);
 }
 
 /* Wipe all data: an icon, then an explicit question on the first click. */

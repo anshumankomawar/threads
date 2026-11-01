@@ -68,7 +68,6 @@ import {
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
-import { BlockedForm } from "./BlockedForm";
 
 const ICON_PROPS = { size: 13, strokeWidth: 1.7, "aria-hidden": true } as const;
 
@@ -83,8 +82,8 @@ type NotesEntry = Extract<Entry, { kind: "notes" }>;
 export type ThreadActions = {
   // A note in the thread's worklog; the thread stays where it is.
   onSend: (text: string) => void;
-  // `/blocked`: asks someone for what this thread needs, in a new thread that blocks it.
-  onBlock: (person: Person, text: string) => void;
+  // `/blocked`: opens the form for asking someone what this thread needs, in a new thread that blocks it.
+  onBlocked: () => void;
   onSetStatus: (status: Status) => void;
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueAtMs: number | null) => void;
@@ -1122,10 +1121,6 @@ export function ThreadView({
       (entry.kind === "message" || entry.kind === "resolution") && entryPerson(entry)?.id !== me.id,
   ).length;
 
-  // `/blocked` swaps the reply for the blocked form, for this thread only.
-  const [blockingFor, setBlockingFor] = useState<string | null>(null);
-  const blocking = blockingFor === thread.id;
-
   const placeholder =
     thread.kind === "meeting" ? "Add notes…" : thread.kind === "focus" ? "Add a note…" : "Reply…";
 
@@ -1183,17 +1178,7 @@ export function ThreadView({
                 return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
               return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
             })}
-            {thread.status === "closed" ? null : blocking ? (
-              <BlockedForm
-                people={people}
-                me={me}
-                onCreate={(person, text) => {
-                  actions.onBlock(person, text);
-                  setBlockingFor(null);
-                }}
-                onCancel={() => setBlockingFor(null)}
-              />
-            ) : (
+            {thread.status === "closed" ? null : (
               <ReplyBlock
                 key={thread.id}
                 placeholder={placeholder}
@@ -1201,7 +1186,7 @@ export function ThreadView({
                 onSubmit={actions.onSend}
                 onBranch={actions.onBranch}
                 onCommand={(name) => {
-                  if (name === "blocked") setBlockingFor(thread.id);
+                  if (name === "blocked") actions.onBlocked();
                 }}
                 threadId={thread.id}
               />
