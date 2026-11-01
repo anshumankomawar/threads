@@ -6,6 +6,7 @@ import {
   Calendar,
   CalendarDays,
   Check,
+  CircleSlash,
   Clock,
   GitBranch,
   Hourglass,
@@ -30,6 +31,14 @@ import {
   ThreadLinkNode,
   type ThreadMenuState,
 } from "./threadLinkNode";
+import {
+  closeCommandMenu,
+  COMMAND_MENU_EVENT,
+  COMMANDS,
+  SlashCommands,
+  type CommandMenuState,
+  type CommandName,
+} from "./slashCommands";
 import { slotMissesDue } from "../inbox";
 import {
   EFFORT_OPTIONS,
@@ -46,6 +55,8 @@ import {
   type Schedule,
   type Status,
   type Thread,
+  waitingOn,
+  otherSide,
 } from "model";
 import {
   DAY,
@@ -59,6 +70,7 @@ import {
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
+import { BlockedForm } from "./BlockedForm";
 
 const ICON_PROPS = { size: 13, strokeWidth: 1.7, "aria-hidden": true } as const;
 
@@ -71,7 +83,12 @@ type CallEntry = Extract<Entry, { kind: "call" }>;
 type NotesEntry = Extract<Entry, { kind: "notes" }>;
 
 export type ThreadActions = {
+  // A note in the thread; it stays where it is.
   onSend: (text: string) => void;
+  // Sends the thread to the other person, with a note if there is one (⌘Enter).
+  onSendTo: (text: string, person: Person) => void;
+  // `/blocked`: asks someone for what this thread needs, in a new thread that blocks it.
+  onBlock: (person: Person, text: string) => void;
   onSetStatus: (status: Status) => void;
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueAtMs: number | null) => void;
@@ -566,9 +583,8 @@ function MessageBlock({
 function EventLine({ event, nowMs }: { event: EventEntry; nowMs: number }): React.JSX.Element {
   return (
     <div className="thread-block thread-event" id={`entry-${event.id}`}>
-      <span className="thread-avatar thread-event-marker" aria-hidden>
-        <span />
-      </span>
+      {/* No marker, just the avatar's width, so the line lines up with the text column. */}
+      <span className="thread-avatar thread-event-marker" aria-hidden />
       <div className="thread-event-text">
         <span className="thread-event-actor">{event.actor.name}</span>{" "}
         <LinkedText text={event.text} />
@@ -733,20 +749,27 @@ function ReplyFocus({
 function ReplyBlock({
   placeholder,
   focusRef,
+  sendTo,
   onSubmit,
+  onSendTo,
   onBranch,
+  onCommand,
   threadId,
 }: {
   threadId: string;
   placeholder: string;
   focusRef: React.RefObject<(() => void) | null>;
+  // Who ⌘Enter sends the thread to, when it's yours to send.
+  sendTo: Person | null;
   onSubmit: (text: string) => void;
+  onSendTo: (text: string) => void;
   onBranch: ThreadActions["onBranch"];
+  onCommand: (name: CommandName) => void;
 }): React.JSX.Element {
   const me = useMe();
-  const handlersRef = useRef({ onSubmit });
+  const handlersRef = useRef({ onSubmit, onSendTo, canSend: sendTo !== null });
   useEffect(() => {
-    handlersRef.current = { onSubmit };
+    handlersRef.current = { onSubmit, onSendTo, canSend: sendTo !== null };
   });
 
   const editor = useEditor({
@@ -756,11 +779,12 @@ function ReplyBlock({
       StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
       Placeholder.configure({ placeholder }),
       ThreadLinkNode,
+      SlashCommands,
     ],
     editorProps: {
       attributes: { class: "thread-text thread-reply-editor", "aria-label": "Reply" },
       handleKeyDown: (view, event) => {
-        // The `#` menu, when open, gets keys first.
+        // The `#` and `/` menus, when open, get keys first.
         if (offerKey(view.dom, event)) return true;
         if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
         // Thread links go out as `[[thread:<id>]]`.
@@ -769,23 +793,38 @@ function ReplyBlock({
             leaf.type.name === "threadLink" ? threadLink(String(leaf.attrs.id)) : "",
           )
           .trim();
-        if (text.length > 0) {
-          handlersRef.current.onSubmit(text);
+        // Enter adds a note and keeps the thread; ⌘Enter sends it on (with the note, if there is one).
+        const send = (event.metaKey || event.ctrlKey) && handlersRef.current.canSend;
+        if (send) handlersRef.current.onSendTo(text);
+        else if (text.length > 0) handlersRef.current.onSubmit(text);
+        if (send || text.length > 0)
           view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
-        }
         return true;
       },
     },
   });
 
-  // The `#` menu: the link node announces it on the editor; this renders it and handles its keys.
+  // The `#` and `/` menus: their extensions announce them on the editor; this renders whichever is open and handles
+  // its keys.
   const links = useThreadLinks();
   const [menu, setMenu] = useState<ThreadMenuState>(null);
+  const [commandMenu, setCommandMenu] = useState<CommandMenuState>(null);
   const [selected, setSelected] = useState(0);
-  const options = menu === null ? [] : menuOptions(menu.query, links.search, threadId);
+  const open = commandMenu ?? menu;
+  const options: MenuOption[] =
+    commandMenu !== null
+      ? COMMANDS.filter((command) => command.name.startsWith(commandMenu.query.toLowerCase())).map(
+          (command) => ({ kind: "command", ...command }),
+        )
+      : menu === null
+        ? []
+        : menuOptions(menu.query, links.search, threadId);
   const choose = (option: MenuOption): void => {
-    if (menu === null) return;
-    if (option.kind === "link") menu.pick(option.link);
+    if (option.kind === "command") {
+      commandMenu?.take();
+      onCommand(option.name);
+    } else if (menu === null) return;
+    else if (option.kind === "link") menu.pick(option.link);
     else menu.pick({ id: onBranch(option.title), title: option.title });
   };
 
@@ -796,17 +835,27 @@ function ReplyBlock({
       setMenu((event as CustomEvent<ThreadMenuState>).detail);
       setSelected(0);
     };
+    const onCommandMenu = (event: Event): void => {
+      setCommandMenu((event as CustomEvent<CommandMenuState>).detail);
+      setSelected(0);
+    };
     dom.addEventListener(THREAD_MENU_EVENT, onMenu);
-    return () => dom.removeEventListener(THREAD_MENU_EVENT, onMenu);
+    dom.addEventListener(COMMAND_MENU_EVENT, onCommandMenu);
+    return () => {
+      dom.removeEventListener(THREAD_MENU_EVENT, onMenu);
+      dom.removeEventListener(COMMAND_MENU_EVENT, onCommandMenu);
+    };
   }, [editor]);
 
   useEffect(() => {
     const view = editor?.view;
-    if (view === undefined || menu === null) return;
+    if (view === undefined || open === null) return;
     const onKey = (event: Event): void => {
       const key = (event as CustomEvent<KeyboardEvent>).detail;
-      if (key.key === "Escape") closeThreadMenu(view);
-      else if (options.length === 0) return;
+      if (key.key === "Escape") {
+        if (commandMenu !== null) closeCommandMenu(view);
+        else closeThreadMenu(view);
+      } else if (options.length === 0) return;
       else if (key.key === "ArrowDown") setSelected((selected + 1) % options.length);
       else if (key.key === "ArrowUp") setSelected((selected - 1 + options.length) % options.length);
       else if ((key.key === "Enter" && !key.shiftKey) || key.key === "Tab")
@@ -825,12 +874,15 @@ function ReplyBlock({
       <div className="thread-body">
         <div className="thread-meta">
           <span className="thread-author">{me.name}</span>
+          {sendTo !== null && (
+            <span className="thread-time">⌘↵ to send to {sendTo.name.split(" ")[0]}</span>
+          )}
         </div>
         <EditorContent editor={editor} className="thread-reply" />
       </div>
-      {menu !== null && options.length > 0 && (
+      {open !== null && options.length > 0 && (
         <ThreadMenu
-          rect={menu.rect}
+          rect={open.rect}
           options={options}
           selected={Math.min(selected, options.length - 1)}
           onHover={setSelected}
@@ -843,7 +895,8 @@ function ReplyBlock({
 
 type MenuOption =
   | { kind: "link"; link: { id: string; title: string } }
-  | { kind: "new"; title: string };
+  | { kind: "new"; title: string }
+  | { kind: "command"; name: CommandName; label: string; hint: string };
 
 const MENU_MATCHES = 6;
 
@@ -888,7 +941,13 @@ function ThreadMenu({
     >
       {options.map((option, index) => (
         <button
-          key={option.kind === "link" ? option.link.id : "new"}
+          key={
+            option.kind === "link"
+              ? option.link.id
+              : option.kind === "command"
+                ? option.name
+                : "new"
+          }
           type="button"
           role="option"
           aria-selected={index === selected}
@@ -896,7 +955,14 @@ function ThreadMenu({
           onMouseEnter={() => onHover(index)}
           onClick={() => onChoose(option)}
         >
-          {option.kind === "link" ? (
+          {option.kind === "command" ? (
+            <>
+              <CircleSlash {...ICON_PROPS} />
+              <span className="thread-menu-title">
+                {option.label} <span className="thread-menu-hint">{option.hint}</span>
+              </span>
+            </>
+          ) : option.kind === "link" ? (
             <>
               <GitBranch {...ICON_PROPS} />
               <span className="thread-menu-title">{option.link.title}</span>
@@ -1070,6 +1136,13 @@ export function ThreadView({
       (entry.kind === "message" || entry.kind === "resolution") && entryPerson(entry)?.id !== me.id,
   ).length;
 
+  // `/blocked` swaps the reply for the blocked form, for this thread only.
+  const [blockingFor, setBlockingFor] = useState<string | null>(null);
+  const blocking = blockingFor === thread.id;
+
+  // A response that's yours to act on can be sent to the other side of it.
+  const sendTo = waitingOn(thread) === me.id ? otherSide(thread, me.id) : null;
+
   const placeholder =
     thread.kind === "meeting" ? "Add notes…" : thread.kind === "focus" ? "Add a note…" : "Reply…";
 
@@ -1127,14 +1200,33 @@ export function ThreadView({
                 return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
               return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
             })}
-            <ReplyBlock
-              key={thread.id}
-              placeholder={placeholder}
-              focusRef={focusReplyRef}
-              onSubmit={actions.onSend}
-              onBranch={actions.onBranch}
-              threadId={thread.id}
-            />
+            {blocking ? (
+              <BlockedForm
+                people={people}
+                me={me}
+                onCreate={(person, text) => {
+                  actions.onBlock(person, text);
+                  setBlockingFor(null);
+                }}
+                onCancel={() => setBlockingFor(null)}
+              />
+            ) : (
+              <ReplyBlock
+                key={thread.id}
+                placeholder={placeholder}
+                focusRef={focusReplyRef}
+                sendTo={sendTo}
+                onSubmit={actions.onSend}
+                onSendTo={(text) => {
+                  if (sendTo !== null) actions.onSendTo(text, sendTo);
+                }}
+                onBranch={actions.onBranch}
+                onCommand={(name) => {
+                  if (name === "blocked") setBlockingFor(thread.id);
+                }}
+                threadId={thread.id}
+              />
+            )}
             <div ref={endRef} />
           </article>
           {/* Room to scroll the last entry up to the top without losing it off screen. */}

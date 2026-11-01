@@ -84,6 +84,10 @@ export type Thread = {
   attendees: Person[];
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
+  // Whose turn it is, stored: see `waitingOn`.
+  waitingOnId: string | null;
+  // The thread this one blocks, if it was made with `/blocked`.
+  blocksId: string | null;
   updatedAtMs: number;
   entries: Entry[];
 };
@@ -97,14 +101,19 @@ export function lastMessage(thread: Thread): Message | undefined {
   return thread.entries.findLast((entry): entry is Message => entry.kind === "message");
 }
 
-// Whose turn it is, which decides whose inbox the thread is in: the assignee's reply sends it back to whoever asked,
-// and anything else leaves it with the assignee. With no assignee it stays with whoever asked. Meetings aren't turns.
+// Whose turn it is, which decides whose inbox the thread is in. It's stored on the thread and moves only when someone
+// sends the thread on (⌘Enter in a reply); messages alone are a worklog and leave it where it is. Threads stored
+// before that rest with the assignee, or whoever asked if nobody is. Meetings aren't turns.
 export function waitingOn(thread: Thread): string | null {
   if (thread.kind === "meeting") return null;
-  if (thread.assignee === null) return thread.requester.id;
-  return lastMessage(thread)?.author.id === thread.assignee.id
-    ? thread.requester.id
-    : thread.assignee.id;
+  return thread.waitingOnId ?? thread.assignee?.id ?? thread.requester.id;
+}
+
+// The other side of a response from someone: whoever asked if it's the assignee, and the assignee otherwise.
+export function otherSide(thread: Thread, personId: string): Person | null {
+  if (thread.kind !== "response" || thread.assignee === null) return null;
+  const other = personId === thread.assignee.id ? thread.requester : thread.assignee;
+  return other.id === personId ? null : other;
 }
 
 // A link to another thread inside a message's text, as `[[thread:<id>]]`. Typing `/thread` in a reply makes one.

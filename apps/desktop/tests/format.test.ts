@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { parseWhen } from "../src/renderer/src/format";
+import { formatRange, parseWhen } from "../src/renderer/src/format";
 
 // Monday 2026-11-02, 11:00 local.
 const NOW = new Date(2026, 10, 2, 11).getTime();
@@ -33,4 +33,10 @@ test("a length can follow", () => {
 
 test.each(["", "lunch", "25:00", "13pm", "tomorrow banana"])("not a time: %j", (text) => {
   expect(parseWhen(text, NOW, HALF_HOUR)).toBeNull();
+});
+
+test("a range says AM or PM once when both ends share it", () => {
+  const range = formatRange(at(10, 2, 10), at(10, 2, 11, 30));
+  expect(range).toMatch(/^10:00\s?–\s?11:30\s?AM$/);
+  expect(formatRange(at(10, 2, 11, 30), at(10, 2, 13))).toMatch(/^11:30\sAM–1:00\sPM$/);
 });

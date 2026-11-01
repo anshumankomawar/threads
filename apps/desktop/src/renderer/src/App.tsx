@@ -30,7 +30,7 @@ import { Identicon } from "./components/Identicon";
 import { OrgView } from "./components/OrgView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { Welcome } from "./components/Welcome";
-import { buildDay } from "./inbox";
+import { buildDay, upNext } from "./inbox";
 
 // Mouse moves within this many pixels of the top nudge the drag-region resync element.
 const DRAG_RESYNC_ZONE_PX = 96;
@@ -134,14 +134,6 @@ function useSyncClient(source: DataSource): SyncClient {
     return () => client.stop();
   }, [client]);
   return client;
-}
-
-// Whether your reply would hand a response to the other person: you're the assignee answering whoever asked, or
-// the one who asked writing back to the assignee.
-function handsOff(thread: Thread, me: Person): boolean {
-  if (thread.kind !== "response" || thread.assignee === null) return false;
-  const next = me.id === thread.assignee.id ? thread.requester.id : thread.assignee.id;
-  return next !== me.id;
 }
 
 const App = observer(function App(): React.JSX.Element {
@@ -316,6 +308,22 @@ const App = observer(function App(): React.JSX.Element {
     );
   };
 
+  // `/blocked`: a new thread asking someone for what this one needs, which blocks it until it closes.
+  const createBlocker = (from: Thread, person: Person, text: string): void => {
+    client.createThread(
+      {
+        kind: "response",
+        text,
+        assignee: person,
+        invitees: [],
+        schedule: null,
+        branchedFromId: from.id,
+        blocksId: from.id,
+      },
+      me,
+    );
+  };
+
   // Messages on their way out of a thread, while you pick where they go.
   const [moving, setMoving] = useState<{ from: Thread; messages: MessageEntry[] } | null>(null);
   const moveTo = (target: MoveTarget): void => {
@@ -357,10 +365,14 @@ const App = observer(function App(): React.JSX.Element {
   const actionsFor = (thread: Thread): ThreadActions => {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
-      onSend: (text) => {
-        client.addEntry(thread.id, "message", text, me);
-        if (handsOff(thread, me)) moveOn(thread);
+      onSend: (text) => client.addEntry(thread.id, "message", text, me),
+      // Sending hands the thread over: it leaves your inbox, so the next thread opens.
+      onSendTo: (text, person) => {
+        if (text.length > 0) client.addEntry(thread.id, "message", text, me);
+        edit({ waitingOnId: person.id });
+        moveOn(thread);
       },
+      onBlock: (person, text) => createBlocker(thread, person, text),
       onSetStatus: (status) => edit({ status }),
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
@@ -463,11 +475,11 @@ const App = observer(function App(): React.JSX.Element {
             <Welcome
               me={me}
               source={source}
-              todayCount={
-                new Set(day.timeline.map((item) => item.thread.id)).size + day.unscheduled.length
-              }
+              upNext={upNext(threads, me, people, nowMs, 4)}
               inboxCount={day.unscheduled.length}
+              outboxCount={day.outbox.length}
               nowMs={nowMs}
+              onOpenThread={openThread}
               onNewThread={openNew}
               onSearch={() => setSearchOpen(true)}
               onViewAs={() => setViewAsOpen(true)}

@@ -13,7 +13,8 @@ import {
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useRef, useState } from "react";
 import type { Day, InboxItem, TimelineItem } from "../inbox";
-import { KIND_LABELS, type ThreadKind } from "model";
+import { KIND_LABELS, type Schedule, type ThreadKind } from "model";
+import { formatRange } from "../format";
 
 // Marks the element with data-overflowing when its text is clipped, which turns on the fade mask.
 function useOverflowFade<T extends HTMLElement>(): React.RefObject<T | null> {
@@ -138,6 +139,7 @@ function ThreadRow({
   unread,
   label,
   past = false,
+  span,
   onOpen,
 }: {
   item: InboxItem;
@@ -145,6 +147,8 @@ function ThreadRow({
   unread: boolean;
   label: string | null;
   past?: boolean;
+  // On the timeline: where the row sits on a block's span line, which runs from a block's start to its end.
+  span?: "start" | "through";
   onOpen: () => void;
 }): React.JSX.Element {
   const titleRef = useOverflowFade<HTMLSpanElement>();
@@ -157,6 +161,7 @@ function ThreadRow({
         aria-label={thread.title}
         data-active={active}
         data-past={past}
+        data-span={span}
         title={item.reason}
         role="button"
         tabIndex={0}
@@ -209,17 +214,37 @@ function DayView({
     const hour = scroller?.querySelector<HTMLElement>(`[data-hour="${focusHour}"]`);
     if (scroller && hour) scroller.scrollTop = hour.offsetTop - scroller.offsetTop;
   }, [day.dayMs, focusHour]);
-  const row = (item: TimelineItem, label: string | null, past = false): React.JSX.Element => (
-    <ThreadRow
-      key={`${item.thread.id}:${item.block.startMs}`}
-      item={item}
-      active={item.thread.id === activeThreadId}
-      unread={unreadIds.has(item.thread.id)}
-      label={label}
-      past={past}
-      onOpen={() => onOpenThread(item.thread.id)}
-    />
-  );
+  // A block runs from its row down past every hour mark it covers; rows and hour marks inside a block carry the
+  // line through, so a long block reads as taking up its time without its row getting any bigger.
+  const hourStart = (hour: number): number => {
+    const date = new Date(day.dayMs);
+    date.setHours(hour, 0, 0, 0);
+    return date.getTime();
+  };
+  const blocks = day.timeline.map((item) => item.block);
+  const inside = (ms: number, except?: Schedule): boolean =>
+    blocks.some((block) => block !== except && block.startMs < ms && block.endMs > ms);
+  const row = (item: TimelineItem, past = false): React.JSX.Element => {
+    const { block } = item;
+    const nextHour = hourStart(new Date(block.startMs).getHours() + 1);
+    const span = inside(block.startMs, block)
+      ? "through"
+      : block.endMs > nextHour
+        ? "start"
+        : undefined;
+    return (
+      <ThreadRow
+        key={`${item.thread.id}:${block.startMs}`}
+        item={item}
+        active={item.thread.id === activeThreadId}
+        unread={unreadIds.has(item.thread.id)}
+        label={formatRange(block.startMs, block.endMs)}
+        past={past}
+        span={span}
+        onOpen={() => onOpenThread(item.thread.id)}
+      />
+    );
+  };
   const nowLine = (
     <li key="now" className="timeline-now" aria-label={`Now, ${formatClock(nowMs)}`}>
       <span className="timeline-now-time">{formatClock(nowMs)}</span>
@@ -239,6 +264,7 @@ function DayView({
         className="timeline-hour"
         data-past={hour < nowHour}
         data-hour={hour}
+        data-busy={inside(hourStart(hour))}
       >
         <span>{formatHour(hour)}</span>
       </li>,
@@ -251,7 +277,7 @@ function DayView({
         timeline.push(nowLine);
         nowShown = true;
       }
-      timeline.push(row(item, formatClock(block.startMs), block.endMs <= nowMs));
+      timeline.push(row(item, block.endMs <= nowMs));
     }
     if (!nowShown) timeline.push(nowLine);
   }

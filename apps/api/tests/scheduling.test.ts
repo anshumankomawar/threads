@@ -205,15 +205,16 @@ test("a meeting takes its time back from the responses on each attendee's schedu
   expect((await thread("meet")).schedule).toEqual(slotAt(NINE, 60));
 });
 
-test("a reply hands the thread over, onto the other person's schedule", async () => {
+test("sending a thread hands it over, onto the other person's schedule; messages alone don't", async () => {
   await transact("anshu", ask("t1"));
   await transact("arjun", ask("theirs", { assigneeId: "anshu" }));
-  // Anshu's day already has a thread at 9:00, so the one handed over goes next.
-  await transact("arjun", [message("m2", "t1", "Done")]);
+  // A message is a worklog note: the thread stays on Arjun's schedule.
+  await transact("arjun", [message("m2", "t1", "Halfway there")]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
+  // Anshu's day already has a thread at 9:00, so the one sent over goes next.
+  await transact("arjun", [message("m3", "t1", "Done"), update("t1", { waitingOnId: "anshu" })]);
   expect((await thread("t1")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
-  // Writing again doesn't change whose turn it is, so it stays put.
-  await transact("arjun", [message("m3", "t1", "And one more thing")]);
-  expect((await thread("t1")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
+  expect(activity(await thread("t1"))).toContain("sent this to Anshu");
 });
 
 test("a blocked thread gives up its slot until it's unblocked", async () => {
@@ -271,6 +272,8 @@ const oldThread: ThreadRecord = {
   blocks: [],
   workedMinutes: 0,
   branchedFromId: null,
+  waitingOnId: null,
+  blocksId: null,
   createdAtMs: NOW,
   updatedAtMs: NOW,
 };
@@ -378,9 +381,15 @@ test("effort has no upper limit; it just spans more days", async () => {
 test("an estimate is the assignee's work: whoever else it's waiting on gets the shortest block", async () => {
   await transact("anshu", ask("t1"));
   await transact("arjun", [update("t1", { effortHours: 8 })]);
-  await transact("arjun", [message("m2", "t1", "A question for you")]);
+  await transact("arjun", [
+    message("m2", "t1", "A question for you"),
+    update("t1", { waitingOnId: "anshu" }),
+  ]);
   expect((await thread("t1")).blocks).toEqual([slotAt(NINE)]);
-  await transact("anshu", [message("m3", "t1", "An answer")]);
+  await transact("anshu", [
+    message("m3", "t1", "An answer"),
+    update("t1", { waitingOnId: "arjun" }),
+  ]);
   expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 480)]);
 });
 
@@ -390,9 +399,15 @@ test("time the assignee already spent isn't scheduled again when a thread comes 
   expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 240)]);
   // Two hours in, Arjun asks Anshu something, and Anshu answers straight away.
   clock = NINE + 2 * HOUR;
-  await transact("arjun", [message("m2", "t1", "A question for you")]);
+  await transact("arjun", [
+    message("m2", "t1", "A question for you"),
+    update("t1", { waitingOnId: "anshu" }),
+  ]);
   expect((await thread("t1")).workedMinutes).toBe(120);
-  await transact("anshu", [message("m3", "t1", "An answer")]);
+  await transact("anshu", [
+    message("m3", "t1", "An answer"),
+    update("t1", { waitingOnId: "arjun" }),
+  ]);
   expect((await thread("t1")).blocks).toEqual([slotAt(NINE + 2 * HOUR, 120)]);
 });
 
@@ -421,4 +436,39 @@ test("a blocked thread gives up what's left of its blocks but keeps those that e
   const stored = engine.models.Thread.get("t1");
   expect(stored?.blocks).toEqual([past]);
   expect(stored?.schedule).toBeNull();
+});
+
+test("a thread is sent only to the other side of it, and reassigning moves it to the new assignee", async () => {
+  await transact("anshu", ask("t1"));
+  expect((await transact("arjun", [update("t1", { waitingOnId: "kk" })])).status).toBe(400);
+  await transact("anshu", [update("t1", { assigneeId: "kk" })]);
+  expect((await thread("t1")).waitingOnId).toBe("kk");
+});
+
+test("/blocked: a blocker blocks its thread off the schedule, and closing it unblocks and reschedules it", async () => {
+  await transact("anshu", ask("t1"));
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
+  // Arjun is blocked on KK.
+  await transact("arjun", ask("b1", { assigneeId: "kk", blocksId: "t1", branchedFromId: "t1" }));
+  const blocked = await thread("t1");
+  expect(blocked.status).toBe("blocked");
+  expect(blocked.schedule).toBeNull();
+  expect(activity(blocked).at(-1)).toBe("is blocked on [[thread:b1]]");
+  expect((await thread("b1")).waitingOnId).toBe("kk");
+  // KK closes it: Arjun's thread is open again and back on his schedule.
+  await transact("kk", [update("b1", { status: "closed" })]);
+  const unblocked = await thread("t1");
+  expect(unblocked.status).toBe("open");
+  expect(unblocked.schedule).toEqual(slotAt(NINE));
+  expect(activity(unblocked).at(-1)).toBe("closed [[thread:b1]], so this is unblocked");
+});
+
+test("a thread with two blockers stays blocked until both close", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", ask("b1", { assigneeId: "kk", blocksId: "t1" }));
+  await transact("arjun", ask("b2", { assigneeId: "anshu", blocksId: "t1" }));
+  await transact("kk", [update("b1", { status: "closed" })]);
+  expect((await thread("t1")).status).toBe("blocked");
+  await transact("anshu", [update("b2", { status: "closed" })]);
+  expect((await thread("t1")).status).toBe("open");
 });

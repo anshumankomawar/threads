@@ -165,8 +165,16 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 
 ## Inbox, outbox and slots
 
-- A response is waiting on one person (`waitingOn` in `model.ts`, `Batch.waitingOn` on the server): the assignee,
-  until the assignee writes, then whoever asked. That person has it in their inbox; the other has it in their outbox.
+- A response is waiting on one person, stored as `waitingOnId` (read through `waitingOn` in `model.ts` and
+  `Batch.waitingOn` on the server). That person has it in their inbox; the other has it in their outbox. Messages
+  never move it: a thread is a worklog, and whoever has it can write as much as they like (Enter in a reply).
+  Sending it on is explicit: ⌘Enter sets `waitingOnId` to the other side (`otherSide`), with the note if there is
+  one, and the server adds "sent this to …". Reassigning moves it to the new assignee if the old one had it.
+- `/blocked` (the `/` menu, `components/slashCommands.ts`, then `BlockedPalette`) makes a blocker: an ordinary
+  response to the chosen person, with `blocksId` (and `branchedFromId`) set to the thread you're in. The server
+  marks that thread Blocked, which takes it off the schedule, and adds "is blocked on <link>". When its last open
+  blocker closes, the server sets it back to Open ("closed <link>, so this is unblocked") and the scheduler slots
+  it again. A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their outbox.
 - `buildDay` in `inbox.ts` lays this out: a response waiting on you is on the timeline on its slot's day and in your
   inbox until then; responses waiting on others are the outbox. The schedule can step to other days (`dayMs`).
 - Closing is a status change; nothing else closes a thread.

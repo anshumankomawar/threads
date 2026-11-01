@@ -714,20 +714,21 @@ body * {
 }
 
 /* Activity lines: muted, and tighter to the messages around them. */
+/* Activity lines: one short line each, tucked closer to the messages around them, and nearly touching when several
+   come in a row (a run of status changes reads as one small group). */
 .thread-event {
   margin-block: -6px;
+}
+
+.thread-event + .thread-event {
+  margin-top: -14.5px;
 }
 
 .thread-event-marker {
   align-items: center;
   justify-content: center;
-}
-
-.thread-event-marker > span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background-color: var(--icon-tertiary);
+  height: 18px;
+  margin-top: 0;
 }
 
 .thread-event-text {
@@ -735,7 +736,7 @@ body * {
   min-width: 0;
   color: var(--text-tertiary);
   font-size: 12px;
-  line-height: 22px;
+  line-height: 18px;
 }
 
 .thread-event-actor {
@@ -861,6 +862,38 @@ body * {
   color: var(--text-tertiary);
   font-size: 10.5px;
   list-style: none;
+}
+
+/* A block's span line, under its kind icon (centered 18px in): down from the block's row, through the hour marks and
+   rows inside it, ending where the block ends. */
+.timeline-hour {
+  position: relative;
+}
+
+.sidebar-row[data-span]::before,
+.timeline-hour[data-busy="true"]::before {
+  position: absolute;
+  left: 18px;
+  width: 2px;
+  border-radius: 1px;
+  background-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  content: "";
+}
+
+.sidebar-row[data-span="start"]::before {
+  top: 21px;
+  bottom: 0;
+}
+
+.sidebar-row[data-span="through"]::before,
+.timeline-hour[data-busy="true"]::before {
+  top: 0;
+  bottom: 0;
+}
+
+/* Where the line passes an icon, the icon sits on the panel so the line doesn't cross it. */
+.sidebar-row[data-span="through"] .kind-marker {
+  background-color: var(--panel);
 }
 
 .timeline-hour::after {
@@ -1513,11 +1546,26 @@ body * {
   color: var(--text-tertiary);
 }
 
-.welcome-actions {
+.welcome-actions,
+.welcome-list {
   display: flex;
   flex-direction: column;
-  width: min(100%, 360px);
+  width: min(100%, 420px);
   margin-top: 24px;
+}
+
+/* Up next: the same rows as the actions, under a quiet label. */
+.welcome-list-label {
+  margin-bottom: 4px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.welcome-list .welcome-action-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .welcome-action {
@@ -1960,6 +2008,11 @@ body * {
   color: var(--accent);
 }
 
+.thread-menu-hint {
+  margin-left: 6px;
+  color: var(--text-tertiary);
+}
+
 /* Selecting messages to move: a run of selected neighbours reads as one tinted box with an accent edge, rounded
    only at its ends. The tint fills the gap between them, and while selecting a click picks a message, not text. */
 .thread-message {
@@ -2108,4 +2161,89 @@ body * {
   margin: 10px 0 0;
   color: var(--status-closed);
   font-size: 13px;
+}
+
+/* `/blocked`, in place of the reply: a marker like the resolution's, who it's on, then what's needed. */
+.blocked-form-marker {
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--status-blocked);
+  background-color: color-mix(in srgb, var(--status-blocked) 18%, transparent);
+}
+
+.blocked-form-person {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  height: 20px;
+  padding: 0 3px 0 5px;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  background-color: var(--bg-tertiary);
+}
+
+.blocked-form-clear {
+  display: flex;
+  padding: 2px;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-tertiary);
+  background: none;
+  cursor: pointer;
+}
+
+.blocked-form-clear:hover {
+  color: var(--text-primary);
+}
+
+.blocked-form-input {
+  width: 100%;
+  padding: 0;
+  border: none;
+  font: inherit;
+  color: var(--text-primary);
+  background: none;
+  outline: none;
+}
+
+.blocked-form-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.blocked-form-people {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 280px);
+  margin: 6px 0 0 -6px;
+}
+
+.blocked-form-option {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.blocked-form-option[aria-selected="true"] {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.blocked-form-note {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
 }

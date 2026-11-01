@@ -49,6 +49,8 @@ export type NewThread = {
   schedule: Schedule | null;
   // The thread this one branches off from.
   branchedFromId?: string | null;
+  // The thread this one blocks (`/blocked`).
+  blocksId?: string | null;
   // Messages moved in from the parent to open the thread; `text` is then only its title.
   movedEntryIds?: string[];
 };
@@ -293,6 +295,7 @@ export class SyncClient {
             attendeeIds: draft.invitees.map((person) => person.id),
             schedule: draft.schedule,
             branchedFromId: draft.branchedFromId ?? null,
+            blocksId: draft.blocksId ?? null,
           },
         },
         me.id,

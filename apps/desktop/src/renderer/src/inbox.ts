@@ -1,6 +1,7 @@
 import {
   askerId,
   lastMessage,
+  otherSide,
   levelPositions,
   threadScore,
   waitingOn,
@@ -136,11 +137,28 @@ export function buildDay(
     const due = thread.dueAtMs;
     const when = thread.schedule?.startMs ?? due;
     const overdue = thread.kind === "response" && due !== null && due < nowMs;
+    // A blocked thread waits on its open blockers' assignees; it stays yours, off the schedule, labelled Blocked.
+    const blockers = threads.filter(
+      (candidate) => candidate.blocksId === thread.id && candidate.status !== "closed",
+    );
+    const blockedOn = blockers.flatMap((blocker) => blocker.assignee ?? []);
+    const isBlocked = thread.status === "blocked";
     const item = {
       thread,
-      from: thread.kind === "response" && sender.id !== me.id ? sender : null,
-      reason: reasonFor(thread, me, sender, nowMs),
-      dueLabel: overdue ? "Overdue" : when === null ? null : shortDate(when, nowMs),
+      // The other side of a response, since messages are a worklog and the last one may be yours.
+      from: isBlocked ? null : otherSide(thread, me.id),
+      reason: isBlocked
+        ? blockedOn.length > 0
+          ? `Blocked on ${blockedOn.map((person) => person.name).join(", ")}`
+          : "Blocked"
+        : reasonFor(thread, me, sender, nowMs),
+      dueLabel: isBlocked
+        ? "Blocked"
+        : overdue
+          ? "Overdue"
+          : when === null
+            ? null
+            : shortDate(when, nowMs),
       overdue,
       score: scoreOf(thread, people, nowMs),
     };
@@ -177,8 +195,10 @@ export function buildDay(
   // Threads needing an assignee come first; nobody else can act on them.
   const unassigned = ({ thread }: InboxItem): number =>
     Number(thread.kind === "response" && thread.assignee === null);
+  // Blocked threads go last: there's nothing to do on them until they're unblocked.
+  const blocked = ({ thread }: InboxItem): number => Number(thread.status === "blocked");
   const byScore = (a: InboxItem, b: InboxItem): number =>
-    unassigned(b) - unassigned(a) || b.score - a.score;
+    blocked(a) - blocked(b) || unassigned(b) - unassigned(a) || b.score - a.score;
   return {
     dayMs,
     startHour: 0,
@@ -188,4 +208,26 @@ export function buildDay(
     outbox: outbox.sort((a, b) => b.thread.updatedAtMs - a.thread.updatedAtMs),
     later: later.sort(byScore),
   };
+}
+
+// What's coming up on your schedule from now: each thread once, at its next block, soonest first, looking a week ahead.
+export function upNext(
+  threads: Thread[],
+  me: Person,
+  people: Person[],
+  nowMs: number,
+  limit: number,
+): TimelineItem[] {
+  const items: TimelineItem[] = [];
+  const seen = new Set<string>();
+  const day = new Date(startOfDay(nowMs));
+  for (let offset = 0; offset < 7 && items.length < limit; offset++) {
+    for (const item of buildDay(threads, me, people, nowMs, day.getTime()).timeline) {
+      if (item.block.endMs <= nowMs || seen.has(item.thread.id)) continue;
+      seen.add(item.thread.id);
+      items.push(item);
+    }
+    day.setDate(day.getDate() + 1);
+  }
+  return items.slice(0, limit);
 }

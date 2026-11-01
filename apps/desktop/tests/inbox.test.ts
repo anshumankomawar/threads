@@ -1,6 +1,6 @@
 import type { Person, Thread } from "model";
 import { expect, test } from "vite-plus/test";
-import { buildDay } from "../src/renderer/src/inbox";
+import { buildDay, upNext } from "../src/renderer/src/inbox";
 
 const me: Person = { id: "me", name: "You" };
 const other: Person = { id: "other", name: "Sam Rivera" };
@@ -24,6 +24,8 @@ function thread(fields: Partial<Thread>): Thread {
     workedMinutes: 0,
     attendees: [],
     branchedFromId: null,
+    waitingOnId: null,
+    blocksId: null,
     effortHours: null,
     tagIds: [],
     updatedAtMs: NOW,
@@ -120,10 +122,16 @@ test("a new thread is in the assignee's inbox, from whoever asked", () => {
   expect(inboxFrom(asked, arjun)).toBeNull();
 });
 
-test("the assignee's reply moves the thread to the inbox of whoever asked", () => {
-  const answered = conversation([arjun, anshu]);
-  expect(inboxFrom(answered, arjun)).toBe("Anshu");
-  expect(inboxFrom(answered, anshu)).toBeNull();
+test("a reply alone is a worklog note: the thread stays with the assignee", () => {
+  const noted = conversation([arjun, anshu, anshu]);
+  expect(inboxFrom(noted, anshu)).toBe("Arjun Bulusu");
+  expect(inboxFrom(noted, arjun)).toBeNull();
+});
+
+test("sending a thread moves it to the inbox of whoever asked", () => {
+  const sent = conversation([arjun, anshu], { waitingOnId: "arjun" });
+  expect(inboxFrom(sent, arjun)).toBe("Anshu");
+  expect(inboxFrom(sent, anshu)).toBeNull();
 });
 
 test("replying back returns the thread to the assignee", () => {
@@ -133,7 +141,7 @@ test("replying back returns the thread to the assignee", () => {
 });
 
 test("a thread waiting on someone else is in your outbox, labelled with who has it", () => {
-  const answered = conversation([arjun, anshu]);
+  const answered = conversation([arjun, anshu], { waitingOnId: "arjun" });
   const day = buildDay([answered], anshu, [], NOW);
   expect(day.outbox.map((item) => [item.thread, item.from?.name])).toEqual([
     [answered, "Arjun Bulusu"],
@@ -143,22 +151,26 @@ test("a thread waiting on someone else is in your outbox, labelled with who has 
   expect(buildDay([conversation([arjun])], arjun, [], NOW).outbox).toHaveLength(1);
 });
 
-test("activity lines don't change whose turn it is", () => {
-  const answered = conversation([arjun, anshu]);
-  const withEvent = {
-    ...answered,
-    entries: [
-      ...answered.entries,
-      { kind: "event" as const, id: "event", actor: arjun, text: "set priority", createdAtMs: NOW },
-    ],
-  };
-  expect(inboxFrom(withEvent, arjun)).toBe("Anshu");
+test("a message from someone else leaves the thread with the assignee, from whoever asked", () => {
+  const joined = conversation([arjun, kk]);
+  expect(inboxFrom(joined, anshu)).toBe("Arjun Bulusu");
+  expect(inboxFrom(joined, arjun)).toBeNull();
 });
 
-test("someone else's reply goes to the assignee, from that person", () => {
-  const joined = conversation([arjun, kk]);
-  expect(inboxFrom(joined, anshu)).toBe("KK");
-  expect(inboxFrom(joined, arjun)).toBeNull();
+test("a blocked thread stays in your inbox, last, labelled Blocked and off the schedule", () => {
+  const schedule = { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR };
+  const stuck = conversation([arjun], { id: "stuck", status: "blocked", schedule, blocks: [] });
+  const blocker = thread({ id: "blocker", requester: anshu, assignee: kk, blocksId: "stuck" });
+  const ready = conversation([arjun], { id: "ready" });
+  const day = buildDay([stuck, blocker, ready], anshu, [], NOW);
+  expect(day.unscheduled.map((item) => [item.thread.id, item.dueLabel])).toEqual([
+    ["ready", null],
+    ["stuck", "Blocked"],
+  ]);
+  expect(day.unscheduled[1].reason).toBe("Blocked on KK");
+  expect(day.timeline).toEqual([]);
+  // The blocker itself waits on KK: it's in Anshu's outbox.
+  expect(day.outbox.map((item) => item.thread.id)).toEqual(["blocker"]);
 });
 
 test("a thread you assigned to yourself is in your inbox with no name on it", () => {
@@ -169,14 +181,20 @@ test("a thread you assigned to yourself is in your inbox with no name on it", ()
 
 test("a slot belongs to whoever the thread is waiting on", () => {
   const schedule = { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR };
-  const answered = conversation([arjun, anshu], { schedule });
+  const answered = conversation([arjun, anshu], {
+    schedule,
+    blocks: [schedule],
+    waitingOnId: "arjun",
+  });
   expect(buildDay([answered], arjun, [], NOW).timeline).toHaveLength(1);
   expect(buildDay([answered], anshu, [], NOW).timeline).toHaveLength(0);
 });
 
 test("someone else's later schedule doesn't keep a reply out of your inbox", () => {
   const schedule = { startMs: NOW + DAY, endMs: NOW + DAY + HOUR };
-  expect(inboxFrom(conversation([arjun, anshu], { schedule }), arjun)).toBe("Anshu");
+  expect(inboxFrom(conversation([arjun, anshu], { schedule, waitingOnId: "arjun" }), arjun)).toBe(
+    "Anshu",
+  );
 });
 
 test("reassigning moves the thread to the new assignee's inbox", () => {
@@ -189,7 +207,10 @@ test("reassigning moves the thread to the new assignee's inbox", () => {
 
 test("an outbox item says when the other person is slotted to get to it", () => {
   const answered = (startMs: number) =>
-    conversation([arjun, anshu], { schedule: { startMs, endMs: startMs + HOUR } });
+    conversation([arjun, anshu], {
+      schedule: { startMs, endMs: startMs + HOUR },
+      waitingOnId: "arjun",
+    });
   const [later] = buildDay([answered(NOW + 2 * DAY)], anshu, [], NOW).outbox;
   expect(later.dueLabel).toBe(
     new Date(NOW + 2 * DAY).toLocaleDateString(undefined, { weekday: "short" }),
@@ -198,4 +219,14 @@ test("an outbox item says when the other person is slotted to get to it", () => 
   expect(today.dueLabel).toBe(
     new Date(NOW + HOUR).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
   );
+});
+
+test("up next lists each thread once at its next block, soonest first, skipping what's over", () => {
+  const block = (offsetMs: number) => ({ startMs: NOW + offsetMs, endMs: NOW + offsetMs + HOUR });
+  const over = thread({ id: "over", kind: "focus", requester: me, schedule: block(-2 * HOUR) });
+  const now = thread({ id: "now", kind: "focus", requester: me, schedule: block(-HOUR / 2) });
+  const tomorrow = thread({ id: "tomorrow", kind: "focus", requester: me, schedule: block(DAY) });
+  const later = thread({ id: "later", kind: "focus", requester: me, schedule: block(3 * HOUR) });
+  const ids = upNext([over, now, tomorrow, later], me, [], NOW, 3).map((item) => item.thread.id);
+  expect(ids).toEqual(["now", "later", "tomorrow"]);
 });

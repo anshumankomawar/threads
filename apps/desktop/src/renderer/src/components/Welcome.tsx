@@ -1,5 +1,7 @@
 import { CalendarDays, MessageSquare, Search, Target } from "lucide-react";
-import type { Person, ThreadKind } from "model";
+import type { Person, Schedule, ThreadKind } from "model";
+import { formatClock, formatWhen, startOfDay } from "../format";
+import type { TimelineItem } from "../inbox";
 import { SOURCE_LABELS, type DataSource } from "../api";
 
 const ICON_PROPS = { size: 15, strokeWidth: 1.7, "aria-hidden": true } as const;
@@ -11,25 +13,44 @@ function greeting(nowMs: number): string {
   return hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 }
 
+const KIND_ICONS: Record<ThreadKind, React.JSX.Element> = {
+  response: <MessageSquare {...ICON_PROPS} />,
+  meeting: <CalendarDays {...ICON_PROPS} />,
+  focus: <Target {...ICON_PROPS} />,
+};
+
+// When a block is: "Now" while it's under way, a time today, else the day and time.
+function whenLabel(block: Schedule, nowMs: number): string {
+  if (block.startMs <= nowMs) return "Now";
+  return startOfDay(block.startMs) === startOfDay(nowMs)
+    ? formatClock(block.startMs)
+    : formatWhen(block.startMs, nowMs);
+}
+
 // The main view with no thread open. It sits where a thread's page would, so opening one doesn't shift the
-// layout: a greeting, how full today is, and a few ways to get going.
+// layout: a greeting, what's waiting on whom, the next few things on your schedule, and a few ways to get going.
 export function Welcome({
   me,
   source,
-  todayCount,
+  upNext,
   inboxCount,
+  outboxCount,
   nowMs,
+  onOpenThread,
   onNewThread,
   onSearch,
   onViewAs,
 }: {
   me: Person;
   source: DataSource;
-  // Open items on today's schedule and inbox.
-  todayCount: number;
+  // The next few threads on your schedule, at their next block.
+  upNext: TimelineItem[];
   // Threads waiting on you; none is inbox zero.
   inboxCount: number;
+  // Threads you're waiting on others for.
+  outboxCount: number;
   nowMs: number;
+  onOpenThread: (id: string) => void;
   onNewThread: (kind: ThreadKind) => void;
   onSearch: () => void;
   onViewAs: () => void;
@@ -54,10 +75,11 @@ export function Welcome({
     month: "long",
     day: "numeric",
   });
-  const summary =
-    todayCount === 0
-      ? "Nothing on your plate."
-      : `${todayCount} ${todayCount === 1 ? "thing" : "things"} on your plate.`;
+  const waiting = [
+    inboxCount > 0 ? `${inboxCount} waiting on you` : null,
+    outboxCount > 0 ? `${outboxCount} waiting on others` : null,
+  ].filter((part) => part !== null);
+  const summary = waiting.length === 0 ? "Nothing on your plate." : waiting.join(" · ");
 
   return (
     <div className="welcome">
@@ -68,6 +90,23 @@ export function Welcome({
         {date} · {summary}
       </p>
       {inboxCount === 0 && <p className="welcome-zero">Inbox zero. Nothing is waiting on you.</p>}
+      {upNext.length > 0 && (
+        <section className="welcome-list" aria-label="Up next">
+          <div className="welcome-list-label">Up next</div>
+          {upNext.map(({ thread, block }) => (
+            <button
+              key={thread.id}
+              type="button"
+              className="welcome-action"
+              onClick={() => onOpenThread(thread.id)}
+            >
+              <span className="welcome-action-icon">{KIND_ICONS[thread.kind]}</span>
+              <span className="welcome-action-label">{thread.title}</span>
+              <span className="welcome-shortcut">{whenLabel(block, nowMs)}</span>
+            </button>
+          ))}
+        </section>
+      )}
       <div className="welcome-actions">
         {actions.map((action) => (
           <button key={action.label} type="button" className="welcome-action" onClick={action.run}>

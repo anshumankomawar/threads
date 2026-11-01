@@ -130,3 +130,19 @@ export function formatWhen(startMs: number, nowMs: number): string {
           : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   return `${dayLabel}, ${formatClock(startMs)}`;
 }
+
+// "10:00–11:30 AM", or "11:30 AM–1:00 PM" across noon: a block's start and end, saying AM/PM once when it can.
+export function formatRange(startMs: number, endMs: number): string {
+  const parts = (ms: number): { clock: string; period: string } => {
+    const text = new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    const match = text.match(/^(.*?)\s*([AaPp]\.?[Mm]\.?)$/);
+    return match ? { clock: match[1], period: match[2] } : { clock: text, period: "" };
+  };
+  const start = parts(startMs);
+  const end = parts(endMs);
+  const startText =
+    start.period !== "" && start.period === end.period
+      ? start.clock
+      : `${start.clock} ${start.period}`.trim();
+  return `${startText}–${`${end.clock} ${end.period}`.trim()}`;
+}
