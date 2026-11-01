@@ -78,6 +78,8 @@ export type Thread = {
   schedule: Schedule | null;
   // Who's in it: meeting attendees; empty for other kinds.
   attendees: Person[];
+  // The thread this one was branched off from, if any.
+  branchedFromId: string | null;
   updatedAtMs: number;
   entries: Entry[];
 };
@@ -99,4 +101,30 @@ export function waitingOn(thread: Thread): string | null {
   return lastMessage(thread)?.author.id === thread.assignee.id
     ? thread.requester.id
     : thread.assignee.id;
+}
+
+// A link to another thread inside a message's text, as `[[thread:<id>]]`. Typing `/thread` in a reply makes one.
+const THREAD_LINK = /\[\[thread:([^\]\s]+)\]\]/g;
+
+export const threadLink = (threadId: string): string => `[[thread:${threadId}]]`;
+
+// A message's text split into plain runs and thread links, for rendering.
+export function splitThreadLinks(text: string): ({ text: string } | { threadId: string })[] {
+  const parts: ({ text: string } | { threadId: string })[] = [];
+  let last = 0;
+  for (const match of text.matchAll(THREAD_LINK)) {
+    if (match.index > last) parts.push({ text: text.slice(last, match.index) });
+    parts.push({ threadId: match[1] });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
+
+// The text with each thread link replaced by `#<title>`, for previews and plain text.
+export function plainThreadLinks(
+  text: string,
+  titleOf: (threadId: string) => string | undefined,
+): string {
+  return text.replace(THREAD_LINK, (_, threadId: string) => `#${titleOf(threadId) ?? "thread"}`);
 }

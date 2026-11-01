@@ -2,22 +2,29 @@ import { Placeholder } from "@tiptap/extensions";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
+  ArrowDown,
   Bookmark,
   Calendar,
   CalendarDays,
   Check,
   Clock,
+  GitBranch,
   Link2,
   MicOff,
   RotateCcw,
   Sparkles,
+  Target,
   Video,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useMe } from "../me";
+import { useThreadLinks } from "../threadLinks";
+import { THREAD_SLASH_EVENT, ThreadLinkNode, type ThreadSlashDetail } from "./threadLinkNode";
 import {
   PRIORITY_LABELS,
+  splitThreadLinks,
   STATUS_LABELS,
+  threadLink,
   type Entry,
   type Person,
   type Priority,
@@ -47,7 +54,48 @@ export type ThreadActions = {
   onSetAssignee: (person: Person) => void;
   onSetSchedule: (schedule: Schedule | null) => void;
   onToggleDecision: (entryId: string) => void;
+  // `/thread` typed in the reply: start a thread branching off this one, then insert its link or cancel.
+  onBranch: (insert: (threadId: string, title: string) => void, cancel: () => void) => void;
 };
+
+// A thread link as a chip with the linked thread's current title; clicking opens it beside this one.
+function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
+  const links = useThreadLinks();
+  return (
+    <button
+      type="button"
+      className="thread-link"
+      onClick={(event) => {
+        event.stopPropagation();
+        links.open(threadId);
+      }}
+    >
+      <GitBranch size={11} strokeWidth={1.8} aria-hidden />
+      {links.titleOf(threadId) ?? "Thread"}
+    </button>
+  );
+}
+
+// A message's text, with its thread links as chips.
+function MessageText({
+  text,
+  className = "thread-text",
+}: {
+  text: string;
+  className?: string;
+}): React.JSX.Element {
+  return (
+    <div className={className}>
+      {splitThreadLinks(text).map((part, index) =>
+        "threadId" in part ? (
+          <ThreadLinkChip key={index} threadId={part.threadId} />
+        ) : (
+          <span key={index}>{part.text}</span>
+        ),
+      )}
+    </div>
+  );
+}
 
 // Due-date shortcuts, each landing at 5pm on that day.
 function dueOptions(nowMs: number): { label: string; value: number | null }[] {
@@ -214,116 +262,132 @@ function ThreadHeader({
   const dueTone = due === null ? "muted" : due.overdue ? "urgent" : undefined;
   const isResponse = thread.kind === "response";
 
+  // The title is the ask's first line, so the description is whatever follows it.
+  const askText = ask?.text ?? "";
+  const description = askText.startsWith(thread.title)
+    ? askText.slice(thread.title.length).trim()
+    : askText.trim();
+
   return (
-    <div className="thread-block thread-ask" id={ask === undefined ? undefined : `entry-${ask.id}`}>
-      {thread.kind === "meeting" ? (
-        <span className="thread-avatar thread-kind-marker" aria-hidden>
-          <CalendarDays size={12} strokeWidth={1.8} />
-        </span>
-      ) : (
-        <Avatar person={thread.requester} />
-      )}
-      <div className="thread-body">
-        <div className="thread-meta">
-          {thread.kind === "meeting" ? (
-            <>
-              <span className="thread-author">Meeting</span>
-              <span className="thread-time">organized by {thread.requester.name}</span>
-            </>
-          ) : thread.kind === "focus" ? (
-            <>
-              <span className="thread-author">Focus block</span>
-              <span className="thread-time">{thread.requester.name}</span>
-            </>
-          ) : (
-            <>
-              <span className="thread-author">{thread.requester.name}</span>
-              <span className="thread-ask-arrow">→</span>
-              <MenuChip
-                label={thread.assignee?.name ?? "Unassigned"}
-                tone="assignee"
-                options={people.map((person) => ({ label: person.name, value: person }))}
-                onSelect={actions.onSetAssignee}
-              />
-              {ask !== undefined && (
-                <span className="thread-time">{formatRelativeTime(ask.createdAtMs, nowMs)}</span>
-              )}
-            </>
-          )}
-        </div>
-        <div className="thread-text">{ask?.text ?? thread.title}</div>
-        {thread.kind === "meeting" && (
-          <div className="thread-attendees">
-            {thread.attendees.map((person) => (
-              <span key={person.id} className="thread-attendee">
-                <Identicon seed={person.id} size={16} />
-                {person.name}
-              </span>
-            ))}
-          </div>
+    <header className="thread-header" id={ask === undefined ? undefined : `entry-${ask.id}`}>
+      <h1 className="thread-title">{thread.title}</h1>
+      <div className="thread-byline">
+        {thread.kind === "meeting" ? (
+          <>
+            <CalendarDays {...ICON_PROPS} />
+            <span>Meeting</span>
+            <span className="thread-byline-dot">·</span>
+            <span>organized by {thread.requester.name}</span>
+            <span className="thread-byline-dot">·</span>
+            <span className="thread-attendees">
+              {thread.attendees.map((person) => (
+                <span key={person.id} className="thread-attendee">
+                  <Identicon seed={person.id} size={14} />
+                  {person.name}
+                </span>
+              ))}
+            </span>
+          </>
+        ) : thread.kind === "focus" ? (
+          <>
+            <Target {...ICON_PROPS} />
+            <span>Focus block</span>
+            <span className="thread-byline-dot">·</span>
+            <span>{thread.requester.name}</span>
+          </>
+        ) : (
+          <>
+            <span className="thread-byline-person">
+              <Identicon seed={thread.requester.id} size={14} />
+              {thread.requester.name}
+            </span>
+            <span className="thread-ask-arrow">→</span>
+            <MenuChip
+              label={thread.assignee?.name ?? "Unassigned"}
+              tone="assignee"
+              options={people.map((person) => ({ label: person.name, value: person }))}
+              onSelect={actions.onSetAssignee}
+            />
+          </>
         )}
-        <div className="thread-properties">
-          {thread.kind !== "meeting" &&
-            (thread.status === "done" ? (
-              <span className="chip" data-tone="static">
-                <StatusDot status="done" />
-                Done
-              </span>
-            ) : (
-              <MenuChip
-                label={STATUS_LABELS[thread.status]}
-                icon={<StatusDot status={thread.status} />}
-                options={statuses.map((status) => ({
-                  label: STATUS_LABELS[status],
-                  value: status,
-                  icon: <StatusDot status={status} />,
-                }))}
-                onSelect={actions.onSetStatus}
-              />
-            ))}
-          <MenuChip
-            label={
-              thread.schedule === null ? "Not scheduled" : formatSchedule(thread.schedule, nowMs)
-            }
-            icon={<Clock {...ICON_PROPS} />}
-            tone={thread.schedule === null ? "muted" : undefined}
-            options={scheduleOptions(thread.schedule, nowMs)}
-            onSelect={actions.onSetSchedule}
-          />
-          {isResponse && (
-            <>
-              <MenuChip
-                label={PRIORITY_LABELS[thread.priority]}
-                tone={priorityTone}
-                options={priorities.map((priority) => ({
-                  label: PRIORITY_LABELS[priority],
-                  value: priority,
-                }))}
-                onSelect={actions.onSetPriority}
-              />
-              <MenuChip
-                label={due?.label ?? "No due date"}
-                icon={<Calendar {...ICON_PROPS} />}
-                tone={dueTone}
-                options={dueOptions(nowMs)}
-                onSelect={actions.onSetDue}
-              />
-            </>
-          )}
-          {thread.status === "done" ? (
-            <button type="button" className="chip chip-action" onClick={actions.onReopen}>
-              <RotateCcw {...ICON_PROPS} />
-              Reopen
-            </button>
-          ) : (
-            <button type="button" className="chip chip-action" onClick={onMarkDone}>
-              <Check {...ICON_PROPS} />
-              Mark done
-            </button>
-          )}
-        </div>
+        {thread.branchedFromId !== null && (
+          <>
+            <span className="thread-byline-dot">·</span>
+            <span>Branched from</span>
+            <ThreadLinkChip threadId={thread.branchedFromId} />
+          </>
+        )}
+        {ask !== undefined && (
+          <>
+            <span className="thread-byline-dot">·</span>
+            <span>{formatRelativeTime(ask.createdAtMs, nowMs)}</span>
+          </>
+        )}
       </div>
-    </div>
+      <div className="thread-properties">
+        {thread.kind !== "meeting" &&
+          (thread.status === "done" ? (
+            <span className="chip" data-tone="static">
+              <StatusDot status="done" />
+              Done
+            </span>
+          ) : (
+            <MenuChip
+              label={STATUS_LABELS[thread.status]}
+              icon={<StatusDot status={thread.status} />}
+              options={statuses.map((status) => ({
+                label: STATUS_LABELS[status],
+                value: status,
+                icon: <StatusDot status={status} />,
+              }))}
+              onSelect={actions.onSetStatus}
+            />
+          ))}
+        <MenuChip
+          label={
+            thread.schedule === null ? "Not scheduled" : formatSchedule(thread.schedule, nowMs)
+          }
+          icon={<Clock {...ICON_PROPS} />}
+          tone={thread.schedule === null ? "muted" : undefined}
+          options={scheduleOptions(thread.schedule, nowMs)}
+          onSelect={actions.onSetSchedule}
+        />
+        {isResponse && (
+          <>
+            <MenuChip
+              label={PRIORITY_LABELS[thread.priority]}
+              tone={priorityTone}
+              options={priorities.map((priority) => ({
+                label: PRIORITY_LABELS[priority],
+                value: priority,
+              }))}
+              onSelect={actions.onSetPriority}
+            />
+            <MenuChip
+              label={due?.label ?? "No due date"}
+              icon={<Calendar {...ICON_PROPS} />}
+              tone={dueTone}
+              options={dueOptions(nowMs)}
+              onSelect={actions.onSetDue}
+            />
+          </>
+        )}
+        {thread.status === "done" ? (
+          <button type="button" className="chip chip-action" onClick={actions.onReopen}>
+            <RotateCcw {...ICON_PROPS} />
+            Reopen
+          </button>
+        ) : (
+          <button type="button" className="chip chip-action" onClick={onMarkDone}>
+            <Check {...ICON_PROPS} />
+            Mark done
+          </button>
+        )}
+      </div>
+      {description !== "" && (
+        <MessageText text={description} className="thread-text thread-description" />
+      )}
+    </header>
   );
 }
 
@@ -355,7 +419,7 @@ function MessageBlock({
             <Bookmark {...ICON_PROPS} fill={message.decision ? "currentColor" : "none"} />
           </button>
         </div>
-        <div className="thread-text">{message.text}</div>
+        <MessageText text={message.text} />
       </div>
     </div>
   );
@@ -400,7 +464,7 @@ function ResolutionBlock({
             {resolution.author.name} · {formatRelativeTime(resolution.createdAtMs, nowMs)}
           </span>
         </div>
-        <div className="thread-text">{resolution.text}</div>
+        <MessageText text={resolution.text} />
       </div>
     </div>
   );
@@ -534,12 +598,14 @@ function ReplyBlock({
   focusRef,
   onSubmit,
   onCancel,
+  onBranch,
 }: {
   placeholder: string;
   resolving: boolean;
   focusRef: React.RefObject<(() => void) | null>;
   onSubmit: (text: string) => void;
   onCancel: () => void;
+  onBranch: ThreadActions["onBranch"];
 }): React.JSX.Element {
   const me = useMe();
   const handlersRef = useRef({ onSubmit, onCancel });
@@ -553,6 +619,7 @@ function ReplyBlock({
       // No underline, so ⌘U stays the app's user picker.
       StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
       Placeholder.configure({ placeholder }),
+      ThreadLinkNode,
     ],
     editorProps: {
       attributes: { class: "thread-text thread-reply-editor", "aria-label": "Reply" },
@@ -562,7 +629,12 @@ function ReplyBlock({
           return false;
         }
         if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
-        const text = view.state.doc.textBetween(0, view.state.doc.content.size, "\n").trim();
+        // Thread links go out as `[[thread:<id>]]`.
+        const text = view.state.doc
+          .textBetween(0, view.state.doc.content.size, "\n", (leaf) =>
+            leaf.type.name === "threadLink" ? threadLink(String(leaf.attrs.id)) : "",
+          )
+          .trim();
         if (text.length > 0) {
           handlersRef.current.onSubmit(text);
           view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
@@ -571,6 +643,18 @@ function ReplyBlock({
       },
     },
   });
+
+  // `/thread` in the reply starts a branch; the node announces it with an event on the editor.
+  useEffect(() => {
+    const dom = editor?.view.dom;
+    if (dom === undefined) return;
+    const onSlash = (event: Event): void => {
+      const { insert, cancel } = (event as CustomEvent<ThreadSlashDetail>).detail;
+      onBranch(insert, cancel);
+    };
+    dom.addEventListener(THREAD_SLASH_EVENT, onSlash);
+    return () => dom.removeEventListener(THREAD_SLASH_EVENT, onSlash);
+  }, [editor, onBranch]);
 
   return (
     <div className="thread-block" onClick={() => editor?.commands.focus()}>
@@ -585,6 +669,13 @@ function ReplyBlock({
       </div>
     </div>
   );
+}
+
+// Who made an entry, if a person did.
+function entryPerson(entry: Entry): Person | undefined {
+  if (entry.kind === "message" || entry.kind === "resolution") return entry.author;
+  if (entry.kind === "event") return entry.actor;
+  return undefined;
 }
 
 export function ThreadView({
@@ -602,16 +693,62 @@ export function ThreadView({
   const focusReplyRef = useRef<(() => void) | null>(null);
   const nowMs = useNow(60_000);
   const [resolving, setResolving] = useState(false);
+  const me = useMe();
   const entries = thread.entries;
   // The opening message moves into the header: a response's ask, a meeting's agenda, a focus block's note.
   const [first] = entries;
   const ask = first?.kind === "message" ? first : undefined;
   const rest = ask === undefined ? entries : entries.slice(1);
 
-  // Keep the reply block in view as the thread grows.
+  // Whether you're following the conversation: the reply block is on screen. Scroll it away to read back and new
+  // entries from others stop moving the view; a pill counts them instead. `seenCount` is how many entries the thread
+  // had the last time you were following.
+  const [following, setFollowing] = useState(true);
+  const [seenCount, setSeenCount] = useState(entries.length);
+  const followingRef = useRef(true);
+  const lengthRef = useRef<number | undefined>(undefined);
+
+  // Puts the reply block at eye level: its bottom edge a third of the way down the view, so where you type sits just
+  // above it. The overscroll spacer leaves room to scroll that far.
+  const bringReplyIntoView = (behavior: ScrollBehavior = "auto"): void => {
+    const scroller = scrollRef.current;
+    const end = endRef.current;
+    if (scroller === null || end === null) return;
+    const offset = end.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    scroller.scrollTo({
+      top: Math.max(0, scroller.scrollTop + offset - scroller.clientHeight / 3),
+      behavior,
+    });
+  };
+
+  // On opening a thread and whenever it grows: back to the reply block if you're following, or if you made the change.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "end" });
-  }, [entries.length]);
+    const previous = lengthRef.current;
+    lengthRef.current = entries.length;
+    if (previous !== undefined && entries.length <= previous) return;
+    const added = previous === undefined ? [] : entries.slice(previous);
+    const yours = added.some((entry) => entryPerson(entry)?.id === me.id);
+    if (previous === undefined || followingRef.current || yours) bringReplyIntoView();
+  }, [entries, me.id]);
+
+  // Tracks following as you scroll; reaching the reply block marks everything seen.
+  const onScroll = (): void => {
+    const scroller = scrollRef.current;
+    const end = endRef.current;
+    if (scroller === null || end === null) return;
+    const offset = end.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    const onScreen = offset > 0 && offset <= scroller.clientHeight;
+    followingRef.current = onScreen;
+    if (onScreen !== following) setFollowing(onScreen);
+    if (onScreen && seenCount !== entries.length) setSeenCount(entries.length);
+  };
+
+  // What arrived while you were reading back: messages and resolutions by others, else any activity.
+  const unseen = following ? [] : entries.slice(seenCount);
+  const unseenMessages = unseen.filter(
+    (entry) =>
+      (entry.kind === "message" || entry.kind === "resolution") && entryPerson(entry)?.id !== me.id,
+  ).length;
 
   const placeholder = resolving
     ? "How was this resolved?"
@@ -635,9 +772,13 @@ export function ThreadView({
 
   return (
     <div className="thread-view">
-      <div ref={scrollRef} className="thread-scroll" onMouseDown={onBackgroundMouseDown}>
+      <div
+        ref={scrollRef}
+        className="thread-scroll"
+        onMouseDown={onBackgroundMouseDown}
+        onScroll={onScroll}
+      >
         <article ref={docRef} className="thread-doc">
-          <h1 className="thread-title">{thread.title}</h1>
           <ThreadHeader
             thread={thread}
             ask={ask}
@@ -678,12 +819,25 @@ export function ThreadView({
               }
             }}
             onCancel={() => setResolving(false)}
+            onBranch={actions.onBranch}
           />
           <div ref={endRef} />
         </article>
         {/* Room to scroll the last entry up to the top without losing it off screen. */}
         <div className="thread-overscroll" aria-hidden />
       </div>
+      {unseen.length > 0 && (
+        <button
+          type="button"
+          className="thread-new-pill"
+          onClick={() => bringReplyIntoView("smooth")}
+        >
+          <ArrowDown {...ICON_PROPS} />
+          {unseenMessages === 0
+            ? "New activity"
+            : `${unseenMessages} new ${unseenMessages === 1 ? "message" : "messages"}`}
+        </button>
+      )}
       <ThreadMinimap
         entries={entries}
         scrollRef={scrollRef}

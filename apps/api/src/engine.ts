@@ -107,6 +107,7 @@ const threadCreate = z.object({
   assigneeId: id.nullable(),
   attendeeIds: z.array(id),
   schedule: schedule.nullable(),
+  branchedFromId: id.nullable().optional(),
 });
 
 const threadChanges = z
@@ -311,6 +312,8 @@ export class SyncEngine {
         throw new EngineError(409, `Thread already exists: ${data.id}`);
       if (data.assigneeId !== null) requirePerson(data.assigneeId);
       for (const attendee of data.attendeeIds) requirePerson(attendee);
+      if (data.branchedFromId && batch.get("Thread", data.branchedFromId) === undefined)
+        throw new EngineError(404, "Thread not found");
       batch.put("Thread", threadFromCreate(data, actor.id, nowMs));
       // Every meeting gets a video call.
       if (data.kind === "meeting")

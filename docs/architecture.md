@@ -7,6 +7,15 @@ The design follows Linear's sync engine (LSE), as documented in the reverse-engi
 https://github.com/wzhudev/reverse-linear-sync-engine. Use the write-up for reference. Never copy from the Linear
 bundles in that repo (`code/*.js`); they are Linear's proprietary code.
 
+## The product principle: the thread is the atomic unit
+
+Everything in the app is a thread: an ask, a meeting, a focus block, a side discussion. Don't invent new kinds of
+objects or special thread types for a new use case; express it with what a thread already has (people, schedule,
+status, entries) or a small field on it, and keep the code and the UX consolidated around that one unit. Branching
+is the model: a side discussion is an ordinary thread with `branchedFromId`, linked from a message by
+`[[thread:<id>]]`, not a "sub-thread" type. When a change seems to need a new type, look for the thread-shaped way
+first, and prefer removing distinctions over adding them.
+
 ## The idea in one paragraph
 
 Each workspace has exactly one writer: a Cloudflare Durable Object running `SyncEngine`. Clients never write data
@@ -131,6 +140,16 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 10. **Times shown in text use the actor's time zone.** The server runs in UTC; use `utcOffsetMinutes` (activity
     lines) and `X-UTC-Offset` (seeding).
 11. **No REST endpoints.** The API is the sync protocol only. New capabilities are new transaction types or models.
+
+## Thread links and branching
+
+- A message links another thread with the token `[[thread:<id>]]` in its text (`threadLink`, `splitThreadLinks`,
+  `plainThreadLinks` in `packages/model/src/model.ts`). Renderers show it as a chip with the linked thread's current
+  title (`ThreadLinkChip` via `ThreadLinksContext`); previews show `#<title>`.
+- Typing `/thread` in a reply (the `threadLink` Tiptap node in `components/threadLinkNode.ts`) opens the new thread
+  palette in branch mode; creating the thread inserts its link where `/thread` was. The new thread is an ordinary
+  thread with `branchedFromId` set, shown in its byline as "Branched from".
+- Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
 
 ## How to make common changes
 

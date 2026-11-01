@@ -18,6 +18,8 @@ export type ThreadRecord = {
   dueAtMs: number | null;
   schedule: Schedule | null;
   attendeeIds: string[];
+  // The thread this one was branched off from, if any.
+  branchedFromId: string | null;
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -54,7 +56,7 @@ export const ModelRegistry = {
   Person: { loadStrategy: "instant", references: { managerId: "Person" } },
   Thread: {
     loadStrategy: "instant",
-    references: { requesterId: "Person", assigneeId: "Person" },
+    references: { requesterId: "Person", assigneeId: "Person", branchedFromId: "Thread" },
     referenceArrays: { attendeeIds: "Person" },
     backReferences: { entries: "Entry" },
   },
@@ -65,7 +67,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v1");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v2");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -125,6 +127,8 @@ export type ThreadCreate = {
   assigneeId: string | null;
   attendeeIds: string[];
   schedule: Schedule | null;
+  // Set when a discussion is branched off another thread (`/thread` in a message).
+  branchedFromId?: string | null;
 };
 
 export type ThreadChanges = Partial<
@@ -166,6 +170,7 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     schedule: data.schedule,
     attendeeIds:
       data.kind === "meeting" ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)] : [],
+    branchedFromId: data.branchedFromId ?? null,
     createdAtMs: nowMs,
     updatedAtMs: nowMs,
   };
@@ -230,6 +235,8 @@ export function toThread(
     dueAtMs: record.dueAtMs,
     schedule: record.schedule,
     attendees: record.attendeeIds.map(person),
+    // Threads stored before branching existed have no field.
+    branchedFromId: record.branchedFromId ?? null,
     updatedAtMs: record.updatedAtMs,
     // Oldest first. Within the same instant messages lead, so a meeting's agenda comes before its call link.
     entries: [...entries]
@@ -302,6 +309,7 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       dueAtMs: thread.dueAtMs,
       schedule: thread.schedule,
       attendeeIds: thread.attendees.map((person) => person.id),
+      branchedFromId: thread.branchedFromId,
       createdAtMs,
       updatedAtMs: thread.updatedAtMs,
     },

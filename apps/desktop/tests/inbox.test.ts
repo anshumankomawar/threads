@@ -22,6 +22,7 @@ function thread(fields: Partial<Thread>): Thread {
     dueAtMs: null,
     schedule: null,
     attendees: [],
+    branchedFromId: null,
     updatedAtMs: NOW,
     entries: [],
     ...fields,

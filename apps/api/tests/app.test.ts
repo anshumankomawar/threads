@@ -256,3 +256,29 @@ test.each([
     status,
   );
 });
+
+test("a thread can branch off another, which must exist", async () => {
+  await transact("anshu", [createThread("t1"), message("m1", "t1")]);
+  await transact(
+    "anshu",
+    [createThread("t2", { title: "Side discussion" }), message("m2", "t2", "Side discussion")].map(
+      (transaction) =>
+        transaction.type === "create" && transaction.modelName === "Thread"
+          ? { ...transaction, data: { ...transaction.data, branchedFromId: "t1" } }
+          : transaction,
+    ),
+  );
+  expect((await thread("t2"))?.branchedFromId).toBe("t1");
+  expect((await thread("t1"))?.branchedFromId).toBeNull();
+  const orphan = createThread("t3");
+  expect(
+    (
+      await transact("anshu", [
+        {
+          ...orphan,
+          data: { ...(orphan as { data: object }).data, branchedFromId: "missing" },
+        } as TransactionInput,
+      ])
+    ).status,
+  ).toBe(404);
+});

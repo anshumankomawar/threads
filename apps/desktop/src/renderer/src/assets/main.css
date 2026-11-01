@@ -259,6 +259,11 @@ body * {
 /* A top-level destination such as Organization: no icon, lined up with the section labels. */
 .sidebar-nav-row {
   padding-left: 9px;
+  color: var(--text-secondary);
+}
+
+.sidebar-nav-row[data-active="true"] {
+  color: var(--text-primary);
 }
 
 /* Clipped labels fade out over the last 24px instead of using an ellipsis. */
@@ -482,7 +487,7 @@ body * {
 
 /* The thread's title, the same on every kind: a compact heading aligned with the text column. */
 .thread-title {
-  margin: 4px 0 -10px 37px;
+  margin: 0;
   color: var(--text-primary);
   font-size: 20px;
   font-weight: 600;
@@ -1716,4 +1721,146 @@ body * {
 .app-status-button:focus-visible {
   color: var(--text-primary);
   outline: none;
+}
+
+/* A thread's header, in the column the conversation's text uses: title, byline, properties, then the rest of the
+   opening message, with room before the conversation starts. */
+.thread-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0 12px 37px;
+  scroll-margin-top: 14px;
+}
+
+.thread-byline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  min-height: 21px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.thread-byline svg {
+  color: var(--icon-tertiary);
+}
+
+.thread-byline-person {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-primary);
+}
+
+.thread-byline-dot {
+  color: var(--text-tertiary);
+}
+
+.thread-header .thread-attendees,
+.thread-header .thread-properties {
+  margin-top: 0;
+}
+
+.thread-header .chip[data-tone="assignee"] {
+  font-size: 12px;
+}
+
+.thread-description {
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+/* Shown while you're reading back and something new arrives; clicking it returns to the reply. */
+.thread-new-pill {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 5;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  height: 26px;
+  padding: 0 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 13px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  background-color: var(--panel);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+
+.thread-new-pill:hover {
+  background-color: var(--panel-selected);
+}
+
+/* The main thread and, when a thread link is open, the linked thread beside it. */
+.thread-panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.thread-panes > .thread-view {
+  min-width: 0;
+}
+
+.split-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--panel-border);
+}
+
+.split-pane-bar {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2.5px;
+  align-items: center;
+  height: 34px;
+  padding: 0 8px 0 12px;
+}
+
+.split-pane-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A link to another thread, in a message or the reply being written. */
+.thread-link {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+  height: 20px;
+  margin: 0 1px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.9em;
+  line-height: 20px;
+  vertical-align: 1px;
+  background-color: var(--accent-fill);
+  cursor: pointer;
+  user-select: none;
+}
+
+.thread-link:hover {
+  text-decoration: underline;
+}
+
+.thread-byline .thread-link {
+  height: 18px;
+  font-size: 12px;
 }

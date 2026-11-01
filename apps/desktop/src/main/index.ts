@@ -3,6 +3,11 @@ import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
 
+const UI_SCALE = 1.1;
+
+// In development, expose the Chrome DevTools protocol on localhost so scripts can drive and inspect the app.
+if (is.dev) app.commandLine.appendSwitch("remote-debugging-port", "9333");
+
 function createWindow(): void {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
@@ -14,6 +19,8 @@ function createWindow(): void {
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hidden",
+          // Centered on the top bar at the 110% scale (macOS draws them unscaled).
+          trafficLightPosition: { x: 9, y: 11 },
           vibrancy: "sidebar",
           visualEffectState: "active",
           backgroundColor: "#40000000",
@@ -24,6 +31,11 @@ function createWindow(): void {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
     },
+  });
+
+  // The whole interface at 110%: the same layout, a little roomier. Set on every load, since a reload resets it.
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.setZoomFactor(UI_SCALE);
   });
 
   mainWindow.on("ready-to-show", () => {

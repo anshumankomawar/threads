@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { formatRelativeTime } from "../format";
-import type { Entry, Person } from "model";
+import { plainThreadLinks, type Entry, type Person } from "model";
+import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 
 const TICK_SPACING = 10;
-// The focused tick is longest and its neighbors taper back to their resting length. Focus is the tick under the
-// cursor while hovering, otherwise the entry you're reading (the topmost one on screen).
-const PEAK_LENGTH = 24;
-const TAPER_PER_TICK = 5;
+// Every tick rests at the same length, whatever kind of entry it marks. While hovering, the tick under the cursor is
+// longest and its neighbors taper back to rest; at rest the entry you're reading is marked by color alone.
+const RESTING_LENGTH = 12;
+const PEAK_LENGTH = 21;
+const TAPER_PER_TICK = 4;
 // Gap between ⌥ + scroll jumps, so one flick moves one marker.
 const JUMP_THROTTLE_MS = 180;
 
@@ -19,22 +21,20 @@ type Marker = {
   atMs: number;
   decision: boolean;
   bookmarkable: boolean;
-  // Tick length hints at the kind of entry: messages longest, activity shortest.
-  length: number;
 };
 
-function toMarker(entry: Entry): Marker {
+// Thread links in a message read as `#<title>` here.
+function toMarker(entry: Entry, titleOf: (threadId: string) => string | undefined): Marker {
   const base = { id: entry.id, atMs: entry.createdAtMs, decision: false, bookmarkable: false };
   switch (entry.kind) {
     case "message":
       return {
         ...base,
         label: entry.author.name,
-        text: entry.text,
+        text: plainThreadLinks(entry.text, titleOf),
         person: entry.author,
         decision: entry.decision,
         bookmarkable: true,
-        length: 14,
       };
     case "event":
       return {
@@ -42,20 +42,23 @@ function toMarker(entry: Entry): Marker {
         label: "Activity",
         text: `${entry.actor.name} ${entry.text}`,
         person: entry.actor,
-        length: 6,
       };
     case "resolution":
-      return { ...base, label: "Done", text: entry.text, person: entry.author, length: 10 };
+      return {
+        ...base,
+        label: "Done",
+        text: plainThreadLinks(entry.text, titleOf),
+        person: entry.author,
+      };
     case "call":
       return {
         ...base,
         label: "Video call",
         text: `Video call · ${entry.link}`,
         person: null,
-        length: 10,
       };
     case "notes":
-      return { ...base, label: "Meeting notes", text: entry.summary, person: null, length: 10 };
+      return { ...base, label: "Meeting notes", text: entry.summary, person: null };
   }
 }
 
@@ -77,7 +80,8 @@ export function ThreadMinimap({
   nowMs: number;
   onToggleDecision: (entryId: string) => void;
 }): React.JSX.Element | null {
-  const markers = entries.map(toMarker);
+  const { titleOf } = useThreadLinks();
+  const markers = entries.map((entry) => toMarker(entry, titleOf));
   const [visible, setVisible] = useState<Set<string>>(() => new Set());
   const [hovered, setHovered] = useState<number | null>(null);
   const visibleRef = useRef(visible);
@@ -138,11 +142,11 @@ export function ThreadMinimap({
   if (markers.length < 2) return null;
   const card = hovered === null ? undefined : markers[hovered];
   const active = markers.findIndex((marker) => visible.has(marker.id));
-  const focus = hovered ?? (active === -1 ? null : active);
-  const lengthAt = (index: number, resting: number): number =>
+  const focus = hovered;
+  const lengthAt = (index: number): number =>
     focus === null
-      ? resting
-      : Math.max(resting, PEAK_LENGTH - TAPER_PER_TICK * Math.abs(index - focus));
+      ? RESTING_LENGTH
+      : Math.max(RESTING_LENGTH, PEAK_LENGTH - TAPER_PER_TICK * Math.abs(index - focus));
 
   return (
     <nav className="minimap" aria-label="Thread outline" onMouseLeave={() => setHovered(null)}>
@@ -155,7 +159,7 @@ export function ThreadMinimap({
           data-active={index === active}
           data-decision={marker.decision}
           data-hovered={hovered === index}
-          style={{ "--tick-length": `${lengthAt(index, marker.length)}px` } as React.CSSProperties}
+          style={{ "--tick-length": `${lengthAt(index)}px` } as React.CSSProperties}
           onMouseEnter={() => setHovered(index)}
           onClick={(event) => {
             if (event.metaKey) {

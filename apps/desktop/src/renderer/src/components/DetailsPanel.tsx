@@ -1,12 +1,14 @@
 import { formatClock, formatDue, formatRelativeTime } from "../format";
 import {
   KIND_LABELS,
+  plainThreadLinks,
   PRIORITY_LABELS,
   STATUS_LABELS,
   type Entry,
   type Person,
   type Thread,
 } from "model";
+import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 import { useResizablePanel } from "./useResizablePanel";
 
@@ -60,6 +62,7 @@ export function DetailsPanel({
   thread: Thread | undefined;
   nowMs: number;
 }): React.JSX.Element {
+  const { titleOf } = useThreadLinks();
   const { panelRef, width, handle } = useResizablePanel({
     storageKey: "details-width",
     defaultWidth: 280,
@@ -167,7 +170,7 @@ export function DetailsPanel({
                   {formatRelativeTime(latest.createdAtMs, nowMs)}
                 </span>
               </span>
-              <span className="details-latest-text">{latest.text}</span>
+              <span className="details-latest-text">{plainThreadLinks(latest.text, titleOf)}</span>
             </button>
           </Section>
         )}
@@ -178,7 +181,7 @@ export function DetailsPanel({
               {tagged.map((message) => (
                 <li key={message.id}>
                   <button type="button" className="details-item" onClick={() => reveal(message.id)}>
-                    {message.text}
+                    {plainThreadLinks(message.text, titleOf)}
                   </button>
                 </li>
               ))}

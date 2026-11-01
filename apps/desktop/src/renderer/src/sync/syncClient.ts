@@ -46,6 +46,8 @@ export type NewThread = {
   assignee: Person | null;
   invitees: Person[];
   schedule: Schedule | null;
+  // The thread this one branches off from (`/thread` in a message).
+  branchedFromId?: string | null;
 };
 
 const firstLine = (text: string): string => text.split("\n")[0].slice(0, 80);
@@ -287,6 +289,7 @@ export class SyncClient {
             assigneeId: draft.assignee?.id ?? null,
             attendeeIds: draft.invitees.map((person) => person.id),
             schedule: draft.schedule,
+            branchedFromId: draft.branchedFromId ?? null,
           },
         },
         me.id,

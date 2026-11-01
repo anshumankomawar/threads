@@ -22,6 +22,8 @@ import {
 import type { SyncClient } from "./sync/syncClient";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
 import { MeContext } from "./me";
+import { ThreadLinksContext, type ThreadLinks } from "./threadLinks";
+import { Maximize2, X } from "lucide-react";
 import { Identicon } from "./components/Identicon";
 import { OrgView } from "./components/OrgView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
@@ -197,6 +199,8 @@ const App = observer(function App(): React.JSX.Element {
     }));
     setActiveThreadId(id);
     setOrgOpen(false);
+    // A thread opened as the main one leaves the split view.
+    if (id !== null && id === splitThreadId) setSplitThreadId(null);
   };
   // The org view takes the thread's place in the main area.
   const openOrg = (): void => {
@@ -254,30 +258,47 @@ const App = observer(function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Every change is a transaction: applied here at once, then sent to the server, which records property changes
-  // as activity lines that sync back.
-  const edit = (changes: ThreadChanges): void => {
-    if (activeThread !== undefined) client.updateThread(activeThread.id, changes, me);
+  // A `/thread` branch in progress: the thread it branches off, and how to finish or undo the link in the reply.
+  const [branch, setBranch] = useState<{
+    from: Thread;
+    insert: (threadId: string, title: string) => void;
+    cancel: () => void;
+  } | null>(null);
+
+  // The thread open beside the main one, from clicking a thread link.
+  const [splitThreadId, setSplitThreadId] = useState<string | null>(null);
+  const splitThread =
+    splitThreadId === activeThreadId
+      ? undefined
+      : threads.find((thread) => thread.id === splitThreadId);
+  const threadLinks: ThreadLinks = {
+    titleOf: (threadId) => threads.find((thread) => thread.id === threadId)?.title,
+    open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
   };
 
-  const actions: ThreadActions = {
-    onSend: (text) => {
-      if (activeThread !== undefined) client.addEntry(activeThread.id, "message", text, me);
-    },
-    onResolve: (text) => {
-      if (activeThread !== undefined) client.addEntry(activeThread.id, "resolution", text, me);
-    },
-    onReopen: () => edit({ status: "open" }),
-    onSetStatus: (status) => edit({ status }),
-    onSetPriority: (priority) => edit({ priority }),
-    onSetDue: (dueAtMs) => edit({ dueAtMs }),
-    onSetAssignee: (person) => edit({ assigneeId: person.id }),
-    onSetSchedule: (schedule) => edit({ schedule }),
-    onToggleDecision: (entryId) => {
-      const entry = activeThread?.entries.find((candidate) => candidate.id === entryId);
-      if (entry?.kind !== "message") return;
-      client.setDecision(entryId, !entry.decision, me);
-    },
+  // Every change is a transaction: applied here at once, then sent to the server, which records property changes
+  // as activity lines that sync back. Each open thread (main or split) gets its own actions.
+  const actionsFor = (thread: Thread): ThreadActions => {
+    const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
+    return {
+      onSend: (text) => client.addEntry(thread.id, "message", text, me),
+      onResolve: (text) => client.addEntry(thread.id, "resolution", text, me),
+      onReopen: () => edit({ status: "open" }),
+      onSetStatus: (status) => edit({ status }),
+      onSetPriority: (priority) => edit({ priority }),
+      onSetDue: (dueAtMs) => edit({ dueAtMs }),
+      onSetAssignee: (person) => edit({ assigneeId: person.id }),
+      onSetSchedule: (schedule) => edit({ schedule }),
+      onToggleDecision: (entryId) => {
+        const entry = thread.entries.find((candidate) => candidate.id === entryId);
+        if (entry?.kind !== "message") return;
+        client.setDecision(entryId, !entry.decision, me);
+      },
+      onBranch: (insert, cancel) => {
+        setSearchOpen(false);
+        setBranch({ from: thread, insert, cancel });
+      },
+    };
   };
 
   if (client.status !== "ready")
@@ -320,104 +341,159 @@ const App = observer(function App(): React.JSX.Element {
 
   return (
     <MeContext value={me}>
-      <div aria-hidden className="titlebar" />
-      <DragRegionResync />
-      {sidebarOpen && (
-        <Sidebar
-          day={day}
-          nowMs={nowMs}
-          unreadIds={unreadIds}
-          activeThreadId={activeThreadId}
-          orgOpen={orgOpen}
-          onNewThread={() => openNew()}
-          onOpenThread={openThread}
-          onToggleOrg={() => (orgOpen ? setOrgOpen(false) : openOrg())}
-          onToggle={toggleSidebar}
-          onSearch={() => setSearchOpen(true)}
-        />
-      )}
-      <main className="main">
-        <div className="topbar main-topbar" data-sidebar-open={sidebarOpen}>
-          {!sidebarOpen && (
-            <>
-              <SidebarToggle onToggle={toggleSidebar} />
-              <SearchButton onSearch={() => setSearchOpen(true)} />
-            </>
-          )}
-          <span className="topbar-title">{orgOpen ? "Organization" : activeThread?.title}</span>
-          <span className="topbar-end">
-            <button
-              type="button"
-              className="view-as-button"
-              aria-label={`Viewing as ${me.name}. Switch user`}
-              onClick={() => setViewAsOpen(true)}
-            >
-              <span className="view-as-source">
-                {SOURCE_LABELS[source]}
-                {client.connected ? "" : " · Offline"}
-              </span>
-              <Identicon seed={me.id} size={14} />
-              <span>{me.name}</span>
-            </button>
-            <DetailsToggle onToggle={() => setDetailsOpen((open) => !open)} />
-          </span>
-        </div>
-        {orgOpen ? (
-          <OrgView people={people} me={me} />
-        ) : activeThread === undefined ? (
-          <Welcome
-            me={me}
-            source={source}
-            todayCount={day.timeline.length + day.unscheduled.length}
+      <ThreadLinksContext value={threadLinks}>
+        <div aria-hidden className="titlebar" />
+        <DragRegionResync />
+        {sidebarOpen && (
+          <Sidebar
+            day={day}
             nowMs={nowMs}
-            onNewThread={openNew}
+            unreadIds={unreadIds}
+            activeThreadId={activeThreadId}
+            orgOpen={orgOpen}
+            onNewThread={() => openNew()}
+            onOpenThread={openThread}
+            onToggleOrg={() => (orgOpen ? setOrgOpen(false) : openOrg())}
+            onToggle={toggleSidebar}
             onSearch={() => setSearchOpen(true)}
-            onViewAs={() => setViewAsOpen(true)}
-          />
-        ) : (
-          <ThreadView
-            key={activeThread.id}
-            thread={activeThread}
-            people={people}
-            actions={actions}
           />
         )}
-      </main>
-      {detailsOpen && <DetailsPanel thread={activeThread} nowMs={nowMs} />}
-      {newThreadKind !== null && (
-        <NewThreadPalette
-          initialKind={newThreadKind}
-          people={people}
-          me={me}
-          nowMs={nowMs}
-          onCreate={createThread}
-          onClose={() => setNewThreadKind(null)}
-        />
-      )}
-      {searchOpen && (
-        <CommandPalette
-          threads={threads}
-          source={source}
-          me={me}
-          onSwitchSource={switchSource}
-          onViewAs={() => {
-            setSearchOpen(false);
-            setViewAsOpen(true);
-          }}
-          onOpenOrg={openOrg}
-          onNewThread={openNew}
-          onOpenThread={openThread}
-          onClose={() => setSearchOpen(false)}
-        />
-      )}
-      {viewAsOpen && (
-        <ViewAsPalette
-          people={people}
-          me={me}
-          onPick={viewAs}
-          onClose={() => setViewAsOpen(false)}
-        />
-      )}
+        <main className="main">
+          <div className="topbar main-topbar" data-sidebar-open={sidebarOpen}>
+            {!sidebarOpen && (
+              <>
+                <SidebarToggle onToggle={toggleSidebar} />
+                <SearchButton onSearch={() => setSearchOpen(true)} />
+              </>
+            )}
+            <span className="topbar-title">{orgOpen ? "Organization" : activeThread?.title}</span>
+            <span className="topbar-end">
+              <button
+                type="button"
+                className="view-as-button"
+                aria-label={`Viewing as ${me.name}. Switch user`}
+                onClick={() => setViewAsOpen(true)}
+              >
+                <span className="view-as-source">
+                  {SOURCE_LABELS[source]}
+                  {client.connected ? "" : " · Offline"}
+                </span>
+                <Identicon seed={me.id} size={14} />
+                <span>{me.name}</span>
+              </button>
+              <DetailsToggle onToggle={() => setDetailsOpen((open) => !open)} />
+            </span>
+          </div>
+          {orgOpen ? (
+            <OrgView people={people} me={me} />
+          ) : activeThread === undefined ? (
+            <Welcome
+              me={me}
+              source={source}
+              todayCount={day.timeline.length + day.unscheduled.length}
+              nowMs={nowMs}
+              onNewThread={openNew}
+              onSearch={() => setSearchOpen(true)}
+              onViewAs={() => setViewAsOpen(true)}
+            />
+          ) : (
+            <div className="thread-panes">
+              <ThreadView
+                key={activeThread.id}
+                thread={activeThread}
+                people={people}
+                actions={actionsFor(activeThread)}
+              />
+              {splitThread !== undefined && (
+                <section className="split-pane" aria-label={splitThread.title}>
+                  <div className="split-pane-bar">
+                    <span className="split-pane-title">{splitThread.title}</span>
+                    <button
+                      type="button"
+                      className="topbar-button"
+                      aria-label="Open as the main thread"
+                      onClick={() => openThread(splitThread.id)}
+                    >
+                      <Maximize2 size={13} strokeWidth={1.7} aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="topbar-button"
+                      aria-label="Close"
+                      onClick={() => setSplitThreadId(null)}
+                    >
+                      <X size={14} strokeWidth={1.7} aria-hidden />
+                    </button>
+                  </div>
+                  <ThreadView
+                    key={splitThread.id}
+                    thread={splitThread}
+                    people={people}
+                    actions={actionsFor(splitThread)}
+                  />
+                </section>
+              )}
+            </div>
+          )}
+        </main>
+        {detailsOpen && <DetailsPanel thread={activeThread} nowMs={nowMs} />}
+        {newThreadKind !== null && branch === null && (
+          <NewThreadPalette
+            initialKind={newThreadKind}
+            people={people}
+            me={me}
+            nowMs={nowMs}
+            onCreate={createThread}
+            onClose={() => setNewThreadKind(null)}
+          />
+        )}
+        {branch !== null && (
+          <NewThreadPalette
+            initialKind="response"
+            branchingFrom={branch.from.title}
+            people={people}
+            me={me}
+            nowMs={nowMs}
+            onCreate={(draft) => {
+              // The branch is an ordinary thread that remembers where it came from; its link lands in the reply.
+              const threadId = client.createThread(
+                { ...draft, branchedFromId: branch.from.id },
+                me,
+              );
+              branch.insert(threadId, draft.text.split("\n")[0]);
+              setBranch(null);
+            }}
+            onClose={() => {
+              branch.cancel();
+              setBranch(null);
+            }}
+          />
+        )}
+        {searchOpen && (
+          <CommandPalette
+            threads={threads}
+            source={source}
+            me={me}
+            onSwitchSource={switchSource}
+            onViewAs={() => {
+              setSearchOpen(false);
+              setViewAsOpen(true);
+            }}
+            onOpenOrg={openOrg}
+            onNewThread={openNew}
+            onOpenThread={openThread}
+            onClose={() => setSearchOpen(false)}
+          />
+        )}
+        {viewAsOpen && (
+          <ViewAsPalette
+            people={people}
+            me={me}
+            onPick={viewAs}
+            onClose={() => setViewAsOpen(false)}
+          />
+        )}
+      </ThreadLinksContext>
     </MeContext>
   );
 });
