@@ -72,6 +72,15 @@ class FakeServer implements Transport {
     return { lastSyncId: this.lastSyncId, actions: this.log.filter((action) => action.id > after) };
   }
 
+  // Starts over with just the people, like the Workspace object's reset.
+  async reset() {
+    this.log = [];
+    this.lastSyncId = 0;
+    this.change("Person", anshu);
+    this.change("Person", arjun);
+    return { lastSyncId: this.lastSyncId };
+  }
+
   async send(batch: TransactionBatch) {
     if (!this.online) throw new Error("offline");
     if (this.refuse) throw new RejectedError("Thread not found");
@@ -234,5 +243,16 @@ test("moving messages shows at once, and is undone if the server refuses it", as
   client.moveMessages(["m1"], destination, anshu);
   await settle();
   expect([has(source), has(destination)]).toEqual([false, true]);
+  expect(client.queue.pending).toEqual([]);
+});
+
+test("wiping leaves the people and clears every thread at once", async () => {
+  const { client } = await started();
+  client.createThread({ ...draft, text: "Plan the offsite" }, anshu);
+  await settle();
+  expect(client.threads).toHaveLength(1);
+  await client.wipe();
+  expect(client.threads).toEqual([]);
+  expect(client.people.map((person) => person.id)).toEqual(["anshu", "arjun"]);
   expect(client.queue.pending).toEqual([]);
 });

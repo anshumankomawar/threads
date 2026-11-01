@@ -148,15 +148,6 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     workedMinutes: 0,
     attendees: fields.attendees ?? [],
     branchedFromId: null,
-    // Whose turn the sample conversation leaves it at: back with whoever asked once the assignee has answered.
-    waitingOnId:
-      (fields.kind ?? "response") === "response"
-        ? fields.assignee == null
-          ? fields.requester.id
-          : entries.findLast((entry) => entry.kind === "message")?.author.id === fields.assignee.id
-            ? fields.requester.id
-            : fields.assignee.id
-        : null,
     blocksId: null,
     updatedAtMs: Math.max(...entries.map((entry) => entry.createdAtMs)),
     entries,

@@ -84,8 +84,6 @@ export type Thread = {
   attendees: Person[];
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
-  // Whose turn it is, stored: see `waitingOn`.
-  waitingOnId: string | null;
   // The thread this one blocks, if it was made with `/blocked`.
   blocksId: string | null;
   updatedAtMs: number;
@@ -101,12 +99,12 @@ export function lastMessage(thread: Thread): Message | undefined {
   return thread.entries.findLast((entry): entry is Message => entry.kind === "message");
 }
 
-// Whose turn it is, which decides whose inbox the thread is in. It's stored on the thread and moves only when someone
-// sends the thread on (⌘Enter in a reply); messages alone are a worklog and leave it where it is. Threads stored
-// before that rest with the assignee, or whoever asked if nobody is. Meetings aren't turns.
+// Whose turn it is, which decides whose inbox the thread is in: the assignee's, or whoever asked while nobody is
+// assigned. Messages never move it, so a thread is a worklog; it leaves the inbox when it's closed. Meetings aren't
+// turns.
 export function waitingOn(thread: Thread): string | null {
   if (thread.kind === "meeting") return null;
-  return thread.waitingOnId ?? thread.assignee?.id ?? thread.requester.id;
+  return thread.assignee?.id ?? thread.requester.id;
 }
 
 // The other side of a response from someone: whoever asked if it's the assignee, and the assignee otherwise.

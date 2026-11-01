@@ -58,6 +58,7 @@ function httpTransport(server: Server): Transport {
     bootstrap: () => request("GET", "/sync/bootstrap"),
     deltas: (after) => request("GET", `/sync/deltas?after=${after}`),
     send: (batch) => request("POST", "/sync/transactions", batch),
+    reset: () => request("POST", "/sync/reset"),
     connect: ({ onOpen, onMessage, onClose }) => {
       // A browser WebSocket can't send headers, so these go in the query string.
       const query = new URLSearchParams({ workspace: server.workspace, utcOffset: utcOffset() });

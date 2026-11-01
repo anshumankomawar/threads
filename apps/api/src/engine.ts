@@ -116,12 +116,11 @@ class Batch {
     return records;
   }
 
-  // Whose inbox a response is in, the same rule as `waitingOn` in the model: stored on the thread, moved only when
-  // someone sends it on.
+  // Whose inbox a response is in, the same rule as `waitingOn` in the model.
   waitingOn(threadId: string): string | null {
     const thread = this.get("Thread", threadId);
     if (thread === undefined || thread.kind !== "response") return null;
-    return thread.waitingOnId ?? thread.assigneeId ?? thread.requesterId;
+    return thread.assigneeId ?? thread.requesterId;
   }
 
   // The open threads still blocking a thread.
@@ -162,7 +161,6 @@ const threadChanges = z
       .array(z.enum(TAG_IDS))
       .refine((tags) => new Set(tags).size === tags.length, "Tags must be unique"),
     schedule: schedule.nullable(),
-    waitingOnId: id,
   })
   .partial();
 
@@ -219,12 +217,6 @@ function describeChanges(
   const lines: string[] = [];
   if (changes.title !== undefined && changes.title !== thread.title)
     lines.push(`renamed this to “${changes.title}”`);
-  if (
-    changes.waitingOnId !== undefined &&
-    changes.waitingOnId !== null &&
-    changes.waitingOnId !== thread.waitingOnId
-  )
-    lines.push(`sent this to ${people(changes.waitingOnId)?.name ?? changes.waitingOnId}`);
   if (changes.status !== undefined && changes.status !== thread.status)
     lines.push(
       thread.status === "closed" && changes.status === "open"
@@ -589,25 +581,9 @@ export class SyncEngine {
       throw new EngineError(400, "A response's slot comes from the schedule it lands on");
     if (changes.assigneeId !== undefined && changes.assigneeId !== null)
       requirePerson(changes.assigneeId);
-    // Sending a response on goes to the other side of it: whoever asked, or the assignee.
-    if (
-      changes.waitingOnId !== undefined &&
-      (thread.kind !== "response" ||
-        (changes.waitingOnId !== thread.requesterId && changes.waitingOnId !== thread.assigneeId))
-    )
-      throw new EngineError(400, "A thread can only be sent to whoever asked or its assignee");
     const lines = describeChanges(thread, changes, actor, person, offsetMinutes);
     if (lines.length === 0) return;
-    // Reassigning moves the thread to the new assignee if it was with the old one.
-    const holder = thread.waitingOnId ?? thread.assigneeId ?? thread.requesterId;
-    const waitingOnId =
-      changes.waitingOnId ??
-      (changes.assigneeId !== undefined &&
-      thread.kind === "response" &&
-      holder === thread.assigneeId
-        ? changes.assigneeId
-        : thread.waitingOnId);
-    batch.put("Thread", { ...thread, ...changes, waitingOnId, updatedAtMs: nowMs });
+    batch.put("Thread", { ...thread, ...changes, updatedAtMs: nowMs });
     lines.forEach((text, index) =>
       batch.put("Entry", {
         id: `${transaction.id}:${index}`,
@@ -627,12 +603,13 @@ export class SyncEngine {
       batch.openBlockers(blocked.id).length === 0
     ) {
       batch.put("Thread", { ...blocked, status: "open", updatedAtMs: nowMs });
+      // Mirrors "is blocked on …": whoever has the thread is unblocked.
       batch.put("Entry", {
         id: `${transaction.id}:unblocked`,
         threadId: blocked.id,
         kind: "event",
-        actorId: actor.id,
-        text: `closed ${threadLink(thread.id)}, so this is unblocked`,
+        actorId: blocked.assigneeId ?? blocked.requesterId,
+        text: `is unblocked, ${threadLink(thread.id)} is closed`,
         createdAtMs: nowMs,
       });
     }

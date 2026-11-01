@@ -24,7 +24,6 @@ function thread(fields: Partial<Thread>): Thread {
     workedMinutes: 0,
     attendees: [],
     branchedFromId: null,
-    waitingOnId: null,
     blocksId: null,
     effortHours: null,
     tagIds: [],
@@ -128,12 +127,6 @@ test("a reply alone is a worklog note: the thread stays with the assignee", () =
   expect(inboxFrom(noted, arjun)).toBeNull();
 });
 
-test("sending a thread moves it to the inbox of whoever asked", () => {
-  const sent = conversation([arjun, anshu], { waitingOnId: "arjun" });
-  expect(inboxFrom(sent, arjun)).toBe("Anshu");
-  expect(inboxFrom(sent, anshu)).toBeNull();
-});
-
 test("replying back returns the thread to the assignee", () => {
   const followedUp = conversation([arjun, anshu, arjun]);
   expect(inboxFrom(followedUp, anshu)).toBe("Arjun Bulusu");
@@ -141,11 +134,9 @@ test("replying back returns the thread to the assignee", () => {
 });
 
 test("a thread waiting on someone else is in your outbox, labelled with who has it", () => {
-  const answered = conversation([arjun, anshu], { waitingOnId: "arjun" });
-  const day = buildDay([answered], anshu, [], NOW);
-  expect(day.outbox.map((item) => [item.thread, item.from?.name])).toEqual([
-    [answered, "Arjun Bulusu"],
-  ]);
+  const asked = conversation([arjun, anshu]);
+  const day = buildDay([asked], arjun, [], NOW);
+  expect(day.outbox.map((item) => [item.thread, item.from?.name])).toEqual([[asked, "Anshu"]]);
   expect(day.unscheduled).toEqual([]);
   // Asking someone puts it in your outbox straight away.
   expect(buildDay([conversation([arjun])], arjun, [], NOW).outbox).toHaveLength(1);
@@ -181,20 +172,9 @@ test("a thread you assigned to yourself is in your inbox with no name on it", ()
 
 test("a slot belongs to whoever the thread is waiting on", () => {
   const schedule = { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR };
-  const answered = conversation([arjun, anshu], {
-    schedule,
-    blocks: [schedule],
-    waitingOnId: "arjun",
-  });
-  expect(buildDay([answered], arjun, [], NOW).timeline).toHaveLength(1);
-  expect(buildDay([answered], anshu, [], NOW).timeline).toHaveLength(0);
-});
-
-test("someone else's later schedule doesn't keep a reply out of your inbox", () => {
-  const schedule = { startMs: NOW + DAY, endMs: NOW + DAY + HOUR };
-  expect(inboxFrom(conversation([arjun, anshu], { schedule, waitingOnId: "arjun" }), arjun)).toBe(
-    "Anshu",
-  );
+  const asked = conversation([arjun, anshu], { schedule, blocks: [schedule] });
+  expect(buildDay([asked], anshu, [], NOW).timeline).toHaveLength(1);
+  expect(buildDay([asked], arjun, [], NOW).timeline).toHaveLength(0);
 });
 
 test("reassigning moves the thread to the new assignee's inbox", () => {
@@ -207,15 +187,12 @@ test("reassigning moves the thread to the new assignee's inbox", () => {
 
 test("an outbox item says when the other person is slotted to get to it", () => {
   const answered = (startMs: number) =>
-    conversation([arjun, anshu], {
-      schedule: { startMs, endMs: startMs + HOUR },
-      waitingOnId: "arjun",
-    });
-  const [later] = buildDay([answered(NOW + 2 * DAY)], anshu, [], NOW).outbox;
+    conversation([arjun, anshu], { schedule: { startMs, endMs: startMs + HOUR } });
+  const [later] = buildDay([answered(NOW + 2 * DAY)], arjun, [], NOW).outbox;
   expect(later.dueLabel).toBe(
     new Date(NOW + 2 * DAY).toLocaleDateString(undefined, { weekday: "short" }),
   );
-  const [today] = buildDay([answered(NOW + HOUR)], anshu, [], NOW).outbox;
+  const [today] = buildDay([answered(NOW + HOUR)], arjun, [], NOW).outbox;
   expect(today.dueLabel).toBe(
     new Date(NOW + HOUR).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
   );

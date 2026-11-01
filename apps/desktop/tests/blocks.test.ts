@@ -30,7 +30,6 @@ function thread(fields: Partial<Thread>): Thread {
     workedMinutes: 0,
     attendees: [],
     branchedFromId: null,
-    waitingOnId: null,
     blocksId: null,
     updatedAtMs: NOW,
     entries: [],

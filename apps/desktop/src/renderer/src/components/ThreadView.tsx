@@ -55,8 +55,6 @@ import {
   type Schedule,
   type Status,
   type Thread,
-  waitingOn,
-  otherSide,
 } from "model";
 import {
   DAY,
@@ -83,10 +81,8 @@ type CallEntry = Extract<Entry, { kind: "call" }>;
 type NotesEntry = Extract<Entry, { kind: "notes" }>;
 
 export type ThreadActions = {
-  // A note in the thread; it stays where it is.
+  // A note in the thread's worklog; the thread stays where it is.
   onSend: (text: string) => void;
-  // Sends the thread to the other person, with a note if there is one (⌘Enter).
-  onSendTo: (text: string, person: Person) => void;
   // `/blocked`: asks someone for what this thread needs, in a new thread that blocks it.
   onBlock: (person: Person, text: string) => void;
   onSetStatus: (status: Status) => void;
@@ -749,9 +745,7 @@ function ReplyFocus({
 function ReplyBlock({
   placeholder,
   focusRef,
-  sendTo,
   onSubmit,
-  onSendTo,
   onBranch,
   onCommand,
   threadId,
@@ -759,17 +753,14 @@ function ReplyBlock({
   threadId: string;
   placeholder: string;
   focusRef: React.RefObject<(() => void) | null>;
-  // Who ⌘Enter sends the thread to, when it's yours to send.
-  sendTo: Person | null;
   onSubmit: (text: string) => void;
-  onSendTo: (text: string) => void;
   onBranch: ThreadActions["onBranch"];
   onCommand: (name: CommandName) => void;
 }): React.JSX.Element {
   const me = useMe();
-  const handlersRef = useRef({ onSubmit, onSendTo, canSend: sendTo !== null });
+  const handlersRef = useRef({ onSubmit });
   useEffect(() => {
-    handlersRef.current = { onSubmit, onSendTo, canSend: sendTo !== null };
+    handlersRef.current = { onSubmit };
   });
 
   const editor = useEditor({
@@ -793,12 +784,10 @@ function ReplyBlock({
             leaf.type.name === "threadLink" ? threadLink(String(leaf.attrs.id)) : "",
           )
           .trim();
-        // Enter adds a note and keeps the thread; ⌘Enter sends it on (with the note, if there is one).
-        const send = (event.metaKey || event.ctrlKey) && handlersRef.current.canSend;
-        if (send) handlersRef.current.onSendTo(text);
-        else if (text.length > 0) handlersRef.current.onSubmit(text);
-        if (send || text.length > 0)
+        if (text.length > 0) {
+          handlersRef.current.onSubmit(text);
           view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
+        }
         return true;
       },
     },
@@ -874,9 +863,6 @@ function ReplyBlock({
       <div className="thread-body">
         <div className="thread-meta">
           <span className="thread-author">{me.name}</span>
-          {sendTo !== null && (
-            <span className="thread-time">⌘↵ to send to {sendTo.name.split(" ")[0]}</span>
-          )}
         </div>
         <EditorContent editor={editor} className="thread-reply" />
       </div>
@@ -1140,9 +1126,6 @@ export function ThreadView({
   const [blockingFor, setBlockingFor] = useState<string | null>(null);
   const blocking = blockingFor === thread.id;
 
-  // A response that's yours to act on can be sent to the other side of it.
-  const sendTo = waitingOn(thread) === me.id ? otherSide(thread, me.id) : null;
-
   const placeholder =
     thread.kind === "meeting" ? "Add notes…" : thread.kind === "focus" ? "Add a note…" : "Reply…";
 
@@ -1200,7 +1183,7 @@ export function ThreadView({
                 return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
               return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
             })}
-            {blocking ? (
+            {thread.status === "closed" ? null : blocking ? (
               <BlockedForm
                 people={people}
                 me={me}
@@ -1215,11 +1198,7 @@ export function ThreadView({
                 key={thread.id}
                 placeholder={placeholder}
                 focusRef={focusReplyRef}
-                sendTo={sendTo}
                 onSubmit={actions.onSend}
-                onSendTo={(text) => {
-                  if (sendTo !== null) actions.onSendTo(text, sendTo);
-                }}
                 onBranch={actions.onBranch}
                 onCommand={(name) => {
                   if (name === "blocked") setBlockingFor(thread.id);

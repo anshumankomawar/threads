@@ -32,6 +32,8 @@ export type Transport = {
   deltas(after: number): Promise<DeltasResponse>;
   // Throws RejectedError when the server refuses the batch, and any other error when it can't be reached.
   send(batch: TransactionBatch): Promise<TransactionBatchResponse>;
+  // Starts the workspace over: deletes every thread and schedule, keeping its people.
+  reset(): Promise<unknown>;
   connect(handlers: {
     onOpen: () => void;
     onMessage: (message: SyncMessage) => void;
@@ -170,6 +172,17 @@ export class SyncClient {
   }
 
   // Loads everything from the server, retrying until it answers.
+  // Wipes the workspace's threads and schedules (people and the org stay), drops anything still unsent, and loads
+  // the clean copy straight away rather than waiting for the socket to notice.
+  async wipe(): Promise<void> {
+    await this.#transport.reset();
+    runInAction(() => this.queue.clear());
+    await this.#db().deleteTransactions(
+      (await this.#db().transactions()).map((transaction) => transaction.id),
+    );
+    await this.#fullBootstrap();
+  }
+
   async #fullBootstrap(run = this.#run): Promise<void> {
     while (run === this.#run) {
       try {

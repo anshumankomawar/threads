@@ -864,38 +864,6 @@ body * {
   list-style: none;
 }
 
-/* A block's span line, under its kind icon (centered 18px in): down from the block's row, through the hour marks and
-   rows inside it, ending where the block ends. */
-.timeline-hour {
-  position: relative;
-}
-
-.sidebar-row[data-span]::before,
-.timeline-hour[data-busy="true"]::before {
-  position: absolute;
-  left: 18px;
-  width: 2px;
-  border-radius: 1px;
-  background-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  content: "";
-}
-
-.sidebar-row[data-span="start"]::before {
-  top: 21px;
-  bottom: 0;
-}
-
-.sidebar-row[data-span="through"]::before,
-.timeline-hour[data-busy="true"]::before {
-  top: 0;
-  bottom: 0;
-}
-
-/* Where the line passes an icon, the icon sits on the panel so the line doesn't cross it. */
-.sidebar-row[data-span="through"] .kind-marker {
-  background-color: var(--panel);
-}
-
 .timeline-hour::after {
   content: "";
   flex: 1;
@@ -2246,4 +2214,16 @@ body * {
   margin-top: 6px;
   color: var(--text-tertiary);
   font-size: 12px;
+}
+
+/* Wipe all data: an icon, then an explicit question on the first click. */
+.wipe-button {
+  gap: 6px;
+  width: auto;
+  padding: 0 6px;
+  font-size: 12px;
+}
+
+.wipe-button[data-state="confirm"] {
+  color: var(--urgent);
 }

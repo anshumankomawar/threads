@@ -26,10 +26,11 @@ export function BlockedForm({
   useEffect(() => inputRef.current?.focus(), [person]);
 
   const query = text.trim().toLowerCase();
+  // Everyone else, then you, for something you'll sort out yourself.
   const options =
     person === null
-      ? people.filter(
-          (candidate) => candidate.id !== me.id && candidate.name.toLowerCase().includes(query),
+      ? [...people.filter((candidate) => candidate.id !== me.id), me].filter((candidate) =>
+          candidate.name.toLowerCase().includes(query),
         )
       : [];
   const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));

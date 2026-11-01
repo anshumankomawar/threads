@@ -11,6 +11,7 @@ import {
   type Thread,
   type ThreadChanges,
   type ThreadKind,
+  waitingOn,
 } from "model";
 import { observer } from "mobx-react-lite";
 import {
@@ -25,7 +26,7 @@ import { ThreadView, type MessageEntry, type ThreadActions } from "./components/
 import { MovePalette, type MoveTarget } from "./components/MovePalette";
 import { MeContext } from "./me";
 import { ThreadLinksContext, type ThreadLinks } from "./threadLinks";
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, Trash2, X } from "lucide-react";
 import { Identicon } from "./components/Identicon";
 import { OrgView } from "./components/OrgView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
@@ -134,6 +135,36 @@ function useSyncClient(source: DataSource): SyncClient {
     return () => client.stop();
   }, [client]);
   return client;
+}
+
+// Wipes every thread and schedule in the current workspace, keeping people and the org: the first click asks, the
+// second (within a few seconds) wipes.
+function WipeButton({ onWipe }: { onWipe: () => Promise<void> }): React.JSX.Element {
+  const [state, setState] = useState<"idle" | "confirm" | "wiping">("idle");
+  useEffect(() => {
+    if (state !== "confirm") return;
+    const timer = setTimeout(() => setState("idle"), 4000);
+    return () => clearTimeout(timer);
+  }, [state]);
+  return (
+    <button
+      type="button"
+      className="topbar-button wipe-button"
+      data-state={state}
+      aria-label="Wipe all threads and schedules"
+      title="Wipe all threads and schedules (people and the org stay)"
+      disabled={state === "wiping"}
+      onClick={() => {
+        if (state === "idle") return setState("confirm");
+        setState("wiping");
+        void onWipe().finally(() => setState("idle"));
+      }}
+    >
+      <Trash2 size={13} strokeWidth={1.7} aria-hidden />
+      {state === "confirm" && <span>Wipe all threads?</span>}
+      {state === "wiping" && <span>Wiping…</span>}
+    </button>
+  );
 }
 
 const App = observer(function App(): React.JSX.Element {
@@ -344,8 +375,8 @@ const App = observer(function App(): React.JSX.Element {
     setSplitThreadId(threadId === activeThreadId ? null : threadId);
   };
 
-  // After a reply hands a thread to the other person, it's done with for now: it closes, and the next thread in your
-  // inbox opens, or, with nothing left, the start view says so. In the split view, just the split closes.
+  // After you close a thread from your inbox, the next one opens, or, with nothing left, the start view says so. In
+  // the split view, just the split closes.
   const moveOn = (thread: Thread): void => {
     if (thread.id === splitThreadId) {
       setSplitThreadId(null);
@@ -366,14 +397,12 @@ const App = observer(function App(): React.JSX.Element {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
       onSend: (text) => client.addEntry(thread.id, "message", text, me),
-      // Sending hands the thread over: it leaves your inbox, so the next thread opens.
-      onSendTo: (text, person) => {
-        if (text.length > 0) client.addEntry(thread.id, "message", text, me);
-        edit({ waitingOnId: person.id });
-        moveOn(thread);
-      },
       onBlock: (person, text) => createBlocker(thread, person, text),
-      onSetStatus: (status) => edit({ status }),
+      // Closing something in your inbox finishes it there, so the next thread opens.
+      onSetStatus: (status) => {
+        edit({ status });
+        if (status === "closed" && waitingOn(thread) === me.id) moveOn(thread);
+      },
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
       onSetEffort: (effortHours) => edit({ effortHours }),
@@ -466,6 +495,7 @@ const App = observer(function App(): React.JSX.Element {
                 <Identicon seed={me.id} size={14} />
                 <span>{me.name}</span>
               </button>
+              <WipeButton onWipe={() => client.wipe()} />
               <DetailsToggle onToggle={() => setDetailsOpen((open) => !open)} />
             </span>
           </div>
