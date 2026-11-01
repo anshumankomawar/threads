@@ -16,3 +16,6 @@ export const ThreadLinksContext = createContext<ThreadLinks>({
 });
 
 export const useThreadLinks = (): ThreadLinks => useContext(ThreadLinksContext);
+
+// The thread being shown, so a link to it reads as plain text rather than a way to where you already are.
+export const CurrentThreadContext = createContext<string | null>(null);

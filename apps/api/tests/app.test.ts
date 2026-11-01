@@ -274,3 +274,41 @@ test("a thread can branch off another, which must exist", async () => {
     ).status,
   ).toBe(404);
 });
+
+test("messages move to another thread, leaving an activity line where they were", async () => {
+  await transact("anshu", [
+    createThread("t1"),
+    message("m1", "t1", "Plan the offsite"),
+    message("m2", "t1", "What about pricing?"),
+    message("m3", "t1", "Pricing should be per seat"),
+  ]);
+  await transact("arjun", [
+    createThread("t2", { title: "Pricing" }),
+    { id: "move-1", type: "move", modelName: "Entry", entryIds: ["m2", "m3"], threadId: "t2" },
+  ]);
+  const source = await thread("t1");
+  expect(source?.entries.map((entry) => entry.kind)).toEqual(["message", "event"]);
+  expect(source?.entries[1]).toMatchObject({
+    kind: "event",
+    actor: { id: "arjun" },
+    text: "moved 2 messages to [[thread:t2]]",
+  });
+  const destination = await thread("t2");
+  expect(
+    destination?.entries.flatMap((entry) => (entry.kind === "message" ? [entry.id] : [])),
+  ).toEqual(["m2", "m3"]);
+  // Only messages, from one thread, to a different existing thread.
+  const move = (entryIds: string[], threadId: string): TransactionInput => ({
+    id: txId(),
+    type: "move",
+    modelName: "Entry",
+    entryIds,
+    threadId,
+  });
+  expect((await transact("anshu", [move(["m1"], "missing")])).status).toBe(404);
+  expect((await transact("anshu", [move(["m1", "m2"], "t2")])).status).toBe(400);
+  expect((await transact("anshu", [move(["m2"], "t2")])).status).toBe(400);
+  // Not into a thread the message links to.
+  await transact("anshu", [message("m4", "t1", "See [[thread:t2]]")]);
+  expect((await transact("anshu", [move(["m4"], "t2")])).status).toBe(400);
+});

@@ -106,12 +106,15 @@ export type SyncMessage =
 
 // --- Transactions -----------------------------------------------------------------------------------------
 
-// What clients send: creations and updates of the models they may write. The server validates each, runs its
-// side effects (activity lines, call links, closing a thread on resolution) and answers with the new lastSyncId.
+// What clients send: creations and updates of the models they may write, and moves of messages between threads.
+// The server validates each, runs its side effects (activity lines, call links, closing a thread on resolution)
+// and answers with the new lastSyncId.
 export type TransactionInput =
   | { id: string; type: "create"; modelName: "Thread"; data: ThreadCreate }
   | { id: string; type: "create"; modelName: "Entry"; data: EntryCreate }
-  | { id: string; type: "update"; modelName: "Thread"; modelId: string; changes: ThreadChanges };
+  | { id: string; type: "update"; modelName: "Thread"; modelId: string; changes: ThreadChanges }
+  // Moves messages from one thread into another. The source thread gets an activity line where they were.
+  | { id: string; type: "move"; modelName: "Entry"; entryIds: string[]; threadId: string };
 
 export type ThreadCreate = {
   id: string;

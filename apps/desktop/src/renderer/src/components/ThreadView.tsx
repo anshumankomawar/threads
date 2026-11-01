@@ -15,11 +15,12 @@ import {
   Sparkles,
   Target,
   Video,
+  X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMe } from "../me";
-import { useThreadLinks } from "../threadLinks";
+import { CurrentThreadContext, useThreadLinks } from "../threadLinks";
 import {
   closeThreadMenu,
   offerKey,
@@ -29,6 +30,7 @@ import {
   type ThreadMenuState,
 } from "./threadLinkNode";
 import {
+  plainThreadLinks,
   PRIORITY_LABELS,
   splitThreadLinks,
   STATUS_LABELS,
@@ -43,11 +45,14 @@ import {
 import { DAY, formatClock, formatDue, formatRelativeTime, startOfDay } from "../format";
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
 const ICON_PROPS = { size: 13, strokeWidth: 1.7, "aria-hidden": true } as const;
 
-type MessageEntry = Extract<Entry, { kind: "message" }>;
+export type MessageEntry = Extract<Entry, { kind: "message" }>;
 type EventEntry = Extract<Entry, { kind: "event" }>;
+// How a click changes the selection: toggle one message, or extend from the last one clicked.
+type SelectMode = "toggle" | "range";
 type ResolutionEntry = Extract<Entry, { kind: "resolution" }>;
 type CallEntry = Extract<Entry, { kind: "call" }>;
 type NotesEntry = Extract<Entry, { kind: "notes" }>;
@@ -64,11 +69,16 @@ export type ThreadActions = {
   // Starts a thread branching off this one, with the same people, and returns its id: from "New thread" in the
   // `#` menu, titled by what you typed.
   onBranch: (title: string) => string;
+  // Moves messages out of this thread, into another or a new branch; asks where.
+  onMoveMessages: (messages: MessageEntry[]) => void;
 };
 
 // A thread link as a chip with the linked thread's current title; clicking opens it beside this one.
 function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
   const links = useThreadLinks();
+  const title = links.titleOf(threadId) ?? "Thread";
+  if (useContext(CurrentThreadContext) === threadId)
+    return <span className="thread-link-self">#{title}</span>;
   return (
     <button
       type="button"
@@ -79,7 +89,7 @@ function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
       }}
     >
       <GitBranch size={11} strokeWidth={1.8} aria-hidden />
-      {links.titleOf(threadId) ?? "Thread"}
+      {title}
     </button>
   );
 }
@@ -411,12 +421,42 @@ function ThreadHeader({
 function MessageBlock({
   message,
   nowMs,
+  selected,
+  run,
+  selecting,
+  onSelect,
+  onContextMenu,
 }: {
   message: MessageEntry;
   nowMs: number;
+  selected: boolean;
+  // Where a selected message sits in a run of selected neighbours, so the run reads as one box.
+  run: "single" | "start" | "middle" | "end" | undefined;
+  // While some messages are selected, a click selects instead of placing the cursor.
+  selecting: boolean;
+  onSelect: (mode: SelectMode) => void;
+  onContextMenu: (event: React.MouseEvent) => void;
 }): React.JSX.Element {
+  const modeFor = (event: React.MouseEvent): SelectMode | undefined =>
+    event.shiftKey ? "range" : event.metaKey || selecting ? "toggle" : undefined;
   return (
-    <div className="thread-block thread-message" id={`entry-${message.id}`}>
+    <div
+      className="thread-block thread-message"
+      id={`entry-${message.id}`}
+      data-selected={selected}
+      data-run={run}
+      data-selecting={selecting}
+      onMouseDown={(event) => {
+        // Shift-click selects messages, not text.
+        if (event.shiftKey) event.preventDefault();
+      }}
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest("button, a") !== null) return;
+        const mode = modeFor(event);
+        if (mode !== undefined) onSelect(mode);
+      }}
+      onContextMenu={onContextMenu}
+    >
       <Avatar person={message.author} />
       <div className="thread-body">
         <div className="thread-meta">
@@ -730,11 +770,11 @@ function menuOptions(
   currentThreadId: string,
 ): MenuOption[] {
   const title = query.trim();
-  const matches = search(title)
-    .filter((thread) => thread.id !== currentThreadId)
-    .slice(0, MENU_MATCHES);
+  const found = search(title);
+  const matches = found.filter((thread) => thread.id !== currentThreadId).slice(0, MENU_MATCHES);
   const options: MenuOption[] = matches.map((link) => ({ kind: "link", link }));
-  const exact = matches.some((thread) => thread.title.toLowerCase() === title.toLowerCase());
+  // No new thread named like one that exists, including the one you're in.
+  const exact = found.some((thread) => thread.title.toLowerCase() === title.toLowerCase());
   if (title.length > 0 && !exact) options.push({ kind: "new", title });
   return options;
 }
@@ -868,6 +908,78 @@ export function ThreadView({
     if (onScreen && seenCount !== entries.length) setSeenCount(entries.length);
   };
 
+  // Messages selected to move, in thread order: right-click → Select, ⌘-click, or shift-click for a range. Kept
+  // per thread; moved messages drop out of it on their own. Escape clears it.
+  const { titleOf } = useThreadLinks();
+  const [selection, setSelection] = useState<{
+    threadId: string;
+    ids: string[];
+    anchor: string | null;
+  }>({ threadId: thread.id, ids: [], anchor: null });
+  const messages = rest.filter((entry): entry is MessageEntry => entry.kind === "message");
+  const pickedIds = selection.threadId === thread.id ? selection.ids : [];
+  const selected = messages.filter((message) => pickedIds.includes(message.id));
+  const selecting = selected.length > 0;
+  const select = (messageId: string, mode: SelectMode): void => {
+    let ids: string[];
+    if (mode === "toggle") {
+      ids = pickedIds.includes(messageId)
+        ? pickedIds.filter((id) => id !== messageId)
+        : [...pickedIds, messageId];
+    } else {
+      const to = messages.findIndex((message) => message.id === messageId);
+      const anchor = messages.findIndex((message) => message.id === selection.anchor);
+      const from = anchor === -1 ? to : anchor;
+      const range = messages.slice(Math.min(from, to), Math.max(from, to) + 1).map(({ id }) => id);
+      ids = [...new Set([...pickedIds, ...range])];
+    }
+    setSelection({ threadId: thread.id, ids, anchor: messageId });
+  };
+  const clearSelection = (): void => setSelection({ threadId: thread.id, ids: [], anchor: null });
+  const isPicked = (entry: Entry | undefined): boolean =>
+    entry?.kind === "message" && pickedIds.includes(entry.id);
+  const runAt = (index: number): "single" | "start" | "middle" | "end" | undefined => {
+    if (!isPicked(rest[index])) return undefined;
+    const before = isPicked(rest[index - 1]);
+    const after = isPicked(rest[index + 1]);
+    return before ? (after ? "middle" : "end") : after ? "start" : "single";
+  };
+
+  useEffect(() => {
+    if (!selecting) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && !event.defaultPrevented)
+        setSelection((current) => ({ ...current, ids: [], anchor: null }));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selecting]);
+
+  const [menu, setMenu] = useState<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+  const moveLabel = (count: number): string =>
+    count === 1 ? "Move to thread…" : `Move ${count} messages to thread…`;
+  const menuFor = (message: MessageEntry): ContextMenuItem[] => {
+    if (pickedIds.includes(message.id))
+      return [
+        { label: moveLabel(selected.length), run: () => actions.onMoveMessages(selected) },
+        "separator",
+        { label: "Clear selection", shortcut: "Esc", run: clearSelection },
+      ];
+    return [
+      { label: moveLabel(1), run: () => actions.onMoveMessages([message]) },
+      {
+        label: selecting ? "Add to selection" : "Select",
+        shortcut: "⌘ Click",
+        run: () => select(message.id, "toggle"),
+      },
+      "separator",
+      {
+        label: "Copy text",
+        run: () => void navigator.clipboard.writeText(plainThreadLinks(message.text, titleOf)),
+      },
+    ];
+  };
+
   // What arrived while you were reading back: messages and resolutions by others, else any activity.
   const unseen = following ? [] : entries.slice(seenCount);
   const unseenMessages = unseen.filter(
@@ -896,68 +1008,109 @@ export function ThreadView({
   };
 
   return (
-    <div className="thread-view">
-      <div
-        ref={scrollRef}
-        className="thread-scroll"
-        onMouseDown={onBackgroundMouseDown}
-        onScroll={onScroll}
-      >
-        <article ref={docRef} className="thread-doc">
-          <ThreadHeader
-            thread={thread}
-            ask={ask}
-            nowMs={nowMs}
-            people={people}
-            actions={actions}
-            onMarkDone={() => setResolving(true)}
-          />
-          {rest.map((entry) => {
-            if (entry.kind === "message")
-              return <MessageBlock key={entry.id} message={entry} nowMs={nowMs} />;
-            if (entry.kind === "event")
-              return <EventLine key={entry.id} event={entry} nowMs={nowMs} />;
-            if (entry.kind === "call")
-              return <CallBlock key={entry.id} call={entry} thread={thread} nowMs={nowMs} />;
-            if (entry.kind === "notes")
-              return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
-            return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
-          })}
-          <ReplyBlock
-            key={`${thread.id}-${resolving ? "resolve" : "reply"}`}
-            placeholder={placeholder}
-            resolving={resolving}
-            focusRef={focusReplyRef}
-            onSubmit={(text) => {
-              if (resolving) {
-                actions.onResolve(text);
-                setResolving(false);
-              } else {
-                actions.onSend(text);
-              }
-            }}
-            onCancel={() => setResolving(false)}
-            onBranch={actions.onBranch}
-            threadId={thread.id}
-          />
-          <div ref={endRef} />
-        </article>
-        {/* Room to scroll the last entry up to the top without losing it off screen. */}
-        <div className="thread-overscroll" aria-hidden />
-      </div>
-      {unseen.length > 0 && (
-        <button
-          type="button"
-          className="thread-new-pill"
-          onClick={() => bringReplyIntoView("smooth")}
+    <CurrentThreadContext value={thread.id}>
+      <div className="thread-view">
+        <div
+          ref={scrollRef}
+          className="thread-scroll"
+          onMouseDown={onBackgroundMouseDown}
+          onScroll={onScroll}
         >
-          <ArrowDown {...ICON_PROPS} />
-          {unseenMessages === 0
-            ? "New activity"
-            : `${unseenMessages} new ${unseenMessages === 1 ? "message" : "messages"}`}
-        </button>
-      )}
-      <ThreadMinimap entries={entries} scrollRef={scrollRef} nowMs={nowMs} />
-    </div>
+          <article ref={docRef} className="thread-doc">
+            <ThreadHeader
+              thread={thread}
+              ask={ask}
+              nowMs={nowMs}
+              people={people}
+              actions={actions}
+              onMarkDone={() => setResolving(true)}
+            />
+            {rest.map((entry, index) => {
+              if (entry.kind === "message")
+                return (
+                  <MessageBlock
+                    key={entry.id}
+                    message={entry}
+                    nowMs={nowMs}
+                    selected={pickedIds.includes(entry.id)}
+                    run={runAt(index)}
+                    selecting={selecting}
+                    onSelect={(mode) => select(entry.id, mode)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setMenu({ x: event.clientX, y: event.clientY, items: menuFor(entry) });
+                    }}
+                  />
+                );
+              if (entry.kind === "event")
+                return <EventLine key={entry.id} event={entry} nowMs={nowMs} />;
+              if (entry.kind === "call")
+                return <CallBlock key={entry.id} call={entry} thread={thread} nowMs={nowMs} />;
+              if (entry.kind === "notes")
+                return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
+              return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
+            })}
+            <ReplyBlock
+              key={`${thread.id}-${resolving ? "resolve" : "reply"}`}
+              placeholder={placeholder}
+              resolving={resolving}
+              focusRef={focusReplyRef}
+              onSubmit={(text) => {
+                if (resolving) {
+                  actions.onResolve(text);
+                  setResolving(false);
+                } else {
+                  actions.onSend(text);
+                }
+              }}
+              onCancel={() => setResolving(false)}
+              onBranch={actions.onBranch}
+              threadId={thread.id}
+            />
+            <div ref={endRef} />
+          </article>
+          {/* Room to scroll the last entry up to the top without losing it off screen. */}
+          <div className="thread-overscroll" aria-hidden />
+        </div>
+        {selecting && (
+          <div className="selection-bar" role="toolbar" aria-label="Selected messages">
+            <span className="selection-bar-count">{selected.length} selected</span>
+            <button
+              type="button"
+              className="selection-bar-move"
+              onClick={() => actions.onMoveMessages(selected)}
+            >
+              <GitBranch {...ICON_PROPS} />
+              Move to thread…
+            </button>
+            <button
+              type="button"
+              className="icon-button selection-bar-clear"
+              aria-label="Clear selection"
+              title="Clear selection (Esc)"
+              onClick={clearSelection}
+            >
+              <X {...ICON_PROPS} />
+            </button>
+          </div>
+        )}
+        {menu !== null && (
+          <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
+        )}
+        {unseen.length > 0 && !selecting && (
+          <button
+            type="button"
+            className="thread-new-pill"
+            onClick={() => bringReplyIntoView("smooth")}
+          >
+            <ArrowDown {...ICON_PROPS} />
+            {unseenMessages === 0
+              ? "New activity"
+              : `${unseenMessages} new ${unseenMessages === 1 ? "message" : "messages"}`}
+          </button>
+        )}
+        <ThreadMinimap entries={entries} scrollRef={scrollRef} nowMs={nowMs} />
+      </div>
+    </CurrentThreadContext>
   );
 }

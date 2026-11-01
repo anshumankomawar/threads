@@ -1878,3 +1878,146 @@ body * {
 .thread-menu-new {
   color: var(--accent);
 }
+
+/* Selecting messages to move: a run of selected neighbours reads as one tinted box with an accent edge, rounded
+   only at its ends. The tint fills the gap between them, and while selecting a click picks a message, not text. */
+.thread-message {
+  position: relative;
+  isolation: isolate;
+}
+
+.thread-message[data-selected="true"]::before {
+  position: absolute;
+  inset: -7px -10px;
+  z-index: -1;
+  border-radius: 6px;
+  background-color: var(--accent-fill);
+  box-shadow: inset 2px 0 var(--accent);
+  content: "";
+}
+
+.thread-message[data-run="start"]::before {
+  bottom: -10.25px;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.thread-message[data-run="middle"]::before {
+  top: -10.25px;
+  bottom: -10.25px;
+  border-radius: 0;
+}
+
+.thread-message[data-run="end"]::before {
+  top: -10.25px;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.thread-message[data-selecting="true"] {
+  cursor: pointer;
+  user-select: none;
+}
+
+.selection-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 5;
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  height: 30px;
+  padding: 0 4px 0 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  background-color: var(--panel);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+  transform: translateX(-50%);
+}
+
+.selection-bar-count {
+  margin-right: 6px;
+}
+
+.selection-bar-move {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.selection-bar-move:hover {
+  background-color: var(--panel-selected);
+}
+
+.selection-bar-clear {
+  width: 22px;
+  height: 22px;
+  color: var(--text-tertiary);
+}
+
+.selection-bar-clear:hover {
+  color: var(--text-primary);
+}
+
+/* Right-click menus: compact rows inset in a rounded panel, groups split by lines, shortcuts on the right. */
+.context-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 5px;
+  background-color: var(--panel);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
+}
+
+.context-menu-item {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  height: 20px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  background: none;
+  cursor: default;
+}
+
+.context-menu-item:hover {
+  background-color: var(--panel-selected);
+}
+
+.context-menu-shortcut {
+  color: var(--text-tertiary);
+  word-spacing: 1px;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 5px -4px;
+  background-color: rgb(255 255 255 / 8%);
+}
+
+/* A link to the thread you're in: plain text, nowhere to go. */
+.thread-link-self {
+  color: var(--text-secondary);
+}

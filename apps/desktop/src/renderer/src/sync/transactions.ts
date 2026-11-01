@@ -46,7 +46,9 @@ export abstract class BaseTransaction {
     const transaction =
       stored.input.type === "create"
         ? new CreationTransaction(stored.input, stored.actorId)
-        : new UpdateTransaction(stored.input, stored.actorId);
+        : stored.input.type === "move"
+          ? new MoveTransaction(stored.input, stored.actorId)
+          : new UpdateTransaction(stored.input, stored.actorId);
     transaction.batchIndex = stored.batchIndex;
     return transaction;
   }
@@ -109,6 +111,50 @@ export class UpdateTransaction extends BaseTransaction {
     const server = record as Record<string, unknown>;
     this.original = Object.fromEntries(Object.keys(this.changes).map((key) => [key, server[key]]));
     return { ...record, ...this.changes } as AnyRecord;
+  }
+}
+
+// Moves messages into another thread: an update of each one's `threadId`, sent as one transaction so the server
+// writes a single activity line for it.
+export class MoveTransaction extends BaseTransaction {
+  original = new Map<string, string>();
+
+  get entryIds(): string[] {
+    return this.input.type === "move" ? this.input.entryIds : [];
+  }
+
+  get threadId(): string {
+    return this.input.type === "move" ? this.input.threadId : "";
+  }
+
+  get modelId(): string {
+    return this.entryIds[0] ?? "";
+  }
+
+  touches(modelName: ModelName, id: string): boolean {
+    return modelName === "Entry" && this.entryIds.includes(id);
+  }
+
+  apply(pool: ObjectPool): void {
+    for (const entryId of this.entryIds) {
+      const entry = pool.get("Entry", entryId);
+      if (entry === undefined) continue;
+      this.original.set(entryId, entry.threadId);
+      pool.set("Entry", { ...entry, threadId: this.threadId });
+    }
+  }
+
+  rollback(pool: ObjectPool): void {
+    for (const [entryId, threadId] of this.original) {
+      const entry = pool.get("Entry", entryId);
+      if (entry !== undefined) pool.set("Entry", { ...entry, threadId });
+    }
+  }
+
+  rebase(record: AnyRecord): AnyRecord {
+    if (!("threadId" in record)) return record;
+    this.original.set(record.id, record.threadId);
+    return { ...record, threadId: this.threadId };
   }
 }
 
@@ -252,14 +298,20 @@ export class TransactionQueue {
     );
   }
 
-  // Pending updates to one model, oldest first, for rebasing onto server data.
-  updatesFor(modelName: ModelName, id: string, syncId: number): UpdateTransaction[] {
+  // Pending updates to one model (property changes and moves), oldest first, for rebasing onto server data.
+  updatesFor(
+    modelName: ModelName,
+    id: string,
+    syncId: number,
+  ): (UpdateTransaction | MoveTransaction)[] {
     return this.pending.filter(
-      (transaction): transaction is UpdateTransaction =>
-        transaction instanceof UpdateTransaction &&
-        transaction.modelName === modelName &&
-        transaction.modelId === id &&
-        (transaction.syncIdNeededForCompletion ?? Infinity) > syncId,
+      (transaction): transaction is UpdateTransaction | MoveTransaction =>
+        (transaction.syncIdNeededForCompletion ?? Infinity) > syncId &&
+        (transaction instanceof MoveTransaction
+          ? transaction.touches(modelName, id)
+          : transaction instanceof UpdateTransaction &&
+            transaction.modelName === modelName &&
+            transaction.modelId === id),
     );
   }
 

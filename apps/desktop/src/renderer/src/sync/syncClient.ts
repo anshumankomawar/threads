@@ -22,6 +22,7 @@ import {
   BaseTransaction,
   CreationTransaction,
   TransactionQueue,
+  MoveTransaction,
   UpdateTransaction,
 } from "./transactions";
 
@@ -48,6 +49,8 @@ export type NewThread = {
   schedule: Schedule | null;
   // The thread this one branches off from.
   branchedFromId?: string | null;
+  // Messages moved in from the parent to open the thread; `text` is then only its title.
+  movedEntryIds?: string[];
 };
 
 const firstLine = (text: string): string => text.split("\n")[0].slice(0, 80);
@@ -273,7 +276,7 @@ export class SyncClient {
     });
   }
 
-  // A thread and its opening message, sent together. Returns the new thread's id.
+  // A thread and its opening message (or the messages moved in to open it), sent together. Returns its id.
   createThread(draft: NewThread, me: Person): string {
     const threadId = crypto.randomUUID();
     this.#enqueue(
@@ -295,8 +298,18 @@ export class SyncClient {
         me.id,
       ),
     );
-    this.addEntry(threadId, "message", draft.text, me);
+    if (draft.movedEntryIds === undefined) this.addEntry(threadId, "message", draft.text, me);
+    else this.moveMessages(draft.movedEntryIds, threadId, me);
     return threadId;
+  }
+
+  moveMessages(entryIds: string[], threadId: string, me: Person): void {
+    this.#enqueue(
+      new MoveTransaction(
+        { id: crypto.randomUUID(), type: "move", modelName: "Entry", entryIds, threadId },
+        me.id,
+      ),
+    );
   }
 
   updateThread(threadId: string, changes: ThreadChanges, me: Person): void {

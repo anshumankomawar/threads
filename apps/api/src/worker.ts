@@ -34,19 +34,31 @@ export class Workspace extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    void ctx.blockConcurrencyWhile(async () => {
-      const sql = ctx.storage.sql;
-      sql.exec(
-        "CREATE TABLE IF NOT EXISTS models (modelName TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (modelName, id))",
-      );
-      sql.exec(
-        "CREATE TABLE IF NOT EXISTS sync_actions (id INTEGER PRIMARY KEY, modelName TEXT NOT NULL, modelId TEXT NOT NULL, action TEXT NOT NULL, data TEXT)",
-      );
-      sql.exec(
-        "CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, syncId INTEGER NOT NULL)",
-      );
-      sql.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-    });
+    void ctx.blockConcurrencyWhile(async () => this.#createTables());
+  }
+
+  #createTables(): void {
+    const sql = this.ctx.storage.sql;
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS models (modelName TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (modelName, id))",
+    );
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS sync_actions (id INTEGER PRIMARY KEY, modelName TEXT NOT NULL, modelId TEXT NOT NULL, action TEXT NOT NULL, data TEXT)",
+    );
+    sql.exec(
+      "CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, syncId INTEGER NOT NULL)",
+    );
+    sql.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  }
+
+  // Starts the workspace over: deletes everything, so the next request seeds it afresh. Connected clients are
+  // dropped; they reconnect, find the server behind their cache and rebuild.
+  async #reset(): Promise<void> {
+    for (const socket of this.ctx.getWebSockets()) socket.close(1012, "Workspace reset");
+    await this.ctx.storage.deleteAll();
+    this.#engine = undefined;
+    this.#app = undefined;
+    this.#createTables();
   }
 
   #storage(): EngineStorage {
@@ -142,11 +154,14 @@ export class Workspace extends DurableObject<Env> {
     const name = param(request, "X-Workspace", "workspace") ?? "local";
     if (!isWorkspaceName(name))
       return Response.json({ error: `Unknown workspace: ${name}` }, { status: 400 });
+    const { pathname } = new URL(request.url);
+    if (pathname === "/sync/reset" && request.method === "POST") await this.#reset();
     const engine = this.#load(name, utcOffset(request));
+    if (pathname === "/sync/reset") return Response.json({ lastSyncId: engine.lastSyncId });
 
     // The sync socket: a handshake with the current lastSyncId, then a delta packet per committed batch. It
     // hibernates while idle, so open connections cost next to nothing.
-    if (new URL(request.url).pathname === "/sync/ws") {
+    if (pathname === "/sync/ws") {
       if (request.headers.get("Upgrade") !== "websocket")
         return new Response("Expected a WebSocket upgrade", { status: 426 });
       const { 0: client, 1: server } = new WebSocketPair();

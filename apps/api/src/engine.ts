@@ -9,6 +9,7 @@ import {
   sampleThreads,
   STATUS_LABELS,
   threadFromCreate,
+  threadLink,
   toThread,
   toThreads,
   type AnyRecord,
@@ -137,6 +138,13 @@ export const transactionInput = z.union([
     modelName: z.literal("Thread"),
     modelId: id,
     changes: threadChanges,
+  }),
+  z.object({
+    id,
+    type: z.literal("move"),
+    modelName: z.literal("Entry"),
+    entryIds: z.array(id).min(1).max(500),
+    threadId: id,
   }),
 ]);
 
@@ -317,6 +325,38 @@ export class SyncEngine {
           link: DUMMY_ZOOM_LINK,
           createdAtMs: nowMs,
         });
+      return;
+    }
+
+    if (transaction.type === "move") {
+      const destination = batch.get("Thread", transaction.threadId);
+      if (destination === undefined) throw new EngineError(404, "Thread not found");
+      const entries = transaction.entryIds.map((entryId) => batch.get("Entry", entryId));
+      const messages = entries.filter((entry) => entry?.kind === "message");
+      if (messages.length !== entries.length) throw new EngineError(404, "Message not found");
+      const sourceId = messages[0].threadId;
+      if (messages.some((entry) => entry.threadId !== sourceId))
+        throw new EngineError(400, "Messages must come from one thread");
+      if (sourceId === destination.id)
+        throw new EngineError(400, "Messages are already in that thread");
+      // A message linking a thread is the way into it from here; moved inside, it would only link to itself.
+      if (messages.some((entry) => entry.text.includes(threadLink(destination.id))))
+        throw new EngineError(400, "A message can't move into the thread it links to");
+      const source = batch.get("Thread", sourceId);
+      if (source === undefined) throw new EngineError(404, "Thread not found");
+      for (const entry of messages) batch.put("Entry", { ...entry, threadId: destination.id });
+      // The activity line sits where the first moved message was.
+      const count = messages.length;
+      batch.put("Entry", {
+        id: `${transaction.id}:moved`,
+        threadId: source.id,
+        kind: "event",
+        actorId: actor.id,
+        text: `moved ${count === 1 ? "a message" : `${count} messages`} to ${threadLink(destination.id)}`,
+        createdAtMs: Math.min(...messages.map((entry) => entry.createdAtMs)),
+      });
+      batch.put("Thread", { ...source, updatedAtMs: nowMs });
+      batch.put("Thread", { ...destination, updatedAtMs: nowMs });
       return;
     }
 

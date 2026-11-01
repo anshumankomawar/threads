@@ -84,7 +84,8 @@ also needs `Authorization: Bearer <API_TOKEN>` (`?token=` on the socket).
 A **sync action** is `{ id, modelName, modelId, action: "I" | "U" | "D", data }`. Inserts and updates carry the
 whole record.
 
-A **transaction** is a create of a `Thread` or `Entry`, or an update of a `Thread` (entries are append-only).
+A **transaction** is a create of a `Thread` or `Entry`, an update of a `Thread`, or a `move` of messages into another
+thread (`MoveTransaction`; entries are otherwise append-only).
 Ids for new models are made on the client (`crypto.randomUUID()`), so later transactions in the same batch can refer to them.
 
 ## The write path
@@ -149,6 +150,12 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - Typing `#` in a reply opens the thread menu (the `threadLink` Tiptap node in `components/threadLinkNode.ts`, built
   on `@tiptap/suggestion`; the menu renders in `ReplyBlock`). It lists threads whose title matches, from
   `ThreadLinksContext.search`, then "New thread “…”", which creates a branch titled by what you typed and links it.
+- Messages move between threads: right-click a message (Select, Move to thread…), ⌘-click to add to the selection,
+  shift-click for a range; the selection bar and `MovePalette` pick an existing thread or a new branch. The `move`
+  transaction changes each message's `threadId`; the server adds one activity line to the source thread, timed at the
+  first moved message so it sits where they were ("moved 3 messages to <link>"). A new branch opens with the moved
+  messages instead of an opening message (`movedEntryIds`), so the thread header only absorbs a first message whose
+  first line is the title.
 - A branch is an ordinary `response` thread with `branchedFromId` set, between the same people as its parent
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).

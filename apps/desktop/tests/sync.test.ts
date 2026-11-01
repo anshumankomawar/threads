@@ -2,6 +2,7 @@ import {
   SCHEMA_HASH,
   threadFromCreate,
   type AnyRecord,
+  type EntryRecord,
   type ModelName,
   type Person,
   type SyncAction,
@@ -84,7 +85,14 @@ class FakeServer implements Transport {
           .reverse()
           .find((action) => action.modelId === transaction.modelId);
         this.change("Thread", { ...(current?.data as ThreadRecord), ...transaction.changes });
-      }
+      } else if (transaction.type === "move")
+        for (const entryId of transaction.entryIds) {
+          const current = [...this.log].reverse().find((action) => action.modelId === entryId);
+          this.change("Entry", {
+            ...(current?.data as EntryRecord),
+            threadId: transaction.threadId,
+          });
+        }
     }
     return { lastSyncId: this.lastSyncId };
   }
@@ -196,4 +204,35 @@ test("a gap in sync ids is filled from the server's log", async () => {
   await settle();
   expect(missed.id).toBeLessThan(server.lastSyncId);
   expect(client.people.map((person) => person.id)).toEqual(["anshu", "arjun", "kk", "sam"]);
+});
+
+test("moving messages shows at once, and is undone if the server refuses it", async () => {
+  const { client, server } = await started();
+  const source = client.createThread({ ...draft, text: "Plan the offsite" }, anshu);
+  const destination = client.createThread({ ...draft, text: "Pricing" }, anshu);
+  await settle();
+  server.change("Entry", {
+    id: "m1",
+    threadId: source,
+    kind: "message",
+    authorId: "arjun",
+    text: "Pricing?",
+    createdAtMs: 2,
+  });
+  await settle();
+  const has = (threadId: string): boolean =>
+    client.threads.find((thread) => thread.id === threadId)?.entries.some((e) => e.id === "m1") ??
+    false;
+
+  server.refuse = true;
+  client.moveMessages(["m1"], destination, anshu);
+  expect(has(destination)).toBe(true);
+  await settle();
+  expect([has(source), has(destination)]).toEqual([true, false]);
+
+  server.refuse = false;
+  client.moveMessages(["m1"], destination, anshu);
+  await settle();
+  expect([has(source), has(destination)]).toEqual([false, true]);
+  expect(client.queue.pending).toEqual([]);
 });

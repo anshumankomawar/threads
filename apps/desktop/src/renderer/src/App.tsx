@@ -4,7 +4,9 @@ import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
 import { DetailsToggle, SearchButton, Sidebar, SidebarToggle } from "./components/Sidebar";
 import {
+  plainThreadLinks,
   relationshipTo,
+  splitThreadLinks,
   UNREAD_THREAD_IDS,
   type Person,
   type Thread,
@@ -20,7 +22,8 @@ import {
   type DataSource,
 } from "./api";
 import type { SyncClient } from "./sync/syncClient";
-import { ThreadView, type ThreadActions } from "./components/ThreadView";
+import { ThreadView, type MessageEntry, type ThreadActions } from "./components/ThreadView";
+import { MovePalette, type MoveTarget } from "./components/MovePalette";
 import { MeContext } from "./me";
 import { ThreadLinksContext, type ThreadLinks } from "./threadLinks";
 import { Maximize2, X } from "lucide-react";
@@ -276,11 +279,16 @@ const App = observer(function App(): React.JSX.Element {
     },
   };
 
-  // A branch is an ordinary thread that remembers where it came from, between the same people: you ask the first
-  // other person on the parent.
-  const createBranch = (from: Thread, text: string): string => {
-    const others = [from.requester, from.assignee, ...from.attendees].filter(
-      (person): person is Person => person !== null && person.id !== me.id,
+  // A branch is an ordinary thread that remembers where it came from, between the same people: you ask whoever
+  // you're talking to in the parent (`with`, or the first other person on it).
+  const createBranch = (
+    from: Thread,
+    text: string,
+    withPerson?: Person,
+    movedEntryIds?: string[],
+  ): string => {
+    const others = [withPerson, from.requester, from.assignee, ...from.attendees].filter(
+      (person): person is Person => person !== undefined && person !== null && person.id !== me.id,
     );
     return client.createThread(
       {
@@ -290,9 +298,30 @@ const App = observer(function App(): React.JSX.Element {
         invitees: [],
         schedule: null,
         branchedFromId: from.id,
+        movedEntryIds,
       },
       me,
     );
+  };
+
+  // Messages on their way out of a thread, while you pick where they go.
+  const [moving, setMoving] = useState<{ from: Thread; messages: MessageEntry[] } | null>(null);
+  const moveTo = (target: MoveTarget): void => {
+    if (moving === null) return;
+    const { from, messages } = moving;
+    const ids = messages.map((message) => message.id);
+    const threadId =
+      target.kind === "thread"
+        ? target.threadId
+        : createBranch(
+            from,
+            target.title,
+            messages.find((m) => m.author.id !== me.id)?.author,
+            ids,
+          );
+    if (target.kind === "thread") client.moveMessages(ids, threadId, me);
+    setMoving(null);
+    setSplitThreadId(threadId === activeThreadId ? null : threadId);
   };
 
   // Every change is a transaction: applied here at once, then sent to the server, which records property changes
@@ -309,6 +338,7 @@ const App = observer(function App(): React.JSX.Element {
       onSetAssignee: (person) => edit({ assigneeId: person.id }),
       onSetSchedule: (schedule) => edit({ schedule }),
       onBranch: (title) => createBranch(thread, title),
+      onMoveMessages: (messages) => setMoving({ from: thread, messages }),
     };
   };
 
@@ -456,6 +486,23 @@ const App = observer(function App(): React.JSX.Element {
             nowMs={nowMs}
             onCreate={createThread}
             onClose={() => setNewThreadKind(null)}
+          />
+        )}
+        {moving !== null && (
+          <MovePalette
+            count={moving.messages.length}
+            fromThreadId={moving.from.id}
+            linkedThreadIds={moving.messages.flatMap((message) =>
+              splitThreadLinks(message.text).flatMap((part) =>
+                "threadId" in part ? [part.threadId] : [],
+              ),
+            )}
+            suggestedTitle={plainThreadLinks(
+              moving.messages[0].text.split("\n")[0],
+              threadLinks.titleOf,
+            ).slice(0, 80)}
+            onMove={moveTo}
+            onClose={() => setMoving(null)}
           />
         )}
         {searchOpen && (
