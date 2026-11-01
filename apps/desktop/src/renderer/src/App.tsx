@@ -8,9 +8,18 @@ import {
   UNREAD_THREAD_IDS,
   type Person,
   type Thread,
+  type ThreadChanges,
   type ThreadKind,
 } from "model";
-import { CLOUDFLARE_AVAILABLE, createApi, serverFor, SOURCE_LABELS, type DataSource } from "./api";
+import { observer } from "mobx-react-lite";
+import {
+  CLOUDFLARE_AVAILABLE,
+  createSyncClient,
+  serverFor,
+  SOURCE_LABELS,
+  type DataSource,
+} from "./api";
+import type { SyncClient } from "./sync/syncClient";
 import { ThreadView, type ThreadActions } from "./components/ThreadView";
 import { MeContext } from "./me";
 import { Identicon } from "./components/Identicon";
@@ -111,19 +120,27 @@ function remember(key: string, value: string): void {
   }
 }
 
-// Until the first load, or if the API isn't running.
-type Load = { state: "loading" } | { state: "failed"; error: string } | { state: "ready" };
+// One sync client per data source, made when the source is picked and running while it's on screen.
+function useSyncClient(source: DataSource): SyncClient {
+  const [current, setCurrent] = useState(() => ({ source, client: createSyncClient(source) }));
+  if (current.source !== source) setCurrent({ source, client: createSyncClient(source) });
+  const { client } = current;
+  useEffect(() => {
+    void client.start();
+    return () => client.stop();
+  }, [client]);
+  return client;
+}
 
-function App(): React.JSX.Element {
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [people, setPeople] = useState<Person[]>([]);
-  const [load, setLoad] = useState<Load>({ state: "loading" });
+const App = observer(function App(): React.JSX.Element {
   const [source, setSource] = useState<DataSource>(savedSource);
+  const client = useSyncClient(source);
+  const threads = client.threads;
+  const people = client.people;
   const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedSource()));
   const fallbackMe = useContext(MeContext);
   // You view the app as the chosen person, or the first person in the data until you pick one.
   const me = people.find((person) => person.id === viewerId) ?? people[0] ?? fallbackMe;
-  const api = createApi(source, me);
   const [viewAsOpen, setViewAsOpen] = useState(false);
   const [contentZoom, setContentZoom] = useState(savedContentZoom);
 
@@ -136,64 +153,28 @@ function App(): React.JSX.Element {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // When you last looked at each thread. One you haven't opened counts as seen when the data finished loading,
+  // except the sample's unread ones; activity by others after that, live or caught up, shows as unread.
   const [lastSeen, setLastSeen] = useState<Record<string, number>>({});
   const nowMs = useNow(60_000);
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
   const day = buildDay(threads, me, relationshipTo, nowMs);
+  const seenAt = (thread: Thread): number =>
+    lastSeen[thread.id] ?? (UNREAD_THREAD_IDS.includes(thread.id) ? 0 : client.readyAtMs);
   const unreadIds = new Set(
     threads
       .filter(
         (thread) =>
-          thread.id !== activeThreadId &&
-          lastActivityByOthers(thread, me) > (lastSeen[thread.id] ?? 0),
+          thread.id !== activeThreadId && lastActivityByOthers(thread, me) > seenAt(thread),
       )
       .map((thread) => thread.id),
   );
 
-  // Everything comes from the API; the sample's unread threads start unseen. The API may still be starting
-  // (both launch together), so keep retrying until it answers.
-  useEffect(() => {
-    let cancelled = false;
-    let retry = 0;
-    // Reading needs no particular viewer.
-    const reader = createApi(source, fallbackMe);
-    const fetchAll = (): void => {
-      Promise.all([reader.threads(), reader.people()]).then(
-        ([loaded, team]) => {
-          if (cancelled) return;
-          setThreads(loaded);
-          setPeople(team);
-          setLastSeen(
-            Object.fromEntries(
-              loaded.map((thread) => [
-                thread.id,
-                UNREAD_THREAD_IDS.includes(thread.id) ? 0 : thread.updatedAtMs,
-              ]),
-            ),
-          );
-          setLoad({ state: "ready" });
-        },
-        (error: unknown) => {
-          if (cancelled) return;
-          setLoad({ state: "failed", error: String(error) });
-          retry = window.setTimeout(fetchAll, 1000);
-        },
-      );
-    };
-    fetchAll();
-    return () => {
-      cancelled = true;
-      window.clearTimeout(retry);
-    };
-  }, [source, fallbackMe]);
-
   // Switching data sources starts fresh on the other one.
   const switchSource = (next: DataSource): void => {
     remember(SOURCE_KEY, next);
-    setLoad({ state: "loading" });
-    setThreads([]);
-    setPeople([]);
     setActiveThreadId(null);
+    setLastSeen({});
     setViewerId(savedViewer(next));
     setSource(next);
   };
@@ -205,25 +186,6 @@ function App(): React.JSX.Element {
     setViewerId(person.id);
     setLastSeen(Object.fromEntries(threads.map((thread) => [thread.id, thread.updatedAtMs])));
   };
-
-  // Swaps in the server's copy of a thread after a change, adding it if it's new.
-  const replace = (thread: Thread): void =>
-    setThreads((current) =>
-      current.some((existing) => existing.id === thread.id)
-        ? current.map((existing) => (existing.id === thread.id ? thread : existing))
-        : [thread, ...current],
-    );
-  const sync = (request: Promise<Thread>): Promise<Thread> =>
-    request.then(
-      (thread) => {
-        replace(thread);
-        return thread;
-      },
-      (error: unknown) => {
-        console.error(error);
-        throw error;
-      },
-    );
 
   // Opening a thread marks it, and the one you're leaving, as seen.
   const openThread = (id: string | null): void => {
@@ -250,10 +212,11 @@ function App(): React.JSX.Element {
     setNewThreadKind(kind);
   };
 
-  // The server turns the panel's text into the opening message (and its first line the title).
+  // The panel's text becomes the opening message (and its first line the title). The thread appears at once and
+  // syncs in the background.
   const createThread = (draft: NewThreadDraft): void => {
     setNewThreadKind(null);
-    void sync(api.createThread(draft)).then((thread) => openThread(thread.id));
+    openThread(client.createThread(draft, me));
   };
 
   // ⌘K opens search; ⌘N starts a thread, matching the shortcut search shows for it; ⌘U picks who to view as;
@@ -291,39 +254,66 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Property changes go to the server, which records them in the thread as activity lines.
-  const edit = (edits: Parameters<typeof api.editThread>[1]): void => {
-    if (activeThread !== undefined) void sync(api.editThread(activeThread.id, edits));
+  // Every change is a transaction: applied here at once, then sent to the server, which records property changes
+  // as activity lines that sync back.
+  const edit = (changes: ThreadChanges): void => {
+    if (activeThread !== undefined) client.updateThread(activeThread.id, changes, me);
   };
 
   const actions: ThreadActions = {
     onSend: (text) => {
-      if (activeThread !== undefined) void sync(api.addEntry(activeThread.id, "message", text));
+      if (activeThread !== undefined) client.addEntry(activeThread.id, "message", text, me);
     },
     onResolve: (text) => {
-      if (activeThread !== undefined) void sync(api.addEntry(activeThread.id, "resolution", text));
+      if (activeThread !== undefined) client.addEntry(activeThread.id, "resolution", text, me);
     },
     onReopen: () => edit({ status: "open" }),
     onSetStatus: (status) => edit({ status }),
     onSetPriority: (priority) => edit({ priority }),
     onSetDue: (dueAtMs) => edit({ dueAtMs }),
-    onSetAssignee: (person) => edit({ assignee: person.id }),
+    onSetAssignee: (person) => edit({ assigneeId: person.id }),
     onSetSchedule: (schedule) => edit({ schedule }),
     onToggleDecision: (entryId) => {
       const entry = activeThread?.entries.find((candidate) => candidate.id === entryId);
-      if (activeThread === undefined || entry?.kind !== "message") return;
-      void sync(api.setDecision(activeThread.id, entryId, !entry.decision));
+      if (entry?.kind !== "message") return;
+      client.setDecision(entryId, !entry.decision, me);
     },
   };
 
-  if (load.state !== "ready")
+  if (client.status !== "ready")
     return (
       <>
         <div aria-hidden className="titlebar" />
         <div className="app-status">
-          {load.state === "loading"
-            ? "Loading…"
-            : `Waiting for the ${SOURCE_LABELS[source]} API at ${serverFor(source).url}${source === "cloudflare" ? "" : " (vp run api#dev)"}… ${load.error}`}
+          {client.status === "waiting" ? (
+            <div className="app-status-body">
+              <div>
+                Waiting for the {SOURCE_LABELS[source]} API at {serverFor(source).url}
+                {source === "cloudflare" ? "" : " (vp run api#dev)"}… {client.error ?? ""}
+              </div>
+              {/* A way out while that server can't be reached. */}
+              <div className="app-status-actions">
+                {(["cloudflare", "local", "sample"] as const)
+                  .filter(
+                    (option) =>
+                      option !== source && (option !== "cloudflare" || CLOUDFLARE_AVAILABLE),
+                  )
+                  .map((option, index) => (
+                    <button
+                      key={option}
+                      type="button"
+                      className="app-status-button"
+                      autoFocus={index === 0}
+                      onClick={() => switchSource(option)}
+                    >
+                      Use {SOURCE_LABELS[option]} Data
+                    </button>
+                  ))}
+              </div>
+            </div>
+          ) : (
+            "Loading…"
+          )}
         </div>
       </>
     );
@@ -362,7 +352,10 @@ function App(): React.JSX.Element {
               aria-label={`Viewing as ${me.name}. Switch user`}
               onClick={() => setViewAsOpen(true)}
             >
-              <span className="view-as-source">{SOURCE_LABELS[source]}</span>
+              <span className="view-as-source">
+                {SOURCE_LABELS[source]}
+                {client.connected ? "" : " · Offline"}
+              </span>
               <Identicon seed={me.id} size={14} />
               <span>{me.name}</span>
             </button>
@@ -427,6 +420,6 @@ function App(): React.JSX.Element {
       )}
     </MeContext>
   );
-}
+});
 
 export default App;

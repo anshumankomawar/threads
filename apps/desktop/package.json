@@ -23,7 +23,9 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "mobx": "7.0.6",
+    "mobx-react-lite": "5.1.0"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^2.0.0",

@@ -1688,3 +1688,32 @@ body * {
   margin-right: 4px;
   color: var(--text-tertiary);
 }
+
+.app-status-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.app-status-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.app-status-button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font: inherit;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.app-status-button:hover,
+.app-status-button:focus-visible {
+  color: var(--text-primary);
+  outline: none;
+}
