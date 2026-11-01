@@ -2,6 +2,7 @@ import {
   askerId,
   lastMessage,
   otherSide,
+  pendingAsks,
   levelPositions,
   threadScore,
   waitingOn,
@@ -19,6 +20,8 @@ export type InboxItem = {
   overdue: boolean;
   // How important it is, from 1 to 100; the same score the server schedules by.
   score: number;
+  // Who asked you a question in it (mentioned you), when that's why it's here rather than it being yours.
+  asked?: Person;
 };
 
 // One block of time on the timeline. A thread has one of these for each of its blocks that day.
@@ -128,6 +131,40 @@ export function buildDay(
   for (const thread of threads) {
     if (thread.status === "closed") continue;
     const turn = waitingOn(thread);
+
+    // A question for you in someone else's thread: its reply block on the timeline, and the inbox until it's due.
+    const ask =
+      turn === me.id
+        ? undefined
+        : pendingAsks(
+            thread.entries.flatMap((entry) =>
+              entry.kind === "message"
+                ? [{ authorId: entry.author.id, text: entry.text, createdAtMs: entry.createdAtMs }]
+                : [],
+            ),
+          ).get(me.id);
+    if (ask !== undefined) {
+      const asker =
+        thread.entries.flatMap((entry) =>
+          entry.kind === "message" && entry.author.id === ask.askerId ? [entry.author] : [],
+        )[0] ?? null;
+      const replies = thread.replyBlocks.filter((reply) => reply.personId === me.id);
+      const asked = {
+        thread,
+        from: asker,
+        reason: `${asker?.name ?? "Someone"} asked you`,
+        dueLabel: "Asked",
+        overdue: false,
+        score: 100,
+        asked: asker ?? undefined,
+      };
+      for (const reply of replies)
+        if (on(dayMs, reply.startMs))
+          timeline.push({ ...asked, block: { startMs: reply.startMs, endMs: reply.endMs } });
+      if (!replies.some((reply) => on(today, reply.startMs))) unscheduled.push(asked);
+      continue;
+    }
+
     const involved =
       thread.requester.id === me.id ||
       thread.assignee?.id === me.id ||

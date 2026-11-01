@@ -305,6 +305,8 @@ const App = observer(function App(): React.JSX.Element {
       : threads.find((thread) => thread.id === splitThreadId);
   const threadLinks: ThreadLinks = {
     titleOf: (threadId) => threads.find((thread) => thread.id === threadId)?.title,
+    nameOf: (personId) => people.find((person) => person.id === personId)?.name,
+    people,
     open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
     search: (query) => {
       const needle = query.toLowerCase();
@@ -590,6 +592,7 @@ const App = observer(function App(): React.JSX.Element {
             suggestedTitle={plainThreadLinks(
               moving.messages[0].text.split("\n")[0],
               threadLinks.titleOf,
+              threadLinks.nameOf,
             ).slice(0, 80)}
             onMove={moveTo}
             onClose={() => setMoving(null)}

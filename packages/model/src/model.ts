@@ -60,6 +60,9 @@ export const KIND_LABELS: Record<ThreadKind, string> = {
 
 export type Schedule = { startMs: number; endMs: number };
 
+// A block on someone's schedule for answering a question in a thread.
+export type ReplyBlock = Schedule & { personId: string };
+
 export type Thread = {
   id: string;
   kind: ThreadKind;
@@ -78,6 +81,9 @@ export type Thread = {
   // Every block of time it holds on the schedule of whoever it's waiting on, including ones already over. A response
   // can have any number, each as long as the free time allows. Meetings and focus blocks have just their `schedule`.
   blocks: Schedule[];
+  // Time set aside for people asked a question in it (mentioned, and not yet answered): one block each, on their
+  // schedule, placed by the server like `blocks`.
+  replyBlocks: ReplyBlock[];
   // Time the assignee already spent in blocks before the thread last changed hands.
   workedMinutes: number;
   // Who's in it: meeting attendees; empty for other kinds.
@@ -114,28 +120,57 @@ export function otherSide(thread: Thread, personId: string): Person | null {
   return other.id === personId ? null : other;
 }
 
-// A link to another thread inside a message's text, as `[[thread:<id>]]`. Typing `/thread` in a reply makes one.
+// Links inside a message's text: another thread as `[[thread:<id>]]` (`#` in a reply), a person as
+// `[[person:<id>]]` (`@` in a reply; mentioning someone asks them a question).
+const LINK = /\[\[(thread|person):([^\]\s]+)\]\]/g;
 const THREAD_LINK = /\[\[thread:([^\]\s]+)\]\]/g;
+const MENTION = /\[\[person:([^\]\s]+)\]\]/g;
 
 export const threadLink = (threadId: string): string => `[[thread:${threadId}]]`;
+export const mention = (personId: string): string => `[[person:${personId}]]`;
 
-// A message's text split into plain runs and thread links, for rendering.
-export function splitThreadLinks(text: string): ({ text: string } | { threadId: string })[] {
-  const parts: ({ text: string } | { threadId: string })[] = [];
+export type TextPart = { text: string } | { threadId: string } | { personId: string };
+
+// A message's text split into plain runs, thread links and mentions, for rendering.
+export function splitThreadLinks(text: string): TextPart[] {
+  const parts: TextPart[] = [];
   let last = 0;
-  for (const match of text.matchAll(THREAD_LINK)) {
+  for (const match of text.matchAll(LINK)) {
     if (match.index > last) parts.push({ text: text.slice(last, match.index) });
-    parts.push({ threadId: match[1] });
+    parts.push(match[1] === "thread" ? { threadId: match[2] } : { personId: match[2] });
     last = match.index + match[0].length;
   }
   if (last < text.length) parts.push({ text: text.slice(last) });
   return parts;
 }
 
-// The text with each thread link replaced by `#<title>`, for previews and plain text.
+// The text with each thread link as `#<title>` and each mention as `@<name>`, for previews and plain text.
 export function plainThreadLinks(
   text: string,
   titleOf: (threadId: string) => string | undefined,
+  nameOf: (personId: string) => string | undefined = () => undefined,
 ): string {
-  return text.replace(THREAD_LINK, (_, threadId: string) => `#${titleOf(threadId) ?? "thread"}`);
+  return text
+    .replace(THREAD_LINK, (_, threadId: string) => `#${titleOf(threadId) ?? "thread"}`)
+    .replace(MENTION, (_, personId: string) => `@${nameOf(personId) ?? "someone"}`);
+}
+
+// Who a message mentions.
+export function mentionsIn(text: string): string[] {
+  return [...text.matchAll(MENTION)].map((match) => match[1]);
+}
+
+// The questions still waiting in a thread's messages: everyone mentioned by someone else who hasn't written since,
+// with who asked and when. Writing anything in the thread answers it.
+export function pendingAsks(
+  messages: { authorId: string; text: string; createdAtMs: number }[],
+): Map<string, { askerId: string; atMs: number }> {
+  const pending = new Map<string, { askerId: string; atMs: number }>();
+  for (const message of [...messages].sort((a, b) => a.createdAtMs - b.createdAtMs)) {
+    pending.delete(message.authorId);
+    for (const personId of mentionsIn(message.text))
+      if (personId !== message.authorId)
+        pending.set(personId, { askerId: message.authorId, atMs: message.createdAtMs });
+  }
+  return pending;
 }

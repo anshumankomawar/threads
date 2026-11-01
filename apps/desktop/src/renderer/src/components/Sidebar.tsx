@@ -1,4 +1,5 @@
 import {
+  AtSign,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
@@ -124,10 +125,11 @@ const KIND_ICONS: Record<ThreadKind, typeof MessageSquare> = {
 
 // Every row shows its kind in the left indent: a speech bubble for responses, a calendar for meetings,
 // a target for focus blocks.
-function KindMarker({ kind }: { kind: ThreadKind }): React.JSX.Element {
-  const Icon = KIND_ICONS[kind];
+// A thread's kind, or an @ when it's here because someone asked you a question in it.
+function KindMarker({ kind, asked }: { kind: ThreadKind; asked: boolean }): React.JSX.Element {
+  const Icon = asked ? AtSign : KIND_ICONS[kind];
   return (
-    <span className="kind-marker" aria-label={KIND_LABELS[kind]}>
+    <span className="kind-marker" aria-label={asked ? "Question for you" : KIND_LABELS[kind]}>
       <Icon size={12} strokeWidth={1.7} aria-hidden />
     </span>
   );
@@ -164,7 +166,7 @@ function ThreadRow({
         onClick={onOpen}
         onKeyDown={(event) => activateOnKey(event, onOpen)}
       >
-        <KindMarker kind={thread.kind} />
+        <KindMarker kind={thread.kind} asked={item.asked !== undefined} />
         <span ref={titleRef} className="sidebar-row-label">
           {thread.title}
         </span>

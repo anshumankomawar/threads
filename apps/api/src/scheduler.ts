@@ -76,6 +76,9 @@ export type Plannable = {
   minutes: number;
   // The blocks it holds that aren't over yet.
   blocks: Schedule[];
+  // Keeps clear of the next half hour or so, like time that's frozen, when it takes new time (a question's reply
+  // block lands at the next break, not in the middle of what's happening now).
+  afterFreeze?: boolean;
 };
 
 // Joins blocks that touch, so unbroken time reads as one block.
@@ -141,7 +144,7 @@ export function planSchedule(
     const claimed: Schedule[] = [];
     for (const start of slots) {
       if (neededMs <= 0) break;
-      if (!free.has(start)) continue;
+      if (!free.has(start) || (thread.afterFreeze && start < frozenUntil)) continue;
       free.delete(start);
       claimed.push({ startMs: start, endMs: start + SLOT_MS });
       neededMs -= SLOT_MS;

@@ -145,6 +145,7 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     tagIds: fields.tagIds ?? [],
     schedule: fields.schedule ?? null,
     blocks: fields.schedule ? [fields.schedule] : [],
+    replyBlocks: [],
     workedMinutes: 0,
     attendees: fields.attendees ?? [],
     branchedFromId: null,

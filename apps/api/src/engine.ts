@@ -1,5 +1,6 @@
 import {
   askerId,
+  pendingAsks,
   DUMMY_ZOOM_LINK,
   entryFromCreate,
   formatEffort,
@@ -121,6 +122,15 @@ class Batch {
     const thread = this.get("Thread", threadId);
     if (thread === undefined || thread.kind !== "response") return null;
     return thread.assigneeId ?? thread.requesterId;
+  }
+
+  // The questions still waiting in a thread: everyone mentioned who hasn't written since.
+  asks(threadId: string): Map<string, { askerId: string; atMs: number }> {
+    return pendingAsks(
+      this.all("Entry").flatMap((entry) =>
+        entry.threadId === threadId && entry.kind === "message" ? [entry] : [],
+      ),
+    );
   }
 
   // The open threads still blocking a thread.
@@ -288,6 +298,9 @@ function touchedThreads(batch: Batch, transaction: TransactionInput): string[] {
   return [transaction.threadId, ...sources];
 }
 
+// A question outranks any thread's own work, so its reply block comes first at the next break.
+const REPLY_SCORE = 1000;
+
 export type EngineOptions = {
   now?: () => number;
   storage?: EngineStorage;
@@ -380,7 +393,16 @@ export class SyncEngine {
     const affected = new Set<string>();
     for (const [threadId, before] of turnBefore) {
       const thread = batch.get("Thread", threadId);
-      if (thread === undefined || thread.status === "closed") continue;
+      if (thread === undefined) continue;
+      // Anyone asked a question in it, or holding time to answer one, may need their schedule changed.
+      for (const reply of thread.replyBlocks ?? []) affected.add(reply.personId);
+      if (thread.status === "closed") {
+        // A closed thread needs no more answers.
+        if ((thread.replyBlocks ?? []).length > 0)
+          batch.put("Thread", { ...thread, replyBlocks: [] });
+        continue;
+      }
+      for (const personId of batch.asks(threadId).keys()) affected.add(personId);
       if (thread.kind !== "response") {
         for (const person of [...thread.attendeeIds, thread.assigneeId ?? thread.requesterId])
           affected.add(person);
@@ -428,24 +450,41 @@ export class SyncEngine {
     });
     const over = (thread: ThreadRecord): Schedule[] =>
       recordBlocks(thread).filter((block) => block.endMs <= nowMs);
+    // Questions waiting on this person in threads that aren't theirs: a short block at their next break, ahead of
+    // their own work.
+    const asked = threads.filter(
+      (thread) => batch.waitingOn(thread.id) !== personId && batch.asks(thread.id).has(personId),
+    );
+    const replies = asked.map((thread) => ({
+      id: `reply:${thread.id}`,
+      score: REPLY_SCORE,
+      minutes: MIN_BLOCK_MINUTES,
+      blocks: (thread.replyBlocks ?? [])
+        .filter((reply) => reply.personId === personId && reply.endMs > nowMs)
+        .map(({ startMs, endMs }) => ({ startMs, endMs })),
+      afterFreeze: true,
+    }));
     const plan = planSchedule(
-      open.map((thread) => {
-        const estimate = thread.assigneeId === personId ? (thread.effortHours ?? null) : null;
-        const worked = (thread.workedMinutes ?? 0) + minutesSpent(over(thread), nowMs);
-        return {
-          id: thread.id,
-          score: threadScore(
-            thread,
-            levelOf(askerId(thread.requesterId, thread.assigneeId, personId)),
-            nowMs,
-          ),
-          minutes:
-            estimate === null
-              ? MIN_BLOCK_MINUTES
-              : Math.max(estimate * 60 - worked, MIN_BLOCK_MINUTES),
-          blocks: recordBlocks(thread).filter((block) => block.endMs > nowMs),
-        };
-      }),
+      [
+        ...replies,
+        ...open.map((thread) => {
+          const estimate = thread.assigneeId === personId ? (thread.effortHours ?? null) : null;
+          const worked = (thread.workedMinutes ?? 0) + minutesSpent(over(thread), nowMs);
+          return {
+            id: thread.id,
+            score: threadScore(
+              thread,
+              levelOf(askerId(thread.requesterId, thread.assigneeId, personId)),
+              nowMs,
+            ),
+            minutes:
+              estimate === null
+                ? MIN_BLOCK_MINUTES
+                : Math.max(estimate * 60 - worked, MIN_BLOCK_MINUTES),
+            blocks: recordBlocks(thread).filter((block) => block.endMs > nowMs),
+          };
+        }),
+      ],
       fixed,
       nowMs,
       slots,
@@ -454,11 +493,24 @@ export class SyncEngine {
       const upcoming = plan.get(thread.id) ?? [];
       const blocks = [...over(thread), ...upcoming];
       const schedule = upcoming[0] ?? null;
+      const current = batch.get("Thread", thread.id) ?? thread;
       if (
-        JSON.stringify(blocks) !== JSON.stringify(thread.blocks) ||
-        JSON.stringify(schedule) !== JSON.stringify(thread.schedule)
+        JSON.stringify(blocks) !== JSON.stringify(current.blocks) ||
+        JSON.stringify(schedule) !== JSON.stringify(current.schedule)
       )
-        batch.put("Thread", { ...thread, schedule, blocks });
+        batch.put("Thread", { ...current, schedule, blocks });
+    }
+    // Each question waiting on this person gets one block to answer it; one that's been answered gives its back.
+    for (const thread of threads) {
+      const current = batch.get("Thread", thread.id) ?? thread;
+      const others = (current.replyBlocks ?? []).filter((reply) => reply.personId !== personId);
+      const replies = (plan.get(`reply:${thread.id}`) ?? []).map((block) => ({
+        ...block,
+        personId,
+      }));
+      const next = [...others, ...replies];
+      if (JSON.stringify(next) !== JSON.stringify(current.replyBlocks ?? []))
+        batch.put("Thread", { ...current, replyBlocks: next });
     }
   }
 
@@ -466,12 +518,13 @@ export class SyncEngine {
   replanAll(): void {
     const nowMs = this.#now();
     this.write((batch) => {
-      const people = new Set(
-        batch
-          .all("Thread")
-          .filter((thread) => thread.kind === "response" && thread.status !== "closed")
+      const open = batch.all("Thread").filter((thread) => thread.status !== "closed");
+      const people = new Set([
+        ...open
+          .filter((thread) => thread.kind === "response")
           .flatMap((thread) => batch.waitingOn(thread.id) ?? []),
-      );
+        ...open.flatMap((thread) => [...batch.asks(thread.id).keys()]),
+      ]);
       if (people.size === 0) return;
       const slots = workingSlots(nowMs);
       for (const person of people) this.#plan(batch, person, slots, nowMs);

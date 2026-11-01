@@ -31,6 +31,7 @@ function thread(fields: Partial<Thread>): Thread {
     entries: [],
     ...fields,
     blocks: fields.blocks ?? (fields.schedule ? [fields.schedule] : []),
+    replyBlocks: fields.replyBlocks ?? [],
   };
 }
 
@@ -206,4 +207,35 @@ test("up next lists each thread once at its next block, soonest first, skipping 
   const later = thread({ id: "later", kind: "focus", requester: me, schedule: block(3 * HOUR) });
   const ids = upNext([over, now, tomorrow, later], me, [], NOW, 3).map((item) => item.thread.id);
   expect(ids).toEqual(["now", "later", "tomorrow"]);
+});
+
+test("a question for you shows at its reply block and in your inbox, until you write in the thread", () => {
+  const reply = { startMs: NOW + HOUR, endMs: NOW + HOUR + HOUR / 2, personId: "kk" };
+  const message = (id: string, author: Person, text: string) => ({
+    kind: "message" as const,
+    id,
+    author,
+    text,
+    createdAtMs: NOW,
+  });
+  const asked = conversation([arjun], {
+    entries: [
+      message("m0", arjun, "Text"),
+      message("m1", anshu, "[[person:kk]] what do you think?"),
+    ],
+    replyBlocks: [reply],
+  });
+  const day = buildDay([asked], kk, [], NOW);
+  expect(day.timeline.map((item) => [item.asked?.name, item.block.startMs])).toEqual([
+    ["Anshu", reply.startMs],
+  ]);
+  // Its block is today, so it's on the timeline rather than the inbox.
+  expect(day.unscheduled).toEqual([]);
+  // Without a block today, it waits in the inbox, from whoever asked.
+  const unslotted = buildDay([{ ...asked, replyBlocks: [] }], kk, [], NOW).unscheduled;
+  expect(unslotted.map((item) => [item.from?.name, item.dueLabel])).toEqual([["Anshu", "Asked"]]);
+  // KK writes back: the question is answered.
+  const answered = { ...asked, entries: [...asked.entries, message("m2", kk, "Go for it")] };
+  const after = buildDay([answered], kk, [], NOW);
+  expect([after.timeline, after.unscheduled]).toEqual([[], []]);
 });

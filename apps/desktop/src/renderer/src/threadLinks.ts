@@ -1,18 +1,22 @@
 import { createContext, useContext } from "react";
 
-// How thread links (`[[thread:<id>]]` in a message) show and open: by the linked thread's current title, into the
-// split view beside the thread you're in.
-// `search` backs the `#` menu: threads whose title matches, most recently active first.
+// How links in a message show: thread links (`[[thread:<id>]]`) by the linked thread's current title, opening into
+// the split view beside the thread you're in; mentions (`[[person:<id>]]`) by the person's name. `search` backs the
+// `#` menu: threads whose title matches, most recently active first. `people` backs the `@` menu.
 export type ThreadLinks = {
   titleOf: (threadId: string) => string | undefined;
+  nameOf: (personId: string) => string | undefined;
   open: (threadId: string) => void;
   search: (query: string) => { id: string; title: string }[];
+  people: { id: string; name: string }[];
 };
 
 export const ThreadLinksContext = createContext<ThreadLinks>({
   titleOf: () => undefined,
+  nameOf: () => undefined,
   open: () => {},
   search: () => [],
+  people: [],
 });
 
 export const useThreadLinks = (): ThreadLinks => useContext(ThreadLinksContext);

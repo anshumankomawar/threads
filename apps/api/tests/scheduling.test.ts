@@ -265,6 +265,7 @@ const oldThread: ThreadRecord = {
   tagIds: [],
   schedule: null,
   blocks: [],
+  replyBlocks: [],
   workedMinutes: 0,
   branchedFromId: null,
   blocksId: null,
@@ -433,4 +434,45 @@ test("a thread with two blockers stays blocked until both close", async () => {
   expect((await thread("t1")).status).toBe("blocked");
   await transact("anshu", [update("b2", { status: "closed" })]);
   expect((await thread("t1")).status).toBe("open");
+});
+
+const replies = (subject: Thread, personId: string) =>
+  subject.replyBlocks
+    .filter((reply) => reply.personId === personId)
+    .map(({ startMs, endMs }) => ({ startMs, endMs }));
+
+test("a question gets a reply block on the asked person's schedule, ahead of their own work", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", ask("theirs", { assigneeId: "anshu" }));
+  expect((await thread("theirs")).schedule).toEqual(slotAt(NINE));
+  // Arjun asks Anshu something in Anshu's ask: Anshu gets half an hour to answer, first thing.
+  await transact("arjun", [
+    message("q1", "t1", "[[person:anshu]] what do you need more help with?"),
+  ]);
+  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE)]);
+  expect((await thread("theirs")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
+  // Arjun's own block stays put.
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
+  // Asking again doesn't add another block.
+  await transact("arjun", [message("q2", "t1", "[[person:anshu]] also, by when?")]);
+  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE)]);
+  // Anshu answers: the reply block goes and her own work moves back up.
+  await transact("anshu", [message("a1", "t1", "The final copy, by Friday")]);
+  expect(replies(await thread("t1"), "anshu")).toEqual([]);
+  expect((await thread("theirs")).schedule).toEqual(slotAt(NINE));
+});
+
+test("a question lands at the next break, never in the next half hour", async () => {
+  await transact("anshu", ask("t1"));
+  clock = NINE + 10 * 60_000;
+  await transact("arjun", [message("q1", "t1", "[[person:anshu]] quick question")]);
+  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE + HOUR)]);
+});
+
+test("closing a thread clears the time set aside to answer questions in it", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", [message("q1", "t1", "[[person:kk]] can you weigh in?")]);
+  expect(replies(await thread("t1"), "kk")).toHaveLength(1);
+  await transact("arjun", [update("t1", { status: "closed" })]);
+  expect((await thread("t1")).replyBlocks).toEqual([]);
 });

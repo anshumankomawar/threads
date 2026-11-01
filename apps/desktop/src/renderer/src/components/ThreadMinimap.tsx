@@ -22,28 +22,32 @@ type Marker = {
 };
 
 // Thread links in a message read as `#<title>` here.
-function toMarker(entry: Entry, titleOf: (threadId: string) => string | undefined): Marker {
+function toMarker(
+  entry: Entry,
+  titleOf: (threadId: string) => string | undefined,
+  nameOf: (personId: string) => string | undefined,
+): Marker {
   const base = { id: entry.id, atMs: entry.createdAtMs };
   switch (entry.kind) {
     case "message":
       return {
         ...base,
         label: entry.author.name,
-        text: plainThreadLinks(entry.text, titleOf),
+        text: plainThreadLinks(entry.text, titleOf, nameOf),
         person: entry.author,
       };
     case "event":
       return {
         ...base,
         label: "Activity",
-        text: `${entry.actor.name} ${plainThreadLinks(entry.text, titleOf)}`,
+        text: `${entry.actor.name} ${plainThreadLinks(entry.text, titleOf, nameOf)}`,
         person: entry.actor,
       };
     case "resolution":
       return {
         ...base,
         label: "Done",
-        text: plainThreadLinks(entry.text, titleOf),
+        text: plainThreadLinks(entry.text, titleOf, nameOf),
         person: entry.author,
       };
     case "call":
@@ -74,8 +78,8 @@ export function ThreadMinimap({
   scrollRef: React.RefObject<HTMLDivElement | null>;
   nowMs: number;
 }): React.JSX.Element | null {
-  const { titleOf } = useThreadLinks();
-  const markers = entries.map((entry) => toMarker(entry, titleOf));
+  const { titleOf, nameOf } = useThreadLinks();
+  const markers = entries.map((entry) => toMarker(entry, titleOf, nameOf));
   const [visible, setVisible] = useState<Set<string>>(() => new Set());
   const [hovered, setHovered] = useState<number | null>(null);
   const visibleRef = useRef(visible);

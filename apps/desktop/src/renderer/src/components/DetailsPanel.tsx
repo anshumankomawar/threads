@@ -67,7 +67,7 @@ export function DetailsPanel({
   team: Person[];
   nowMs: number;
 }): React.JSX.Element {
-  const { titleOf } = useThreadLinks();
+  const { titleOf, nameOf } = useThreadLinks();
   const { panelRef, width, handle } = useResizablePanel({
     storageKey: "details-width",
     defaultWidth: 280,
@@ -191,7 +191,9 @@ export function DetailsPanel({
                   {formatRelativeTime(latest.createdAtMs, nowMs)}
                 </span>
               </span>
-              <span className="details-latest-text">{plainThreadLinks(latest.text, titleOf)}</span>
+              <span className="details-latest-text">
+                {plainThreadLinks(latest.text, titleOf, nameOf)}
+              </span>
             </button>
           </Section>
         )}

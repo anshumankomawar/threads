@@ -2,7 +2,16 @@
 // models in an object pool, transactions sent to the server, and delta packets of sync actions broadcast back,
 // all ordered by a monotonically increasing sync id.
 
-import type { Entry, Person, Priority, Schedule, Status, Thread, ThreadKind } from "./model";
+import type {
+  Entry,
+  Person,
+  Priority,
+  ReplyBlock,
+  Schedule,
+  Status,
+  Thread,
+  ThreadKind,
+} from "./model";
 
 // --- Models -----------------------------------------------------------------------------------------------
 
@@ -20,6 +29,7 @@ export type ThreadRecord = {
   tagIds: string[];
   schedule: Schedule | null;
   blocks: Schedule[];
+  replyBlocks: ReplyBlock[];
   workedMinutes: number;
   attendeeIds: string[];
   // The thread this one was branched off from, if any.
@@ -78,7 +88,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v7");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v8");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -190,6 +200,7 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     tagIds: [],
     schedule: data.schedule,
     blocks: [],
+    replyBlocks: [],
     workedMinutes: 0,
     attendeeIds:
       data.kind === "meeting" ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)] : [],
@@ -267,6 +278,7 @@ export function toThread(
     tagIds: record.tagIds ?? [],
     schedule: record.schedule,
     blocks: recordBlocks(record),
+    replyBlocks: record.replyBlocks ?? [],
     workedMinutes: record.workedMinutes ?? 0,
     attendees: record.attendeeIds.map(person),
     // Threads stored before branching existed have no field.
@@ -345,6 +357,7 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       tagIds: thread.tagIds,
       schedule: thread.schedule,
       blocks: thread.blocks,
+      replyBlocks: thread.replyBlocks,
       workedMinutes: thread.workedMinutes,
       attendeeIds: thread.attendees.map((person) => person.id),
       branchedFromId: thread.branchedFromId,

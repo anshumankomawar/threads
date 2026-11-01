@@ -39,6 +39,12 @@ import {
   type CommandMenuState,
   type CommandName,
 } from "./slashCommands";
+import {
+  closeMentionMenu,
+  MENTION_MENU_EVENT,
+  MentionNode,
+  type MentionMenuState,
+} from "./mentionNode";
 import { slotMissesDue } from "../inbox";
 import {
   EFFORT_OPTIONS,
@@ -55,6 +61,7 @@ import {
   type Schedule,
   type Status,
   type Thread,
+  mention,
 } from "model";
 import {
   DAY,
@@ -136,11 +143,16 @@ function MessageText({
 
 // Text with its thread links as chips, inline.
 function LinkedText({ text }: { text: string }): React.JSX.Element {
+  const { nameOf } = useThreadLinks();
   return (
     <>
       {splitThreadLinks(text).map((part, index) =>
         "threadId" in part ? (
           <ThreadLinkChip key={index} threadId={part.threadId} />
+        ) : "personId" in part ? (
+          <span key={index} className="mention">
+            @{nameOf(part.personId) ?? "someone"}
+          </span>
         ) : (
           <span key={index}>{part.text}</span>
         ),
@@ -769,6 +781,7 @@ function ReplyBlock({
       StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
       Placeholder.configure({ placeholder }),
       ThreadLinkNode,
+      MentionNode,
       SlashCommands,
     ],
     editorProps: {
@@ -780,7 +793,11 @@ function ReplyBlock({
         // Thread links go out as `[[thread:<id>]]`.
         const text = view.state.doc
           .textBetween(0, view.state.doc.content.size, "\n", (leaf) =>
-            leaf.type.name === "threadLink" ? threadLink(String(leaf.attrs.id)) : "",
+            leaf.type.name === "threadLink"
+              ? threadLink(String(leaf.attrs.id))
+              : leaf.type.name === "mention"
+                ? mention(String(leaf.attrs.id))
+                : "",
           )
           .trim();
         if (text.length > 0) {
@@ -797,21 +814,31 @@ function ReplyBlock({
   const links = useThreadLinks();
   const [menu, setMenu] = useState<ThreadMenuState>(null);
   const [commandMenu, setCommandMenu] = useState<CommandMenuState>(null);
+  const [mentionMenu, setMentionMenu] = useState<MentionMenuState>(null);
   const [selected, setSelected] = useState(0);
-  const open = commandMenu ?? menu;
+  const open = commandMenu ?? mentionMenu ?? menu;
   const options: MenuOption[] =
     commandMenu !== null
       ? COMMANDS.filter((command) => command.name.startsWith(commandMenu.query.toLowerCase())).map(
           (command) => ({ kind: "command", ...command }),
         )
-      : menu === null
-        ? []
-        : menuOptions(menu.query, links.search, threadId);
+      : mentionMenu !== null
+        ? links.people
+            .filter(
+              (person) =>
+                person.id !== me.id &&
+                person.name.toLowerCase().includes(mentionMenu.query.toLowerCase()),
+            )
+            .map((person) => ({ kind: "person", person }))
+        : menu === null
+          ? []
+          : menuOptions(menu.query, links.search, threadId);
   const choose = (option: MenuOption): void => {
     if (option.kind === "command") {
       commandMenu?.take();
       onCommand(option.name);
-    } else if (menu === null) return;
+    } else if (option.kind === "person") mentionMenu?.pick(option.person);
+    else if (menu === null) return;
     else if (option.kind === "link") menu.pick(option.link);
     else menu.pick({ id: onBranch(option.title), title: option.title });
   };
@@ -827,11 +854,17 @@ function ReplyBlock({
       setCommandMenu((event as CustomEvent<CommandMenuState>).detail);
       setSelected(0);
     };
+    const onMentionMenu = (event: Event): void => {
+      setMentionMenu((event as CustomEvent<MentionMenuState>).detail);
+      setSelected(0);
+    };
     dom.addEventListener(THREAD_MENU_EVENT, onMenu);
     dom.addEventListener(COMMAND_MENU_EVENT, onCommandMenu);
+    dom.addEventListener(MENTION_MENU_EVENT, onMentionMenu);
     return () => {
       dom.removeEventListener(THREAD_MENU_EVENT, onMenu);
       dom.removeEventListener(COMMAND_MENU_EVENT, onCommandMenu);
+      dom.removeEventListener(MENTION_MENU_EVENT, onMentionMenu);
     };
   }, [editor]);
 
@@ -842,6 +875,7 @@ function ReplyBlock({
       const key = (event as CustomEvent<KeyboardEvent>).detail;
       if (key.key === "Escape") {
         if (commandMenu !== null) closeCommandMenu(view);
+        else if (mentionMenu !== null) closeMentionMenu(view);
         else closeThreadMenu(view);
       } else if (options.length === 0) return;
       else if (key.key === "ArrowDown") setSelected((selected + 1) % options.length);
@@ -881,7 +915,8 @@ function ReplyBlock({
 type MenuOption =
   | { kind: "link"; link: { id: string; title: string } }
   | { kind: "new"; title: string }
-  | { kind: "command"; name: CommandName; label: string; hint: string };
+  | { kind: "command"; name: CommandName; label: string; hint: string }
+  | { kind: "person"; person: { id: string; name: string } };
 
 const MENU_MATCHES = 6;
 
@@ -931,7 +966,9 @@ function ThreadMenu({
               ? option.link.id
               : option.kind === "command"
                 ? option.name
-                : "new"
+                : option.kind === "person"
+                  ? option.person.id
+                  : "new"
           }
           type="button"
           role="option"
@@ -940,7 +977,17 @@ function ThreadMenu({
           onMouseEnter={() => onHover(index)}
           onClick={() => onChoose(option)}
         >
-          {option.kind === "command" ? (
+          {option.kind === "person" ? (
+            <>
+              <Identicon seed={option.person.id} size={14} />
+              <span className="thread-menu-title">
+                {option.person.name}{" "}
+                <span className="thread-menu-hint">
+                  asks them; time to answer goes on their schedule
+                </span>
+              </span>
+            </>
+          ) : option.kind === "command" ? (
             <>
               <CircleSlash {...ICON_PROPS} />
               <span className="thread-menu-title">
@@ -1044,7 +1091,7 @@ export function ThreadView({
 
   // Messages selected to move, in thread order: right-click → Select, ⌘-click, or shift-click for a range. Kept
   // per thread; moved messages drop out of it on their own. Escape clears it.
-  const { titleOf } = useThreadLinks();
+  const { titleOf, nameOf } = useThreadLinks();
   const [selection, setSelection] = useState<{
     threadId: string;
     ids: string[];
@@ -1109,7 +1156,8 @@ export function ThreadView({
       "separator",
       {
         label: "Copy text",
-        run: () => void navigator.clipboard.writeText(plainThreadLinks(message.text, titleOf)),
+        run: () =>
+          void navigator.clipboard.writeText(plainThreadLinks(message.text, titleOf, nameOf)),
       },
     ];
   };

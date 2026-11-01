@@ -27,6 +27,7 @@ function thread(fields: Partial<Thread>): Thread {
     tagIds: [],
     schedule: null,
     blocks: [],
+    replyBlocks: [],
     workedMinutes: 0,
     attendees: [],
     branchedFromId: null,

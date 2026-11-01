@@ -2158,3 +2158,8 @@ body * {
 .wipe-button[data-state="confirm"] {
   color: var(--urgent);
 }
+
+/* A mention: someone asked a question in the thread. */
+.mention {
+  color: var(--accent);
+}
