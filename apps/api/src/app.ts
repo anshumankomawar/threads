@@ -80,22 +80,18 @@ export function createWorkspaceApp(engine: SyncEngine) {
 
 export type AppOptions = {
   now?: () => number;
-  random?: () => number;
   // Who the sample threads are addressed to.
   me?: Person;
 };
 
 // Every workspace in memory, picked per request with the X-Workspace header, for tests. The deployed Worker keeps
 // each workspace in a Durable Object instead (src/worker.ts).
-export function createApp({
-  now = Date.now,
-  random = Math.random,
-  me = { id: "you", name: "You" },
-}: AppOptions = {}) {
+export function createApp({ now = Date.now, me = { id: "you", name: "You" } }: AppOptions = {}) {
   const apps = Object.fromEntries(
     WORKSPACES.map((name) => {
-      const engine = new SyncEngine({ now, random });
+      const engine = new SyncEngine({ now });
       seed(engine, name, me, undefined, now());
+      engine.replanAll();
       return [name, createWorkspaceApp(engine)];
     }),
   ) as Record<WorkspaceName, Hono>;

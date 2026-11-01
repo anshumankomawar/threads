@@ -23,6 +23,8 @@ function thread(fields: Partial<Thread>): Thread {
     schedule: null,
     attendees: [],
     branchedFromId: null,
+    effortHours: null,
+    tagIds: [],
     updatedAtMs: NOW,
     entries: [],
     ...fields,
@@ -30,7 +32,7 @@ function thread(fields: Partial<Thread>): Thread {
 }
 
 function plan(fields: Partial<Thread>) {
-  const day = buildDay([thread(fields)], me, () => "teammate", NOW);
+  const day = buildDay([thread(fields)], me, [], NOW);
   return {
     timeline: day.timeline.length,
     inbox: day.unscheduled.length,
@@ -60,13 +62,7 @@ test("a thread assigned to you and scheduled today sits on the timeline instead"
 test("a response slotted for a later day waits in your inbox, and is on the timeline that day", () => {
   const schedule = { startMs: NOW + DAY, endMs: NOW + DAY + HOUR };
   expect(plan({ schedule })).toEqual(IN_INBOX);
-  const tomorrow = buildDay(
-    [thread({ schedule })],
-    me,
-    () => "teammate",
-    NOW,
-    NOW - 12 * HOUR + DAY,
-  );
+  const tomorrow = buildDay([thread({ schedule })], me, [], NOW, NOW - 12 * HOUR + DAY);
   expect(tomorrow.timeline).toHaveLength(1);
 });
 
@@ -112,7 +108,7 @@ function conversation(authors: Person[], fields: Partial<Thread> = {}): Thread {
 
 // Who a thread is shown as from in someone's inbox, or null if it isn't there.
 function inboxFrom(subject: Thread, person: Person): string | null {
-  const [item] = buildDay([subject], person, () => "teammate", NOW).unscheduled;
+  const [item] = buildDay([subject], person, [], NOW).unscheduled;
   return item === undefined ? null : (item.from?.name ?? "nobody");
 }
 
@@ -136,13 +132,13 @@ test("replying back returns the thread to the assignee", () => {
 
 test("a thread waiting on someone else is in your outbox, labelled with who has it", () => {
   const answered = conversation([arjun, anshu]);
-  const day = buildDay([answered], anshu, () => "teammate", NOW);
+  const day = buildDay([answered], anshu, [], NOW);
   expect(day.outbox.map((item) => [item.thread, item.from?.name])).toEqual([
     [answered, "Arjun Bulusu"],
   ]);
   expect(day.unscheduled).toEqual([]);
   // Asking someone puts it in your outbox straight away.
-  expect(buildDay([conversation([arjun])], arjun, () => "teammate", NOW).outbox).toHaveLength(1);
+  expect(buildDay([conversation([arjun])], arjun, [], NOW).outbox).toHaveLength(1);
 });
 
 test("activity lines don't change whose turn it is", () => {
@@ -172,8 +168,8 @@ test("a thread you assigned to yourself is in your inbox with no name on it", ()
 test("a slot belongs to whoever the thread is waiting on", () => {
   const schedule = { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR };
   const answered = conversation([arjun, anshu], { schedule });
-  expect(buildDay([answered], arjun, () => "teammate", NOW).timeline).toHaveLength(1);
-  expect(buildDay([answered], anshu, () => "teammate", NOW).timeline).toHaveLength(0);
+  expect(buildDay([answered], arjun, [], NOW).timeline).toHaveLength(1);
+  expect(buildDay([answered], anshu, [], NOW).timeline).toHaveLength(0);
 });
 
 test("someone else's later schedule doesn't keep a reply out of your inbox", () => {
@@ -184,7 +180,7 @@ test("someone else's later schedule doesn't keep a reply out of your inbox", () 
 test("reassigning moves the thread to the new assignee's inbox", () => {
   const reassigned = thread({ requester: me, assignee: other });
   const inboxOf = (person: Person): Thread[] =>
-    buildDay([reassigned], person, () => "teammate", NOW).unscheduled.map((item) => item.thread);
+    buildDay([reassigned], person, [], NOW).unscheduled.map((item) => item.thread);
   expect(inboxOf(other)).toEqual([reassigned]);
   expect(inboxOf(me)).toEqual([]);
 });

@@ -1,22 +1,29 @@
 import {
+  askerId,
   DUMMY_ZOOM_LINK,
   entryFromCreate,
+  formatEffort,
   fromThread,
+  levelPositions,
   localPeople,
+  MAX_EFFORT_HOURS,
+  MIN_EFFORT_HOURS,
   MODEL_NAMES,
   PRIORITY_LABELS,
   samplePeople,
   sampleThreads,
   STATUS_LABELS,
+  TAGS,
+  TAG_IDS,
   threadFromCreate,
   threadLink,
+  threadScore,
   toThread,
   toThreads,
   type AnyRecord,
   type ModelName,
   type ModelRecords,
   type Person,
-  type Schedule,
   type SyncAction,
   type Thread,
   type ThreadChanges,
@@ -24,6 +31,7 @@ import {
   type TransactionInput,
 } from "model";
 import { z } from "zod";
+import { planSchedule, workingSlots } from "./scheduler.ts";
 
 // Each workspace is its own sync group: its own people, threads and sync ids. "local" starts with a few people
 // and no threads, for trying the app as each of them; "sample" is the demo team with their threads.
@@ -94,51 +102,41 @@ class Batch {
     this.writes.set(`${modelName}:${record.id}`, { modelName, id: record.id, data: record });
   }
 
-  // Who wrote a thread's latest message, counting staged writes.
-  lastMessageAuthor(threadId: string): string | undefined {
-    let latest: { authorId: string; createdAtMs: number } | undefined;
-    const consider = (entry: AnyRecord | null | undefined): void => {
-      if (entry === null || entry === undefined || !("kind" in entry) || entry.kind !== "message")
-        return;
-      if (entry.threadId !== threadId) return;
-      if (latest === undefined || entry.createdAtMs >= latest.createdAtMs) latest = entry;
-    };
-    for (const entry of this.#models.Entry.values())
-      if (!this.writes.has(`Entry:${entry.id}`)) consider(entry);
-    for (const write of this.writes.values()) if (write.modelName === "Entry") consider(write.data);
-    return latest?.authorId;
+  // Every record of a model, counting staged writes.
+  all<Name extends ModelName>(modelName: Name): ModelRecords[Name][] {
+    const records: ModelRecords[Name][] = [];
+    for (const id of this.#models[modelName].keys()) {
+      const record = this.get(modelName, id);
+      if (record !== undefined) records.push(record);
+    }
+    for (const { modelName: name, id, data } of this.writes.values())
+      if (name === modelName && data !== null && !this.#models[modelName].has(id))
+        records.push(data as ModelRecords[Name]);
+    return records;
+  }
+
+  // Who wrote each thread's latest message, counting staged writes.
+  lastMessageAuthors(): Map<string, string> {
+    const latest = new Map<string, { authorId: string; createdAtMs: number }>();
+    for (const entry of this.all("Entry")) {
+      if (entry.kind !== "message") continue;
+      const current = latest.get(entry.threadId);
+      if (current === undefined || entry.createdAtMs >= current.createdAtMs)
+        latest.set(entry.threadId, entry);
+    }
+    return new Map([...latest].map(([threadId, { authorId }]) => [threadId, authorId]));
   }
 
   // Whose inbox a response is in, the same rule as `waitingOn` in the model.
-  waitingOn(threadId: string): string | null {
+  waitingOn(
+    threadId: string,
+    authors: Map<string, string> = this.lastMessageAuthors(),
+  ): string | null {
     const thread = this.get("Thread", threadId);
     if (thread === undefined || thread.kind !== "response") return null;
     if (thread.assigneeId === null) return thread.requesterId;
-    return this.lastMessageAuthor(threadId) === thread.assigneeId
-      ? thread.requesterId
-      : thread.assigneeId;
+    return authors.get(threadId) === thread.assigneeId ? thread.requesterId : thread.assigneeId;
   }
-}
-
-const SLOT_MS = 30 * 60_000;
-const SLOT_WINDOW_MS = 3 * 24 * 60 * 60_000;
-
-// A random half-hour slot in working hours (9 to 6, in the given time zone) within the next three days: where a
-// response lands on the schedule of whoever it's waiting on. Random for now, to stand in for real scheduling.
-export function randomSlot(nowMs: number, offsetMinutes: number, random: () => number): Schedule {
-  const offsetMs = offsetMinutes * 60_000;
-  const slots: number[] = [];
-  for (
-    let start = Math.ceil(nowMs / SLOT_MS) * SLOT_MS;
-    start + SLOT_MS <= nowMs + SLOT_WINDOW_MS;
-    start += SLOT_MS
-  ) {
-    const hour = new Date(start + offsetMs).getUTCHours();
-    if (hour >= 9 && hour < 18) slots.push(start);
-  }
-  const startMs =
-    slots[Math.floor(random() * slots.length)] ?? Math.ceil(nowMs / SLOT_MS) * SLOT_MS;
-  return { startMs, endMs: startMs + SLOT_MS };
 }
 
 // --- Validation -------------------------------------------------------------------------------------------
@@ -165,6 +163,15 @@ const threadChanges = z
     status: z.enum(["open", "blocked", "closed"]),
     priority: z.enum(["none", "low", "medium", "high", "urgent"]),
     dueAtMs: z.number().int().nullable(),
+    effortHours: z
+      .number()
+      .min(MIN_EFFORT_HOURS)
+      .max(MAX_EFFORT_HOURS)
+      .multipleOf(MIN_EFFORT_HOURS)
+      .nullable(),
+    tagIds: z
+      .array(z.enum(TAG_IDS))
+      .refine((tags) => new Set(tags).size === tags.length, "Tags must be unique"),
     schedule: schedule.nullable(),
   })
   .partial();
@@ -250,6 +257,21 @@ function describeChanges(
         ? "took this on"
         : `assigned this to ${people(changes.assigneeId)?.name ?? changes.assigneeId}`,
     );
+  if (changes.effortHours !== undefined && changes.effortHours !== (thread.effortHours ?? null))
+    lines.push(
+      changes.effortHours === null
+        ? "removed the estimate"
+        : `estimated this at ${formatEffort(changes.effortHours)}`,
+    );
+  if (changes.tagIds !== undefined) {
+    const before = thread.tagIds ?? [];
+    for (const tag of TAGS) {
+      if (changes.tagIds.includes(tag.id) && !before.includes(tag.id))
+        lines.push(`tagged this ${tag.name}`);
+      if (before.includes(tag.id) && !changes.tagIds.includes(tag.id))
+        lines.push(`removed the ${tag.name} tag`);
+    }
+  }
   if (changes.schedule !== undefined && changes.schedule?.startMs !== thread.schedule?.startMs)
     lines.push(
       changes.schedule === null
@@ -261,18 +283,20 @@ function describeChanges(
 
 // --- Engine -----------------------------------------------------------------------------------------------
 
-// The threads a transaction can change the turn of.
-function touchedThreads(transaction: TransactionInput): string[] {
+// The threads a transaction changes, which a schedule might have to answer to.
+function touchedThreads(batch: Batch, transaction: TransactionInput): string[] {
   if (transaction.type === "create")
     return [transaction.modelName === "Thread" ? transaction.data.id : transaction.data.threadId];
   if (transaction.type === "update") return [transaction.modelId];
-  return [];
+  const sources = transaction.entryIds.flatMap((entryId) => {
+    const entry = batch.get("Entry", entryId);
+    return entry === undefined ? [] : [entry.threadId];
+  });
+  return [transaction.threadId, ...sources];
 }
 
 export type EngineOptions = {
   now?: () => number;
-  // Picks response slots; injectable so tests are repeatable.
-  random?: () => number;
   storage?: EngineStorage;
   // Called after each committed batch with its sync actions, to broadcast them as a delta packet.
   onActions?: (actions: SyncAction[]) => void;
@@ -285,18 +309,11 @@ export class SyncEngine {
   readonly models = emptyModels();
   lastSyncId = 0;
   readonly #now: () => number;
-  readonly #random: () => number;
   readonly #storage: EngineStorage;
   onActions: ((actions: SyncAction[]) => void) | undefined;
 
-  constructor({
-    now = Date.now,
-    random = Math.random,
-    storage = memoryStorage(),
-    onActions,
-  }: EngineOptions = {}) {
+  constructor({ now = Date.now, storage = memoryStorage(), onActions }: EngineOptions = {}) {
     this.#now = now;
-    this.#random = random;
     this.#storage = storage;
     this.onActions = onActions;
   }
@@ -352,24 +369,105 @@ export class SyncEngine {
     const nowMs = this.#now();
     return this.write(
       (batch) => {
+        const turnBefore = new Map<string, string | null>();
         for (const transaction of fresh) {
-          // A response that lands in someone's inbox (made, replied to, reassigned) gets a slot on their schedule.
-          const threadIds = touchedThreads(transaction);
-          const before = threadIds.map((threadId) => batch.waitingOn(threadId));
+          for (const threadId of touchedThreads(batch, transaction))
+            if (!turnBefore.has(threadId)) turnBefore.set(threadId, batch.waitingOn(threadId));
           this.#apply(batch, actor, transaction, nowMs, utcOffsetMinutes);
-          threadIds.forEach((threadId, index) => {
-            const after = batch.waitingOn(threadId);
-            const thread = batch.get("Thread", threadId);
-            if (after === null || after === before[index] || thread === undefined) return;
-            batch.put("Thread", {
-              ...thread,
-              schedule: randomSlot(nowMs, utcOffsetMinutes, this.#random),
-            });
-          });
         }
+        this.#replanAfter(batch, turnBefore, nowMs);
       },
       fresh.map((transaction) => transaction.id),
     );
+  }
+
+  // Reschedules everyone these changes affect. A response handed to someone gives up the slot it had on the other
+  // person's schedule. Closing a thread reschedules nobody: its slot stays a gap until the next change.
+  #replanAfter(batch: Batch, turnBefore: Map<string, string | null>, nowMs: number): void {
+    const authors = batch.lastMessageAuthors();
+    const affected = new Set<string>();
+    for (const [threadId, before] of turnBefore) {
+      const thread = batch.get("Thread", threadId);
+      if (thread === undefined || thread.status === "closed") continue;
+      if (thread.kind !== "response") {
+        for (const person of [...thread.attendeeIds, thread.assigneeId ?? thread.requesterId])
+          affected.add(person);
+        continue;
+      }
+      const turn = batch.waitingOn(threadId, authors);
+      if (turn === null) continue;
+      if (turn !== before && thread.schedule !== null)
+        batch.put("Thread", { ...thread, schedule: null });
+      affected.add(turn);
+    }
+    if (affected.size === 0) return;
+    const slots = workingSlots(nowMs);
+    for (const person of affected) this.#plan(batch, person, authors, slots, nowMs);
+  }
+
+  // Lays out one person's schedule: the open responses waiting on them, around their meetings and focus blocks. Only
+  // threads whose slot actually changes are written. Blocked threads give up their slot until they're unblocked.
+  #plan(
+    batch: Batch,
+    personId: string,
+    authors: Map<string, string>,
+    slots: number[],
+    nowMs: number,
+  ): void {
+    const threads = batch.all("Thread").filter((thread) => thread.status !== "closed");
+    const levelOf = levelPositions(batch.all("Person"));
+    const waiting = threads.filter(
+      (thread) => batch.waitingOn(thread.id, authors) === personId && thread.kind === "response",
+    );
+    const open = waiting.filter((thread) => thread.status === "open");
+    const fixed = threads.flatMap((thread) => {
+      if (thread.schedule === null || thread.kind === "response") return [];
+      const mine =
+        thread.kind === "meeting"
+          ? thread.attendeeIds.includes(personId)
+          : (thread.assigneeId ?? thread.requesterId) === personId;
+      return mine ? [thread.schedule] : [];
+    });
+    const plan = planSchedule(
+      open.map((thread) => ({
+        id: thread.id,
+        score: threadScore(
+          thread,
+          levelOf(askerId(thread.requesterId, thread.assigneeId, personId)),
+          nowMs,
+        ),
+        effortHours: thread.effortHours,
+        schedule: thread.schedule,
+      })),
+      fixed,
+      nowMs,
+      slots,
+    );
+    for (const thread of waiting) {
+      const schedule = plan.get(thread.id) ?? null;
+      if (
+        schedule?.startMs !== thread.schedule?.startMs ||
+        schedule?.endMs !== thread.schedule?.endMs
+      )
+        batch.put("Thread", { ...thread, schedule });
+    }
+  }
+
+  // Looks over every schedule: on load, and each morning, when due dates have drawn closer and slots have passed.
+  replanAll(): void {
+    const nowMs = this.#now();
+    this.write((batch) => {
+      const authors = batch.lastMessageAuthors();
+      const people = new Set(
+        batch
+          .all("Thread")
+          .filter((thread) => thread.kind === "response" && thread.status !== "closed")
+          .flatMap((thread) => batch.waitingOn(thread.id, authors) ?? []),
+      );
+      if (people.size === 0) return;
+      const slots = workingSlots(nowMs);
+      for (const person of people) this.#plan(batch, person, authors, slots, nowMs);
+    });
   }
 
   #apply(
@@ -473,24 +571,6 @@ export class SyncEngine {
         createdAtMs: nowMs,
       }),
     );
-  }
-
-  // Gives a slot to any open response that's waiting on someone but has none, such as one made before slots.
-  fillMissingSlots(offsetMinutes = 0): void {
-    const missing = [...this.models.Thread.values()].filter(
-      (thread) =>
-        thread.kind === "response" && thread.status !== "closed" && thread.schedule === null,
-    );
-    if (missing.length === 0) return;
-    const nowMs = this.#now();
-    this.write((batch) => {
-      for (const thread of missing)
-        if (batch.waitingOn(thread.id) !== null)
-          batch.put("Thread", {
-            ...thread,
-            schedule: randomSlot(nowMs, offsetMinutes, this.#random),
-          });
-    });
   }
 
   // --- Reads ---

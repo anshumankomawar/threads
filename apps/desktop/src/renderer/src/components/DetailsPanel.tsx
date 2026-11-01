@@ -1,9 +1,12 @@
 import { formatClock, formatDue, formatRelativeTime } from "../format";
+import { scoreOf } from "../inbox";
 import {
+  formatEffort,
   KIND_LABELS,
   plainThreadLinks,
   PRIORITY_LABELS,
   STATUS_LABELS,
+  TAGS,
   type Entry,
   type Person,
   type Thread,
@@ -57,9 +60,11 @@ function reveal(entryId: string): void {
 // all read from the thread so you don't have to scroll through it.
 export function DetailsPanel({
   thread,
+  team,
   nowMs,
 }: {
   thread: Thread | undefined;
+  team: Person[];
   nowMs: number;
 }): React.JSX.Element {
   const { titleOf } = useThreadLinks();
@@ -120,6 +125,15 @@ export function DetailsPanel({
               <Row label="Due">
                 <span data-overdue={due?.overdue ?? false}>{due?.label ?? "No due date"}</span>
               </Row>
+              <Row label="Effort">
+                {thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
+              </Row>
+              <Row label="Tags">
+                {TAGS.filter((tag) => thread.tagIds.includes(tag.id))
+                  .map((tag) => tag.name)
+                  .join(", ") || "None"}
+              </Row>
+              <Row label="Score">{scoreOf(thread, team, nowMs).toFixed(1)}</Row>
             </>
           )}
           <Row label={thread.kind === "meeting" ? "When" : "Scheduled"}>

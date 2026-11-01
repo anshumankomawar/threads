@@ -1,0 +1,341 @@
+import {
+  toThreads,
+  waitingOn,
+  type Person,
+  type Schedule,
+  type SyncAction,
+  type Thread,
+  type ThreadRecord,
+  type TransactionInput,
+} from "model";
+import { beforeEach, expect, test } from "vite-plus/test";
+import { createApp } from "../src/app.ts";
+import { SyncEngine } from "../src/engine.ts";
+
+// A fixed clock: Monday 2026-11-02, midnight in the organization's time zone (UTC−8).
+const NOW = Date.UTC(2026, 10, 2, 8);
+const NINE = NOW + 9 * 60 * 60_000;
+const HALF_HOUR = 30 * 60_000;
+const slotAt = (startMs: number, minutes = 30): Schedule => ({
+  startMs,
+  endMs: startMs + minutes * 60_000,
+});
+
+let app: ReturnType<typeof createApp>;
+
+beforeEach(() => {
+  app = createApp({ now: () => NOW });
+});
+
+function send(method: string, path: string, body?: unknown, workspace = "local") {
+  return app.request(path, {
+    method,
+    headers: { "Content-Type": "application/json", "X-Workspace": workspace },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}
+
+const transact = (actorId: string, transactions: TransactionInput[]) =>
+  send("POST", "/sync/transactions", { actorId, transactions });
+
+type Models = {
+  lastSyncId: number;
+  models: { Person: Person[]; Thread: ThreadRecord[]; Entry: never[] };
+};
+
+const bootstrap = async (workspace = "local"): Promise<Models> =>
+  (await send("GET", "/sync/bootstrap", undefined, workspace)).json() as Promise<Models>;
+
+async function threads(workspace = "local"): Promise<Thread[]> {
+  const { models } = await bootstrap(workspace);
+  return toThreads(
+    models.Thread,
+    models.Entry,
+    new Map(models.Person.map((person) => [person.id, person])),
+  );
+}
+
+async function thread(id: string): Promise<Thread> {
+  const found = (await threads()).find((candidate) => candidate.id === id);
+  if (found === undefined) throw new Error(`No thread ${id}`);
+  return found;
+}
+
+const activity = (subject: Thread): string[] =>
+  subject.entries.flatMap((entry) => (entry.kind === "event" ? [entry.text] : []));
+
+let counter = 0;
+const txId = (): string => `scheduling-${++counter}`;
+
+const message = (id: string, threadId: string, text = "Text"): TransactionInput => ({
+  id: txId(),
+  type: "create",
+  modelName: "Entry",
+  data: { id, threadId, kind: "message", text },
+});
+
+const update = (threadId: string, changes: object): TransactionInput =>
+  ({
+    id: txId(),
+    type: "update",
+    modelName: "Thread",
+    modelId: threadId,
+    changes,
+  }) as TransactionInput;
+
+// A thread asking Arjun for something unless said otherwise, made and opened in one batch.
+const ask = (id: string, fields: object = {}): TransactionInput[] => [
+  {
+    id: txId(),
+    type: "create",
+    modelName: "Thread",
+    data: {
+      id,
+      kind: "response",
+      title: "Ask",
+      assigneeId: "arjun",
+      attendeeIds: [],
+      schedule: null,
+      ...fields,
+    },
+  } as TransactionInput,
+  message(`${id}-m`, id),
+];
+
+test("a new response takes the first free working slot of whoever it's waiting on", async () => {
+  await transact("anshu", ask("t1"));
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
+  await transact("anshu", ask("t2"));
+  expect((await thread("t2")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
+});
+
+test("nobody sets a response's slot by hand", async () => {
+  await transact("anshu", ask("t1"));
+  const manual = await transact("anshu", [update("t1", { schedule: slotAt(NINE + HALF_HOUR) })]);
+  expect(manual.status).toBe(400);
+});
+
+test("people each have their own schedule", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", ask("t2", { assigneeId: "anshu" }));
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
+  expect((await thread("t2")).schedule).toEqual(slotAt(NINE));
+});
+
+test("raising a priority moves a thread ahead of the ones it now outscores", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("anshu", ask("t2"));
+  await transact("anshu", ask("t3"));
+  await transact("anshu", [update("t3", { priority: "urgent" })]);
+  expect((await thread("t3")).schedule?.startMs).toBe(NINE);
+  expect((await thread("t1")).schedule?.startMs).toBe(NINE + HALF_HOUR);
+  expect((await thread("t2")).schedule?.startMs).toBe(NINE + 2 * HALF_HOUR);
+});
+
+test("a tag change moves a thread only once it beats the one ahead by the margin", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("anshu", ask("t2"));
+  // The top tag alone adds 9.9 points, just short of the margin.
+  await transact("anshu", [update("t2", { tagIds: ["incident"] })]);
+  expect((await thread("t2")).schedule?.startMs).toBe(NINE + HALF_HOUR);
+  await transact("anshu", [update("t2", { priority: "high" })]);
+  expect((await thread("t2")).schedule?.startMs).toBe(NINE);
+});
+
+test("effort sets the length of the slot, up to 2 hours, and shows in the activity", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", [update("t1", { effortHours: 1 })]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 60));
+  await transact("arjun", [update("t1", { effortHours: 8 })]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 120));
+  await transact("arjun", [update("t1", { effortHours: null })]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
+  expect(activity(await thread("t1"))).toEqual([
+    "estimated this at 1h",
+    "estimated this at 8h",
+    "removed the estimate",
+  ]);
+});
+
+test("tags are saved and show in the activity", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("anshu", [update("t1", { tagIds: ["security", "bug"] })]);
+  await transact("anshu", [update("t1", { tagIds: ["bug"] })]);
+  const found = await thread("t1");
+  expect(found.tagIds).toEqual(["bug"]);
+  expect(activity(found)).toEqual([
+    "tagged this Security",
+    "tagged this Bug",
+    "removed the Security tag",
+  ]);
+});
+
+test.each<[string, object]>([
+  ["an effort below 30 minutes", { effortHours: 0.25 }],
+  ["an effort above 8 hours", { effortHours: 9 }],
+  ["an effort that isn't in half hours", { effortHours: 1.2 }],
+  ["an unknown tag", { tagIds: ["nope"] }],
+  ["a repeated tag", { tagIds: ["bug", "bug"] }],
+])("an update with %s is refused", async (_, changes) => {
+  await transact("anshu", ask("t1"));
+  expect((await transact("anshu", [update("t1", changes)])).status).toBe(400);
+});
+
+test("a meeting takes its time back from the responses on each attendee's schedule", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("anshu", [
+    {
+      id: txId(),
+      type: "create",
+      modelName: "Thread",
+      data: {
+        id: "meet",
+        kind: "meeting",
+        title: "Meet",
+        assigneeId: null,
+        attendeeIds: ["arjun"],
+        schedule: slotAt(NINE, 60),
+      },
+    },
+  ]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE + 2 * HALF_HOUR));
+  expect((await thread("meet")).schedule).toEqual(slotAt(NINE, 60));
+});
+
+test("a reply hands the thread over, onto the other person's schedule", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", ask("theirs", { assigneeId: "anshu" }));
+  // Anshu's day already has a thread at 9:00, so the one handed over goes next.
+  await transact("arjun", [message("m2", "t1", "Done")]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
+  // Writing again doesn't change whose turn it is, so it stays put.
+  await transact("arjun", [message("m3", "t1", "And one more thing")]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
+});
+
+test("a blocked thread gives up its slot until it's unblocked", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("anshu", ask("t2"));
+  await transact("arjun", [update("t1", { status: "blocked" })]);
+  expect((await thread("t1")).schedule).toBeNull();
+  expect((await thread("t2")).schedule?.startMs).toBe(NINE);
+  await transact("arjun", [update("t1", { status: "open" })]);
+  expect((await thread("t1")).schedule?.startMs).toBe(NINE + HALF_HOUR);
+});
+
+test("closing a thread leaves a gap until the next change on that schedule", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("anshu", ask("t2"));
+  await transact("arjun", [update("t1", { status: "closed" })]);
+  expect((await thread("t2")).schedule?.startMs).toBe(NINE + HALF_HOUR);
+  await transact("anshu", ask("t3"));
+  expect((await thread("t2")).schedule?.startMs).toBe(NINE);
+  expect((await thread("t3")).schedule?.startMs).toBe(NINE + HALF_HOUR);
+});
+
+test("a resent batch doesn't reschedule anything", async () => {
+  const batch = ask("t1");
+  await transact("anshu", batch);
+  const { lastSyncId } = await bootstrap();
+  await transact("anshu", batch);
+  expect((await bootstrap()).lastSyncId).toBe(lastSyncId);
+});
+
+test("a change that leaves the schedule alone adds no slot moves to the sync log", async () => {
+  await transact("anshu", ask("t1"));
+  const { lastSyncId } = await bootstrap();
+  await transact("arjun", [update("t1", { title: "Renamed" })]);
+  const { actions } = (await (await send("GET", `/sync/deltas?after=${lastSyncId}`)).json()) as {
+    actions: SyncAction[];
+  };
+  // The rename and its activity line.
+  expect(actions).toHaveLength(2);
+});
+
+const oldThread: ThreadRecord = {
+  id: "t1",
+  kind: "response",
+  title: "Old ask",
+  requesterId: "arjun",
+  assigneeId: "anshu",
+  attendeeIds: [],
+  status: "open",
+  priority: "none",
+  dueAtMs: null,
+  effortHours: null,
+  tagIds: [],
+  schedule: null,
+  branchedFromId: null,
+  createdAtMs: NOW,
+  updatedAtMs: NOW,
+};
+
+function loaded(records: ThreadRecord[]): SyncEngine {
+  const engine = new SyncEngine({ now: () => NOW });
+  engine.load(
+    [
+      { modelName: "Person", data: { id: "anshu", name: "Anshu" } },
+      { modelName: "Person", data: { id: "arjun", name: "Arjun" } },
+      ...records.map((data) => ({ modelName: "Thread" as const, data })),
+    ],
+    4,
+  );
+  return engine;
+}
+
+test("looking over schedules places threads without a slot and skips closed ones", () => {
+  const engine = loaded([oldThread, { ...oldThread, id: "t2", status: "closed" }]);
+  engine.replanAll();
+  expect(engine.models.Thread.get("t1")?.schedule).toEqual(slotAt(NINE));
+  expect(engine.models.Thread.get("t2")?.schedule).toBeNull();
+});
+
+test("looking over schedules moves slots that passed, on threads stored before effort and tags", () => {
+  const { effortHours: _effort, tagIds: _tags, ...stored } = oldThread;
+  const engine = loaded([{ ...stored, schedule: slotAt(NOW - 24 * 60 * 60_000) } as ThreadRecord]);
+  engine.replanAll();
+  expect(engine.models.Thread.get("t1")?.schedule).toEqual(slotAt(NINE));
+});
+
+test("looking over a settled schedule again writes nothing", () => {
+  const engine = loaded([oldThread]);
+  engine.replanAll();
+  const { lastSyncId } = engine;
+  engine.replanAll();
+  expect(engine.lastSyncId).toBe(lastSyncId);
+});
+
+test("the sample schedules sit in working hours, on weekdays, with no overlaps", async () => {
+  const all = await threads("sample");
+  const people = new Set(all.flatMap((subject) => waitingOn(subject) ?? []));
+  expect(people.size).toBeGreaterThan(0);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "short",
+    hour: "numeric",
+    hourCycle: "h23",
+  });
+
+  for (const person of people) {
+    const slots = all
+      .filter(
+        (subject) =>
+          subject.kind === "response" &&
+          subject.status === "open" &&
+          waitingOn(subject) === person &&
+          subject.schedule !== null,
+      )
+      .map((subject) => subject.schedule as Schedule)
+      .sort((a, b) => a.startMs - b.startMs);
+    slots.forEach((slot, index) => {
+      const parts = Object.fromEntries(
+        formatter.formatToParts(slot.startMs).map(({ type, value }) => [type, value]),
+      );
+      expect(["Sat", "Sun"]).not.toContain(parts.weekday);
+      expect(Number(parts.hour)).toBeGreaterThanOrEqual(9);
+      expect(Number(parts.hour)).toBeLessThan(17);
+      expect(slot.endMs - slot.startMs).toBeLessThanOrEqual(2 * 60 * 60_000);
+      if (index > 0) expect(slot.startMs).toBeGreaterThanOrEqual(slots[index - 1].endMs);
+    });
+  }
+});

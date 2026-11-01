@@ -3,7 +3,6 @@ import {
   type Entry,
   type Person,
   type Priority,
-  type Relationship,
   type Schedule,
   type Status,
   type Thread,
@@ -28,13 +27,6 @@ const sam: Person = {
   role: "sde",
   managerId: "jordan",
 };
-
-// Your place in the sample org: Priya manages you, Jordan leads another team, the rest are teammates.
-export function relationshipTo(person: Person): Relationship {
-  if (person.id === priya.id) return "manager";
-  if (person.id === jordan.id) return "lead";
-  return "teammate";
-}
 
 // Threads with activity you haven't seen yet when the app opens.
 export const UNREAD_THREAD_IDS = ["headcount-plan", "headcount-review"];
@@ -106,6 +98,8 @@ type Fields = {
   status?: Status;
   priority?: Priority;
   dueAtMs?: number | null;
+  effortHours?: number;
+  tagIds?: string[];
   schedule?: Schedule | null;
   attendees?: Person[];
 };
@@ -133,6 +127,8 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     status: fields.status ?? "open",
     priority: fields.priority ?? "none",
     dueAtMs: fields.dueAtMs ?? null,
+    effortHours: fields.effortHours ?? null,
+    tagIds: fields.tagIds ?? [],
     schedule: fields.schedule ?? null,
     attendees: fields.attendees ?? [],
     branchedFromId: null,
@@ -155,7 +151,14 @@ export function sampleThreads(
     thread(
       "headcount-plan",
       "Approve Q4 headcount plan",
-      { requester: priya, assignee: me, priority: "high", dueAtMs: todayAt(clock, 23) },
+      {
+        requester: priya,
+        assignee: me,
+        priority: "high",
+        dueAtMs: todayAt(clock, 23),
+        effortHours: 1,
+        tagIds: ["planning"],
+      },
       nowMs,
       [
         [
@@ -217,7 +220,14 @@ export function sampleThreads(
     thread(
       "onboarding-copy",
       "Review onboarding flow copy",
-      { requester: daniel, assignee: me, priority: "low", dueAtMs: nowMs + 6 * DAY },
+      {
+        requester: daniel,
+        assignee: me,
+        priority: "low",
+        dueAtMs: nowMs + 6 * DAY,
+        effortHours: 2,
+        tagIds: ["launch"],
+      },
       nowMs,
       [
         [
@@ -528,6 +538,8 @@ export function sampleThreads(
         status: "open",
         priority: "urgent",
         dueAtMs: todayAt(clock, 23),
+        effortHours: 2,
+        tagIds: ["incident"],
       },
       nowMs,
       conversation(3 * HOUR, 12 * MINUTE, [
@@ -570,7 +582,14 @@ export function sampleThreads(
     thread(
       "okr-draft",
       "Review Q1 OKR draft",
-      { requester: priya, assignee: me, priority: "medium", dueAtMs: nowMs + 4 * DAY },
+      {
+        requester: priya,
+        assignee: me,
+        priority: "medium",
+        dueAtMs: nowMs + 4 * DAY,
+        effortHours: 2,
+        tagIds: ["planning"],
+      },
       nowMs,
       [
         [
@@ -584,7 +603,13 @@ export function sampleThreads(
     thread(
       "interview-feedback",
       "Interview feedback: senior backend candidate",
-      { requester: jordan, assignee: me, priority: "medium", dueAtMs: nowMs + 2 * DAY },
+      {
+        requester: jordan,
+        assignee: me,
+        priority: "medium",
+        dueAtMs: nowMs + 2 * DAY,
+        effortHours: 0.5,
+      },
       nowMs,
       [
         [
@@ -598,7 +623,14 @@ export function sampleThreads(
     thread(
       "acme-residency",
       "Reply to Acme's data residency question",
-      { requester: maya, assignee: me, priority: "medium", dueAtMs: nowMs + 3 * DAY },
+      {
+        requester: maya,
+        assignee: me,
+        priority: "medium",
+        dueAtMs: nowMs + 3 * DAY,
+        effortHours: 1,
+        tagIds: ["compliance", "customer-escalation"],
+      },
       nowMs,
       [
         [
@@ -612,7 +644,14 @@ export function sampleThreads(
     thread(
       "dark-mode-contrast",
       "Fix contrast on the dark-mode settings page",
-      { requester: daniel, assignee: me, priority: "low", dueAtMs: nowMs + 7 * DAY },
+      {
+        requester: daniel,
+        assignee: me,
+        priority: "low",
+        dueAtMs: nowMs + 7 * DAY,
+        effortHours: 1,
+        tagIds: ["bug"],
+      },
       nowMs,
       [
         [
@@ -626,7 +665,14 @@ export function sampleThreads(
     thread(
       "soc2-vendors",
       "Update vendor list for the SOC 2 audit",
-      { requester: sam, assignee: me, priority: "low", dueAtMs: nowMs + 9 * DAY },
+      {
+        requester: sam,
+        assignee: me,
+        priority: "low",
+        dueAtMs: nowMs + 9 * DAY,
+        effortHours: 4,
+        tagIds: ["compliance"],
+      },
       nowMs,
       [
         [
@@ -640,7 +686,14 @@ export function sampleThreads(
     thread(
       "offsite-agenda",
       "Plan the team offsite agenda",
-      { requester: maya, assignee: me, priority: "low", dueAtMs: nowMs + 12 * DAY },
+      {
+        requester: maya,
+        assignee: me,
+        priority: "low",
+        dueAtMs: nowMs + 12 * DAY,
+        effortHours: 8,
+        tagIds: ["housekeeping"],
+      },
       nowMs,
       [
         [

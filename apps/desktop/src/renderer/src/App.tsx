@@ -5,7 +5,6 @@ import { DetailsPanel } from "./components/DetailsPanel";
 import { DetailsToggle, SearchButton, Sidebar, SidebarToggle } from "./components/Sidebar";
 import {
   plainThreadLinks,
-  relationshipTo,
   splitThreadLinks,
   UNREAD_THREAD_IDS,
   type Person,
@@ -176,7 +175,7 @@ const App = observer(function App(): React.JSX.Element {
   const shownDay = new Date(nowMs);
   shownDay.setHours(0, 0, 0, 0);
   shownDay.setDate(shownDay.getDate() + dayOffset);
-  const day = buildDay(threads, me, relationshipTo, nowMs, shownDay.getTime());
+  const day = buildDay(threads, me, people, nowMs, shownDay.getTime());
   const seenAt = (thread: Thread): number =>
     lastSeen[thread.id] ?? (UNREAD_THREAD_IDS.includes(thread.id) ? 0 : client.readyAtMs);
   const unreadIds = new Set(
@@ -365,6 +364,8 @@ const App = observer(function App(): React.JSX.Element {
       onSetStatus: (status) => edit({ status }),
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
+      onSetEffort: (effortHours) => edit({ effortHours }),
+      onSetTags: (tagIds) => edit({ tagIds }),
       onSetAssignee: (person) => edit({ assigneeId: person.id }),
       onSetSchedule: (schedule) => edit({ schedule }),
       onBranch: (title) => createBranch(thread, title),
@@ -509,7 +510,7 @@ const App = observer(function App(): React.JSX.Element {
             </div>
           )}
         </main>
-        {detailsOpen && <DetailsPanel thread={activeThread} nowMs={nowMs} />}
+        {detailsOpen && <DetailsPanel thread={activeThread} team={people} nowMs={nowMs} />}
         {newThreadKind !== null && (
           <NewThreadPalette
             initialKind={newThreadKind}

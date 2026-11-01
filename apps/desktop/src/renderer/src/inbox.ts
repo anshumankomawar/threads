@@ -1,9 +1,10 @@
 import {
+  askerId,
   lastMessage,
+  levelPositions,
+  threadScore,
   waitingOn,
   type Person,
-  type Priority,
-  type Relationship,
   type Thread,
 } from "model";
 
@@ -14,6 +15,8 @@ export type InboxItem = {
   reason: string;
   dueLabel: string | null;
   overdue: boolean;
+  // How important it is, from 1 to 100; the same score the server schedules by.
+  score: number;
 };
 
 export type Day = {
@@ -32,14 +35,6 @@ export type Day = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
-const PRIORITY_WEIGHT: Record<Priority, number> = {
-  none: 0,
-  low: 1,
-  medium: 2,
-  high: 3,
-  urgent: 4,
-};
-const RELATIONSHIP_WEIGHT: Record<Relationship, number> = { manager: 3, lead: 2, teammate: 1 };
 
 export function startOfDay(ms: number): number {
   const date = new Date(ms);
@@ -60,13 +55,20 @@ function shortDate(atMs: number, nowMs: number): string {
   return new Date(atMs).toLocaleDateString(undefined, format);
 }
 
-function reasonFor(
-  thread: Thread,
-  me: Person,
-  sender: Person,
-  relationship: Relationship,
-  nowMs: number,
-): string {
+// The slot ends after the thread is due: the schedule couldn't fit it in time.
+export function slotMissesDue(thread: Thread): boolean {
+  return (
+    thread.schedule !== null && thread.dueAtMs !== null && thread.schedule.endMs > thread.dueAtMs
+  );
+}
+
+// A thread's score for whoever it's waiting on.
+export function scoreOf(thread: Thread, people: Person[], nowMs: number): number {
+  const asker = askerId(thread.requester.id, thread.assignee?.id ?? null, waitingOn(thread));
+  return threadScore(thread, levelPositions(people)(asker), nowMs);
+}
+
+function reasonFor(thread: Thread, me: Person, sender: Person, nowMs: number): string {
   if (thread.kind === "focus") return "Your focus block";
   if (thread.kind === "meeting") {
     const others = thread.attendees
@@ -78,11 +80,7 @@ function reasonFor(
   const due = thread.dueAtMs;
   const days = due === null ? null : daysUntil(due, nowMs);
   return [
-    relationship === "manager"
-      ? "From your manager"
-      : relationship === "lead"
-        ? `From ${sender.name} (lead)`
-        : `From ${sender.name}`,
+    sender.id === me.managerId ? "From your manager" : `From ${sender.name}`,
     due !== null && due < nowMs
       ? "overdue"
       : days === 0
@@ -91,20 +89,10 @@ function reasonFor(
           ? "due tomorrow"
           : null,
     thread.priority === "urgent" ? "urgent" : null,
+    slotMissesDue(thread) ? "slot is after the due date" : null,
   ]
     .filter((reason): reason is string => reason !== null)
     .join(" · ");
-}
-
-// Higher scores come first: the priority set on the thread, who it's from (by org relationship), and how soon it's due.
-function score(thread: Thread, relationship: Relationship, nowMs: number): number {
-  if (thread.kind === "response" && thread.assignee === null) return Infinity;
-  const days = thread.dueAtMs === null ? null : daysUntil(thread.dueAtMs, nowMs);
-  return (
-    PRIORITY_WEIGHT[thread.priority] * 10 +
-    RELATIONSHIP_WEIGHT[relationship] * 5 +
-    (days === null ? 0 : Math.max(0, 7 - days))
-  );
 }
 
 // Rule-based plan for your day. Everything is a thread. A response sits with whoever it's waiting on, in a slot on
@@ -114,16 +102,16 @@ function score(thread: Thread, relationship: Relationship, nowMs: number): numbe
 export function buildDay(
   threads: Thread[],
   me: Person,
-  relationshipTo: (person: Person) => Relationship,
+  people: Person[],
   nowMs: number,
   dayMs: number = startOfDay(nowMs),
 ): Day {
   const today = startOfDay(nowMs);
   const on = (start: number, ms: number): boolean => ms >= start && ms < start + DAY;
   const timeline: InboxItem[] = [];
-  const unscheduled: (InboxItem & { score: number })[] = [];
-  const outbox: (InboxItem & { score: number })[] = [];
-  const later: (InboxItem & { score: number })[] = [];
+  const unscheduled: InboxItem[] = [];
+  const outbox: InboxItem[] = [];
+  const later: InboxItem[] = [];
 
   for (const thread of threads) {
     if (thread.status === "closed") continue;
@@ -134,17 +122,16 @@ export function buildDay(
       thread.attendees.some((person) => person.id === me.id);
     if (!involved && turn !== me.id) continue;
     const sender = lastMessage(thread)?.author ?? thread.requester;
-    const relationship = relationshipTo(sender);
     const due = thread.dueAtMs;
     const when = thread.schedule?.startMs ?? due;
     const overdue = thread.kind === "response" && due !== null && due < nowMs;
     const item = {
       thread,
       from: thread.kind === "response" && sender.id !== me.id ? sender : null,
-      reason: reasonFor(thread, me, sender, relationship, nowMs),
+      reason: reasonFor(thread, me, sender, nowMs),
       dueLabel: overdue ? "Overdue" : when === null ? null : shortDate(when, nowMs),
       overdue,
-      score: score(thread, relationship, nowMs),
+      score: scoreOf(thread, people, nowMs),
     };
     const slot = thread.schedule?.startMs;
 
@@ -168,7 +155,11 @@ export function buildDay(
   }
 
   timeline.sort((a, b) => (a.thread.schedule?.startMs ?? 0) - (b.thread.schedule?.startMs ?? 0));
-  const byScore = (a: { score: number }, b: { score: number }): number => b.score - a.score;
+  // Threads needing an assignee come first; nobody else can act on them.
+  const unassigned = ({ thread }: InboxItem): number =>
+    Number(thread.kind === "response" && thread.assignee === null);
+  const byScore = (a: InboxItem, b: InboxItem): number =>
+    unassigned(b) - unassigned(a) || b.score - a.score;
   return {
     dayMs,
     startHour: 0,

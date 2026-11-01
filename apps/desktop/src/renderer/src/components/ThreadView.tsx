@@ -8,10 +8,12 @@ import {
   Check,
   Clock,
   GitBranch,
+  Hourglass,
   Link2,
   MicOff,
   Plus,
   Sparkles,
+  Tag as TagIcon,
   Target,
   Video,
   X,
@@ -28,11 +30,15 @@ import {
   ThreadLinkNode,
   type ThreadMenuState,
 } from "./threadLinkNode";
+import { slotMissesDue } from "../inbox";
 import {
+  EFFORT_OPTIONS,
+  formatEffort,
   plainThreadLinks,
   PRIORITY_LABELS,
   splitThreadLinks,
   STATUS_LABELS,
+  TAGS,
   threadLink,
   type Entry,
   type Person,
@@ -69,6 +75,8 @@ export type ThreadActions = {
   onSetStatus: (status: Status) => void;
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueAtMs: number | null) => void;
+  onSetEffort: (effortHours: number | null) => void;
+  onSetTags: (tagIds: string[]) => void;
   onSetAssignee: (person: Person) => void;
   onSetSchedule: (schedule: Schedule | null) => void;
   // Starts a thread branching off this one, with the same people, and returns its id: from "New thread" in the
@@ -289,6 +297,13 @@ function MenuChip<T>({
   );
 }
 
+// "No tags", "Security", or "Security +1".
+function tagsLabel(tagIds: string[]): string {
+  const [first, ...rest] = TAGS.filter((tag) => tagIds.includes(tag.id));
+  if (first === undefined) return "No tags";
+  return rest.length === 0 ? first.name : `${first.name} +${rest.length}`;
+}
+
 function StatusDot({ status }: { status: Status }): React.JSX.Element {
   return <span className="status-dot" data-status={status} aria-hidden />;
 }
@@ -393,11 +408,15 @@ function ThreadHeader({
           />
         )}
         {isResponse ? (
-          // A response's slot is set when it lands on someone's schedule, so it only shows here.
+          // A response's slot comes from the scheduler, so it only shows here.
           <span
             className="chip"
-            data-tone="static"
-            title="Slotted into the schedule it's waiting on"
+            data-tone={slotMissesDue(thread) ? "urgent" : "static"}
+            title={
+              slotMissesDue(thread)
+                ? "The schedule couldn't fit this before its due date"
+                : "Scheduled automatically by importance"
+            }
           >
             <Clock {...ICON_PROPS} />
             {thread.schedule === null ? "No slot yet" : formatSchedule(thread.schedule, nowMs)}
@@ -443,6 +462,36 @@ function ThreadHeader({
               tone={dueTone}
               options={dueOptions(nowMs)}
               onSelect={actions.onSetDue}
+            />
+            <MenuChip
+              label={thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
+              icon={<Hourglass {...ICON_PROPS} />}
+              tone={thread.effortHours === null ? "muted" : undefined}
+              options={[
+                ...EFFORT_OPTIONS.map((hours) => ({
+                  label: formatEffort(hours),
+                  value: hours as number | null,
+                })),
+                { label: "No estimate", value: null },
+              ]}
+              onSelect={actions.onSetEffort}
+            />
+            <MenuChip
+              label={tagsLabel(thread.tagIds)}
+              icon={<TagIcon {...ICON_PROPS} />}
+              tone={thread.tagIds.length === 0 ? "muted" : undefined}
+              options={TAGS.map((tag) => ({
+                label: tag.name,
+                value: tag.id as string,
+                icon: thread.tagIds.includes(tag.id) ? <Check {...ICON_PROPS} /> : undefined,
+              }))}
+              onSelect={(tagId) =>
+                actions.onSetTags(
+                  thread.tagIds.includes(tagId)
+                    ? thread.tagIds.filter((id) => id !== tagId)
+                    : [...thread.tagIds, tagId],
+                )
+              }
             />
           </>
         )}

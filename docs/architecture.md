@@ -45,7 +45,9 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 | `packages/model/src/sync.ts`                         | The sync protocol: records, `ModelRegistry`, `SCHEMA_HASH`, `SyncAction`, `TransactionInput`, records ↔ `Thread` conversion, `threadFromCreate`/`entryFromCreate` |
 | `packages/model/src/sample.ts`                       | Seed data: local people, the sample team and threads                                                                                                              |
 | `apps/api/src/engine.ts`                             | `SyncEngine`: transaction validation (zod), business rules and side effects, sync ids, the log, seeding                                                           |
-| `apps/api/src/worker.ts`                             | The `Workspace` Durable Object (SQLite storage, WebSocket, broadcast) and the Worker entry (token, routing)                                                       |
+| `apps/api/src/scheduler.ts`                          | `planSchedule`: where one person's threads go; `WORKING_HOURS`                                                                                                    |
+| `packages/model/src/score.ts`                        | `threadScore`, `TAGS`, effort options: how important a thread is, shared by the API and the desktop app                                                           |
+| `apps/api/src/worker.ts`                             | The `Workspace` Durable Object (SQLite storage, WebSocket, broadcast, morning alarm) and the Worker entry (token, routing)                                        |
 | `apps/api/src/app.ts`                                | HTTP routes for one workspace; `createApp` runs all workspaces in memory for tests                                                                                |
 | `apps/desktop/src/renderer/src/sync/syncClient.ts`   | `SyncClient`: bootstrap, socket, applying deltas, rebasing, the change methods the UI calls                                                                       |
 | `apps/desktop/src/renderer/src/sync/transactions.ts` | `CreationTransaction`, `UpdateTransaction`, `TransactionQueue`                                                                                                    |
@@ -59,8 +61,8 @@ Data is normalized into flat records linked by id, like database rows:
 
 - **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree).
 - **Thread**: one ask, meeting or focus block. References people by id: `requesterId`, `assigneeId`,
-  `attendeeIds`. Has `status` (`open`, `blocked`, `closed`), `priority`, `dueAtMs`, `schedule`, `createdAtMs`,
-  `updatedAtMs`.
+  `attendeeIds`. Has `status` (`open`, `blocked`, `closed`), `priority`, `dueAtMs`, `effortHours`, `tagIds`, `schedule`,
+  `createdAtMs`, `updatedAtMs`.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
   `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
 
@@ -165,12 +167,29 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 
 - A response is waiting on one person (`waitingOn` in `model.ts`, `Batch.waitingOn` on the server): the assignee,
   until the assignee writes, then whoever asked. That person has it in their inbox; the other has it in their outbox.
-- Each time a response lands with someone (it's made, a reply hands it over, it's reassigned), the server gives it a
-  `schedule` slot on their schedule: `randomSlot` in `engine.ts`, a random half hour in working hours within three
-  days, standing in for real scheduling. Clients can't set a response's slot; meetings and focus blocks keep theirs.
 - `buildDay` in `inbox.ts` lays this out: a response waiting on you is on the timeline on its slot's day and in your
   inbox until then; responses waiting on others are the outbox. The schedule can step to other days (`dayMs`).
 - Closing is a status change; nothing else closes a thread.
+
+## Scoring and scheduling
+
+Responses are scheduled automatically. Clients can't set a response's slot; meetings and focus blocks keep theirs.
+
+- **The score** (`threadScore` in `packages/model/src/score.ts`) rates a thread from 1 to 100: its due date, priority,
+  estimated effort, most important tag (`TAGS`) and the level of the person waiting on the answer (`askerId`). It's
+  computed when needed and never stored, because it changes as due dates approach and saving it would fill the sync
+  log. Client and server share the function, so the inbox sorts by the same number the schedule uses.
+- **The plan** (`planSchedule` in `apps/api/src/scheduler.ts`) lays out one person's open responses around their
+  meetings and focus blocks, in `WORKING_HOURS`, on the next five weekdays. It's pure and has no randomness. A slot
+  starting within 30 minutes stays put; a thread only moves ahead of another by outscoring it by 10; a thread that
+  doesn't fit gets no slot and stays in the inbox. A slot lasts as long as the effort, from 30 minutes to 2 hours.
+- **When it runs** (`SyncEngine.#replanAfter`): after every batch, for whoever the touched threads are waiting on,
+  and every attendee of a touched meeting. A response handed to someone gives up its old slot. Closing a thread
+  reschedules nobody, so its slot stays a gap until the next change. Slot moves are side effects in the same delta
+  packet as the change that caused them, with no activity lines; only threads whose slot changes are written.
+- **The morning run** (`SyncEngine.replanAll`, from the `Workspace` Durable Object's `alarm`) looks over every schedule
+  half an hour before the working day, for closer due dates and slots that passed with the thread still open. It also
+  runs whenever a workspace loads.
 
 ## How to make common changes
 

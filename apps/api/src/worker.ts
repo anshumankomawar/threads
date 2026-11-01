@@ -12,6 +12,7 @@ import {
   type EngineStorage,
   type WorkspaceName,
 } from "./engine.ts";
+import { nextPlanningMs } from "./scheduler.ts";
 
 // Request details a Workspace object needs. The desktop app sends them as headers; a browser WebSocket can't set
 // headers, so the sync socket passes them as query parameters instead.
@@ -134,9 +135,23 @@ export class Workspace extends DurableObject<Env> {
     engine.load(rows, lastSyncId);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME, utcOffsetMinutes);
     refreshSeedPeople(engine, name, SAMPLE_ME);
-    engine.fillMissingSlots(utcOffsetMinutes);
+    engine.replanAll();
+    void this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
     this.#engine = engine;
     return engine;
+  }
+
+  // Each morning, reschedule everyone for what time has changed: closer due dates and slots that passed.
+  async alarm(): Promise<void> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'workspace'")
+      .toArray();
+    if (row === undefined || !isWorkspaceName(row.value)) return;
+    const loaded = this.#engine;
+    const engine = this.#load(row.value, undefined);
+    // Loading already looked over the schedules.
+    if (loaded !== undefined) engine.replanAll();
+    await this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
   }
 
   #broadcast(actions: SyncAction[]): void {

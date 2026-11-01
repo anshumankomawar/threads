@@ -1,6 +1,3 @@
-// How someone relates to you in the org; drives inbox triage.
-export type Relationship = "manager" | "lead" | "teammate";
-
 export type Person = {
   id: string;
   name: string;
@@ -72,6 +69,10 @@ export type Thread = {
   status: Status;
   priority: Priority;
   dueAtMs: number | null;
+  // How much work it is, in hours; sets the length of its slot and feeds its score. Null until someone estimates it.
+  effortHours: number | null;
+  // Ids from `TAGS`; the most important one feeds its score.
+  tagIds: string[];
   // When it happens or when you've planned to work on it; places it on your day timeline.
   schedule: Schedule | null;
   // Who's in it: meeting attendees; empty for other kinds.

@@ -16,6 +16,8 @@ export type ThreadRecord = {
   status: Status;
   priority: Priority;
   dueAtMs: number | null;
+  effortHours: number | null;
+  tagIds: string[];
   schedule: Schedule | null;
   attendeeIds: string[];
   // The thread this one was branched off from, if any.
@@ -67,7 +69,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v3");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v4");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -128,7 +130,17 @@ export type ThreadCreate = {
 };
 
 export type ThreadChanges = Partial<
-  Pick<ThreadRecord, "title" | "assigneeId" | "status" | "priority" | "dueAtMs" | "schedule">
+  Pick<
+    ThreadRecord,
+    | "title"
+    | "assigneeId"
+    | "status"
+    | "priority"
+    | "dueAtMs"
+    | "effortHours"
+    | "tagIds"
+    | "schedule"
+  >
 >;
 
 export type EntryCreate = {
@@ -163,6 +175,8 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     status: "open",
     priority: "none",
     dueAtMs: null,
+    effortHours: null,
+    tagIds: [],
     schedule: data.schedule,
     attendeeIds:
       data.kind === "meeting" ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)] : [],
@@ -228,6 +242,9 @@ export function toThread(
     status: record.status,
     priority: record.priority,
     dueAtMs: record.dueAtMs,
+    // Threads stored before estimates and tags existed have no fields.
+    effortHours: record.effortHours ?? null,
+    tagIds: record.tagIds ?? [],
     schedule: record.schedule,
     attendees: record.attendeeIds.map(person),
     // Threads stored before branching existed have no field.
@@ -301,6 +318,8 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       status: thread.status,
       priority: thread.priority,
       dueAtMs: thread.dueAtMs,
+      effortHours: thread.effortHours,
+      tagIds: thread.tagIds,
       schedule: thread.schedule,
       attendeeIds: thread.attendees.map((person) => person.id),
       branchedFromId: thread.branchedFromId,

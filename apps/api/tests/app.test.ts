@@ -1,8 +1,7 @@
-import type { SyncAction, Thread, ThreadRecord, TransactionInput } from "model";
+import type { SyncAction, Thread, TransactionInput } from "model";
 import { toThreads } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
-import { SyncEngine } from "../src/engine.ts";
 
 // A fixed clock: Monday 2026-11-02, 08:00 UTC.
 const NOW = Date.UTC(2026, 10, 2, 8);
@@ -10,13 +9,10 @@ const at = (hour: number, minute = 0): number => Date.UTC(2026, 10, 2, hour, min
 
 let app: ReturnType<typeof createApp>;
 let clock: number;
-// Where in the list of open slots a response lands: 0 is the first, just under 1 the last.
-let dice: number;
 
 beforeEach(() => {
   clock = NOW;
-  dice = 0;
-  app = createApp({ now: () => clock, random: () => dice });
+  app = createApp({ now: () => clock });
 });
 
 type Bootstrap = {
@@ -315,62 +311,4 @@ test("messages move to another thread, leaving an activity line where they were"
   // Not into a thread the message links to.
   await transact("anshu", [message("m4", "t1", "See [[thread:t2]]")]);
   expect((await transact("anshu", [move(["m4"], "t2")])).status).toBe(400);
-});
-
-test("a response gets a slot on the schedule of whoever it's waiting on, each time that changes", async () => {
-  // First open slot: 9:00 at UTC−7 is 16:00 UTC.
-  await transact("anshu", [createThread("t1"), message("m1", "t1")], -420);
-  expect((await thread("t1"))?.schedule).toEqual({ startMs: at(16), endMs: at(16, 30) });
-
-  // Anshu writing again leaves it with Arjun, in the same slot.
-  dice = 0.5;
-  await transact("anshu", [message("m2", "t1", "Any update?")], -420);
-  expect((await thread("t1"))?.schedule?.startMs).toBe(at(16));
-
-  // Arjun's reply sends it back to Anshu, in a new slot: working hours, within three days.
-  dice = 0.999;
-  await transact("arjun", [message("m3", "t1", "Done")], -420);
-  const slot = (await thread("t1"))?.schedule;
-  expect(slot).not.toBeNull();
-  expect(slot!.startMs).toBeGreaterThan(at(16));
-  expect(slot!.endMs).toBeLessThanOrEqual(NOW + 3 * 24 * 60 * 60_000);
-  expect(new Date(slot!.startMs - 420 * 60_000).getUTCHours()).toBeGreaterThanOrEqual(9);
-  expect(new Date(slot!.startMs - 420 * 60_000).getUTCHours()).toBeLessThan(18);
-
-  // Nobody sets a response's slot by hand.
-  const manual = await transact("anshu", [
-    update("t1", { schedule: { startMs: at(18), endMs: at(18, 30) } }),
-  ]);
-  expect(manual.status).toBe(400);
-});
-
-test("open responses from before slots get one when the workspace loads", () => {
-  const engine = new SyncEngine({ now: () => NOW, random: () => 0 });
-  const thread: ThreadRecord = {
-    id: "t1",
-    kind: "response",
-    title: "Old ask",
-    requesterId: "arjun",
-    assigneeId: "anshu",
-    attendeeIds: [],
-    status: "open",
-    priority: "none",
-    dueAtMs: null,
-    schedule: null,
-    branchedFromId: null,
-    createdAtMs: NOW,
-    updatedAtMs: NOW,
-  };
-  engine.load(
-    [
-      { modelName: "Person", data: { id: "anshu", name: "Anshu" } },
-      { modelName: "Person", data: { id: "arjun", name: "Arjun" } },
-      { modelName: "Thread", data: thread },
-      { modelName: "Thread", data: { ...thread, id: "t2", status: "closed" } },
-    ],
-    4,
-  );
-  engine.fillMissingSlots();
-  expect(engine.models.Thread.get("t1")?.schedule).toEqual({ startMs: at(9), endMs: at(9, 30) });
-  expect(engine.models.Thread.get("t2")?.schedule).toBeNull();
 });
