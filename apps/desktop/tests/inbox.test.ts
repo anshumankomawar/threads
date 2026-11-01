@@ -184,3 +184,16 @@ test("reassigning moves the thread to the new assignee's inbox", () => {
   expect(inboxOf(other)).toEqual([reassigned]);
   expect(inboxOf(me)).toEqual([]);
 });
+
+test("an outbox item says when the other person is slotted to get to it", () => {
+  const answered = (startMs: number) =>
+    conversation([arjun, anshu], { schedule: { startMs, endMs: startMs + HOUR } });
+  const [later] = buildDay([answered(NOW + 2 * DAY)], anshu, () => "teammate", NOW).outbox;
+  expect(later.dueLabel).toBe(
+    new Date(NOW + 2 * DAY).toLocaleDateString(undefined, { weekday: "short" }),
+  );
+  const [today] = buildDay([answered(NOW + HOUR)], anshu, () => "teammate", NOW).outbox;
+  expect(today.dueLabel).toBe(
+    new Date(NOW + HOUR).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+  );
+});

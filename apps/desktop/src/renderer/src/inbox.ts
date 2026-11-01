@@ -29,7 +29,7 @@ export type Day = {
   timeline: InboxItem[];
   // Waiting on you and not on today's timeline: responses (on whatever day their slot is) and unplanned focus.
   unscheduled: InboxItem[];
-  // Responses you're in that are waiting on the other person, labelled with who.
+  // Responses you're in that are waiting on the other person, labelled with who and when their slot is.
   outbox: InboxItem[];
   later: InboxItem[];
 };
@@ -143,7 +143,14 @@ export function buildDay(
         const waitingFor = [thread.requester, thread.assignee].find(
           (person) => person?.id === turn,
         );
-        outbox.push({ ...item, from: waitingFor ?? null });
+        // When they'll get to it: their slot, as a time today or a day.
+        const eta =
+          slot === undefined
+            ? null
+            : on(today, slot)
+              ? new Date(slot).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+              : shortDate(slot, nowMs);
+        outbox.push({ ...item, from: waitingFor ?? null, dueLabel: eta });
       }
     } else if (slot !== undefined && on(dayMs, slot)) {
       timeline.push(item);

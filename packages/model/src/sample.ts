@@ -10,7 +10,13 @@ import {
 } from "./model";
 
 // Fictional teammates for demo threads until real data exists.
-const priya: Person = { id: "priya", name: "Priya Shah", level: "l6", role: "pm" };
+const priya: Person = {
+  id: "priya",
+  name: "Priya Shah",
+  level: "l6",
+  role: "pm",
+  managerId: "elena",
+};
 const maya: Person = { id: "maya", name: "Maya Chen", level: "l5", role: "pm", managerId: "priya" };
 const daniel: Person = {
   id: "daniel",
@@ -19,7 +25,15 @@ const daniel: Person = {
   role: "pm",
   managerId: "maya",
 };
-const jordan: Person = { id: "jordan", name: "Jordan Lee", level: "l6", role: "sde" };
+// The head of the sample org; Priya and Jordan report to her.
+const elena: Person = { id: "elena", name: "Elena Park", level: "l7" };
+const jordan: Person = {
+  id: "jordan",
+  name: "Jordan Lee",
+  level: "l6",
+  role: "sde",
+  managerId: "elena",
+};
 const sam: Person = {
   id: "sam",
   name: "Sam Rivera",
@@ -42,7 +56,7 @@ export function localPeople(): Person[] {
 
 // Everyone on the sample team, with you first.
 export function samplePeople(me: Person): Person[] {
-  return [{ ...me, managerId: priya.id }, priya, daniel, jordan, sam, maya];
+  return [{ ...me, managerId: priya.id }, elena, priya, daniel, jordan, sam, maya];
 }
 
 const MINUTE = 60_000;

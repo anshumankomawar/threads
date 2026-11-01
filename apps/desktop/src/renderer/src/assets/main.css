@@ -155,8 +155,8 @@ body * {
   flex-direction: column;
 }
 
-/* Delta's 6px gap sits between sections only; the first header starts right under the top bar. */
-.sidebar-section + .sidebar-section {
+/* Delta's 6px gap follows an open section's content; collapsed headers stack evenly, like the rows above them. */
+.sidebar-section:has(> .sidebar-section-label[data-collapsed="false"]) + .sidebar-section {
   margin-top: 6px;
 }
 
@@ -1581,7 +1581,8 @@ body * {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  padding: 17.75px 15px 48px 52px;
+  /* The same place as the start view's greeting. */
+  padding: 52px 15px 48px 52px;
   overflow-y: auto;
 }
 
@@ -1601,87 +1602,90 @@ body * {
 
 .org-tree,
 .org-reports {
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .org-tree {
-  margin: 24px 0 0 -8px;
+  max-width: 560px;
+  margin-top: 20px;
+  margin-left: -6px;
 }
 
+/* Reports sit 22px in. */
 .org-reports {
-  padding-left: 30px;
+  padding-left: 22px;
 }
 
 .org-branch {
   position: relative;
 }
 
-/* Connectors: a line down from the manager, with an elbow into each report's row. */
+/* Guides: from under each manager's avatar (its center is 15px into a row) a line runs down, with a rounded elbow
+   into each report's avatar. */
 .org-reports > .org-branch::before,
 .org-reports > .org-branch::after {
   position: absolute;
-  left: -19px;
-  background-color: var(--stroke-focused);
+  left: -7px;
   content: "";
+  pointer-events: none;
 }
 
 .org-reports > .org-branch::before {
   top: 0;
   bottom: 0;
   width: 1px;
+  background-color: var(--stroke-tertiary);
 }
 
 .org-reports > .org-branch:last-child::before {
-  bottom: auto;
-  height: 15px;
+  display: none;
 }
 
 .org-reports > .org-branch::after {
-  top: 15px;
-  width: 15px;
-  height: 1px;
+  top: -5px;
+  width: 11px;
+  height: 19px;
+  border-bottom: 1px solid var(--stroke-tertiary);
+  border-left: 1px solid var(--stroke-tertiary);
+  border-bottom-left-radius: 6px;
 }
 
+/* A row: avatar and name, then aligned columns for level and reports. */
 .org-row {
   display: flex;
   gap: 8px;
   align-items: center;
-  height: 30px;
+  height: 28px;
+  padding: 0 8px 0 6px;
+  border-radius: 5px;
+  outline: none;
 }
 
-.org-toggle,
-.org-toggle-spacer {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  margin-right: -2px;
-}
-
-.org-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  color: var(--icon-tertiary);
-  background: transparent;
+.org-row[data-manager="true"] {
   cursor: pointer;
 }
 
-.org-toggle:hover {
-  color: var(--text-secondary);
-  background-color: var(--bg-tertiary);
-}
-
-.org-toggle[data-collapsed="true"] svg {
-  transform: rotate(-90deg);
+.org-row[data-manager="true"]:hover,
+.org-row[data-manager="true"]:focus-visible {
+  background-color: var(--bg-quaternary);
 }
 
 .org-name {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-primary);
   white-space: nowrap;
+}
+
+/* Outside your chain, names step back a little. */
+.org-row[data-chain="false"] .org-name {
+  color: var(--text-secondary);
 }
 
 .org-row[data-me="true"] .org-name {
@@ -1689,17 +1693,39 @@ body * {
 }
 
 .org-you {
-  padding: 0 5px;
-  border-radius: 3px;
-  color: var(--accent);
-  font-size: 11px;
-  background-color: var(--accent-fill);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .org-details,
-.org-hidden-count {
+.org-count {
+  flex-shrink: 0;
   color: var(--text-tertiary);
+  font-size: 12px;
   white-space: nowrap;
+}
+
+.org-details {
+  width: 72px;
+}
+
+.org-count {
+  width: 64px;
+  text-align: right;
+}
+
+/* The stand-in top node, sized like an avatar. */
+.org-root-marker {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  background-color: var(--bg-tertiary);
 }
 
 /* The main content zooms on its own (⌘+, ⌘-, ⌘0); the sidebar, top bar and palettes keep their size. */

@@ -309,6 +309,7 @@ function DayView({
 function InboxList({
   label,
   empty,
+  withWhen = false,
   items,
   activeThreadId,
   unreadIds,
@@ -316,6 +317,8 @@ function InboxList({
 }: {
   label: string;
   empty: string;
+  // Adds when it's slotted after the person: the outbox shows when they'll get to it.
+  withWhen?: boolean;
   items: InboxItem[];
   activeThreadId: string | null;
   unreadIds: Set<string>;
@@ -330,7 +333,13 @@ function InboxList({
           item={item}
           active={item.thread.id === activeThreadId}
           unread={unreadIds.has(item.thread.id)}
-          label={item.from === null ? item.dueLabel : item.from.name.split(" ")[0]}
+          label={
+            item.from === null
+              ? item.dueLabel
+              : [item.from.name.split(" ")[0], withWhen ? item.dueLabel : null]
+                  .filter((part) => part !== null)
+                  .join(" · ")
+          }
           onOpen={() => onOpenThread(item.thread.id)}
         />
       ))}
@@ -483,6 +492,7 @@ export function Sidebar({
           <InboxList
             label="Outbox"
             empty="Nothing waiting on others"
+            withWhen
             items={day.outbox}
             activeThreadId={activeThreadId}
             unreadIds={unreadIds}

@@ -13,3 +13,22 @@ export function buildOrgTree(people: Person[]): OrgNode[] {
     .filter((person) => person.managerId === undefined || !ids.has(person.managerId))
     .map(node);
 }
+
+// Everyone under a node, at any depth.
+export function countUnder(node: OrgNode): number {
+  return node.reports.reduce((total, report) => total + 1 + countUnder(report), 0);
+}
+
+// The managers above someone, nearest first.
+export function chainAbove(people: Person[], personId: string): Person[] {
+  const byId = new Map(people.map((person) => [person.id, person]));
+  const chain: Person[] = [];
+  let managerId = byId.get(personId)?.managerId;
+  while (managerId !== undefined && !chain.some((person) => person.id === managerId)) {
+    const manager = byId.get(managerId);
+    if (manager === undefined) break;
+    chain.push(manager);
+    managerId = manager.managerId;
+  }
+  return chain;
+}
