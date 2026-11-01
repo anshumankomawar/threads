@@ -17,6 +17,7 @@ export function Welcome({
   me,
   source,
   todayCount,
+  inboxCount,
   nowMs,
   onNewThread,
   onSearch,
@@ -26,6 +27,8 @@ export function Welcome({
   source: DataSource;
   // Open items on today's schedule and inbox.
   todayCount: number;
+  // Threads waiting on you; none is inbox zero.
+  inboxCount: number;
   nowMs: number;
   onNewThread: (kind: ThreadKind) => void;
   onSearch: () => void;
@@ -64,6 +67,7 @@ export function Welcome({
       <p className="welcome-summary">
         {date} · {summary}
       </p>
+      {inboxCount === 0 && <p className="welcome-zero">Inbox zero. Nothing is waiting on you.</p>}
       <div className="welcome-actions">
         {actions.map((action) => (
           <button key={action.label} type="button" className="welcome-action" onClick={action.run}>

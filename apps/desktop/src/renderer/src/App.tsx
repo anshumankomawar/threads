@@ -137,6 +137,14 @@ function useSyncClient(source: DataSource): SyncClient {
   return client;
 }
 
+// Whether your reply would hand a response to the other person: you're the assignee answering whoever asked, or
+// the one who asked writing back to the assignee.
+function handsOff(thread: Thread, me: Person): boolean {
+  if (thread.kind !== "response" || thread.assignee === null) return false;
+  const next = me.id === thread.assignee.id ? thread.requester.id : thread.assignee.id;
+  return next !== me.id;
+}
+
 const App = observer(function App(): React.JSX.Element {
   const [source, setSource] = useState<DataSource>(savedSource);
   const client = useSyncClient(source);
@@ -329,12 +337,31 @@ const App = observer(function App(): React.JSX.Element {
     setSplitThreadId(threadId === activeThreadId ? null : threadId);
   };
 
+  // After a reply hands a thread to the other person, it's done with for now: it closes, and the next thread in your
+  // inbox opens, or, with nothing left, the start view says so. In the split view, just the split closes.
+  const moveOn = (thread: Thread): void => {
+    if (thread.id === splitThreadId) {
+      setSplitThreadId(null);
+      return;
+    }
+    const inbox = day.unscheduled.map((item) => item.thread);
+    const index = inbox.findIndex((candidate) => candidate.id === thread.id);
+    const rest = inbox.filter(
+      (candidate) => candidate.id !== thread.id && candidate.id !== splitThreadId,
+    );
+    const next = rest[Math.max(0, index)] ?? rest[0];
+    openThread(next?.id ?? null);
+  };
+
   // Every change is a transaction: applied here at once, then sent to the server, which records property changes
   // as activity lines that sync back. Each open thread (main or split) gets its own actions.
   const actionsFor = (thread: Thread): ThreadActions => {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
-      onSend: (text) => client.addEntry(thread.id, "message", text, me),
+      onSend: (text) => {
+        client.addEntry(thread.id, "message", text, me);
+        if (handsOff(thread, me)) moveOn(thread);
+      },
       onSetStatus: (status) => edit({ status }),
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
@@ -436,6 +463,7 @@ const App = observer(function App(): React.JSX.Element {
               me={me}
               source={source}
               todayCount={day.timeline.length + day.unscheduled.length}
+              inboxCount={day.unscheduled.length}
               nowMs={nowMs}
               onNewThread={openNew}
               onSearch={() => setSearchOpen(true)}

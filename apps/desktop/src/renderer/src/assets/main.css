@@ -2076,3 +2076,10 @@ body * {
 .thread-link-self {
   color: var(--text-secondary);
 }
+
+/* Inbox zero, under the greeting once nothing is waiting on you. */
+.welcome-zero {
+  margin: 10px 0 0;
+  color: var(--status-closed);
+  font-size: 13px;
+}
