@@ -134,8 +134,11 @@ export function NewThreadPalette({
     goTo(stepsFor(next).includes(step) ? step : "write");
   };
 
+  // A meeting needs someone besides you before it can be scheduled.
+  const needsInvitee = step === "invite" && invitees.length === 0;
+
   const forward = (): void => {
-    if (text.trim().length === 0) {
+    if (text.trim().length === 0 || needsInvitee) {
       focusInput();
       return;
     }
@@ -192,13 +195,16 @@ export function NewThreadPalette({
       if (!event.repeat) back();
     } else if (step === "invite") {
       const option = options[selectedIndex];
-      // Space toggles the highlighted person, Enter moves on to picking a time.
+      // Space toggles the highlighted person. Enter moves on to picking a time, or invites the highlighted
+      // person while nobody is invited yet.
       if (event.key === " " && option?.person !== undefined) {
         event.preventDefault();
         toggleInvitee(option.person);
       } else if (event.key === "Enter") {
         event.preventDefault();
-        forward();
+        if (needsInvitee) {
+          if (option?.person !== undefined) toggleInvitee(option.person);
+        } else forward();
       }
     } else if (event.key === "Enter") {
       event.preventDefault();
@@ -339,11 +345,14 @@ export function NewThreadPalette({
                   className="palette-row palette-continue"
                   role="option"
                   aria-selected={false}
+                  data-disabled={needsInvitee}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={forward}
                 >
-                  <span className="palette-row-label">Continue to schedule</span>
-                  <span className="palette-row-shortcut">↵</span>
+                  <span className="palette-row-label">
+                    {needsInvitee ? "Invite someone to continue" : "Continue to schedule"}
+                  </span>
+                  {!needsInvitee && <span className="palette-row-shortcut">↵</span>}
                 </div>
               )}
             </div>
