@@ -298,7 +298,11 @@ function touchedThreads(batch: Batch, transaction: TransactionInput): string[] {
   return [transaction.threadId, ...sources];
 }
 
-// A question outranks any thread's own work, so its reply block comes first at the next break.
+// Questions wait for a notification to be answered from, and only get time on the schedule once they pile up: when
+// someone has this many waiting, or the oldest has waited this long. Then they share one block at the next break,
+// ahead of the person's own work.
+const REPLY_BATCH = 3;
+const REPLY_WAIT_MS = 2 * 60 * 60_000;
 const REPLY_SCORE = 1000;
 
 export type EngineOptions = {
@@ -450,20 +454,33 @@ export class SyncEngine {
     });
     const over = (thread: ThreadRecord): Schedule[] =>
       recordBlocks(thread).filter((block) => block.endMs <= nowMs);
-    // Questions waiting on this person in threads that aren't theirs: a short block at their next break, ahead of
-    // their own work.
+    // Questions waiting on this person in threads that aren't theirs. Once enough have piled up, or one has waited
+    // long enough, they all share one block at the next break; a block already on the schedule takes in new ones.
     const asked = threads.filter(
       (thread) => batch.waitingOn(thread.id) !== personId && batch.asks(thread.id).has(personId),
     );
-    const replies = asked.map((thread) => ({
-      id: `reply:${thread.id}`,
-      score: REPLY_SCORE,
-      minutes: MIN_BLOCK_MINUTES,
-      blocks: (thread.replyBlocks ?? [])
+    const held = asked.flatMap((thread) =>
+      (thread.replyBlocks ?? [])
         .filter((reply) => reply.personId === personId && reply.endMs > nowMs)
         .map(({ startMs, endMs }) => ({ startMs, endMs })),
-      afterFreeze: true,
-    }));
+    );
+    const oldest = Math.min(
+      ...asked.map((thread) => batch.asks(thread.id).get(personId)?.atMs ?? nowMs),
+    );
+    const due =
+      asked.length > 0 &&
+      (held.length > 0 || asked.length >= REPLY_BATCH || nowMs - oldest >= REPLY_WAIT_MS);
+    const replies = due
+      ? [
+          {
+            id: "replies",
+            score: REPLY_SCORE,
+            minutes: MIN_BLOCK_MINUTES,
+            blocks: held.length > 0 ? [held[0]] : [],
+            afterFreeze: true,
+          },
+        ]
+      : [];
     const plan = planSchedule(
       [
         ...replies,
@@ -500,18 +517,37 @@ export class SyncEngine {
       )
         batch.put("Thread", { ...current, schedule, blocks });
     }
-    // Each question waiting on this person gets one block to answer it; one that's been answered gives its back.
+    // Every waiting question shares the reply block, once there is one; one that's been answered gives its back.
+    const replyBlock = plan.get("replies") ?? [];
     for (const thread of threads) {
       const current = batch.get("Thread", thread.id) ?? thread;
       const others = (current.replyBlocks ?? []).filter((reply) => reply.personId !== personId);
-      const replies = (plan.get(`reply:${thread.id}`) ?? []).map((block) => ({
-        ...block,
-        personId,
-      }));
+      const replies = asked.includes(thread)
+        ? replyBlock.map((block) => ({ ...block, personId }))
+        : [];
       const next = [...others, ...replies];
       if (JSON.stringify(next) !== JSON.stringify(current.replyBlocks ?? []))
         batch.put("Thread", { ...current, replyBlocks: next });
     }
+  }
+
+  // When a question still without time will have waited long enough to get some: the server checks again then.
+  nextReplyCheckMs(): number | null {
+    const times: number[] = [];
+    const threads = [...this.models.Thread.values()].filter((thread) => thread.status !== "closed");
+    const entries = [...this.models.Entry.values()];
+    for (const thread of threads) {
+      const asks = pendingAsks(
+        entries.flatMap((entry) =>
+          entry.threadId === thread.id && entry.kind === "message" ? [entry] : [],
+        ),
+      );
+      for (const [personId, { atMs }] of asks) {
+        const scheduled = (thread.replyBlocks ?? []).some((reply) => reply.personId === personId);
+        if (!scheduled) times.push(atMs + REPLY_WAIT_MS);
+      }
+    }
+    return times.length === 0 ? null : Math.min(...times);
   }
 
   // Looks over every schedule: on load, and each morning, when due dates have drawn closer and slots have passed.

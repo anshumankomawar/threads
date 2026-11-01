@@ -25,6 +25,7 @@ import type { SyncClient } from "./sync/syncClient";
 import { ThreadView, type MessageEntry, type ThreadActions } from "./components/ThreadView";
 import { MovePalette, type MoveTarget } from "./components/MovePalette";
 import { BlockedPalette } from "./components/BlockedPalette";
+import { MentionToasts } from "./components/MentionToasts";
 import { MeContext } from "./me";
 import { ThreadLinksContext, type ThreadLinks } from "./threadLinks";
 import { Maximize2, Trash2, X } from "lucide-react";
@@ -622,6 +623,7 @@ const App = observer(function App(): React.JSX.Element {
             onClose={() => setViewAsOpen(false)}
           />
         )}
+        <MentionToasts threads={threads} me={me} sinceMs={client.readyAtMs} onOpen={openThread} />
       </ThreadLinksContext>
     </MeContext>
   );

@@ -441,38 +441,57 @@ const replies = (subject: Thread, personId: string) =>
     .filter((reply) => reply.personId === personId)
     .map(({ startMs, endMs }) => ({ startMs, endMs }));
 
-test("a question gets a reply block on the asked person's schedule, ahead of their own work", async () => {
-  await transact("anshu", ask("t1"));
+test("questions wait until three pile up, then share one block at the next break, ahead of the person's own work", async () => {
   await transact("arjun", ask("theirs", { assigneeId: "anshu" }));
   expect((await thread("theirs")).schedule).toEqual(slotAt(NINE));
-  // Arjun asks Anshu something in Anshu's ask: Anshu gets half an hour to answer, first thing.
-  await transact("arjun", [
-    message("q1", "t1", "[[person:anshu]] what do you need more help with?"),
-  ]);
-  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE)]);
+  for (const id of ["t1", "t2", "t3"]) await transact("anshu", ask(id));
+  // Two questions: nothing on Anshu's schedule yet; a notification is how she'd see them.
+  await transact("arjun", [message("q1", "t1", "[[person:anshu]] which audience?")]);
+  await transact("arjun", [message("q2", "t2", "[[person:anshu]] which plan?")]);
+  expect([
+    ...replies(await thread("t1"), "anshu"),
+    ...replies(await thread("t2"), "anshu"),
+  ]).toEqual([]);
+  // The third: all three share half an hour first thing, and her own work moves after it.
+  await transact("arjun", [message("q3", "t3", "[[person:anshu]] which date?")]);
+  for (const id of ["t1", "t2", "t3"])
+    expect(replies(await thread(id), "anshu")).toEqual([slotAt(NINE)]);
   expect((await thread("theirs")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
-  // Arjun's own block stays put.
-  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
-  // Asking again doesn't add another block.
-  await transact("arjun", [message("q2", "t1", "[[person:anshu]] also, by when?")]);
-  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE)]);
-  // Anshu answers: the reply block goes and her own work moves back up.
-  await transact("anshu", [message("a1", "t1", "The final copy, by Friday")]);
+  // Answering one leaves the block for the other two.
+  await transact("anshu", [message("a1", "t1", "Existing customers")]);
   expect(replies(await thread("t1"), "anshu")).toEqual([]);
+  expect(replies(await thread("t2"), "anshu")).toEqual([slotAt(NINE)]);
+  // Answering the rest gives the time back.
+  await transact("anshu", [message("a2", "t2", "Team"), message("a3", "t3", "Friday")]);
+  expect(replies(await thread("t3"), "anshu")).toEqual([]);
   expect((await thread("theirs")).schedule).toEqual(slotAt(NINE));
 });
 
-test("a question lands at the next break, never in the next half hour", async () => {
+test("a lone question gets time once it has waited two hours, at the next break", async () => {
   await transact("anshu", ask("t1"));
   clock = NINE + 10 * 60_000;
   await transact("arjun", [message("q1", "t1", "[[person:anshu]] quick question")]);
-  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE + HOUR)]);
-});
-
-test("closing a thread clears the time set aside to answer questions in it", async () => {
-  await transact("anshu", ask("t1"));
-  await transact("arjun", [message("q1", "t1", "[[person:kk]] can you weigh in?")]);
-  expect(replies(await thread("t1"), "kk")).toHaveLength(1);
+  expect(replies(await thread("t1"), "anshu")).toEqual([]);
+  // Two hours on, the next look at the schedule finds it due: it lands after the frozen half hour.
+  clock = NINE + 2 * HOUR + 10 * 60_000;
+  await transact("arjun", [message("n1", "t1", "Still working on the rest")]);
+  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE + 3 * HOUR)]);
+  // Closing the thread clears it.
   await transact("arjun", [update("t1", { status: "closed" })]);
   expect((await thread("t1")).replyBlocks).toEqual([]);
+});
+
+test("the server knows when a waiting question will be due some time", () => {
+  const engine = new SyncEngine({ now: () => NINE });
+  engine.load(
+    [
+      { modelName: "Person", data: { id: "anshu", name: "Anshu" } },
+      { modelName: "Person", data: { id: "arjun", name: "Arjun" } },
+    ],
+    2,
+  );
+  expect(engine.nextReplyCheckMs()).toBeNull();
+  engine.execute("anshu", ask("t1"));
+  engine.execute("arjun", [message("q1", "t1", "[[person:anshu]] a question")]);
+  expect(engine.nextReplyCheckMs()).toBe(NINE + 2 * HOUR);
 });

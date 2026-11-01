@@ -171,10 +171,13 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   no more replies. Closing one from your inbox opens the next.
 - Questions: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Someone mentioned
   by another person who hasn't written in the thread since has a question waiting (`pendingAsks` in `model.ts`,
-  `Batch.asks` on the server). The scheduler gives them one half-hour block for it on their own schedule
-  (`replyBlocks` on the thread, one per person), ahead of their own work but never inside the frozen next half hour
-  (`afterFreeze`). Writing anything in the thread answers it and gives the time back; closing the thread clears it.
-  It shows on their timeline at that block and in their inbox ("Asked") until then. Ownership doesn't move.
+  `Batch.asks` on the server). A mention arriving while the app is open shows a toast (`MentionToasts`) that opens
+  the thread. Questions get time on the schedule only once they pile up: three waiting, or the oldest two hours old
+  (`REPLY_BATCH`, `REPLY_WAIT_MS` in `engine.ts`; the Workspace object's alarm wakes for the two-hour mark). Then
+  they share one half-hour block (`replyBlocks` on each thread, one per person) at the next break, ahead of the
+  person's own work but never inside the frozen next half hour (`afterFreeze`); a block already scheduled takes in
+  new questions. Writing anything in the thread answers it; closing the thread clears it. Waiting questions show in
+  the inbox as "Reply to: …" and on the timeline at their block. Ownership doesn't move.
 - `/blocked` (the `/` menu, `components/slashCommands.ts`, then `BlockedPalette`) makes a blocker: an ordinary
   response to the chosen person, with `blocksId` (and `branchedFromId`) set to the thread you're in. The server
   marks that thread Blocked, which takes it off the schedule, and adds "is blocked on <link>". When its last open
