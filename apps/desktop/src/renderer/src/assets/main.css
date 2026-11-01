@@ -705,35 +705,6 @@ body * {
   font-size: 13px;
 }
 
-.decision-tag {
-  display: inline-flex;
-  align-items: center;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 3px;
-  color: var(--accent);
-  font-size: 10.5px;
-  background-color: var(--accent-fill);
-}
-
-/* Bookmark to mark a message as a decision; shows on hover, or when set. */
-.thread-message-action {
-  width: 20px;
-  height: 20px;
-  margin-left: auto;
-  color: var(--text-tertiary);
-  opacity: 0;
-}
-
-.thread-message:hover .thread-message-action,
-.thread-message-action:focus-visible {
-  opacity: 1;
-}
-
-.thread-message-action:hover {
-  color: var(--text-primary);
-}
-
 /* Activity lines: muted, and tighter to the messages around them. */
 .thread-event {
   margin-block: -6px;
@@ -1291,11 +1262,6 @@ body * {
 
 .minimap-tick[data-active="true"]::after {
   background-color: var(--text-primary);
-  opacity: 1;
-}
-
-.minimap-tick[data-decision="true"]::after {
-  background-color: var(--accent);
   opacity: 1;
 }
 
@@ -1863,4 +1829,52 @@ body * {
 .thread-byline .thread-link {
   height: 18px;
   font-size: 12px;
+}
+
+/* The `#` menu in a reply: threads to link, then a new one titled by what you typed. */
+.thread-menu {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  padding: 4px 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background-color: var(--panel);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+}
+
+.thread-menu-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 27.5px;
+  margin: 0 4px;
+  padding: 0 8px 1px 6px;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.thread-menu-item[aria-selected="true"] {
+  color: var(--text-primary);
+  background-color: var(--panel-selected);
+}
+
+.thread-menu-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-menu-new {
+  color: var(--accent);
 }

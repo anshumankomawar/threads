@@ -87,7 +87,6 @@ export function DetailsPanel({
   const latest = [...thread.entries]
     .reverse()
     .find((entry) => entry.kind === "message" || entry.kind === "event");
-  const tagged = messages.filter((message) => message.decision);
   const notes = thread.entries.flatMap((entry) => (entry.kind === "notes" ? [entry] : []));
   const noteDecisions = notes.flatMap((entry) =>
     entry.decisions.map((text) => ({ text, entryId: entry.id })),
@@ -175,16 +174,9 @@ export function DetailsPanel({
           </Section>
         )}
 
-        {tagged.length + noteDecisions.length > 0 && (
-          <Section title={`Decisions · ${tagged.length + noteDecisions.length}`}>
+        {noteDecisions.length > 0 && (
+          <Section title={`Decisions · ${noteDecisions.length}`}>
             <ul className="details-list">
-              {tagged.map((message) => (
-                <li key={message.id}>
-                  <button type="button" className="details-item" onClick={() => reveal(message.id)}>
-                    {plainThreadLinks(message.text, titleOf)}
-                  </button>
-                </li>
-              ))}
               {noteDecisions.map((decision) => (
                 <li key={decision.text}>
                   <button

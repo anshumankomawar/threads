@@ -97,7 +97,6 @@ function conversation(authors: Person[], fields: Partial<Thread> = {}): Thread {
       author,
       text: "Text",
       createdAtMs: NOW,
-      decision: false,
     })),
     ...fields,
   });

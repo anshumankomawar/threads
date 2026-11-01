@@ -138,13 +138,6 @@ export const transactionInput = z.union([
     modelId: id,
     changes: threadChanges,
   }),
-  z.object({
-    id,
-    type: z.literal("update"),
-    modelName: z.literal("Entry"),
-    modelId: id,
-    changes: z.strictObject({ decision: z.boolean() }),
-  }),
 ]);
 
 export const transactionBatch = z.object({
@@ -343,31 +336,24 @@ export class SyncEngine {
       return;
     }
 
-    if (transaction.modelName === "Thread") {
-      const thread = batch.get("Thread", transaction.modelId);
-      if (thread === undefined) throw new EngineError(404, "Thread not found");
-      const { changes } = transaction;
-      if (changes.assigneeId !== undefined && changes.assigneeId !== null)
-        requirePerson(changes.assigneeId);
-      const lines = describeChanges(thread, changes, actor, person, offsetMinutes);
-      if (lines.length === 0) return;
-      batch.put("Thread", { ...thread, ...changes, updatedAtMs: nowMs });
-      lines.forEach((text, index) =>
-        batch.put("Entry", {
-          id: `${transaction.id}:${index}`,
-          threadId: thread.id,
-          kind: "event",
-          actorId: actor.id,
-          text,
-          createdAtMs: nowMs,
-        }),
-      );
-      return;
-    }
-
-    const entry = batch.get("Entry", transaction.modelId);
-    if (entry?.kind !== "message") throw new EngineError(404, "Message not found");
-    batch.put("Entry", { ...entry, decision: transaction.changes.decision });
+    const thread = batch.get("Thread", transaction.modelId);
+    if (thread === undefined) throw new EngineError(404, "Thread not found");
+    const { changes } = transaction;
+    if (changes.assigneeId !== undefined && changes.assigneeId !== null)
+      requirePerson(changes.assigneeId);
+    const lines = describeChanges(thread, changes, actor, person, offsetMinutes);
+    if (lines.length === 0) return;
+    batch.put("Thread", { ...thread, ...changes, updatedAtMs: nowMs });
+    lines.forEach((text, index) =>
+      batch.put("Entry", {
+        id: `${transaction.id}:${index}`,
+        threadId: thread.id,
+        kind: "event",
+        actorId: actor.id,
+        text,
+        createdAtMs: nowMs,
+      }),
+    );
   }
 
   // --- Reads ---

@@ -46,7 +46,7 @@ export type NewThread = {
   assignee: Person | null;
   invitees: Person[];
   schedule: Schedule | null;
-  // The thread this one branches off from (`/thread` in a message).
+  // The thread this one branches off from.
   branchedFromId?: string | null;
 };
 
@@ -322,21 +322,6 @@ export class SyncClient {
           type: "create",
           modelName: "Entry",
           data: { id: crypto.randomUUID(), threadId, kind, text },
-        },
-        me.id,
-      ),
-    );
-  }
-
-  setDecision(entryId: string, decision: boolean, me: Person): void {
-    this.#enqueue(
-      new UpdateTransaction(
-        {
-          id: crypto.randomUUID(),
-          type: "update",
-          modelName: "Entry",
-          modelId: entryId,
-          changes: { decision },
         },
         me.id,
       ),

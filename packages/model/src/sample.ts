@@ -58,7 +58,7 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 type Draft =
-  | ["message", Person, string, number, { decision?: boolean }?]
+  | ["message", Person, string, number]
   | ["event", Person, string, number]
   | ["resolution", Person, string, number]
   | ["call", string, number]
@@ -83,15 +83,15 @@ function nextWeekday(clock: Clock, weekday: number, hour: number): number {
   return date.getTime() - clock.offsetMs;
 }
 
-type Line = [Person, string, { decision?: boolean }?] | ["event", Person, string];
+type Line = [Person, string] | ["event", Person, string];
 
 // A conversation as drafts, oldest first: starts `startAgoMs` ago and spaces entries `stepMs` apart.
 function conversation(startAgoMs: number, stepMs: number, lines: Line[]): Draft[] {
   return lines.map((line, index) => {
     const ago = startAgoMs - index * stepMs;
     if (line[0] === "event") return ["event", line[1], line[2], ago];
-    const [author, text, options] = line;
-    return ["message", author, text, ago, options];
+    const [author, text] = line;
+    return ["message", author, text, ago];
   });
 }
 
@@ -115,15 +115,8 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     const entryId = `${id}-${index}`;
     const createdAtMs = nowMs - (draft[0] === "call" || draft[0] === "notes" ? draft[2] : draft[3]);
     if (draft[0] === "message") {
-      const [, author, text, , options] = draft;
-      return {
-        kind: "message",
-        id: entryId,
-        author,
-        text,
-        createdAtMs,
-        decision: options?.decision ?? false,
-      };
+      const [, author, text] = draft;
+      return { kind: "message", id: entryId, author, text, createdAtMs };
     }
     if (draft[0] === "event")
       return { kind: "event", id: entryId, actor: draft[1], text: draft[2], createdAtMs };
@@ -265,7 +258,6 @@ export function sampleThreads(
           priya,
           "Team stays at $12. Go with two months free, it tested better and it's easier for legal to approve.",
           2 * HOUR,
-          { decision: true },
         ],
         [
           "message",
@@ -300,7 +292,6 @@ export function sampleThreads(
           sam,
           "Found it. The test clicks Pay before the Stripe iframe finishes loading. Swapping the fixed timeout for a wait on the iframe's ready event.",
           4 * HOUR,
-          { decision: true },
         ],
         [
           "resolution",
@@ -477,11 +468,7 @@ export function sampleThreads(
           me,
           "Starting with the current billing flow. First question: do we keep seat pricing as a floor, or go fully usage-based?",
         ],
-        [
-          priya,
-          "Keep a seat floor for the Team plan. Enterprise can be fully usage-based.",
-          { decision: true },
-        ],
+        [priya, "Keep a seat floor for the Team plan. Enterprise can be fully usage-based."],
         [
           daniel,
           "That changes the pricing page a lot. I'll need the final unit and tiers before I can redo the plan comparison table.",
@@ -502,11 +489,7 @@ export function sampleThreads(
           me,
           "Proposal: bill on API calls and storage GB, invoice monthly in arrears, and keep 13 months of usage for disputes.",
         ],
-        [
-          priya,
-          "Storage will confuse customers. API calls only for v1, we can add storage later.",
-          { decision: true },
-        ],
+        [priya, "Storage will confuse customers. API calls only for v1, we can add storage later."],
         [
           sam,
           "Calls-only is about two weeks of work: extend retention, add a nightly rollup, and expose it to the invoicing job.",
@@ -523,7 +506,7 @@ export function sampleThreads(
           jordan,
           "Dual-run is the right call. I'll get finance to sign off on the comparison report before cutover.",
         ],
-        [priya, "Good. Let's target the March billing cycle for the cutover.", { decision: true }],
+        [priya, "Good. Let's target the March billing cycle for the cutover."],
         [sam, "Backfill finished. The last 90 days of usage are in the warehouse."],
         [
           me,
@@ -567,7 +550,7 @@ export function sampleThreads(
           "Support has tickets from two enterprise customers. How long until we know if it's the deploy?",
         ],
         [me, "Rolling back 4821 now. Rollback over fixing forward, we can investigate after."],
-        [jordan, "Agreed, roll back first.", { decision: true }],
+        [jordan, "Agreed, roll back first."],
         [sam, "Rollback is out. Pool usage is dropping and the queue is draining."],
         [me, "p95 is back under 200ms. Watching it for another 20 minutes before calling it."],
         [
@@ -577,7 +560,6 @@ export function sampleThreads(
         [
           me,
           "Root cause confirmed. We'll add the composite index and re-ship 4821 behind a flag tomorrow.",
-          { decision: true },
         ],
         [sam, "Index is added in staging. Query time went from 900ms to 4ms."],
         [jordan, "Nice work. Let's do the post-incident review Monday morning."],

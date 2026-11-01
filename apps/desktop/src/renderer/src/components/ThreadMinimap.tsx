@@ -19,13 +19,11 @@ type Marker = {
   text: string;
   person: Person | null;
   atMs: number;
-  decision: boolean;
-  bookmarkable: boolean;
 };
 
 // Thread links in a message read as `#<title>` here.
 function toMarker(entry: Entry, titleOf: (threadId: string) => string | undefined): Marker {
-  const base = { id: entry.id, atMs: entry.createdAtMs, decision: false, bookmarkable: false };
+  const base = { id: entry.id, atMs: entry.createdAtMs };
   switch (entry.kind) {
     case "message":
       return {
@@ -33,14 +31,12 @@ function toMarker(entry: Entry, titleOf: (threadId: string) => string | undefine
         label: entry.author.name,
         text: plainThreadLinks(entry.text, titleOf),
         person: entry.author,
-        decision: entry.decision,
-        bookmarkable: true,
       };
     case "event":
       return {
         ...base,
         label: "Activity",
-        text: `${entry.actor.name} ${entry.text}`,
+        text: `${entry.actor.name} ${plainThreadLinks(entry.text, titleOf)}`,
         person: entry.actor,
       };
     case "resolution":
@@ -67,18 +63,16 @@ function elementFor(id: string): HTMLElement | null {
 }
 
 // A strip of ticks along the thread's right edge, one per entry, for seeing its shape and jumping around.
-// The entry you're reading is raised and bright, decisions are blue. Hovering a tick previews the entry; clicking scrolls to it,
-// ⌘-click bookmarks it as a decision, and ⌥ + scroll steps from marker to marker.
+// The entry you're reading is raised and bright. Hovering a tick previews the entry; clicking scrolls to it, and
+// ⌥ + scroll steps from marker to marker.
 export function ThreadMinimap({
   entries,
   scrollRef,
   nowMs,
-  onToggleDecision,
 }: {
   entries: Entry[];
   scrollRef: React.RefObject<HTMLDivElement | null>;
   nowMs: number;
-  onToggleDecision: (entryId: string) => void;
 }): React.JSX.Element | null {
   const { titleOf } = useThreadLinks();
   const markers = entries.map((entry) => toMarker(entry, titleOf));
@@ -157,17 +151,12 @@ export function ThreadMinimap({
           className="minimap-tick"
           aria-label={`${marker.label}: ${marker.text}`}
           data-active={index === active}
-          data-decision={marker.decision}
           data-hovered={hovered === index}
           style={{ "--tick-length": `${lengthAt(index)}px` } as React.CSSProperties}
           onMouseEnter={() => setHovered(index)}
-          onClick={(event) => {
-            if (event.metaKey) {
-              if (marker.bookmarkable) onToggleDecision(marker.id);
-              return;
-            }
-            elementFor(marker.id)?.scrollIntoView({ block: "start", behavior: "smooth" });
-          }}
+          onClick={() =>
+            elementFor(marker.id)?.scrollIntoView({ block: "start", behavior: "smooth" })
+          }
         />
       ))}
       {card !== undefined && hovered !== null && (
@@ -184,12 +173,8 @@ export function ThreadMinimap({
               {card.label === card.person?.name ? "" : `${card.label} · `}
               {formatRelativeTime(card.atMs, nowMs)}
             </span>
-            {card.decision && <span className="decision-tag">Decision</span>}
           </div>
           <div className="minimap-card-hints">
-            {card.bookmarkable && (
-              <span>⌘ + click to {card.decision ? "remove bookmark" : "bookmark"}</span>
-            )}
             <span>⌥ + scroll by marker</span>
           </div>
         </div>

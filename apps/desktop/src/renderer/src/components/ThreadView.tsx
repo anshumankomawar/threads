@@ -3,7 +3,6 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import {
   ArrowDown,
-  Bookmark,
   Calendar,
   CalendarDays,
   Check,
@@ -11,15 +10,24 @@ import {
   GitBranch,
   Link2,
   MicOff,
+  Plus,
   RotateCcw,
   Sparkles,
   Target,
   Video,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
-import { THREAD_SLASH_EVENT, ThreadLinkNode, type ThreadSlashDetail } from "./threadLinkNode";
+import {
+  closeThreadMenu,
+  offerKey,
+  THREAD_MENU_EVENT,
+  THREAD_MENU_KEY,
+  ThreadLinkNode,
+  type ThreadMenuState,
+} from "./threadLinkNode";
 import {
   PRIORITY_LABELS,
   splitThreadLinks,
@@ -53,9 +61,9 @@ export type ThreadActions = {
   onSetDue: (dueAtMs: number | null) => void;
   onSetAssignee: (person: Person) => void;
   onSetSchedule: (schedule: Schedule | null) => void;
-  onToggleDecision: (entryId: string) => void;
-  // `/thread` typed in the reply: start a thread branching off this one, then insert its link or cancel.
-  onBranch: (insert: (threadId: string, title: string) => void, cancel: () => void) => void;
+  // Starts a thread branching off this one, with the same people, and returns its id: from "New thread" in the
+  // `#` menu, titled by what you typed.
+  onBranch: (title: string) => string;
 };
 
 // A thread link as a chip with the linked thread's current title; clicking opens it beside this one.
@@ -86,6 +94,15 @@ function MessageText({
 }): React.JSX.Element {
   return (
     <div className={className}>
+      <LinkedText text={text} />
+    </div>
+  );
+}
+
+// Text with its thread links as chips, inline.
+function LinkedText({ text }: { text: string }): React.JSX.Element {
+  return (
+    <>
       {splitThreadLinks(text).map((part, index) =>
         "threadId" in part ? (
           <ThreadLinkChip key={index} threadId={part.threadId} />
@@ -93,7 +110,7 @@ function MessageText({
           <span key={index}>{part.text}</span>
         ),
       )}
-    </div>
+    </>
   );
 }
 
@@ -394,13 +411,10 @@ function ThreadHeader({
 function MessageBlock({
   message,
   nowMs,
-  onToggleDecision,
 }: {
   message: MessageEntry;
   nowMs: number;
-  onToggleDecision: () => void;
 }): React.JSX.Element {
-  const label = message.decision ? "Unmark as decision" : "Mark as decision";
   return (
     <div className="thread-block thread-message" id={`entry-${message.id}`}>
       <Avatar person={message.author} />
@@ -408,16 +422,6 @@ function MessageBlock({
         <div className="thread-meta">
           <span className="thread-author">{message.author.name}</span>
           <span className="thread-time">{formatRelativeTime(message.createdAtMs, nowMs)}</span>
-          {message.decision && <span className="decision-tag">Decision</span>}
-          <button
-            type="button"
-            className="icon-button thread-message-action"
-            aria-label={label}
-            title={label}
-            onClick={onToggleDecision}
-          >
-            <Bookmark {...ICON_PROPS} fill={message.decision ? "currentColor" : "none"} />
-          </button>
         </div>
         <MessageText text={message.text} />
       </div>
@@ -432,7 +436,8 @@ function EventLine({ event, nowMs }: { event: EventEntry; nowMs: number }): Reac
         <span />
       </span>
       <div className="thread-event-text">
-        <span className="thread-event-actor">{event.actor.name}</span> {event.text}
+        <span className="thread-event-actor">{event.actor.name}</span>{" "}
+        <LinkedText text={event.text} />
         <span className="thread-event-time"> · {formatRelativeTime(event.createdAtMs, nowMs)}</span>
       </div>
     </div>
@@ -599,7 +604,9 @@ function ReplyBlock({
   onSubmit,
   onCancel,
   onBranch,
+  threadId,
 }: {
+  threadId: string;
   placeholder: string;
   resolving: boolean;
   focusRef: React.RefObject<(() => void) | null>;
@@ -624,6 +631,8 @@ function ReplyBlock({
     editorProps: {
       attributes: { class: "thread-text thread-reply-editor", "aria-label": "Reply" },
       handleKeyDown: (view, event) => {
+        // The `#` menu, when open, gets keys first.
+        if (offerKey(view.dom, event)) return true;
         if (event.key === "Escape") {
           handlersRef.current.onCancel();
           return false;
@@ -644,17 +653,45 @@ function ReplyBlock({
     },
   });
 
-  // `/thread` in the reply starts a branch; the node announces it with an event on the editor.
+  // The `#` menu: the link node announces it on the editor; this renders it and handles its keys.
+  const links = useThreadLinks();
+  const [menu, setMenu] = useState<ThreadMenuState>(null);
+  const [selected, setSelected] = useState(0);
+  const options = menu === null ? [] : menuOptions(menu.query, links.search, threadId);
+  const choose = (option: MenuOption): void => {
+    if (menu === null) return;
+    if (option.kind === "link") menu.pick(option.link);
+    else menu.pick({ id: onBranch(option.title), title: option.title });
+  };
+
   useEffect(() => {
     const dom = editor?.view.dom;
     if (dom === undefined) return;
-    const onSlash = (event: Event): void => {
-      const { insert, cancel } = (event as CustomEvent<ThreadSlashDetail>).detail;
-      onBranch(insert, cancel);
+    const onMenu = (event: Event): void => {
+      setMenu((event as CustomEvent<ThreadMenuState>).detail);
+      setSelected(0);
     };
-    dom.addEventListener(THREAD_SLASH_EVENT, onSlash);
-    return () => dom.removeEventListener(THREAD_SLASH_EVENT, onSlash);
-  }, [editor, onBranch]);
+    dom.addEventListener(THREAD_MENU_EVENT, onMenu);
+    return () => dom.removeEventListener(THREAD_MENU_EVENT, onMenu);
+  }, [editor]);
+
+  useEffect(() => {
+    const view = editor?.view;
+    if (view === undefined || menu === null) return;
+    const onKey = (event: Event): void => {
+      const key = (event as CustomEvent<KeyboardEvent>).detail;
+      if (key.key === "Escape") closeThreadMenu(view);
+      else if (options.length === 0) return;
+      else if (key.key === "ArrowDown") setSelected((selected + 1) % options.length);
+      else if (key.key === "ArrowUp") setSelected((selected - 1 + options.length) % options.length);
+      else if ((key.key === "Enter" && !key.shiftKey) || key.key === "Tab")
+        choose(options[Math.min(selected, options.length - 1)]);
+      else return;
+      event.preventDefault();
+    };
+    view.dom.addEventListener(THREAD_MENU_KEY, onKey);
+    return () => view.dom.removeEventListener(THREAD_MENU_KEY, onKey);
+  });
 
   return (
     <div className="thread-block" onClick={() => editor?.commands.focus()}>
@@ -667,7 +704,91 @@ function ReplyBlock({
         </div>
         <EditorContent editor={editor} className="thread-reply" />
       </div>
+      {menu !== null && options.length > 0 && (
+        <ThreadMenu
+          rect={menu.rect}
+          options={options}
+          selected={Math.min(selected, options.length - 1)}
+          onHover={setSelected}
+          onChoose={choose}
+        />
+      )}
     </div>
+  );
+}
+
+type MenuOption =
+  | { kind: "link"; link: { id: string; title: string } }
+  | { kind: "new"; title: string };
+
+const MENU_MATCHES = 6;
+
+// Threads matching what's typed after `#`, then a new thread titled by it unless one already has that title.
+function menuOptions(
+  query: string,
+  search: (query: string) => { id: string; title: string }[],
+  currentThreadId: string,
+): MenuOption[] {
+  const title = query.trim();
+  const matches = search(title)
+    .filter((thread) => thread.id !== currentThreadId)
+    .slice(0, MENU_MATCHES);
+  const options: MenuOption[] = matches.map((link) => ({ kind: "link", link }));
+  const exact = matches.some((thread) => thread.title.toLowerCase() === title.toLowerCase());
+  if (title.length > 0 && !exact) options.push({ kind: "new", title });
+  return options;
+}
+
+// The `#` menu, below the text being typed. Rendered on the body so the content zoom doesn't move it.
+function ThreadMenu({
+  rect,
+  options,
+  selected,
+  onHover,
+  onChoose,
+}: {
+  rect: DOMRect | null;
+  options: MenuOption[];
+  selected: number;
+  onHover: (index: number) => void;
+  onChoose: (option: MenuOption) => void;
+}): React.JSX.Element | null {
+  if (rect === null) return null;
+  return createPortal(
+    <div
+      className="thread-menu"
+      role="listbox"
+      aria-label="Link a thread"
+      style={{ left: rect.left, top: rect.bottom + 6 }}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      {options.map((option, index) => (
+        <button
+          key={option.kind === "link" ? option.link.id : "new"}
+          type="button"
+          role="option"
+          aria-selected={index === selected}
+          className="thread-menu-item"
+          onMouseEnter={() => onHover(index)}
+          onClick={() => onChoose(option)}
+        >
+          {option.kind === "link" ? (
+            <>
+              <GitBranch {...ICON_PROPS} />
+              <span className="thread-menu-title">{option.link.title}</span>
+            </>
+          ) : (
+            <>
+              <Plus {...ICON_PROPS} />
+              <span className="thread-menu-title">
+                New thread <span className="thread-menu-new">“{option.title}”</span>
+              </span>
+            </>
+          )}
+        </button>
+      ))}
+    </div>,
+    document.body,
   );
 }
 
@@ -695,9 +816,13 @@ export function ThreadView({
   const [resolving, setResolving] = useState(false);
   const me = useMe();
   const entries = thread.entries;
-  // The opening message moves into the header: a response's ask, a meeting's agenda, a focus block's note.
+  // The opening message moves into the header: a response's ask, a meeting's agenda, a focus block's note. Only the
+  // one that opened the thread (its first line is the title); messages moved in from elsewhere stay as messages.
   const [first] = entries;
-  const ask = first?.kind === "message" ? first : undefined;
+  const ask =
+    first?.kind === "message" && first.text.split("\n")[0].trim() === thread.title.trim()
+      ? first
+      : undefined;
   const rest = ask === undefined ? entries : entries.slice(1);
 
   // Whether you're following the conversation: the reply block is on screen. Scroll it away to read back and new
@@ -789,14 +914,7 @@ export function ThreadView({
           />
           {rest.map((entry) => {
             if (entry.kind === "message")
-              return (
-                <MessageBlock
-                  key={entry.id}
-                  message={entry}
-                  nowMs={nowMs}
-                  onToggleDecision={() => actions.onToggleDecision(entry.id)}
-                />
-              );
+              return <MessageBlock key={entry.id} message={entry} nowMs={nowMs} />;
             if (entry.kind === "event")
               return <EventLine key={entry.id} event={entry} nowMs={nowMs} />;
             if (entry.kind === "call")
@@ -820,6 +938,7 @@ export function ThreadView({
             }}
             onCancel={() => setResolving(false)}
             onBranch={actions.onBranch}
+            threadId={thread.id}
           />
           <div ref={endRef} />
         </article>
@@ -838,12 +957,7 @@ export function ThreadView({
             : `${unseenMessages} new ${unseenMessages === 1 ? "message" : "messages"}`}
         </button>
       )}
-      <ThreadMinimap
-        entries={entries}
-        scrollRef={scrollRef}
-        nowMs={nowMs}
-        onToggleDecision={actions.onToggleDecision}
-      />
+      <ThreadMinimap entries={entries} scrollRef={scrollRef} nowMs={nowMs} />
     </div>
   );
 }

@@ -69,7 +69,6 @@ function whenOptions(kind: ThreadKind, nowMs: number): Option[] {
 // then choose who it's for (a thread) or when it happens (a meeting or focus block).
 export function NewThreadPalette({
   initialKind,
-  branchingFrom,
   people,
   me,
   nowMs,
@@ -77,8 +76,6 @@ export function NewThreadPalette({
   onClose,
 }: {
   initialKind: ThreadKind;
-  // The title of the thread this one branches off from, when started with `/thread` in a message.
-  branchingFrom?: string;
   people: Person[];
   me: Person;
   nowMs: number;
@@ -217,9 +214,7 @@ export function NewThreadPalette({
 
   const placeholder =
     step === "write"
-      ? branchingFrom === undefined
-        ? PLACEHOLDERS[kind]
-        : "What's the side discussion?"
+      ? PLACEHOLDERS[kind]
       : step === "invite"
         ? "Invite people…"
         : kind === "response"
@@ -287,15 +282,7 @@ export function NewThreadPalette({
         <div className="palette-results">
           {step === "write" ? (
             <div className="palette-section">
-              <div className="palette-section-label palette-summary">
-                {branchingFrom === undefined ? (
-                  "Next"
-                ) : (
-                  <>
-                    Branching off <span className="palette-summary-title">“{branchingFrom}”</span>
-                  </>
-                )}
-              </div>
+              <div className="palette-section-label palette-summary">Next</div>
               <div
                 className="palette-row"
                 data-selected={text.trim().length > 0}

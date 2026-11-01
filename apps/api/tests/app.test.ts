@@ -136,7 +136,7 @@ test("a new thread and its opening message become one ordered batch of sync acti
     assignee: { id: "arjun" },
     status: "open",
     updatedAtMs: NOW,
-    entries: [{ kind: "message", author: { id: "anshu" }, decision: false, createdAtMs: NOW }],
+    entries: [{ kind: "message", author: { id: "anshu" }, createdAtMs: NOW }],
   });
 });
 
@@ -194,14 +194,6 @@ test("a resolution closes the thread, and reopening says so", async () => {
     kind: "event",
     text: "reopened this",
   });
-});
-
-test("messages can be bookmarked as decisions", async () => {
-  await transact("anshu", [createThread("t1"), message("m1", "t1")]);
-  await transact("anshu", [
-    { id: txId(), type: "update", modelName: "Entry", modelId: "m1", changes: { decision: true } },
-  ]);
-  expect((await thread("t1"))?.entries[0]).toMatchObject({ kind: "message", decision: true });
 });
 
 test("activity lines read in the actor's time zone", async () => {

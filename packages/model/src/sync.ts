@@ -25,7 +25,7 @@ export type ThreadRecord = {
 };
 
 type EntryFields =
-  | { kind: "message"; authorId: string; text: string; decision: boolean }
+  | { kind: "message"; authorId: string; text: string }
   | { kind: "event"; actorId: string; text: string }
   | { kind: "resolution"; authorId: string; text: string }
   | { kind: "call"; link: string }
@@ -67,7 +67,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v2");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v3");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -111,14 +111,7 @@ export type SyncMessage =
 export type TransactionInput =
   | { id: string; type: "create"; modelName: "Thread"; data: ThreadCreate }
   | { id: string; type: "create"; modelName: "Entry"; data: EntryCreate }
-  | { id: string; type: "update"; modelName: "Thread"; modelId: string; changes: ThreadChanges }
-  | {
-      id: string;
-      type: "update";
-      modelName: "Entry";
-      modelId: string;
-      changes: { decision: boolean };
-    };
+  | { id: string; type: "update"; modelName: "Thread"; modelId: string; changes: ThreadChanges };
 
 export type ThreadCreate = {
   id: string;
@@ -179,7 +172,7 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
 export function entryFromCreate(data: EntryCreate, actorId: string, nowMs: number): EntryRecord {
   const base = { id: data.id, threadId: data.threadId, createdAtMs: nowMs };
   return data.kind === "message"
-    ? { ...base, kind: "message", authorId: actorId, text: data.text, decision: false }
+    ? { ...base, kind: "message", authorId: actorId, text: data.text }
     : { ...base, kind: "resolution", authorId: actorId, text: data.text };
 }
 
@@ -195,7 +188,6 @@ export function toEntry(record: EntryRecord, person: (id: string) => Person): En
         kind: "message",
         author: person(record.authorId),
         text: record.text,
-        decision: record.decision,
       };
     case "event":
       return { ...base, kind: "event", actor: person(record.actorId), text: record.text };
@@ -276,7 +268,6 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
           kind: "message",
           authorId: entry.author.id,
           text: entry.text,
-          decision: entry.decision,
         };
       case "event":
         return { ...base, kind: "event", actorId: entry.actor.id, text: entry.text };

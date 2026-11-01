@@ -37,7 +37,6 @@ export type Entry =
       author: Person;
       text: string;
       createdAtMs: number;
-      decision: boolean;
     }
   | { kind: "event"; id: string; actor: Person; text: string; createdAtMs: number }
   | { kind: "resolution"; id: string; author: Person; text: string; createdAtMs: number }

@@ -258,13 +258,6 @@ const App = observer(function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // A `/thread` branch in progress: the thread it branches off, and how to finish or undo the link in the reply.
-  const [branch, setBranch] = useState<{
-    from: Thread;
-    insert: (threadId: string, title: string) => void;
-    cancel: () => void;
-  } | null>(null);
-
   // The thread open beside the main one, from clicking a thread link.
   const [splitThreadId, setSplitThreadId] = useState<string | null>(null);
   const splitThread =
@@ -274,6 +267,32 @@ const App = observer(function App(): React.JSX.Element {
   const threadLinks: ThreadLinks = {
     titleOf: (threadId) => threads.find((thread) => thread.id === threadId)?.title,
     open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
+    search: (query) => {
+      const needle = query.toLowerCase();
+      return threads
+        .filter((thread) => thread.title.toLowerCase().includes(needle))
+        .toSorted((a, b) => b.updatedAtMs - a.updatedAtMs)
+        .map(({ id, title }) => ({ id, title }));
+    },
+  };
+
+  // A branch is an ordinary thread that remembers where it came from, between the same people: you ask the first
+  // other person on the parent.
+  const createBranch = (from: Thread, text: string): string => {
+    const others = [from.requester, from.assignee, ...from.attendees].filter(
+      (person): person is Person => person !== null && person.id !== me.id,
+    );
+    return client.createThread(
+      {
+        kind: "response",
+        text,
+        assignee: others[0] ?? null,
+        invitees: [],
+        schedule: null,
+        branchedFromId: from.id,
+      },
+      me,
+    );
   };
 
   // Every change is a transaction: applied here at once, then sent to the server, which records property changes
@@ -289,15 +308,7 @@ const App = observer(function App(): React.JSX.Element {
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
       onSetAssignee: (person) => edit({ assigneeId: person.id }),
       onSetSchedule: (schedule) => edit({ schedule }),
-      onToggleDecision: (entryId) => {
-        const entry = thread.entries.find((candidate) => candidate.id === entryId);
-        if (entry?.kind !== "message") return;
-        client.setDecision(entryId, !entry.decision, me);
-      },
-      onBranch: (insert, cancel) => {
-        setSearchOpen(false);
-        setBranch({ from: thread, insert, cancel });
-      },
+      onBranch: (title) => createBranch(thread, title),
     };
   };
 
@@ -437,7 +448,7 @@ const App = observer(function App(): React.JSX.Element {
           )}
         </main>
         {detailsOpen && <DetailsPanel thread={activeThread} nowMs={nowMs} />}
-        {newThreadKind !== null && branch === null && (
+        {newThreadKind !== null && (
           <NewThreadPalette
             initialKind={newThreadKind}
             people={people}
@@ -445,28 +456,6 @@ const App = observer(function App(): React.JSX.Element {
             nowMs={nowMs}
             onCreate={createThread}
             onClose={() => setNewThreadKind(null)}
-          />
-        )}
-        {branch !== null && (
-          <NewThreadPalette
-            initialKind="response"
-            branchingFrom={branch.from.title}
-            people={people}
-            me={me}
-            nowMs={nowMs}
-            onCreate={(draft) => {
-              // The branch is an ordinary thread that remembers where it came from; its link lands in the reply.
-              const threadId = client.createThread(
-                { ...draft, branchedFromId: branch.from.id },
-                me,
-              );
-              branch.insert(threadId, draft.text.split("\n")[0]);
-              setBranch(null);
-            }}
-            onClose={() => {
-              branch.cancel();
-              setBranch(null);
-            }}
           />
         )}
         {searchOpen && (

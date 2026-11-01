@@ -60,8 +60,8 @@ Data is normalized into flat records linked by id, like database rows:
 - **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree).
 - **Thread**: one ask, meeting or focus block. References people by id: `requesterId`, `assigneeId`,
   `attendeeIds`. Has `status`, `priority`, `dueAtMs`, `schedule`, `createdAtMs`, `updatedAtMs`.
-- **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`,
-  `decision`), `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
+- **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
+  `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
 
 The UI never works with records. `toThreads()` resolves references into the nested `Thread` shape from
 `model.ts`, which is what components receive. Keep components on that shape; convert at the edge.
@@ -84,12 +84,12 @@ also needs `Authorization: Bearer <API_TOKEN>` (`?token=` on the socket).
 A **sync action** is `{ id, modelName, modelId, action: "I" | "U" | "D", data }`. Inserts and updates carry the
 whole record.
 
-A **transaction** is a create or update of a client-writable model (`Thread`, `Entry`). Ids for new models are
-made on the client (`crypto.randomUUID()`), so later transactions in the same batch can refer to them.
+A **transaction** is a create of a `Thread` or `Entry`, or an update of a `Thread` (entries are append-only).
+Ids for new models are made on the client (`crypto.randomUUID()`), so later transactions in the same batch can refer to them.
 
 ## The write path
 
-1. The UI calls a `SyncClient` method (`createThread`, `updateThread`, `addEntry`, `setDecision`).
+1. The UI calls a `SyncClient` method (`createThread`, `updateThread`, `addEntry`).
 2. It builds a `CreationTransaction` or `UpdateTransaction` and enqueues it. The transaction applies itself to the
    `ObjectPool` straight away; an update remembers the values it replaced (`original`).
 3. Transactions made in the same tick share a `batchIndex`. At the end of the tick they move from
@@ -146,9 +146,11 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - A message links another thread with the token `[[thread:<id>]]` in its text (`threadLink`, `splitThreadLinks`,
   `plainThreadLinks` in `packages/model/src/model.ts`). Renderers show it as a chip with the linked thread's current
   title (`ThreadLinkChip` via `ThreadLinksContext`); previews show `#<title>`.
-- Typing `/thread` in a reply (the `threadLink` Tiptap node in `components/threadLinkNode.ts`) opens the new thread
-  palette in branch mode; creating the thread inserts its link where `/thread` was. The new thread is an ordinary
-  thread with `branchedFromId` set, shown in its byline as "Branched from".
+- Typing `#` in a reply opens the thread menu (the `threadLink` Tiptap node in `components/threadLinkNode.ts`, built
+  on `@tiptap/suggestion`; the menu renders in `ReplyBlock`). It lists threads whose title matches, from
+  `ThreadLinksContext.search`, then "New thread “…”", which creates a branch titled by what you typed and links it.
+- A branch is an ordinary `response` thread with `branchedFromId` set, between the same people as its parent
+  (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
 
 ## How to make common changes
