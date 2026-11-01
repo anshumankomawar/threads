@@ -351,11 +351,13 @@ function InboxList({
           active={item.thread.id === activeThreadId}
           unread={unreadIds.has(item.thread.id)}
           label={
-            item.from === null
-              ? item.dueLabel
-              : [item.from.name.split(" ")[0], withWhen ? item.dueLabel : null]
-                  .filter((part) => part !== null)
-                  .join(" · ")
+            item.asked !== undefined
+              ? `Reply to: ${item.asked.name.split(" ")[0]}`
+              : item.from === null
+                ? item.dueLabel
+                : [item.from.name.split(" ")[0], withWhen ? item.dueLabel : null]
+                    .filter((part) => part !== null)
+                    .join(" · ")
           }
           onOpen={() => onOpenThread(item.thread.id)}
         />

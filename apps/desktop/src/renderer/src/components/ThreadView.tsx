@@ -62,6 +62,7 @@ import {
   type Status,
   type Thread,
   mention,
+  pendingAsks,
 } from "model";
 import {
   DAY,
@@ -1169,8 +1170,25 @@ export function ThreadView({
       (entry.kind === "message" || entry.kind === "resolution") && entryPerson(entry)?.id !== me.id,
   ).length;
 
+  // A question waiting on you here says who you're replying to.
+  const askerId = pendingAsks(
+    entries.flatMap((entry) =>
+      entry.kind === "message"
+        ? [{ authorId: entry.author.id, text: entry.text, createdAtMs: entry.createdAtMs }]
+        : [],
+    ),
+  ).get(me.id)?.askerId;
+  const asker = entries.find(
+    (entry): entry is MessageEntry => entry.kind === "message" && entry.author.id === askerId,
+  )?.author;
   const placeholder =
-    thread.kind === "meeting" ? "Add notes…" : thread.kind === "focus" ? "Add a note…" : "Reply…";
+    asker !== undefined
+      ? `Reply to ${asker.name.split(" ")[0]}…`
+      : thread.kind === "meeting"
+        ? "Add notes…"
+        : thread.kind === "focus"
+          ? "Add a note…"
+          : "Reply…";
 
   // Clicking empty space in the thread, including below the last block, puts the cursor in the reply.
   const onBackgroundMouseDown = (event: React.MouseEvent): void => {
@@ -1228,13 +1246,15 @@ export function ThreadView({
             })}
             {thread.status === "closed" ? null : (
               <ReplyBlock
-                key={thread.id}
+                // A new question changes the prompt, which the editor only takes when it's made.
+                key={`${thread.id}:${askerId ?? ""}`}
                 placeholder={placeholder}
                 focusRef={focusReplyRef}
                 onSubmit={actions.onSend}
                 onBranch={actions.onBranch}
                 onCommand={(name) => {
                   if (name === "blocked") actions.onBlocked();
+                  if (name === "close") actions.onSetStatus("closed");
                 }}
                 threadId={thread.id}
               />

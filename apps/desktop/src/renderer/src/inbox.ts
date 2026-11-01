@@ -30,7 +30,7 @@ export type TimelineItem = InboxItem & { block: Schedule };
 export type Day = {
   // The day the timeline shows (its local midnight); today unless you've stepped to another.
   dayMs: number;
-  // The hours the timeline lays out: the whole day; the view scrolls to the current hour.
+  // The hours the timeline lays out: the working day (9 to 5), plus any hour with something booked outside it.
   startHour: number;
   endHour: number;
   // Blocks of time on that day, in start order.
@@ -43,6 +43,9 @@ export type Day = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
+// The working day the schedule shows, matching the hours the server schedules in.
+const WORK_START_HOUR = 9;
+const WORK_END_HOUR = 17;
 
 export function startOfDay(ms: number): number {
   const date = new Date(ms);
@@ -236,10 +239,12 @@ export function buildDay(
   const blocked = ({ thread }: InboxItem): number => Number(thread.status === "blocked");
   const byScore = (a: InboxItem, b: InboxItem): number =>
     blocked(a) - blocked(b) || unassigned(b) - unassigned(a) || b.score - a.score;
+  // Working hours, widened only to show anything booked outside them.
+  const hours = timeline.map((item) => new Date(item.block.startMs).getHours());
   return {
     dayMs,
-    startHour: 0,
-    endHour: 23,
+    startHour: Math.min(WORK_START_HOUR, ...hours),
+    endHour: Math.max(WORK_END_HOUR, ...hours),
     timeline,
     unscheduled: unscheduled.sort(byScore),
     outbox: outbox.sort((a, b) => b.thread.updatedAtMs - a.thread.updatedAtMs),
