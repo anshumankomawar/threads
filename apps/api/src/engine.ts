@@ -6,10 +6,10 @@ import {
   fromThread,
   levelPositions,
   localPeople,
-  MAX_EFFORT_HOURS,
   MIN_EFFORT_HOURS,
   MODEL_NAMES,
   PRIORITY_LABELS,
+  recordBlocks,
   samplePeople,
   sampleThreads,
   STATUS_LABELS,
@@ -24,6 +24,7 @@ import {
   type ModelName,
   type ModelRecords,
   type Person,
+  type Schedule,
   type SyncAction,
   type Thread,
   type ThreadChanges,
@@ -31,7 +32,7 @@ import {
   type TransactionInput,
 } from "model";
 import { z } from "zod";
-import { planSchedule, workingSlots } from "./scheduler.ts";
+import { MIN_BLOCK_MINUTES, minutesSpent, planSchedule, workingSlots } from "./scheduler.ts";
 
 // Each workspace is its own sync group: its own people, threads and sync ids. "local" starts with a few people
 // and no threads, for trying the app as each of them; "sample" is the demo team with their threads.
@@ -163,12 +164,7 @@ const threadChanges = z
     status: z.enum(["open", "blocked", "closed"]),
     priority: z.enum(["none", "low", "medium", "high", "urgent"]),
     dueAtMs: z.number().int().nullable(),
-    effortHours: z
-      .number()
-      .min(MIN_EFFORT_HOURS)
-      .max(MAX_EFFORT_HOURS)
-      .multipleOf(MIN_EFFORT_HOURS)
-      .nullable(),
+    effortHours: z.number().min(MIN_EFFORT_HOURS).multipleOf(MIN_EFFORT_HOURS).nullable(),
     tagIds: z
       .array(z.enum(TAG_IDS))
       .refine((tags) => new Set(tags).size === tags.length, "Tags must be unique"),
@@ -396,8 +392,16 @@ export class SyncEngine {
       }
       const turn = batch.waitingOn(threadId, authors);
       if (turn === null) continue;
-      if (turn !== before && thread.schedule !== null)
-        batch.put("Thread", { ...thread, schedule: null });
+      if (turn !== before && recordBlocks(thread).length > 0) {
+        // Time the assignee has put in so far still counts when the thread comes back to them.
+        const worked = before === thread.assigneeId ? minutesSpent(recordBlocks(thread), nowMs) : 0;
+        batch.put("Thread", {
+          ...thread,
+          schedule: null,
+          blocks: [],
+          workedMinutes: (thread.workedMinutes ?? 0) + worked,
+        });
+      }
       affected.add(turn);
     }
     if (affected.size === 0) return;
@@ -406,7 +410,11 @@ export class SyncEngine {
   }
 
   // Lays out one person's schedule: the open responses waiting on them, around their meetings and focus blocks. Only
-  // threads whose slot actually changes are written. Blocked threads give up their slot until they're unblocked.
+  // threads whose blocks actually change are written. Blocked threads give up what's left of their blocks until
+  // they're unblocked.
+  //
+  // Blocks that have ended count as work done. An estimate is the assignee's work, so it sets their time only; anyone
+  // else the thread is waiting on, or a thread with no estimate or with its estimate used up, gets the shortest block.
   #plan(
     batch: Batch,
     personId: string,
@@ -428,28 +436,39 @@ export class SyncEngine {
           : (thread.assigneeId ?? thread.requesterId) === personId;
       return mine ? [thread.schedule] : [];
     });
+    const over = (thread: ThreadRecord): Schedule[] =>
+      recordBlocks(thread).filter((block) => block.endMs <= nowMs);
     const plan = planSchedule(
-      open.map((thread) => ({
-        id: thread.id,
-        score: threadScore(
-          thread,
-          levelOf(askerId(thread.requesterId, thread.assigneeId, personId)),
-          nowMs,
-        ),
-        effortHours: thread.effortHours,
-        schedule: thread.schedule,
-      })),
+      open.map((thread) => {
+        const estimate = thread.assigneeId === personId ? (thread.effortHours ?? null) : null;
+        const worked = (thread.workedMinutes ?? 0) + minutesSpent(over(thread), nowMs);
+        return {
+          id: thread.id,
+          score: threadScore(
+            thread,
+            levelOf(askerId(thread.requesterId, thread.assigneeId, personId)),
+            nowMs,
+          ),
+          minutes:
+            estimate === null
+              ? MIN_BLOCK_MINUTES
+              : Math.max(estimate * 60 - worked, MIN_BLOCK_MINUTES),
+          blocks: recordBlocks(thread).filter((block) => block.endMs > nowMs),
+        };
+      }),
       fixed,
       nowMs,
       slots,
     );
     for (const thread of waiting) {
-      const schedule = plan.get(thread.id) ?? null;
+      const upcoming = plan.get(thread.id) ?? [];
+      const blocks = [...over(thread), ...upcoming];
+      const schedule = upcoming[0] ?? null;
       if (
-        schedule?.startMs !== thread.schedule?.startMs ||
-        schedule?.endMs !== thread.schedule?.endMs
+        JSON.stringify(blocks) !== JSON.stringify(thread.blocks) ||
+        JSON.stringify(schedule) !== JSON.stringify(thread.schedule)
       )
-        batch.put("Thread", { ...thread, schedule });
+        batch.put("Thread", { ...thread, schedule, blocks });
     }
   }
 

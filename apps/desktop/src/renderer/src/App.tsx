@@ -463,7 +463,9 @@ const App = observer(function App(): React.JSX.Element {
             <Welcome
               me={me}
               source={source}
-              todayCount={day.timeline.length + day.unscheduled.length}
+              todayCount={
+                new Set(day.timeline.map((item) => item.thread.id)).size + day.unscheduled.length
+              }
               inboxCount={day.unscheduled.length}
               nowMs={nowMs}
               onNewThread={openNew}

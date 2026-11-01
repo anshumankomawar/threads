@@ -173,22 +173,29 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 
 ## Scoring and scheduling
 
-Responses are scheduled automatically. Clients can't set a response's slot; meetings and focus blocks keep theirs.
+Responses are scheduled automatically. Clients can't set a response's time; meetings and focus blocks keep theirs. A
+response holds `blocks`, any number of them, each as long as the free time allows; `schedule` is its next one.
 
 - **The score** (`threadScore` in `packages/model/src/score.ts`) rates a thread from 1 to 100: its due date, priority,
   estimated effort, most important tag (`TAGS`) and the level of the person waiting on the answer (`askerId`). It's
   computed when needed and never stored, because it changes as due dates approach and saving it would fill the sync
   log. Client and server share the function, so the inbox sorts by the same number the schedule uses.
 - **The plan** (`planSchedule` in `apps/api/src/scheduler.ts`) lays out one person's open responses around their
-  meetings and focus blocks, in `WORKING_HOURS`, on the next five weekdays. It's pure and has no randomness. A slot
-  starting within 30 minutes stays put; a thread only moves ahead of another by outscoring it by 10; a thread that
-  doesn't fit gets no slot and stays in the inbox. A slot lasts as long as the effort, from 30 minutes to 2 hours.
+  meetings and focus blocks, in `WORKING_HOURS`, on the next five weekdays. It's pure and has no randomness. In order,
+  each thread takes free half hours until it has the time it needs, breaking only around fixed time and the end of the
+  day, and carrying over to the next working day. A thread only moves ahead of another by outscoring it by 10. Time
+  under way or starting within 30 minutes stays put, but only that stretch; the rest of a long block can give way.
+  What doesn't fit stays in the inbox and waits for a later run.
+- **How much time a thread needs** (`SyncEngine.#plan`): the assignee gets its `effortHours`, less `workedMinutes` and
+  blocks that have ended, which count as work done. Anyone else it's waiting on, a thread with no estimate, or one with
+  its estimate used up gets 30 minutes.
 - **When it runs** (`SyncEngine.#replanAfter`): after every batch, for whoever the touched threads are waiting on,
-  and every attendee of a touched meeting. A response handed to someone gives up its old slot. Closing a thread
-  reschedules nobody, so its slot stays a gap until the next change. Slot moves are side effects in the same delta
-  packet as the change that caused them, with no activity lines; only threads whose slot changes are written.
+  and every attendee of a touched meeting. A response handed to someone gives up its blocks, adding the assignee's time
+  so far to `workedMinutes`. Closing a thread reschedules nobody, so its time stays a gap until the next change. Block
+  moves are side effects in the same delta packet as the change that caused them, with no activity lines; only threads
+  whose blocks change are written.
 - **The morning run** (`SyncEngine.replanAll`, from the `Workspace` Durable Object's `alarm`) looks over every schedule
-  half an hour before the working day, for closer due dates and slots that passed with the thread still open. It also
+  half an hour before the working day, for closer due dates and blocks that passed with the thread still open. It also
   runs whenever a workspace loads.
 
 ## How to make common changes

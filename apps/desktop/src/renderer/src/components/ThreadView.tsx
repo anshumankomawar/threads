@@ -154,13 +154,19 @@ function dueOptions(nowMs: number): { label: string; value: number | null }[] {
   ];
 }
 
-// "2:00 PM–2:30 PM" today, "Mon 10:00 AM" on another day.
+// "2:00 PM–2:30 PM" today, with the weekday on another day.
 function formatSchedule(schedule: Schedule, nowMs: number): string {
-  if (startOfDay(schedule.startMs) !== startOfDay(nowMs)) {
-    const day = new Date(schedule.startMs).toLocaleDateString(undefined, { weekday: "short" });
-    return `${day} ${formatClock(schedule.startMs)}`;
-  }
-  return `${formatClock(schedule.startMs)}–${formatClock(schedule.endMs)}`;
+  const times = `${formatClock(schedule.startMs)}–${formatClock(schedule.endMs)}`;
+  if (startOfDay(schedule.startMs) === startOfDay(nowMs)) return times;
+  const day = new Date(schedule.startMs).toLocaleDateString(undefined, { weekday: "short" });
+  return `${day} ${times}`;
+}
+
+// A response's next block, and how many more follow it.
+function formatBlocks(thread: Thread, nowMs: number): string {
+  const [next, ...more] = thread.blocks.filter((block) => block.endMs > nowMs);
+  if (next === undefined) return "No slot yet";
+  return `${formatSchedule(next, nowMs)}${more.length > 0 ? ` +${more.length}` : ""}`;
 }
 
 // Scheduling shortcuts: each remaining hour today (9 to 6), tomorrow morning, or off the timeline.
@@ -408,18 +414,21 @@ function ThreadHeader({
           />
         )}
         {isResponse ? (
-          // A response's slot comes from the scheduler, so it only shows here.
+          // A response's blocks come from the scheduler, so they only show here.
           <span
             className="chip"
             data-tone={slotMissesDue(thread) ? "urgent" : "static"}
-            title={
+            title={[
               slotMissesDue(thread)
                 ? "The schedule couldn't fit this before its due date"
-                : "Scheduled automatically by importance"
-            }
+                : "Scheduled automatically by importance",
+              ...thread.blocks
+                .filter((block) => block.endMs > nowMs)
+                .map((block) => formatSchedule(block, nowMs)),
+            ].join("\n")}
           >
             <Clock {...ICON_PROPS} />
-            {thread.schedule === null ? "No slot yet" : formatSchedule(thread.schedule, nowMs)}
+            {formatBlocks(thread, nowMs)}
           </span>
         ) : (
           <MenuChip

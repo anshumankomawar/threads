@@ -19,6 +19,8 @@ export type ThreadRecord = {
   effortHours: number | null;
   tagIds: string[];
   schedule: Schedule | null;
+  blocks: Schedule[];
+  workedMinutes: number;
   attendeeIds: string[];
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
@@ -69,7 +71,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v4");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v5");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -178,6 +180,8 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     effortHours: null,
     tagIds: [],
     schedule: data.schedule,
+    blocks: [],
+    workedMinutes: 0,
     attendeeIds:
       data.kind === "meeting" ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)] : [],
     branchedFromId: data.branchedFromId ?? null,
@@ -226,6 +230,12 @@ export function toEntry(record: EntryRecord, person: (id: string) => Person): En
   }
 }
 
+// A thread's blocks of time. A meeting or focus block has only its `schedule`, as does a response stored before blocks.
+export function recordBlocks(record: ThreadRecord): Schedule[] {
+  if (record.kind === "response" && record.blocks !== undefined) return record.blocks;
+  return record.schedule === null ? [] : [record.schedule];
+}
+
 // Resolves a thread's references into the shape the app renders.
 export function toThread(
   record: ThreadRecord,
@@ -246,6 +256,8 @@ export function toThread(
     effortHours: record.effortHours ?? null,
     tagIds: record.tagIds ?? [],
     schedule: record.schedule,
+    blocks: recordBlocks(record),
+    workedMinutes: record.workedMinutes ?? 0,
     attendees: record.attendeeIds.map(person),
     // Threads stored before branching existed have no field.
     branchedFromId: record.branchedFromId ?? null,
@@ -321,6 +333,8 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       effortHours: thread.effortHours,
       tagIds: thread.tagIds,
       schedule: thread.schedule,
+      blocks: thread.blocks,
+      workedMinutes: thread.workedMinutes,
       attendeeIds: thread.attendees.map((person) => person.id),
       branchedFromId: thread.branchedFromId,
       createdAtMs,

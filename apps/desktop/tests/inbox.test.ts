@@ -21,6 +21,7 @@ function thread(fields: Partial<Thread>): Thread {
     priority: "none",
     dueAtMs: null,
     schedule: null,
+    workedMinutes: 0,
     attendees: [],
     branchedFromId: null,
     effortHours: null,
@@ -28,6 +29,7 @@ function thread(fields: Partial<Thread>): Thread {
     updatedAtMs: NOW,
     entries: [],
     ...fields,
+    blocks: fields.blocks ?? (fields.schedule ? [fields.schedule] : []),
   };
 }
 

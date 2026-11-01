@@ -1,11 +1,4 @@
-import {
-  levelPositions,
-  slotMinutes,
-  threadScore,
-  TAGS,
-  type Priority,
-  type Schedule,
-} from "model";
+import { levelPositions, threadScore, TAGS, type Priority, type Schedule } from "model";
 import { expect, test } from "vite-plus/test";
 import { nextPlanningMs, planSchedule, workingSlots, type Plannable } from "../src/scheduler.ts";
 
@@ -99,10 +92,6 @@ test("levels are placed between the lowest and highest in the org", () => {
   expect(levelPositions([])("a")).toBe(0);
 });
 
-test("a slot is the effort held to between 30 minutes and 2 hours", () => {
-  expect([null, 0.5, 1, 2, 4, 8].map(slotMinutes)).toEqual([30, 30, 60, 120, 120, 120]);
-});
-
 test("working slots are half hours from 9 to 5 on the next five weekdays", () => {
   const friday = NOW + 4 * DAY;
   const slots = workingSlots(friday + 16 * HOUR);
@@ -126,118 +115,166 @@ test("the next planning run is half an hour before the working day", () => {
   expect(nextPlanningMs(at(12))).toBe(at(8, 30) + DAY);
 });
 
-const thread = (
-  id: string,
-  score: number,
-  schedule: Schedule | null = null,
-  effortHours: number | null = null,
-): Plannable => ({ id, score, schedule, effortHours });
+const thread = (id: string, score: number, blocks: Schedule[] = [], minutes = 30): Plannable => ({
+  id,
+  score,
+  minutes,
+  blocks,
+});
 
 const plan = (threads: Plannable[], fixed: Schedule[] = [], nowMs = NOW) =>
   Object.fromEntries(planSchedule(threads, fixed, nowMs, workingSlots(nowMs)));
 
+const totalHours = (blocks: Schedule[]): number =>
+  blocks.reduce((sum, block) => sum + (block.endMs - block.startMs) / HOUR, 0);
+
 test("new threads fill the earliest working time, highest score first", () => {
   expect(plan([thread("low", 10), thread("high", 90), thread("mid", 50)])).toEqual({
-    high: slot(at(9)),
-    mid: slot(at(9, 30)),
-    low: slot(at(10)),
+    high: [slot(at(9))],
+    mid: [slot(at(9, 30))],
+    low: [slot(at(10))],
   });
 });
 
-test("a slot lasts as long as the effort, up to 2 hours", () => {
-  expect(plan([thread("big", 90, null, 8), thread("next", 50, null, 1)])).toEqual({
-    big: slot(at(9), 120),
-    next: slot(at(11), 60),
+test("a block can be as long as the free time allows", () => {
+  expect(plan([thread("big", 90, [], 8 * 60), thread("next", 50, [], 60)])).toEqual({
+    big: [slot(at(9), 8 * 60)],
+    next: [slot(at(9) + DAY, 60)],
   });
+});
+
+test("a thread breaks around a meeting and carries over into the next day", () => {
+  expect(plan([thread("big", 90, [], 8 * 60)], [slot(at(11), 60)])).toEqual({
+    big: [slot(at(9), 120), slot(at(12), 5 * 60), slot(at(9) + DAY, 60)],
+  });
+});
+
+test("there's no limit on a thread's blocks in a day", () => {
+  const meetings = [slot(at(10)), slot(at(11)), slot(at(12)), slot(at(13))];
+  expect(plan([thread("big", 90, [], 4 * 60)], meetings)).toEqual({
+    big: [
+      slot(at(9), 60),
+      slot(at(10, 30)),
+      slot(at(11, 30)),
+      slot(at(12, 30)),
+      slot(at(13, 30), 90),
+    ],
+  });
+});
+
+test("work that won't fit in what's left of today continues tomorrow", () => {
+  expect(plan([thread("big", 90, [], 4 * 60)], [], at(15))).toEqual({
+    big: [slot(at(15), 120), slot(at(9) + DAY, 120)],
+  });
+});
+
+test("work spans as many days as it takes, skipping the weekend", () => {
+  const friday = at(16) + 4 * DAY;
+  expect(plan([thread("big", 90, [], 4 * 60)], [], friday)).toEqual({
+    big: [slot(friday, 60), slot(friday + 3 * DAY - 7 * HOUR, 3 * 60)],
+  });
+  expect(plan([thread("week", 90, [], 16 * 60)]).week).toEqual([
+    slot(at(9), 8 * 60),
+    slot(at(9) + DAY, 8 * 60),
+  ]);
 });
 
 test("meetings and focus blocks are worked around", () => {
   expect(plan([thread("a", 90), thread("b", 50)], [slot(at(9), 45), slot(at(10), 30)])).toEqual({
-    a: slot(at(10, 30)),
-    b: slot(at(11)),
+    a: [slot(at(10, 30))],
+    b: [slot(at(11))],
   });
-});
-
-test("a slot never runs past the end of the day", () => {
-  expect(plan([thread("big", 90, null, 2)], [], at(15, 45))).toEqual({
-    big: slot(at(9) + DAY, 120),
-  });
-  expect(plan([thread("small", 90)], [], at(16, 15))).toEqual({ small: slot(at(16, 30)) });
 });
 
 test("an incoming thread takes a place ahead of ones it outscores by the margin", () => {
-  const planned = [thread("a", 40, slot(at(9))), thread("b", 30, slot(at(9, 30)))];
-  expect(plan([...planned, thread("new", 80)])).toEqual({
-    new: slot(at(9)),
-    a: slot(at(9, 30)),
-    b: slot(at(10)),
+  const held = [thread("a", 40, [slot(at(9))]), thread("b", 30, [slot(at(9, 30))])];
+  expect(plan([...held, thread("new", 80)])).toEqual({
+    new: [slot(at(9))],
+    a: [slot(at(9, 30))],
+    b: [slot(at(10))],
   });
 });
 
 test("an incoming thread goes behind ones within the margin, however close", () => {
-  const planned = [thread("a", 40, slot(at(9))), thread("b", 30, slot(at(9, 30)))];
-  expect(plan([...planned, thread("new", 49)])).toEqual({
-    a: slot(at(9)),
-    new: slot(at(9, 30)),
-    b: slot(at(10)),
+  const held = [thread("a", 40, [slot(at(9))]), thread("b", 30, [slot(at(9, 30))])];
+  expect(plan([...held, thread("new", 49)])).toEqual({
+    a: [slot(at(9))],
+    new: [slot(at(9, 30))],
+    b: [slot(at(10))],
   });
-  expect(plan([...planned, thread("new", 40)])).toEqual({
-    a: slot(at(9)),
-    b: slot(at(9, 30)),
-    new: slot(at(10)),
+  expect(plan([...held, thread("new", 40)])).toEqual({
+    a: [slot(at(9))],
+    b: [slot(at(9, 30))],
+    new: [slot(at(10))],
   });
 });
 
 test("a raised score moves a thread up; a lowered one lets others past", () => {
-  const raised = [thread("a", 40, slot(at(9))), thread("b", 60, slot(at(9, 30)))];
-  expect(plan(raised)).toEqual({ b: slot(at(9)), a: slot(at(9, 30)) });
-  const lowered = [thread("a", 10, slot(at(9))), thread("b", 40, slot(at(9, 30)))];
-  expect(plan(lowered)).toEqual({ b: slot(at(9)), a: slot(at(9, 30)) });
+  const raised = [thread("a", 40, [slot(at(9))]), thread("b", 60, [slot(at(9, 30))])];
+  expect(plan(raised)).toEqual({ b: [slot(at(9))], a: [slot(at(9, 30))] });
+  const lowered = [thread("a", 10, [slot(at(9))]), thread("b", 40, [slot(at(9, 30))])];
+  expect(plan(lowered)).toEqual({ b: [slot(at(9))], a: [slot(at(9, 30))] });
 });
 
-test("planning again changes nothing", () => {
-  const threads = [thread("a", 90), thread("b", 50), thread("c", 45), thread("d", 44)];
-  const first = plan(threads);
-  const again = plan(threads.map((item) => ({ ...item, schedule: first[item.id] })));
+test("something important splits a long block that hasn't started", () => {
+  const big = thread("big", 20, [slot(at(9), 8 * 60)], 8 * 60);
+  expect(plan([big, thread("urgent", 90, [], 60)])).toEqual({
+    urgent: [slot(at(9), 60)],
+    big: [slot(at(10), 7 * 60), slot(at(9) + DAY, 60)],
+  });
+});
+
+test("planning again changes nothing, for threads of any length", () => {
+  const meeting = [slot(at(11), 60)];
+  const threads = [
+    thread("a", 90, [], 8 * 60),
+    thread("b", 50, [], 90),
+    thread("c", 45),
+    thread("d", 44, [], 16 * 60),
+  ];
+  const first = plan(threads, meeting);
+  const again = plan(
+    threads.map((item) => ({ ...item, blocks: first[item.id] })),
+    meeting,
+  );
   expect(again).toEqual(first);
 });
 
-test("a slot under way or about to start stays put, even for something urgent", () => {
+test("time under way or about to start stays put, even for something urgent", () => {
   const now = at(10);
-  const running = thread("running", 5, slot(at(9, 45)));
-  const soon = thread("soon", 5, slot(at(10, 30)));
+  const running = thread("running", 5, [slot(at(9, 45))]);
+  const soon = thread("soon", 5, [slot(at(10, 30))]);
   expect(plan([running, soon, thread("urgent", 99)], [], now)).toEqual({
-    running: slot(at(9, 45)),
-    soon: slot(at(10, 30)),
-    urgent: slot(at(11)),
+    running: [slot(at(9, 45))],
+    soon: [slot(at(10, 30))],
+    urgent: [slot(at(11))],
   });
 });
 
-test("a slot that passed with the thread still open is placed again, by score", () => {
-  const now = at(12);
-  const missed = thread("missed", 20, slot(at(9)));
-  const planned = thread("planned", 25, slot(at(13)));
-  expect(plan([missed, planned], [], now)).toEqual({
-    planned: slot(at(12)),
-    missed: slot(at(12, 30)),
+test("only the next stretch of a long block is held; the rest gives way to something important", () => {
+  const now = at(10, 10);
+  const big = thread("big", 20, [slot(at(9), 8 * 60)], 8 * 60);
+  expect(plan([big], [], now)).toEqual({ big: [slot(at(9), 8 * 60)] });
+  expect(plan([big, thread("urgent", 90, [], 60)], [], now)).toEqual({
+    urgent: [slot(at(11), 60)],
+    big: [slot(at(9), 120), slot(at(12), 5 * 60), slot(at(9) + DAY, 60)],
   });
 });
 
-test("threads that don't fit in the days ahead get no slot", () => {
-  const threads = Array.from({ length: 42 }, (_, index) =>
-    thread(`t${String(index).padStart(2, "0")}`, 50, null, 2),
-  );
-  const planned = plan(threads);
-  // Four 2-hour slots a day for five days.
-  expect(Object.values(planned).filter((value) => value !== null)).toHaveLength(20);
-  expect(Object.values(planned).filter((value) => value === null)).toHaveLength(22);
+test("whatever doesn't fit in the days ahead waits for a later run", () => {
+  // Five 8-hour days ahead.
+  const planned = plan([thread("a", 50, [], 44 * 60), thread("b", 40)]);
+  expect(totalHours(planned.a)).toBe(40);
+  expect(planned.b).toEqual([]);
 });
 
-test("nothing lands on a weekend", () => {
-  const threads = Array.from({ length: 80 }, (_, index) => thread(`t${index}`, 50));
-  const days = Object.values(plan(threads)).flatMap((value) =>
-    value === null ? [] : [new Date(value.startMs - 8 * HOUR).getUTCDay()],
-  );
-  expect(days).not.toContain(0);
-  expect(days).not.toContain(6);
+test("nothing lands on a weekend or outside working hours", () => {
+  const planned = plan([thread("week", 50, [], 40 * 60)], [], at(12));
+  const offset = 8 * HOUR;
+  for (const block of planned.week) {
+    expect([0, 6]).not.toContain(new Date(block.startMs - offset).getUTCDay());
+    expect(new Date(block.startMs - offset).getUTCHours()).toBeGreaterThanOrEqual(9);
+    const end = new Date(block.endMs - offset);
+    expect(end.getUTCHours() + end.getUTCMinutes() / 60).toBeLessThanOrEqual(17);
+  }
 });

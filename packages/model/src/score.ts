@@ -16,20 +16,14 @@ export const TAGS = [
 
 export const TAG_IDS = TAGS.map((tag) => tag.id);
 
-// How much work a thread is, in hours, in half-hour steps. Anything bigger than a day should be split into branches.
-export const EFFORT_OPTIONS = [0.5, 1, 2, 4, 8];
+// How much work a thread is, in hours, in half-hour steps. It can run as long as it needs to.
+export const EFFORT_OPTIONS = [0.5, 1, 2, 4, 8, 16, 24, 40];
 export const MIN_EFFORT_HOURS = 0.5;
-export const MAX_EFFORT_HOURS = 8;
-
-const MAX_SLOT_HOURS = 2;
+// At this much work and beyond, a thread gets no credit for being quick.
+const BIG_WORK_HOURS = 8;
 
 export function formatEffort(hours: number): string {
   return hours < 1 ? `${hours * 60}m` : `${hours}h`;
-}
-
-// How long a thread's slot is: its effort, held to between 30 minutes and 2 hours. No estimate gets the shortest.
-export function slotMinutes(effortHours: number | null | undefined): number {
-  return Math.min(effortHours ?? MIN_EFFORT_HOURS, MAX_SLOT_HOURS) * 60;
 }
 
 const PRIORITY_VALUE: Record<Priority, number> = {
@@ -62,7 +56,7 @@ function effortPull(effortHours: number | null, urgency: number): number {
   const quickness =
     effortHours === null
       ? 0.5
-      : 1 - (effortHours - MIN_EFFORT_HOURS) / (MAX_EFFORT_HOURS - MIN_EFFORT_HOURS);
+      : Math.max(0, 1 - (effortHours - MIN_EFFORT_HOURS) / (BIG_WORK_HOURS - MIN_EFFORT_HOURS));
   return urgency + (1 - urgency) * quickness;
 }
 

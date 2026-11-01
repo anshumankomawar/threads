@@ -144,6 +144,8 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     effortHours: fields.effortHours ?? null,
     tagIds: fields.tagIds ?? [],
     schedule: fields.schedule ?? null,
+    blocks: fields.schedule ? [fields.schedule] : [],
+    workedMinutes: 0,
     attendees: fields.attendees ?? [],
     branchedFromId: null,
     updatedAtMs: Math.max(...entries.map((entry) => entry.createdAtMs)),

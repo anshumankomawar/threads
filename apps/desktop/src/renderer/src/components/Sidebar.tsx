@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useRef, useState } from "react";
-import type { Day, InboxItem } from "../inbox";
+import type { Day, InboxItem, TimelineItem } from "../inbox";
 import { KIND_LABELS, type ThreadKind } from "model";
 
 // Marks the element with data-overflowing when its text is clipped, which turns on the fade mask.
@@ -209,9 +209,9 @@ function DayView({
     const hour = scroller?.querySelector<HTMLElement>(`[data-hour="${focusHour}"]`);
     if (scroller && hour) scroller.scrollTop = hour.offsetTop - scroller.offsetTop;
   }, [day.dayMs, focusHour]);
-  const row = (item: InboxItem, label: string | null, past = false): React.JSX.Element => (
+  const row = (item: TimelineItem, label: string | null, past = false): React.JSX.Element => (
     <ThreadRow
-      key={item.thread.id}
+      key={`${item.thread.id}:${item.block.startMs}`}
       item={item}
       active={item.thread.id === activeThreadId}
       unread={unreadIds.has(item.thread.id)}
@@ -243,18 +243,15 @@ function DayView({
         <span>{formatHour(hour)}</span>
       </li>,
     );
-    const items = day.timeline.filter(
-      (item) => new Date(item.thread.schedule?.startMs ?? 0).getHours() === hour,
-    );
+    const items = day.timeline.filter((item) => new Date(item.block.startMs).getHours() === hour);
     let nowShown = !isToday || hour !== nowHour;
     for (const item of items) {
-      const schedule = item.thread.schedule;
-      if (schedule === null) continue;
-      if (!nowShown && schedule.startMs > nowMs) {
+      const { block } = item;
+      if (!nowShown && block.startMs > nowMs) {
         timeline.push(nowLine);
         nowShown = true;
       }
-      timeline.push(row(item, formatClock(schedule.startMs), schedule.endMs <= nowMs));
+      timeline.push(row(item, formatClock(block.startMs), block.endMs <= nowMs));
     }
     if (!nowShown) timeline.push(nowLine);
   }

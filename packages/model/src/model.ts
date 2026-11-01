@@ -73,8 +73,13 @@ export type Thread = {
   effortHours: number | null;
   // Ids from `TAGS`; the most important one feeds its score.
   tagIds: string[];
-  // When it happens or when you've planned to work on it; places it on your day timeline.
+  // When it happens or when you've planned to work on it; for a response, its next block.
   schedule: Schedule | null;
+  // Every block of time it holds on the schedule of whoever it's waiting on, including ones already over. A response
+  // can have any number, each as long as the free time allows. Meetings and focus blocks have just their `schedule`.
+  blocks: Schedule[];
+  // Time the assignee already spent in blocks before the thread last changed hands.
+  workedMinutes: number;
   // Who's in it: meeting attendees; empty for other kinds.
   attendees: Person[];
   // The thread this one was branched off from, if any.

@@ -16,15 +16,19 @@ import { SyncEngine } from "../src/engine.ts";
 const NOW = Date.UTC(2026, 10, 2, 8);
 const NINE = NOW + 9 * 60 * 60_000;
 const HALF_HOUR = 30 * 60_000;
+const HOUR = 60 * 60_000;
+const DAY = 24 * HOUR;
 const slotAt = (startMs: number, minutes = 30): Schedule => ({
   startMs,
   endMs: startMs + minutes * 60_000,
 });
 
 let app: ReturnType<typeof createApp>;
+let clock: number;
 
 beforeEach(() => {
-  app = createApp({ now: () => NOW });
+  clock = NOW;
+  app = createApp({ now: () => clock });
 });
 
 function send(method: string, path: string, body?: unknown, workspace = "local") {
@@ -142,12 +146,12 @@ test("a tag change moves a thread only once it beats the one ahead by the margin
   expect((await thread("t2")).schedule?.startMs).toBe(NINE);
 });
 
-test("effort sets the length of the slot, up to 2 hours, and shows in the activity", async () => {
+test("effort sets how much time a thread gets, and shows in the activity", async () => {
   await transact("anshu", ask("t1"));
   await transact("arjun", [update("t1", { effortHours: 1 })]);
   expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 60));
   await transact("arjun", [update("t1", { effortHours: 8 })]);
-  expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 120));
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 480));
   await transact("arjun", [update("t1", { effortHours: null })]);
   expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
   expect(activity(await thread("t1"))).toEqual([
@@ -172,7 +176,6 @@ test("tags are saved and show in the activity", async () => {
 
 test.each<[string, object]>([
   ["an effort below 30 minutes", { effortHours: 0.25 }],
-  ["an effort above 8 hours", { effortHours: 9 }],
   ["an effort that isn't in half hours", { effortHours: 1.2 }],
   ["an unknown tag", { tagIds: ["nope"] }],
   ["a repeated tag", { tagIds: ["bug", "bug"] }],
@@ -265,6 +268,8 @@ const oldThread: ThreadRecord = {
   effortHours: null,
   tagIds: [],
   schedule: null,
+  blocks: [],
+  workedMinutes: 0,
   branchedFromId: null,
   createdAtMs: NOW,
   updatedAtMs: NOW,
@@ -323,9 +328,9 @@ test("the sample schedules sit in working hours, on weekdays, with no overlaps",
           subject.kind === "response" &&
           subject.status === "open" &&
           waitingOn(subject) === person &&
-          subject.schedule !== null,
+          subject.blocks.length > 0,
       )
-      .map((subject) => subject.schedule as Schedule)
+      .flatMap((subject) => subject.blocks)
       .sort((a, b) => a.startMs - b.startMs);
     slots.forEach((slot, index) => {
       const parts = Object.fromEntries(
@@ -334,8 +339,86 @@ test("the sample schedules sit in working hours, on weekdays, with no overlaps",
       expect(["Sat", "Sun"]).not.toContain(parts.weekday);
       expect(Number(parts.hour)).toBeGreaterThanOrEqual(9);
       expect(Number(parts.hour)).toBeLessThan(17);
-      expect(slot.endMs - slot.startMs).toBeLessThanOrEqual(2 * 60 * 60_000);
       if (index > 0) expect(slot.startMs).toBeGreaterThanOrEqual(slots[index - 1].endMs);
     });
   }
+});
+
+test("a long thread runs as one block across the free time, and splits around a meeting", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", [update("t1", { effortHours: 8 })]);
+  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 480)]);
+  await transact("anshu", [
+    {
+      id: txId(),
+      type: "create",
+      modelName: "Thread",
+      data: {
+        id: "meet",
+        kind: "meeting",
+        title: "Meet",
+        assigneeId: null,
+        attendeeIds: ["arjun"],
+        schedule: slotAt(NINE + 2 * HOUR, 60),
+      },
+    },
+  ]);
+  const { blocks, schedule } = await thread("t1");
+  expect(blocks).toEqual([slotAt(NINE, 120), slotAt(NINE + 3 * HOUR, 300), slotAt(NINE + DAY, 60)]);
+  expect(schedule).toEqual(blocks[0]);
+});
+
+test("effort has no upper limit; it just spans more days", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", [update("t1", { effortHours: 16 })]);
+  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 480), slotAt(NINE + DAY, 480)]);
+  expect(activity(await thread("t1"))).toEqual(["estimated this at 16h"]);
+});
+
+test("an estimate is the assignee's work: whoever else it's waiting on gets the shortest block", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", [update("t1", { effortHours: 8 })]);
+  await transact("arjun", [message("m2", "t1", "A question for you")]);
+  expect((await thread("t1")).blocks).toEqual([slotAt(NINE)]);
+  await transact("anshu", [message("m3", "t1", "An answer")]);
+  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 480)]);
+});
+
+test("time the assignee already spent isn't scheduled again when a thread comes back", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("arjun", [update("t1", { effortHours: 4 })]);
+  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 240)]);
+  // Two hours in, Arjun asks Anshu something, and Anshu answers straight away.
+  clock = NINE + 2 * HOUR;
+  await transact("arjun", [message("m2", "t1", "A question for you")]);
+  expect((await thread("t1")).workedMinutes).toBe(120);
+  await transact("anshu", [message("m3", "t1", "An answer")]);
+  expect((await thread("t1")).blocks).toEqual([slotAt(NINE + 2 * HOUR, 120)]);
+});
+
+test("blocks that ended count as work done, and stay on the thread", () => {
+  const past = slotAt(NOW - 24 * HOUR, 60);
+  const engine = loaded([{ ...oldThread, effortHours: 4, blocks: [past], schedule: past }]);
+  engine.replanAll();
+  const stored = engine.models.Thread.get("t1");
+  expect(stored?.blocks).toEqual([past, slotAt(NINE, 180)]);
+  expect(stored?.schedule).toEqual(slotAt(NINE, 180));
+});
+
+test("a thread still open after its estimate is used up gets another short block", () => {
+  const past = slotAt(NOW - 24 * HOUR, 60);
+  const engine = loaded([{ ...oldThread, effortHours: 1, blocks: [past], schedule: past }]);
+  engine.replanAll();
+  expect(engine.models.Thread.get("t1")?.blocks).toEqual([past, slotAt(NINE)]);
+});
+
+test("a blocked thread gives up what's left of its blocks but keeps those that ended", () => {
+  const past = slotAt(NOW - 24 * HOUR, 60);
+  const engine = loaded([
+    { ...oldThread, status: "blocked", blocks: [past, slotAt(NINE)], schedule: slotAt(NINE) },
+  ]);
+  engine.replanAll();
+  const stored = engine.models.Thread.get("t1");
+  expect(stored?.blocks).toEqual([past]);
+  expect(stored?.schedule).toBeNull();
 });

@@ -5,6 +5,7 @@ import {
   threadScore,
   waitingOn,
   type Person,
+  type Schedule,
   type Thread,
 } from "model";
 
@@ -19,14 +20,17 @@ export type InboxItem = {
   score: number;
 };
 
+// One block of time on the timeline. A thread has one of these for each of its blocks that day.
+export type TimelineItem = InboxItem & { block: Schedule };
+
 export type Day = {
   // The day the timeline shows (its local midnight); today unless you've stepped to another.
   dayMs: number;
   // The hours the timeline lays out: the whole day; the view scrolls to the current hour.
   startHour: number;
   endHour: number;
-  // Threads scheduled on that day, in start order.
-  timeline: InboxItem[];
+  // Blocks of time on that day, in start order.
+  timeline: TimelineItem[];
   // Waiting on you and not on today's timeline: responses (on whatever day their slot is) and unplanned focus.
   unscheduled: InboxItem[];
   // Responses you're in that are waiting on the other person, labelled with who and when their slot is.
@@ -55,11 +59,18 @@ function shortDate(atMs: number, nowMs: number): string {
   return new Date(atMs).toLocaleDateString(undefined, format);
 }
 
-// The slot ends after the thread is due: the schedule couldn't fit it in time.
+// The schedule couldn't fit the thread in before it's due: its last block ends too late, or part of the assignee's
+// estimate has no room in the days ahead.
 export function slotMissesDue(thread: Thread): boolean {
-  return (
-    thread.schedule !== null && thread.dueAtMs !== null && thread.schedule.endMs > thread.dueAtMs
+  if (thread.dueAtMs === null || thread.status !== "open") return false;
+  const last = thread.blocks.at(-1);
+  if (last !== undefined && last.endMs > thread.dueAtMs) return true;
+  if (thread.effortHours === null || waitingOn(thread) !== thread.assignee?.id) return false;
+  const placed = thread.blocks.reduce(
+    (minutes, block) => minutes + (block.endMs - block.startMs) / 60_000,
+    thread.workedMinutes,
   );
+  return thread.effortHours * 60 > placed;
 }
 
 // A thread's score for whoever it's waiting on.
@@ -95,9 +106,9 @@ function reasonFor(thread: Thread, me: Person, sender: Person, nowMs: number): s
     .join(" · ");
 }
 
-// Rule-based plan for your day. Everything is a thread. A response sits with whoever it's waiting on, in a slot on
-// their schedule (the server picks one each time it changes hands): on your timeline when that's the day shown, and
-// in your inbox until its day comes. Responses you're in that wait on someone else are your outbox. Meetings you're in
+// Rule-based plan for your day. Everything is a thread. A response sits with whoever it's waiting on, in blocks on
+// their schedule (the server places them): on your timeline on the days shown, and in your inbox on days without any.
+// Responses you're in that wait on someone else are your outbox. Meetings you're in
 // and your focus blocks sit on the timeline on their day; unplanned focus work is in the inbox, and the rest is Later.
 export function buildDay(
   threads: Thread[],
@@ -108,7 +119,7 @@ export function buildDay(
 ): Day {
   const today = startOfDay(nowMs);
   const on = (start: number, ms: number): boolean => ms >= start && ms < start + DAY;
-  const timeline: InboxItem[] = [];
+  const timeline: TimelineItem[] = [];
   const unscheduled: InboxItem[] = [];
   const outbox: InboxItem[] = [];
   const later: InboxItem[] = [];
@@ -137,8 +148,9 @@ export function buildDay(
 
     if (thread.kind === "response") {
       if (turn === me.id) {
-        if (slot !== undefined && on(dayMs, slot)) timeline.push(item);
-        if (slot === undefined || !on(today, slot)) unscheduled.push(item);
+        for (const block of thread.blocks)
+          if (on(dayMs, block.startMs)) timeline.push({ ...item, block });
+        if (!thread.blocks.some((block) => on(today, block.startMs))) unscheduled.push(item);
       } else if (turn !== null) {
         const waitingFor = [thread.requester, thread.assignee].find(
           (person) => person?.id === turn,
@@ -152,8 +164,8 @@ export function buildDay(
               : shortDate(slot, nowMs);
         outbox.push({ ...item, from: waitingFor ?? null, dueLabel: eta });
       }
-    } else if (slot !== undefined && on(dayMs, slot)) {
-      timeline.push(item);
+    } else if (thread.schedule !== null && on(dayMs, thread.schedule.startMs)) {
+      timeline.push({ ...item, block: thread.schedule });
     } else if (thread.kind === "focus" && slot === undefined) {
       unscheduled.push(item);
     } else {
@@ -161,7 +173,7 @@ export function buildDay(
     }
   }
 
-  timeline.sort((a, b) => (a.thread.schedule?.startMs ?? 0) - (b.thread.schedule?.startMs ?? 0));
+  timeline.sort((a, b) => a.block.startMs - b.block.startMs);
   // Threads needing an assignee come first; nobody else can act on them.
   const unassigned = ({ thread }: InboxItem): number =>
     Number(thread.kind === "response" && thread.assignee === null);

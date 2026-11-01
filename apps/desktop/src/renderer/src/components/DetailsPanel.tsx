@@ -106,6 +106,11 @@ export function DetailsPanel({
   for (const message of messages) people.set(message.author.id, message.author);
   const started = thread.entries[0]?.createdAtMs;
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
+  // A meeting keeps its time once it's over; a response only lists what's still to come.
+  const upcoming =
+    thread.kind === "response"
+      ? thread.blocks.filter((block) => block.endMs > nowMs)
+      : thread.blocks;
 
   return (
     <aside ref={panelRef} className="details" style={{ width }}>
@@ -137,11 +142,14 @@ export function DetailsPanel({
             </>
           )}
           <Row label={thread.kind === "meeting" ? "When" : "Scheduled"}>
-            {thread.schedule === null
+            {upcoming.length === 0
               ? "Not scheduled"
-              : `${new Date(thread.schedule.startMs).toLocaleDateString(undefined, {
-                  weekday: "short",
-                })} ${formatClock(thread.schedule.startMs)}–${formatClock(thread.schedule.endMs)}`}
+              : upcoming.map((block) => (
+                  <div key={block.startMs}>
+                    {new Date(block.startMs).toLocaleDateString(undefined, { weekday: "short" })}{" "}
+                    {formatClock(block.startMs)}–{formatClock(block.endMs)}
+                  </div>
+                ))}
           </Row>
           {thread.kind === "response" && (
             <>
