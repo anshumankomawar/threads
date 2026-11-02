@@ -138,7 +138,7 @@ export function SettingsView({ me, people }: { me: Person; people: Person[] }): 
 
       <h2 className="profile-heading">Keyboard shortcuts</h2>
       {[
-        ["Search and commands", "⌘K"],
+        ["Search and commands", "⌘K or ⌘⇧F"],
         ["New thread", "⌘N"],
         ["View as someone else", "⌘U"],
         ["Text size", "⌘+  ⌘-  ⌘0"],

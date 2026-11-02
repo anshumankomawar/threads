@@ -299,7 +299,7 @@ const App = observer(function App(): React.JSX.Element {
     openThread(client.createThread(draft, me));
   };
 
-  // ⌘K opens search; ⌘N starts a thread, matching the shortcut search shows for it; ⌘U picks who to view as;
+  // ⌘K (or ⌘⇧F) opens search; ⌘N starts a thread, matching the shortcut search shows for it; ⌘U picks who to view as;
   // ⌘+, ⌘- and ⌘0 zoom the main content.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -311,8 +311,13 @@ const App = observer(function App(): React.JSX.Element {
         setContentZoom((current) => (zoom === undefined ? 1 : clampZoom(current + zoom)));
         return;
       }
-      if (event.shiftKey) return;
       const key = event.key.toLowerCase();
+      if (event.shiftKey && key === "f") {
+        event.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      if (event.shiftKey) return;
       if (key === "k") {
         event.preventDefault();
         setSearchOpen(true);
