@@ -31,6 +31,7 @@ function conversation(id: string, fields: Partial<Thread>): Thread {
     attendees: [sam, me],
     branchedFromId: "parent",
     blocksId: null,
+    createdBy: sam,
     seenBy: {},
     effortHours: null,
     tagIds: [],

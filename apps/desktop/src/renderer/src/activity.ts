@@ -12,6 +12,8 @@ const NOTEWORTHY = [
   /^renamed this/,
   /^took this on/,
   /^assigned this to/,
+  /^created this on behalf of/,
+  /^made .* the requester/,
   /^is blocked on/,
   /^is unblocked/,
   /^moved /,
@@ -33,13 +35,16 @@ export type ActivityItem = {
   unread: number;
 };
 
-// Whether you're part of a thread: you asked, it's yours, you're invited, or you've written in it.
+// Whether you're part of a thread: you asked, it's yours, you're invited, or you've replied in it. Writing a thread's
+// description doesn't count, so making one on someone's behalf leaves you out of it; they're the one tracking it.
 function involves(thread: Thread, me: Person): boolean {
   return (
     thread.requester.id === me.id ||
     thread.assignee?.id === me.id ||
     thread.attendees.some((person) => person.id === me.id) ||
-    thread.entries.some((entry) => entry.kind === "message" && entry.author.id === me.id)
+    thread.entries.some(
+      (entry) => entry.kind === "message" && entry.author.id === me.id && entry.id !== thread.id,
+    )
   );
 }
 

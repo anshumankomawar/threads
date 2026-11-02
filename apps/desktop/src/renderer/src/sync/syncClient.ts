@@ -58,6 +58,8 @@ export type NewThread = {
   blocksId?: string | null;
   // Messages moved in from the parent to open the thread, in place of a description.
   movedEntryIds?: string[];
+  // Who's really asking, when you're making it for someone else.
+  onBehalfOf?: Person | null;
 };
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -311,6 +313,7 @@ export class SyncClient {
             schedule: draft.schedule,
             branchedFromId: draft.branchedFromId ?? null,
             blocksId: draft.blocksId ?? null,
+            onBehalfOfId: draft.onBehalfOf?.id ?? null,
           },
         },
         me.id,

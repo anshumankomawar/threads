@@ -1,5 +1,5 @@
-import { formatClock, formatDue } from "../format";
-import { STATUS_LABELS, type Person, type Thread } from "model";
+import { formatClock, formatDue, formatRelativeTime } from "../format";
+import { plainThreadLinks, STATUS_LABELS, type Person, type Thread } from "model";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 import { useResizablePanel } from "./useResizablePanel";
@@ -54,7 +54,7 @@ export function DetailsPanel({
   nowMs: number;
   onOpenThread: (id: string) => void;
 }): React.JSX.Element {
-  const { threads } = useThreadLinks();
+  const { threads, titleOf, people } = useThreadLinks();
   const { panelRef, width, handle } = useResizablePanel({
     storageKey: "details-width",
     defaultWidth: 280,
@@ -80,6 +80,9 @@ export function DetailsPanel({
     entry.actionItems.map((item) => ({ ...item, entryId: entry.id })),
   );
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
+  const history = thread.entries.flatMap((entry) => (entry.kind === "event" ? [entry] : []));
+  const nameOf = (personId: string): string | undefined =>
+    people.find((person) => person.id === personId)?.name;
   // A meeting keeps its time once it's over; a response only lists what's still to come.
   const upcoming =
     thread.kind === "response"
@@ -145,6 +148,22 @@ export function DetailsPanel({
                     {item.text}
                     <PersonChip person={item.owner} />
                   </span>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
+
+        {/* The record of what's been done to the thread, including who made it on whose behalf. */}
+        {history.length > 0 && (
+          <Section title="Activity">
+            <ul className="details-list">
+              {history.map((entry) => (
+                <li key={entry.id}>
+                  <button type="button" className="details-item" onClick={() => reveal(entry.id)}>
+                    {entry.actor.name} {plainThreadLinks(entry.text, titleOf, nameOf)} ·{" "}
+                    {formatRelativeTime(entry.createdAtMs, nowMs)}
+                  </button>
                 </li>
               ))}
             </ul>

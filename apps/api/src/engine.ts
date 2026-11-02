@@ -181,11 +181,13 @@ const threadCreate = z.object({
   schedule: schedule.nullable(),
   branchedFromId: id.nullable().optional(),
   blocksId: id.nullable().optional(),
+  onBehalfOfId: id.nullable().optional(),
 });
 
 const threadChanges = z
   .strictObject({
     title: z.string().trim().min(1).max(200),
+    requesterId: id,
     assigneeId: id,
     status: z.enum(["open", "blocked", "closed", "archived"]),
     priority: z.enum(["none", "low", "medium", "high", "urgent"]),
@@ -311,6 +313,8 @@ function describeChanges(
         ? "took this on"
         : `assigned this to ${people(changes.assigneeId)?.name ?? changes.assigneeId}`,
     );
+  if (changes.requesterId !== undefined && changes.requesterId !== thread.requesterId)
+    lines.push(`made ${people(changes.requesterId)?.name ?? changes.requesterId} the requester`);
   if (changes.effortHours !== undefined && changes.effortHours !== (thread.effortHours ?? null))
     lines.push(
       changes.effortHours === null
@@ -586,7 +590,23 @@ export class SyncEngine {
       const blocked = data.blocksId ? batch.get("Thread", data.blocksId) : undefined;
       if (data.blocksId && (blocked === undefined || isDone(blocked.status)))
         throw new EngineError(404, "Thread not found");
+      // Asking on someone's behalf makes them the requester; who really made it stays on record.
+      const onBehalfOf = data.onBehalfOfId === actor.id ? null : (data.onBehalfOfId ?? null);
+      if (onBehalfOf !== null) {
+        if (data.kind !== "response")
+          throw new EngineError(400, "Only a thread can be made on someone's behalf");
+        requirePerson(onBehalfOf);
+      }
       batch.put("Thread", threadFromCreate(data, actor.id, nowMs));
+      if (onBehalfOf !== null)
+        batch.put("Entry", {
+          id: `${data.id}:on-behalf`,
+          threadId: data.id,
+          kind: "event",
+          actorId: actor.id,
+          text: `created this on behalf of ${person(onBehalfOf)?.name ?? onBehalfOf}`,
+          createdAtMs: nowMs,
+        });
       // A blocker blocks the thread it's for, which comes off the schedule until the blocker closes.
       if (blocked !== undefined) {
         batch.put("Thread", { ...blocked, status: "blocked", updatedAtMs: nowMs });
@@ -664,11 +684,11 @@ export class SyncEngine {
       if (batch.get("Entry", data.id) !== undefined)
         throw new EngineError(409, `Entry already exists: ${data.id}`);
       // An entry with its thread's id is the thread's description (`descriptionOf`): a message, written by whoever
-      // opened the thread. No entry takes another thread's id.
+      // made the thread, who may have made it on someone's behalf. No entry takes another thread's id.
       if (data.id === thread.id) {
         if (data.kind !== "message")
           throw new EngineError(400, "A thread's description is a message");
-        if (actor.id !== thread.requesterId)
+        if (actor.id !== (thread.createdById ?? thread.requesterId))
           throw new EngineError(403, "Only whoever opened a thread writes its description");
       } else if (batch.get("Thread", data.id) !== undefined)
         throw new EngineError(400, "An entry can't take another thread's id");
@@ -717,6 +737,11 @@ export class SyncEngine {
       throw new EngineError(400, "A response's slot comes from the schedule it lands on");
     if (changes.assigneeId !== undefined && changes.assigneeId !== null)
       requirePerson(changes.assigneeId);
+    if (changes.requesterId !== undefined) {
+      if (thread.kind !== "response")
+        throw new EngineError(400, "Only a thread has a requester to change");
+      requirePerson(changes.requesterId);
+    }
     // Opening a thread marks it seen, quietly: no activity line, and it doesn't count as an update.
     const { seen, ...edits } = changes;
     if (seen) batch.put("Thread", { ...thread, seenBy: { ...thread.seenBy, [actor.id]: nowMs } });

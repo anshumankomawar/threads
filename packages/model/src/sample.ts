@@ -158,6 +158,7 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     kind: fields.kind ?? "response",
     title,
     requester: fields.requester,
+    createdBy: fields.requester,
     assignee: fields.assignee ?? null,
     status: fields.status ?? "open",
     priority: fields.priority ?? "none",

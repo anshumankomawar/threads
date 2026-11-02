@@ -113,6 +113,7 @@ export type ThreadActions = {
   onSetEffort: (effortHours: number | null) => void;
   onSetTags: (tagIds: string[]) => void;
   onSetAssignee: (person: Person) => void;
+  onSetRequester: (person: Person) => void;
   onSetSchedule: (schedule: Schedule | null) => void;
   // Starts a thread branching off this one, with the same people, and returns its id: from "New thread" in the
   // `#` menu, titled by what you typed.
@@ -424,10 +425,17 @@ function ThreadHeader({
           </>
         ) : (
           <>
-            <span className="thread-byline-person">
-              <Identicon seed={thread.requester.id} size={14} />
-              {thread.requester.name}
-            </span>
+            <MenuChip
+              label={thread.requester.name}
+              icon={<Identicon seed={thread.requester.id} size={14} />}
+              tone="assignee"
+              options={people.map((person) => ({
+                label: person.name,
+                value: person,
+                icon: <Identicon seed={person.id} size={14} />,
+              }))}
+              onSelect={actions.onSetRequester}
+            />
             <span className="thread-byline-verb">asked</span>
             <MenuChip
               label={thread.assignee?.name ?? "no one yet"}
@@ -440,6 +448,13 @@ function ThreadHeader({
               }))}
               onSelect={actions.onSetAssignee}
             />
+            {/* Who really made it, when someone made it for the requester. */}
+            {thread.createdBy.id !== thread.requester.id && (
+              <>
+                <span className="thread-byline-dot">·</span>
+                <span>via {thread.createdBy.name}</span>
+              </>
+            )}
           </>
         )}
         {thread.branchedFromId !== null && (

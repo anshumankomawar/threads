@@ -568,6 +568,7 @@ const App = observer(function App(): React.JSX.Element {
       onSetEffort: (effortHours) => edit({ effortHours }),
       onSetTags: (tagIds) => edit({ tagIds }),
       onSetAssignee: (person) => edit({ assigneeId: person.id }),
+      onSetRequester: (person) => edit({ requesterId: person.id }),
       onSetSchedule: (schedule) => edit({ schedule }),
       onBranch: (title) => createBranch(thread, title),
       onMoveMessages: (messages) => setMoving({ from: thread, messages }),

@@ -31,11 +31,11 @@ export type Day = {
   timeline: TimelineItem[];
   // Waiting on you and not on today's timeline: responses (on whatever day their slot is) and unplanned focus.
   unscheduled: InboxItem[];
-  // Responses you're in that are waiting on the other person, labelled with who and when their slot is.
-  outbox: InboxItem[];
-  // What the sidebar shows besides the schedule, which is everything else that's yours: what you're waiting on (the
-  // outbox, and your blocked threads, by who they're blocked on), and what's yours but has no time yet.
-  waiting: InboxItem[];
+  // Threads you asked for that are with someone else, labelled with who and when their slot is.
+  asked: InboxItem[];
+  // What the sidebar shows besides the schedule, which is everything else that's yours: what you're tracking (what you
+  // asked for, and your blocked threads, by who they're blocked on), and what's yours but has no time yet.
+  tracking: InboxItem[];
   unplaced: InboxItem[];
   later: InboxItem[];
 };
@@ -117,7 +117,7 @@ function reasonFor(thread: Thread, me: Person, sender: Person, nowMs: number): s
 
 // Rule-based plan for your day. Everything is a thread. A response sits with whoever it's waiting on, in blocks on
 // their schedule (the server places them): on your timeline on the days shown, and in your inbox on days without any.
-// Responses you're in that wait on someone else are your outbox. Meetings you're in
+// Responses you asked for that are with someone else are what you're tracking. Meetings you're in
 // and your focus blocks sit on the timeline on their day; unplanned focus work is in the inbox, and the rest is Later.
 export function buildDay(
   threads: Thread[],
@@ -130,7 +130,7 @@ export function buildDay(
   const on = (start: number, ms: number): boolean => ms >= start && ms < start + DAY;
   const timeline: TimelineItem[] = [];
   const unscheduled: InboxItem[] = [];
-  const outbox: InboxItem[] = [];
+  const asked: InboxItem[] = [];
   const later: InboxItem[] = [];
 
   for (const thread of threads) {
@@ -193,7 +193,7 @@ export function buildDay(
             : on(today, slot)
               ? new Date(slot).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
               : shortDate(slot, nowMs);
-        outbox.push({ ...item, from: waitingFor ?? null, dueLabel: eta });
+        asked.push({ ...item, from: waitingFor ?? null, dueLabel: eta });
       }
     } else if (thread.schedule !== null && on(dayMs, thread.schedule.startMs)) {
       timeline.push({ ...item, block: thread.schedule });
@@ -213,7 +213,7 @@ export function buildDay(
   const byScore = (a: InboxItem, b: InboxItem): number =>
     blocked(a) - blocked(b) || unassigned(b) - unassigned(a) || b.score - a.score;
   const sortedInbox = unscheduled.sort(byScore);
-  const sortedOutbox = outbox.sort((a, b) => b.thread.updatedAtMs - a.thread.updatedAtMs);
+  const sortedAsked = asked.sort((a, b) => b.thread.updatedAtMs - a.thread.updatedAtMs);
   // A blocked thread waits on whoever its open blockers are with.
   const blockedOn = (item: InboxItem): Person | null =>
     threads.find((candidate) => candidate.blocksId === item.thread.id && !isDone(candidate.status))
@@ -222,9 +222,9 @@ export function buildDay(
     dayMs,
     timeline,
     unscheduled: sortedInbox,
-    outbox: sortedOutbox,
-    waiting: [
-      ...sortedOutbox,
+    asked: sortedAsked,
+    tracking: [
+      ...sortedAsked,
       ...sortedInbox
         .filter((item) => item.thread.status === "blocked")
         .map((item) => ({ ...item, from: blockedOn(item) })),

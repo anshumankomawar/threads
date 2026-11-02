@@ -17,9 +17,12 @@ export type NewThreadDraft = {
   // People invited to a meeting, besides you.
   invitees: Person[];
   schedule: Schedule | null;
+  // Who's really asking, when you're making a thread for someone else. They track it; you don't.
+  onBehalfOf: Person | null;
 };
 
-type Step = "write" | "describe" | "invite" | "pick";
+// `asker` is a detour from assigning a thread, for making it on someone's behalf.
+type Step = "write" | "describe" | "invite" | "pick" | "asker";
 
 // Every kind gets a title then an optional description. Then a thread is assigned; a meeting gets invitees, then a
 // time; focus work is scheduled.
@@ -98,6 +101,7 @@ export function NewThreadPalette({
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState(0);
   const [invitees, setInvitees] = useState<Person[]>([]);
+  const [asker, setAsker] = useState<Person>(me);
 
   useEffect(() => inputRef.current?.focus(), []);
 
@@ -120,6 +124,10 @@ export function NewThreadPalette({
     person,
     value: person,
   }));
+  const askerOptions: Option[] = [
+    { id: me.id, label: "Me", person: me, value: me },
+    ...inviteOptions,
+  ];
   // A time typed in words ("fri 3pm", "tomorrow 10:30 for 45m") comes first when picking when.
   const lengthMs = (kind === "focus" ? 60 : 30) * 60_000;
   const typed = step === "pick" && kind !== "response" ? parseWhen(filter, nowMs, lengthMs) : null;
@@ -136,7 +144,7 @@ export function NewThreadPalette({
         ];
   const options = [
     ...typedOption,
-    ...(step === "invite" ? inviteOptions : pickOptions).filter(
+    ...(step === "invite" ? inviteOptions : step === "asker" ? askerOptions : pickOptions).filter(
       (option) => typed !== null || matches(option.label),
     ),
   ];
@@ -171,7 +179,15 @@ export function NewThreadPalette({
     goTo(steps[steps.indexOf(step) + 1] ?? step);
   };
 
-  const back = (): void => goTo(steps[steps.indexOf(step) - 1] ?? "write");
+  const back = (): void =>
+    goTo(step === "asker" ? "pick" : (steps[steps.indexOf(step) - 1] ?? "write"));
+
+  // You can pick anyone as who's asking. It's a detour, since most threads are your own ask.
+  const chooseAsker = (option: Option | undefined): void => {
+    if (option?.person === undefined) return;
+    setAsker(option.person);
+    goTo("pick");
+  };
 
   const toggleInvitee = (person: Person): void =>
     setInvitees((current) =>
@@ -189,6 +205,7 @@ export function NewThreadPalette({
       assignee: kind === "response" ? (option.value as Person | null) : null,
       invitees: kind === "meeting" ? invitees : [],
       schedule: kind === "response" ? null : (option.value as Schedule | null),
+      onBehalfOf: kind === "response" && asker.id !== me.id ? asker : null,
     });
   };
 
@@ -241,6 +258,14 @@ export function NewThreadPalette({
           if (option?.person !== undefined) toggleInvitee(option.person);
         } else forward();
       }
+    } else if (step === "asker") {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        chooseAsker(options[selectedIndex]);
+      }
+    } else if (event.key === "Tab" && kind === "response") {
+      event.preventDefault();
+      goTo("asker");
     } else if (event.key === "Enter") {
       event.preventDefault();
       create(options[selectedIndex]);
@@ -254,17 +279,21 @@ export function NewThreadPalette({
         ? "Add a description… (optional)"
         : step === "invite"
           ? "Invite people…"
-          : kind === "response"
-            ? "Assign to…"
-            : "When… (fri 3pm, tomorrow 10:30 for 45m)";
+          : step === "asker"
+            ? "Who's asking?"
+            : kind === "response"
+              ? "Assign to…"
+              : "When… (fri 3pm, tomorrow 10:30 for 45m)";
   const summary =
     step === "describe"
       ? "Describe"
       : step === "invite"
         ? "Invite to"
-        : kind === "response"
-          ? "Assign"
-          : "Schedule";
+        : step === "asker"
+          ? "Who's asking for"
+          : kind === "response"
+            ? "Assign"
+            : "Schedule";
   const nextLabel = (): string => {
     if (text.trim().length === 0) {
       const what =
@@ -307,7 +336,7 @@ export function NewThreadPalette({
             }}
           />
           <span className="palette-step">
-            Step {steps.indexOf(step) + 1} of {steps.length}
+            Step {steps.indexOf(step === "asker" ? "pick" : step) + 1} of {steps.length}
           </span>
         </div>
         <div className="palette-tabs" role="tablist">
@@ -361,6 +390,17 @@ export function NewThreadPalette({
                     {invitees.length === 0 ? "Just you so far" : `You + ${invitees.length}`}
                   </span>
                 )}
+                {step === "pick" && kind === "response" && (
+                  <button
+                    type="button"
+                    className="palette-asker"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => goTo("asker")}
+                  >
+                    Asked by {asker.id === me.id ? "you" : asker.name}
+                    <span className="palette-row-shortcut">⇥</span>
+                  </button>
+                )}
               </div>
               {options.length === 0 && <div className="palette-empty">No matches</div>}
               {options.map((option, index) => {
@@ -378,6 +418,7 @@ export function NewThreadPalette({
                     onClick={() => {
                       if (step === "invite" && option.person !== undefined)
                         toggleInvitee(option.person);
+                      else if (step === "asker") chooseAsker(option);
                       else create(option);
                     }}
                   >

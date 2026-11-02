@@ -65,14 +65,14 @@ Data is normalized into flat records linked by id, like database rows:
 - **Thread**: one ask, meeting, focus block or conversation (`kind`). References people by id: `requesterId`,
   `assigneeId`, `attendeeIds` (a meeting's attendees or a conversation's people). Has
   `status` (`open`, `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`,
-  `effortHours`, `tagIds`, `schedule`, `createdAtMs`, `updatedAtMs`.
+  `effortHours`, `tagIds`, `schedule`, `createdById`, `createdAtMs`, `updatedAtMs`.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
   `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
 - **A thread's description** is not a field: it's the message the thread was opened with, and it has the thread's
   own id (`descriptionOf`). The thread view shows it in the heading under the title; it's otherwise an ordinary
   message, so mentions in it ask people and it counts as "opened" in notifications. The new-thread form asks for a
   title, then an optional description (`createThread` sends the message with `id: threadId` only when there is one).
-  The server lets only the requester write it, only as a message, keeps it out of moves, and lets no entry take
+  The server lets only whoever made the thread (`createdById`) write it, only as a message, keeps it out of moves, and lets no entry take
   another thread's id.
 
 The UI never works with records. `toThreads()` resolves references into the nested `Thread` shape from
@@ -172,11 +172,10 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
 
-## Inbox, outbox and slots
+## Inbox, Tracking and slots
 
 - A response is waiting on one person (`waitingOn` in `model.ts`, `Batch.waitingOn` on the server): its assignee,
-  or whoever asked while nobody's assigned. That person has it in their inbox; whoever asked has it in their
-  outbox. Messages never move it: a thread is a worklog. It leaves both when it's closed, and a closed thread takes
+  or whoever asked while nobody's assigned. That person has it in their inbox; whoever asked (the requester) tracks it. Messages never move it: a thread is a worklog. It leaves both when it's closed, and a closed thread takes
   no more replies. Closing one from your inbox opens the next.
 - Conversations: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Sending a reply
   that mentions people in an ordinary thread starts a conversation with them instead of posting there: a thread of kind
@@ -184,8 +183,8 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   mentioned as its `attendees`, and the reply as its first message (`onSend` in `App.tsx`). The server posts "Started a
   conversation <link>" in the thread it's in, as a message from whoever started it. Mentioning someone inside a conversation brings them into it
   ("added …"). A conversation has no assignee, schedule, due date or estimate; it takes no time on anyone's schedule
-  and isn't in the inbox or outbox. It opens beside the thread it's in (the split view; `openThread` routes it there).
-  The sidebar's Conversations tab (Schedule, Conversations, Outbox) lists your open ones in two groups
+  and isn't in the inbox or Tracking. It opens beside the thread it's in (the split view; `openThread` routes it there).
+  The sidebar's Conversations tab (Schedule, Conversations, Tracking) lists your open ones in two groups
   (`conversationsFor` in `conversations.ts`): Unread, when someone else has written since you last opened it or
   replied, and Read. Reading or replying never removes one; a new message from someone else moves it back to Unread.
   Read state is the synced `seenBy`, set quietly by the `seen` change once you click off an open conversation (it stays
@@ -196,6 +195,12 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   one toast. When one needs real work, `/task` turns it into a task of your own: a new thread assigned to you, branched
   from the conversation, with "Taking this on in <link>" posted there. The scheduler still keeps two catch-up half hours
   a day free (`CATCH_UP_TIMES` in `model.ts`, `catchUpTimes` in `scheduler.ts`) for conversations and messages.
+- On behalf of: making a thread with `onBehalfOfId` makes that person its requester, so they track it and it counts
+  as their ask, in the byline and the score. `createdById` keeps who really made it, shown as "via" in the byline, and
+  the server adds "created this on behalf of ..." (`#apply`). Anyone can pick anyone, since there are no real identities
+  yet (View As). Any requester can be changed later (`requesterId`, "made ... the requester"). The maker isn't part of
+  the thread: not in Tracking, and writing the description doesn't count towards notifications (`involves` in
+  `activity.ts`); replying does. The details panel's Activity section lists a thread's activity lines as its audit log.
 - Notifications (`activityFor` in `activity.ts`, the bell in the sidebar's top bar, `Notifications.tsx`) list, per
   thread you're part of, the latest thing someone else did there in the past week: replies and the status lines worth
   knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved). Conversations
@@ -206,9 +211,9 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   response to the chosen person, with `blocksId` (and `branchedFromId`) set to the thread you're in. The server
   marks that thread Blocked, which takes it off the schedule, and adds "is blocked on <link>". When its last open
   blocker closes, the server sets it back to Open ("is unblocked, <link> is closed") and the scheduler slots
-  it again. A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their outbox.
+  it again. A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their Tracking.
 - `buildDay` in `inbox.ts` lays this out: a response waiting on you is on the timeline on its slot's day and in your
-  inbox until then; responses waiting on others are the outbox. The schedule can step to other days (`dayMs`).
+  inbox until then; responses you asked for that are with someone else, and your blocked threads, are Tracking. The schedule can step to other days (`dayMs`).
 - Closing is a status change; nothing else closes a thread. Archiving is too: an archived thread is done like a closed
   one and also leaves every list and the notifications, but stays searchable. Right-clicking a thread in a list
   (`ThreadMenuContext` in `threadMenu.ts`) offers Open, Open beside, Close or Reopen, and Archive or Unarchive.

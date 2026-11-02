@@ -80,7 +80,10 @@ export type Thread = {
   id: string;
   kind: ThreadKind;
   title: string;
+  // Whoever is asking: they track it until it closes. Not always whoever made it (`createdBy`).
   requester: Person;
+  // Who really made it; someone else if they asked on the requester's behalf.
+  createdBy: Person;
   assignee: Person | null;
   status: Status;
   priority: Priority;

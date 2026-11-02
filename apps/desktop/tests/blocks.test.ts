@@ -31,6 +31,7 @@ function thread(fields: Partial<Thread>): Thread {
     attendees: [],
     branchedFromId: null,
     blocksId: null,
+    createdBy: other,
     seenBy: {},
     updatedAtMs: NOW,
     entries: [],

@@ -268,6 +268,7 @@ const oldThread: ThreadRecord = {
   workedMinutes: 0,
   branchedFromId: null,
   blocksId: null,
+  createdById: "arjun",
   seenBy: {},
   createdAtMs: NOW,
   updatedAtMs: NOW,

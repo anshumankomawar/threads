@@ -4,11 +4,11 @@ import {
   ArrowRight01Icon,
   BubbleChatIcon,
   Calendar03Icon,
-  InboxUploadIcon,
   PanelLeftIcon,
   PanelRightIcon,
   PencilEdit02Icon,
   Search01Icon,
+  ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -371,9 +371,9 @@ function ConversationList({
   );
 }
 
-// What you've asked others for, and your blocked threads: the title, who has it, and when they'll get to it. It leaves
-// when they close it.
-function Outbox({
+// What you're tracking: what you've asked others for, whether you made it or someone made it on your behalf, and your
+// blocked threads: the title, who has it, and when they'll get to it. It leaves when they close it.
+function Tracking({
   items,
   activeThreadId,
   unreadIds,
@@ -386,7 +386,7 @@ function Outbox({
 }): React.JSX.Element {
   const openMenu = useThreadMenu();
   return (
-    <ul className="thread-list" aria-label="Outbox">
+    <ul className="thread-list" aria-label="Tracking">
       {items.map((item) => {
         const icon = KIND_ICONS[item.thread.kind];
         const label = [item.from?.name.split(" ")[0], item.dueLabel]
@@ -420,14 +420,14 @@ function Outbox({
 }
 
 // The sidebar shows one list at a time, picked by the icon tabs under its top bar, like Obsidian's side panes.
-type SidebarTab = "schedule" | "conversations" | "outbox";
+type SidebarTab = "schedule" | "conversations" | "tracking";
 
 const TAB_KEY = "sidebar-tab";
 
 const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
   { tab: "schedule", label: "Schedule", icon: Calendar03Icon },
   { tab: "conversations", label: "Conversations", icon: BubbleChatIcon },
-  { tab: "outbox", label: "Outbox", icon: InboxUploadIcon },
+  { tab: "tracking", label: "Tracking", icon: ViewIcon },
 ];
 
 function savedTab(): SidebarTab {
@@ -440,19 +440,19 @@ function savedTab(): SidebarTab {
 }
 
 // The tab strip, as in Notion: the chosen tab opens out to show its name, the others fold back to their icon, with a
-// count beside Conversations (the unread ones) and Outbox while they have anything. Your avatar at the far end opens your profile and
+// count beside Conversations (the unread ones) and Tracking while they have anything. Your avatar at the far end opens your profile and
 // the org (in the main area, like a thread).
 function SidebarTabs({
   tab,
   conversationCount,
-  outboxCount,
+  trackingCount,
   profileOpen,
   onTab,
   onToggleProfile,
 }: {
   tab: SidebarTab;
   conversationCount: number;
-  outboxCount: number;
+  trackingCount: number;
   profileOpen: boolean;
   onTab: (tab: SidebarTab) => void;
   onToggleProfile: () => void;
@@ -461,7 +461,7 @@ function SidebarTabs({
   const counts: Record<SidebarTab, number> = {
     schedule: 0,
     conversations: conversationCount,
-    outbox: outboxCount,
+    tracking: trackingCount,
   };
   // Each name's own width, so the chosen tab grows to exactly fit it (animating to a guessed maximum finishes early
   // and looks rushed).
@@ -593,7 +593,7 @@ export function Sidebar({
       <SidebarTabs
         tab={tab}
         conversationCount={conversations.unread.length}
-        outboxCount={day.waiting.length}
+        trackingCount={day.tracking.length}
         profileOpen={profileOpen}
         onTab={chooseTab}
         onToggleProfile={onToggleProfile}
@@ -629,9 +629,9 @@ export function Sidebar({
             )}
           </>
         )}
-        {tab === "outbox" && (
-          <Outbox
-            items={day.waiting}
+        {tab === "tracking" && (
+          <Tracking
+            items={day.tracking}
             activeThreadId={activeThreadId}
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}

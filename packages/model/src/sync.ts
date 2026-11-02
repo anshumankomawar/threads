@@ -12,6 +12,8 @@ export type ThreadRecord = {
   kind: ThreadKind;
   title: string;
   requesterId: string;
+  // Who really made it, when they asked on the requester's behalf; otherwise the requester.
+  createdById: string;
   assigneeId: string | null;
   status: Status;
   priority: Priority;
@@ -66,6 +68,7 @@ export const ModelRegistry = {
     loadStrategy: "instant",
     references: {
       requesterId: "Person",
+      createdById: "Person",
       assigneeId: "Person",
       branchedFromId: "Thread",
       blocksId: "Thread",
@@ -80,7 +83,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v14");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v15");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -142,6 +145,8 @@ export type ThreadCreate = {
   branchedFromId?: string | null;
   // Set when the thread is what another one is blocked on (`/blocked`).
   blocksId?: string | null;
+  // Who is really asking, when it isn't whoever is making the thread. They become its requester.
+  onBehalfOfId?: string | null;
 };
 
 export type PersonChanges = Partial<Pick<Person, "workday">>;
@@ -150,6 +155,7 @@ export type ThreadChanges = Partial<
   Pick<
     ThreadRecord,
     | "title"
+    | "requesterId"
     | "assigneeId"
     | "status"
     | "priority"
@@ -189,7 +195,8 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     id: data.id,
     kind: data.kind,
     title: data.title,
-    requesterId: actorId,
+    requesterId: data.onBehalfOfId ?? actorId,
+    createdById: actorId,
     // A focus block is your own work, so it's yours unless said otherwise.
     assigneeId: data.assigneeId ?? (data.kind === "focus" ? actorId : null),
     status: "open",
@@ -270,6 +277,8 @@ export function toThread(
     kind: record.kind,
     title: record.title,
     requester: person(record.requesterId),
+    // Threads stored before on-behalf-of were made by whoever asked.
+    createdBy: person(record.createdById ?? record.requesterId),
     assignee: record.assigneeId === null ? null : person(record.assigneeId),
     status: record.status,
     priority: record.priority,
@@ -350,6 +359,7 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       kind: thread.kind,
       title: thread.title,
       requesterId: thread.requester.id,
+      createdById: thread.createdBy.id,
       assigneeId: thread.assignee?.id ?? null,
       status: thread.status,
       priority: thread.priority,

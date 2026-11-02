@@ -25,6 +25,7 @@ function thread(fields: Partial<Thread>): Thread {
     attendees: [],
     branchedFromId: null,
     blocksId: null,
+    createdBy: other,
     seenBy: {},
     effortHours: null,
     tagIds: [],
@@ -134,13 +135,34 @@ test("replying back returns the thread to the assignee", () => {
   expect(inboxFrom(followedUp, arjun)).toBeNull();
 });
 
-test("a thread waiting on someone else is in your outbox, labelled with who has it", () => {
+test("a thread waiting on someone else is in what you asked for, labelled with who has it", () => {
   const asked = exchange([arjun, anshu]);
   const day = buildDay([asked], arjun, [], NOW);
-  expect(day.outbox.map((item) => [item.thread, item.from?.name])).toEqual([[asked, "Anshu"]]);
+  expect(day.asked.map((item) => [item.thread, item.from?.name])).toEqual([[asked, "Anshu"]]);
   expect(day.unscheduled).toEqual([]);
-  // Asking someone puts it in your outbox straight away.
-  expect(buildDay([exchange([arjun])], arjun, [], NOW).outbox).toHaveLength(1);
+  // Asking someone puts it in what you asked for straight away.
+  expect(buildDay([exchange([arjun])], arjun, [], NOW).asked).toHaveLength(1);
+});
+
+test("Tracking is what you asked for and your blocked threads", () => {
+  const blockedOwn = thread({ id: "stuck", status: "blocked", assignee: anshu, requester: arjun });
+  const blocker = thread({ id: "blocker", requester: anshu, assignee: kk, blocksId: "stuck" });
+  const day = buildDay([blockedOwn, blocker], anshu, [], NOW);
+  expect(day.tracking.map((item) => [item.thread.id, item.from?.name])).toEqual([
+    ["blocker", "KK"],
+    ["stuck", "KK"],
+  ]);
+});
+
+test("a thread made on someone's behalf is theirs to track, not its maker's", () => {
+  const made = thread({ requester: kk, createdBy: arjun, assignee: anshu });
+  expect(buildDay([made], kk, [], NOW).tracking.map((item) => item.thread)).toEqual([made]);
+  const maker = buildDay([made], arjun, [], NOW);
+  expect(maker.tracking).toEqual([]);
+  expect(maker.unscheduled).toEqual([]);
+  expect(buildDay([made], anshu, [], NOW).unscheduled.map((item) => item.from?.name)).toEqual([
+    "KK",
+  ]);
 });
 
 test("a message from someone else leaves the thread with the assignee, from whoever asked", () => {
@@ -161,8 +183,8 @@ test("a blocked thread stays in your inbox, last, labelled Blocked and off the s
   ]);
   expect(day.unscheduled[1].reason).toBe("Blocked on KK");
   expect(day.timeline).toEqual([]);
-  // The blocker itself waits on KK: it's in Anshu's outbox.
-  expect(day.outbox.map((item) => item.thread.id)).toEqual(["blocker"]);
+  // The blocker itself waits on KK: it's what Anshu asked for.
+  expect(day.asked.map((item) => item.thread.id)).toEqual(["blocker"]);
 });
 
 test("a thread you assigned to yourself is in your inbox with no name on it", () => {
@@ -186,14 +208,14 @@ test("reassigning moves the thread to the new assignee's inbox", () => {
   expect(inboxOf(me)).toEqual([]);
 });
 
-test("an outbox item says when the other person is slotted to get to it", () => {
+test("a thread you asked for says when the other person is slotted to get to it", () => {
   const answered = (startMs: number) =>
     exchange([arjun, anshu], { schedule: { startMs, endMs: startMs + HOUR } });
-  const [later] = buildDay([answered(NOW + 2 * DAY)], arjun, [], NOW).outbox;
+  const [later] = buildDay([answered(NOW + 2 * DAY)], arjun, [], NOW).asked;
   expect(later.dueLabel).toBe(
     new Date(NOW + 2 * DAY).toLocaleDateString(undefined, { weekday: "short" }),
   );
-  const [today] = buildDay([answered(NOW + HOUR)], arjun, [], NOW).outbox;
+  const [today] = buildDay([answered(NOW + HOUR)], arjun, [], NOW).asked;
   expect(today.dueLabel).toBe(
     new Date(NOW + HOUR).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
   );
@@ -218,5 +240,5 @@ test("a conversation you're in takes no time and isn't on any list here", () => 
     branchedFromId: "parent",
   });
   expect(plan(talk)).toEqual(NOWHERE);
-  expect(buildDay([talk], me, [], NOW).outbox).toEqual([]);
+  expect(buildDay([talk], me, [], NOW).asked).toEqual([]);
 });

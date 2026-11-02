@@ -1450,6 +1450,25 @@ body * {
   color: var(--text-tertiary);
 }
 
+/* Who's asking, beside the assign step's summary: you, unless you're making it on someone's behalf. */
+.palette-asker {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  color: var(--text-secondary);
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.palette-asker:hover {
+  color: var(--text-primary);
+}
+
 .palette-continue {
   margin-top: 4px;
   color: var(--text-secondary);
@@ -2375,7 +2394,7 @@ body * {
   list-style: none;
 }
 
-/* Outbox and Not scheduled pages, laid out like Organization. */
+/* Tracking and Not scheduled pages, laid out like Organization. */
 .list-page {
   display: flex;
   flex: 1;
@@ -2862,7 +2881,7 @@ body * {
   font-weight: 500;
 }
 
-/* A plain sidebar list row (the Outbox): icon, title, and who and when on the right. */
+/* A plain sidebar list row (Tracking): icon, title, and who and when on the right. */
 .sidebar-row-icon {
   position: absolute;
   top: 50%;
