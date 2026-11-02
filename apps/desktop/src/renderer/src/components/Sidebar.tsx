@@ -4,11 +4,11 @@ import {
   ArrowRight01Icon,
   BubbleChatIcon,
   Calendar03Icon,
+  InboxUploadIcon,
   PanelLeftIcon,
   PanelRightIcon,
   PencilEdit02Icon,
   Search01Icon,
-  SentIcon,
 } from "@hugeicons/core-free-icons";
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -420,7 +420,7 @@ const TAB_KEY = "sidebar-tab";
 const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
   { tab: "schedule", label: "Schedule", icon: Calendar03Icon },
   { tab: "conversations", label: "Conversations", icon: BubbleChatIcon },
-  { tab: "outbox", label: "Outbox", icon: SentIcon },
+  { tab: "outbox", label: "Outbox", icon: InboxUploadIcon },
 ];
 
 function savedTab(): SidebarTab {
