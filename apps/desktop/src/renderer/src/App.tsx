@@ -740,6 +740,23 @@ const App = observer(function App(): React.JSX.Element {
                 />
               </span>
             </div>
+            {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
+            {client.error !== null && (
+              <div className="save-error" role="alert">
+                <span>
+                  That change wasn't saved: {client.error.split("\n")[0].replace(/^✖\s*/, "")}.
+                  {source === "cloudflare" && " The hosted API may need a deploy."}
+                </span>
+                <button
+                  type="button"
+                  className="save-error-dismiss"
+                  aria-label="Dismiss"
+                  onClick={() => client.dismissError()}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} size={12} aria-hidden />
+                </button>
+              </div>
+            )}
             {profileOpen ? (
               <ProfileView
                 people={people}
@@ -748,7 +765,9 @@ const App = observer(function App(): React.JSX.Element {
                 nowMs={nowMs}
                 organizationName={organization?.name ?? ""}
                 onWorkday={(workday) => client.updatePerson({ workday }, me)}
-                onRenameOrganization={() => setRenamingOrganization(true)}
+                onRenameOrganization={
+                  organization === undefined ? null : () => setRenamingOrganization(true)
+                }
               />
             ) : page === "unplaced" ? (
               <ListPage

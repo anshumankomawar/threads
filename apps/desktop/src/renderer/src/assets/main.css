@@ -3084,3 +3084,25 @@ body * {
   color: var(--text-primary);
   text-decoration: underline;
 }
+
+/* A change the server refused, under the top bar until it's dismissed or the next change is made. */
+.save-error {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--stroke-tertiary);
+  color: var(--urgent);
+}
+
+.save-error-dismiss {
+  display: flex;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}

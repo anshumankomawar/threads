@@ -316,7 +316,8 @@ export function ProfileView({
   nowMs: number;
   organizationName: string;
   onWorkday: (workday: Workday) => void;
-  onRenameOrganization: () => void;
+  // Null when the server doesn't have an organization to rename, because it hasn't been updated yet.
+  onRenameOrganization: (() => void) | null;
 }): React.JSX.Element {
   const tree = buildOrgTree(people);
   const managers = chainAbove(people, me.id);
@@ -361,10 +362,14 @@ export function ProfileView({
       <h2 className="profile-heading">{organizationName || "Organization"}</h2>
       <p className="org-summary">
         {summary}
-        {" · "}
-        <button type="button" className="org-rename" onClick={onRenameOrganization}>
-          Rename
-        </button>
+        {onRenameOrganization !== null && (
+          <>
+            {" · "}
+            <button type="button" className="org-rename" onClick={onRenameOrganization}>
+              Rename
+            </button>
+          </>
+        )}
       </p>
       <ul className="org-tree" role="tree" aria-label="Organization">
         {tree.length > 1 ? (

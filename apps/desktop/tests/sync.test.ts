@@ -190,6 +190,8 @@ test("a refused batch is rolled back", async () => {
   await settle();
   expect(client.threads.some((thread) => thread.id === threadId)).toBe(false);
   expect(client.error).toBe("Thread not found");
+  client.dismissError();
+  expect(client.error).toBeNull();
 });
 
 test("a newer server change is rebased under a pending local edit, and the local edit wins", async () => {

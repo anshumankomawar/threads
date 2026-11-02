@@ -310,6 +310,10 @@ export class SyncClient {
     this.queue.progressQueue(lastSyncId);
   }
 
+  dismissError(): void {
+    runInAction(() => (this.error = null));
+  }
+
   // --- Changes ---
 
   #enqueue(transaction: BaseTransaction): void {
