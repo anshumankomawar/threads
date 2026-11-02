@@ -142,10 +142,15 @@ export class Workspace extends DurableObject<Env> {
     refreshSeedPeople(engine, name, SAMPLE_ME);
     ensureOrganization(engine, name);
     this.#engine = engine;
-    this.#triager = new Triager(engine, workersAiClassifier(this.env.AI), {
-      // Try again in a minute, even if nothing else changes.
-      onFailure: (retryAtMs) => void this.ctx.storage.setAlarm(retryAtMs),
-    });
+    // Local dev without Cloudflare access has no AI (`THREADS_LOCAL_AI=off`), so threads wait under "Sorting".
+    const { AI: ai } = this.env as { AI?: Ai };
+    this.#triager =
+      ai === undefined
+        ? undefined
+        : new Triager(engine, workersAiClassifier(ai), {
+            // Try again in a minute, even if nothing else changes.
+            onFailure: (retryAtMs) => void this.ctx.storage.setAlarm(retryAtMs),
+          });
     // Anything left unsorted, such as a fresh seed or threads the model failed on before a restart.
     this.#sort();
     return engine;

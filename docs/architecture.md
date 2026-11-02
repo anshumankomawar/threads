@@ -256,7 +256,8 @@ within each by **score**. There's no schedule: the app helps you get through you
   and saves the answers with `SyncEngine.applyTriage`, as their own batch through `write`, so they reach clients like
   any other change. It runs after every transaction batch and when the workspace loads; on a failure the threads wait
   a minute (`RETRY_MS`) and an alarm retries them. The AI binding (`bindings.ai`) always runs on Cloudflare, local
-  dev included, within the account's free daily allocation; threads are only sorted when they arrive, change hands,
+  dev included, within the account's free daily allocation (`THREADS_LOCAL_AI=off` leaves it out for anyone without
+  access to the account, and threads wait under "Sorting"); threads are only sorted when they arrive, change hands,
   are retitled or their owner's buckets change, so a team stays well inside it.
 - **Placing by hand**: dragging a thread to another bucket, its Bucket chip, or "Move to …" in its menu sends a
   `triage` change with `manual: true` (only whoever it's waiting on, only into their own bucket). It sticks through

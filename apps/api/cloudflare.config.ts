@@ -1,6 +1,9 @@
 import { bindings, defineConfig, exports } from "cf/config";
 import * as entrypoint from "./src/worker.ts" with { type: "cf-worker" };
 
+// Read when the config loads, in Node; the Worker's own types leave Node out.
+declare const process: { env: Record<string, string | undefined> };
+
 // The threads API as a Worker: a Hono app in front of one SQLite Durable Object per workspace.
 // Local dev (mode "development") also serves the sample workspace; the deployed Worker serves only the shared one.
 export default defineConfig(({ mode }) => ({
@@ -20,8 +23,11 @@ export default defineConfig(({ mode }) => ({
       API_TOKEN: bindings.secret(),
       SAMPLE_WORKSPACE: bindings.text(mode === "development" ? "on" : "off"),
       // Workers AI sorts inboxes into buckets. It always runs on Cloudflare, in local dev too, within the account's
-      // free daily allocation.
-      AI: bindings.ai({ dev: { remote: true } }),
+      // free daily allocation, so local dev needs a login on the Threads account. Without access, `THREADS_LOCAL_AI=off`
+      // leaves it out: everything else works, and threads wait under "Sorting".
+      ...(process.env.THREADS_LOCAL_AI === "off"
+        ? {}
+        : { AI: bindings.ai({ dev: { remote: true } }) }),
     },
   },
 }));
