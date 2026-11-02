@@ -1,5 +1,3 @@
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
 import {
   isDone,
   mentionsIn,
@@ -9,7 +7,7 @@ import {
   type Schedule,
   type Thread,
 } from "model";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 
@@ -99,14 +97,7 @@ export function MentionToasts({
   };
   return (
     <div className="toasts" role="status" aria-live="polite">
-      <div
-        key={latest.id}
-        className="toast"
-        role="button"
-        tabIndex={0}
-        onClick={open}
-        onKeyDown={(event) => event.key === "Enter" && open()}
-      >
+      <SwipeToast key={latest.id} onOpen={open} onDismiss={dismissAll}>
         <Identicon seed={latest.author.id} size={18} />
         <div className="toast-body">
           <div className="toast-title">
@@ -126,18 +117,91 @@ export function MentionToasts({
             {plainThreadLinks(withoutLeadingMentions(latest.text), titleOf, nameOf)}
           </div>
         </div>
-        <button
-          type="button"
-          className="toast-close"
-          aria-label="Dismiss"
-          onClick={(event) => {
-            event.stopPropagation();
-            dismissAll();
-          }}
-        >
-          <HugeiconsIcon icon={Cancel01Icon} size={12} aria-hidden />
-        </button>
-      </div>
+      </SwipeToast>
+    </div>
+  );
+}
+
+// How far a toast has to slide before letting go dismisses it, and how long it takes to leave.
+const DISMISS_PX = 80;
+const LEAVE_MS = 180;
+
+// A toast you slide off to the right to dismiss, by dragging it or with a two-finger swipe, like macOS notifications.
+// Short of the threshold it springs back. A click that isn't the end of a drag opens it.
+function SwipeToast({
+  onOpen,
+  onDismiss,
+  children,
+}: {
+  onOpen: () => void;
+  onDismiss: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const [offset, setOffset] = useState(0);
+  const [moving, setMoving] = useState(false);
+  const drag = useRef<{ startX: number; moved: boolean } | null>(null);
+  const settle = useRef<number | undefined>(undefined);
+  // The swipe so far, since trackpad events can arrive faster than renders.
+  const swiped = useRef(0);
+  const dragged = useRef(false);
+
+  const release = (distance: number): void => {
+    setMoving(false);
+    if (distance < DISMISS_PX) {
+      setOffset(0);
+      return;
+    }
+    setOffset(window.innerWidth);
+    window.setTimeout(onDismiss, LEAVE_MS);
+  };
+  useEffect(() => () => window.clearTimeout(settle.current), []);
+
+  return (
+    <div
+      className="toast"
+      role="button"
+      tabIndex={0}
+      data-moving={moving}
+      style={{ transform: `translateX(${offset}px)`, opacity: Math.max(0, 1 - offset / 320) }}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { startX: event.clientX, moved: false };
+        dragged.current = false;
+      }}
+      onPointerMove={(event) => {
+        if (drag.current === null) return;
+        const distance = Math.max(0, event.clientX - drag.current.startX);
+        if (distance > 4) drag.current.moved = true;
+        setMoving(true);
+        setOffset(distance);
+      }}
+      onPointerUp={(event) => {
+        if (drag.current === null) return;
+        dragged.current = drag.current.moved;
+        release(Math.max(0, event.clientX - drag.current.startX));
+        drag.current = null;
+      }}
+      onWheel={(event) => {
+        // A sideways two-finger swipe; it lets go once the swipe has been still for a moment.
+        if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
+        setMoving(true);
+        swiped.current = Math.max(0, swiped.current - event.deltaX);
+        setOffset(swiped.current);
+        window.clearTimeout(settle.current);
+        settle.current = window.setTimeout(() => {
+          release(swiped.current);
+          swiped.current = 0;
+        }, 120);
+      }}
+      onClick={() => {
+        if (!dragged.current) onOpen();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") onOpen();
+        if (event.key === "Escape") onDismiss();
+      }}
+    >
+      {children}
     </div>
   );
 }

@@ -2231,7 +2231,17 @@ body * {
   background-color: var(--panel);
   box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
   cursor: pointer;
+  touch-action: pan-y;
+  user-select: none;
   animation: toast-in 160ms ease-out;
+  /* Springs back or slides away when let go; follows the finger exactly while moving. */
+  transition:
+    transform 180ms ease-out,
+    opacity 180ms ease-out;
+}
+
+.toast[data-moving="true"] {
+  transition: none;
 }
 
 .toast:hover {
@@ -2276,20 +2286,6 @@ body * {
   color: var(--text-primary);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-.toast-close {
-  display: flex;
-  padding: 2px;
-  border: none;
-  border-radius: 3px;
-  color: var(--text-tertiary);
-  background: none;
-  cursor: pointer;
-}
-
-.toast-close:hover {
-  color: var(--text-primary);
 }
 
 /* The agenda: each block as a row with its start time, free time between blocks as a quiet line, finished blocks
