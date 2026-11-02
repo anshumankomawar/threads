@@ -5,7 +5,6 @@ import type { AnyRecord, ModelName, SyncAction, SyncMessage } from "model";
 import { createWorkspaceApp } from "./app.ts";
 import {
   isWorkspaceName,
-  migrateDescriptions,
   refreshSeedPeople,
   SAMPLE_ME,
   seed,
@@ -136,7 +135,6 @@ export class Workspace extends DurableObject<Env> {
     engine.load(rows, lastSyncId);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME, utcOffsetMinutes);
     refreshSeedPeople(engine, name, SAMPLE_ME);
-    migrateDescriptions(engine);
     engine.replanAll();
     void this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
     this.#engine = engine;

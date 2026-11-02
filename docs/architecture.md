@@ -72,7 +72,7 @@ Data is normalized into flat records linked by id, like database rows:
   message, so mentions in it ask people and it counts as "opened" in notifications. The new-thread form asks for a
   title, then an optional description (`createThread` sends the message with `id: threadId` only when there is one).
   The server lets only the requester write it, only as a message, keeps it out of moves, and lets no entry take
-  another thread's id. Threads stored before this got theirs on load (`migrateDescriptions`).
+  another thread's id.
 
 The UI never works with records. `toThreads()` resolves references into the nested `Thread` shape from
 `model.ts`, which is what components receive. Keep components on that shape; convert at the edge.

@@ -111,10 +111,6 @@ class Batch {
     this.writes.set(`${modelName}:${record.id}`, { modelName, id: record.id, data: record });
   }
 
-  delete(modelName: ModelName, id: string): void {
-    this.writes.set(`${modelName}:${id}`, { modelName, id, data: null });
-  }
-
   // Every record of a model, counting staged writes.
   all<Name extends ModelName>(modelName: Name): ModelRecords[Name][] {
     const records: ModelRecords[Name][] = [];
@@ -737,34 +733,6 @@ export function seed(
       for (const entry of entries) batch.put("Entry", entry);
     }
   });
-}
-
-// Gives threads stored before descriptions had their own id one (`descriptionOf`): the message the thread was opened
-// with, written by whoever opened it in the same batch that made it (so not one moved in or written later). Back then its first line was the title,
-// so a title line is dropped, and a message that was only the title goes. Does nothing once every thread is done.
-export function migrateDescriptions(engine: SyncEngine): void {
-  const entries = [...engine.models.Entry.values()];
-  const stale = [...engine.models.Thread.values()].flatMap((thread) => {
-    if (engine.models.Entry.has(thread.id)) return [];
-    // A meeting's call link is made at the same moment, so look only at messages.
-    const opener = entries.find(
-      (entry) =>
-        entry.threadId === thread.id &&
-        entry.kind === "message" &&
-        entry.createdAtMs === thread.createdAtMs,
-    );
-    if (opener?.kind !== "message" || opener.authorId !== thread.requesterId) return [];
-    const [first, ...rest] = opener.text.split("\n");
-    const text = first.trim() === thread.title.trim() ? rest.join("\n").trim() : opener.text;
-    return [{ thread, opener, text }];
-  });
-  if (stale.length > 0)
-    engine.write((batch) => {
-      for (const { thread, opener, text } of stale) {
-        batch.delete("Entry", opener.id);
-        if (text !== "") batch.put("Entry", { ...opener, id: thread.id, text });
-      }
-    });
 }
 
 // Keeps the seeded people in step with the code (their levels and managers can change), since nothing edits them
