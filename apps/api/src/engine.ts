@@ -746,15 +746,14 @@ export function migrateDescriptions(engine: SyncEngine): void {
   const entries = [...engine.models.Entry.values()];
   const stale = [...engine.models.Thread.values()].flatMap((thread) => {
     if (engine.models.Entry.has(thread.id)) return [];
-    const opener = entries
-      .filter((entry) => entry.threadId === thread.id)
-      .toSorted((a, b) => a.createdAtMs - b.createdAtMs)[0];
-    if (
-      opener?.kind !== "message" ||
-      opener.authorId !== thread.requesterId ||
-      opener.createdAtMs !== thread.createdAtMs
-    )
-      return [];
+    // A meeting's call link is made at the same moment, so look only at messages.
+    const opener = entries.find(
+      (entry) =>
+        entry.threadId === thread.id &&
+        entry.kind === "message" &&
+        entry.createdAtMs === thread.createdAtMs,
+    );
+    if (opener?.kind !== "message" || opener.authorId !== thread.requesterId) return [];
     const [first, ...rest] = opener.text.split("\n");
     const text = first.trim() === thread.title.trim() ? rest.join("\n").trim() : opener.text;
     return [{ thread, opener, text }];

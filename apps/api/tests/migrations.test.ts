@@ -40,6 +40,10 @@ test("stored threads get their opening message as their description, once", () =
     ["Entry", message("m3", "t2", "Per seat?", 20)],
     ["Thread", thread("t3", "Review the PR")],
     ["Entry", message("m4", "t3", "Mind taking a look today?")],
+    // A meeting, whose call link is made at the same moment as its agenda.
+    ["Thread", { ...thread("t5", "Standup"), kind: "meeting" }],
+    ["Entry", { id: "t5:call", threadId: "t5", kind: "call", link: "zoom", createdAtMs: 10 }],
+    ["Entry", message("m6", "t5", "Standup\nBlockers first")],
     // Opened with messages moved in, which are older than the thread.
     ["Thread", thread("t4", "Branch")],
     ["Entry", message("m5", "t4", "From the parent", 5)],
@@ -55,6 +59,7 @@ test("stored threads get their opening message as their description, once", () =
   expect([text("t2"), text("m2"), text("m3")]).toEqual([undefined, undefined, "Per seat?"]);
   expect([text("t3"), text("m4")]).toEqual(["Mind taking a look today?", undefined]);
   expect([text("t4"), text("m5")]).toEqual([undefined, "From the parent"]);
+  expect([text("t5"), text("m6")]).toEqual(["Blockers first", undefined]);
 
   const syncId = engine.lastSyncId;
   migrateDescriptions(engine);
