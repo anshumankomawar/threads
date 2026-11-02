@@ -181,8 +181,8 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - Conversations: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Sending a reply
   that mentions people in an ordinary thread starts a conversation with them instead of posting there: a thread of kind
   `conversation`, branched off the thread it started in (`branchedFromId`), with whoever started it and everyone
-  mentioned as its `attendees`, and the reply as its first message (`onSend` in `App.tsx`). The server adds "started a
-  conversation with … in <link>" to the thread it's in. Mentioning someone inside a conversation brings them into it
+  mentioned as its `attendees`, and the reply as its first message (`onSend` in `App.tsx`). The server posts "Started a
+  conversation with …: <link>" in the thread it's in, as a message from whoever started it. Mentioning someone inside a conversation brings them into it
   ("added …"). A conversation has no assignee, schedule, due date or estimate; it takes no time on anyone's schedule
   and isn't in the inbox or outbox. It opens beside the thread it's in (the split view; `openThread` routes it there).
   The sidebar's Conversations tab (Schedule, Conversations, Outbox) lists your open ones in two groups
@@ -198,7 +198,7 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   a day free (`CATCH_UP_TIMES` in `model.ts`, `catchUpTimes` in `scheduler.ts`) for conversations and messages.
 - Notifications (`activityFor` in `activity.ts`, the bell in the sidebar's top bar, `Notifications.tsx`) list, per
   thread you're part of, the latest thing someone else did there in the past week: replies and the status lines worth
-  knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved, a conversation started). Conversations
+  knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved). Conversations
   (which have their own list), the scheduler's moves and routine edits stay out. It's derived from entries, with nothing stored;
   what's new counts against the same last-seen times as the unread dots, which live on this device ("Mark all read"
   moves them all to now).

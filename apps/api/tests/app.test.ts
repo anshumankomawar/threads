@@ -193,8 +193,9 @@ test("a conversation is with the people mentioned, and the thread it's in links 
     branchedFromId: "t1",
   });
   expect((await thread("t1"))?.entries.at(-1)).toMatchObject({
-    kind: "event",
-    text: "started a conversation with Arjun in [[thread:c1]]",
+    kind: "message",
+    author: { id: "anshu" },
+    text: "Started a conversation with Arjun: [[thread:c1]]",
   });
   // Only in an open thread that isn't itself a conversation, with someone else, and with no assignee or time.
   expect((await transact("anshu", [conversation("c2", "c1", ["kk"])])).status).toBe(400);

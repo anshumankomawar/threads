@@ -1,7 +1,7 @@
 import type { Entry, Person, Thread } from "model";
 
 // What changed on your threads that doesn't need you to act: replies and the status lines worth knowing about (closed,
-// reopened, renamed, handed over, blocked, unblocked, messages moved, a conversation started). Conversations aren't
+// reopened, renamed, handed over, blocked, unblocked, messages moved). Conversations aren't
 // here (they have their own list), nor are the scheduler's moves or edits to priority, due dates, estimates and tags.
 // Read straight from the threads, like everything else; nothing is stored.
 
@@ -15,7 +15,6 @@ const NOTEWORTHY = [
   /^is blocked on/,
   /^is unblocked/,
   /^moved /,
-  /^started a conversation/,
 ];
 
 // How far back activity goes.
