@@ -306,13 +306,17 @@ export function ProfileView({
   me,
   threads,
   nowMs,
+  organizationName,
   onWorkday,
+  onRenameOrganization,
 }: {
   people: Person[];
   me: Person;
   threads: Thread[];
   nowMs: number;
+  organizationName: string;
   onWorkday: (workday: Workday) => void;
+  onRenameOrganization: () => void;
 }): React.JSX.Element {
   const tree = buildOrgTree(people);
   const managers = chainAbove(people, me.id);
@@ -354,8 +358,14 @@ export function ProfileView({
       <h2 className="profile-heading">Working day</h2>
       <WorkdaySettings me={me} onChange={onWorkday} />
 
-      <h2 className="profile-heading">Organization</h2>
-      <p className="org-summary">{summary}</p>
+      <h2 className="profile-heading">{organizationName || "Organization"}</h2>
+      <p className="org-summary">
+        {summary}
+        {" · "}
+        <button type="button" className="org-rename" onClick={onRenameOrganization}>
+          Rename
+        </button>
+      </p>
       <ul className="org-tree" role="tree" aria-label="Organization">
         {tree.length > 1 ? (
           // Several people with no manager: the org itself is the one node they hang from.
@@ -366,7 +376,7 @@ export function ProfileView({
                   <HugeiconsIcon icon={Building03Icon} size={12} />
                 </span>
               </Guides>
-              <span className="org-name">Organization</span>
+              <span className="org-name">{organizationName || "Organization"}</span>
               <span className="org-details" />
               <span className="org-count">{`${tree.length} at the top`}</span>
             </div>

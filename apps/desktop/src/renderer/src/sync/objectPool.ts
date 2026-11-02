@@ -9,6 +9,9 @@ export class ObjectPool {
     Person: observable.map(undefined, { deep: false }),
     Thread: observable.map(undefined, { deep: false }),
     Entry: observable.map(undefined, { deep: false }),
+    Organization: observable.map(undefined, { deep: false }),
+    Label: observable.map(undefined, { deep: false }),
+    Group: observable.map(undefined, { deep: false }),
   };
 
   constructor() {

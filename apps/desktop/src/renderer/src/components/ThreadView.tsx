@@ -50,16 +50,17 @@ import {
   MentionNode,
   type MentionMenuState,
 } from "./mentionNode";
+import { selectableLabels } from "../groups";
 import { slotMissesDue } from "../inbox";
 import {
   isDone,
   EFFORT_OPTIONS,
   formatEffort,
+  labelSlug,
   plainThreadLinks,
   PRIORITY_LABELS,
   splitThreadLinks,
   STATUS_LABELS,
-  TAGS,
   threadLink,
   type Entry,
   type Person,
@@ -111,7 +112,8 @@ export type ThreadActions = {
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueAtMs: number | null) => void;
   onSetEffort: (effortHours: number | null) => void;
-  onSetTags: (tagIds: string[]) => void;
+  // Adds or removes a label, making it first if it's new.
+  onToggleLabel: (label: { id: string; name: string }) => void;
   onSetAssignee: (person: Person) => void;
   onSetRequester: (person: Person) => void;
   onSetSchedule: (schedule: Schedule | null) => void;
@@ -252,7 +254,7 @@ function Avatar({ person }: { person: Person }): React.JSX.Element {
 }
 
 // A property chip that opens a small menu of options, styled like the search panel.
-function MenuChip<T>({
+export function MenuChip<T>({
   label,
   icon,
   tone,
@@ -344,10 +346,56 @@ function MenuChip<T>({
   );
 }
 
-// "No tags", "Security", or "Security +1".
-function tagsLabel(tagIds: string[]): string {
-  const [first, ...rest] = TAGS.filter((tag) => tagIds.includes(tag.id));
-  if (first === undefined) return "No tags";
+// A thread's labels: pick any, or type a new one. A group's label puts the thread in that group.
+function LabelChip({
+  thread,
+  actions,
+}: {
+  thread: Thread;
+  actions: ThreadActions;
+}): React.JSX.Element {
+  const { labels, groups } = useThreadLinks();
+  const offered = [
+    ...new Map(
+      [
+        ...selectableLabels(labels, groups),
+        ...labels.filter((label) => thread.labelIds.includes(label.id)),
+      ].map((label) => [label.id, label]),
+    ).values(),
+  ];
+  return (
+    <MenuChip
+      label={labelsLabel(thread.labelIds, labels)}
+      icon={<HugeiconsIcon icon={Tag01Icon} {...ICON_PROPS} />}
+      tone={thread.labelIds.length === 0 ? "muted" : undefined}
+      options={offered.map((label) => ({
+        label: label.name,
+        value: { id: label.id, name: label.name },
+        icon: thread.labelIds.includes(label.id) ? (
+          <HugeiconsIcon icon={Tick02Icon} {...ICON_PROPS} />
+        ) : undefined,
+      }))}
+      typed={{
+        placeholder: "Find or make a label…",
+        parse: (text) => {
+          const name = text.trim();
+          const id = labelSlug(name);
+          if (id === "") return null;
+          const existing = labels.find((label) => label.id === id || labelSlug(label.name) === id);
+          return existing === undefined
+            ? { label: `Make “${name}”`, value: { id, name } }
+            : { label: existing.name, value: { id: existing.id, name: existing.name } };
+        },
+      }}
+      onSelect={actions.onToggleLabel}
+    />
+  );
+}
+
+// "No labels", "Security", or "Security +1".
+function labelsLabel(labelIds: string[], labels: { id: string; name: string }[]): string {
+  const [first, ...rest] = labels.filter((label) => labelIds.includes(label.id));
+  if (first === undefined) return "No labels";
   return rest.length === 0 ? first.name : `${first.name} +${rest.length}`;
 }
 
@@ -554,27 +602,9 @@ function ThreadHeader({
               ]}
               onSelect={actions.onSetEffort}
             />
-            <MenuChip
-              label={tagsLabel(thread.tagIds)}
-              icon={<HugeiconsIcon icon={Tag01Icon} {...ICON_PROPS} />}
-              tone={thread.tagIds.length === 0 ? "muted" : undefined}
-              options={TAGS.map((tag) => ({
-                label: tag.name,
-                value: tag.id as string,
-                icon: thread.tagIds.includes(tag.id) ? (
-                  <HugeiconsIcon icon={Tick02Icon} {...ICON_PROPS} />
-                ) : undefined,
-              }))}
-              onSelect={(tagId) =>
-                actions.onSetTags(
-                  thread.tagIds.includes(tagId)
-                    ? thread.tagIds.filter((id) => id !== tagId)
-                    : [...thread.tagIds, tagId],
-                )
-              }
-            />
           </>
         )}
+        {thread.kind !== "conversation" && <LabelChip thread={thread} actions={actions} />}
       </div>
     </header>
   );

@@ -46,7 +46,7 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 | `packages/model/src/sample.ts`                       | Seed data: local people, the sample team and threads                                                                                                              |
 | `apps/api/src/engine.ts`                             | `SyncEngine`: transaction validation (zod), business rules and side effects, sync ids, the log, seeding                                                           |
 | `apps/api/src/scheduler.ts`                          | `planSchedule`: where one person's threads go                                                                                                                     |
-| `packages/model/src/score.ts`                        | `threadScore`, `TAGS`, effort options: how important a thread is, shared by the API and the desktop app                                                           |
+| `packages/model/src/score.ts`                        | `threadScore`, `SEEDED_LABELS`, effort options: how important a thread is, shared by the API and the desktop app                                                  |
 | `apps/api/src/worker.ts`                             | The `Workspace` Durable Object (SQLite storage, WebSocket, broadcast, morning alarm) and the Worker entry (token, routing)                                        |
 | `apps/api/src/app.ts`                                | HTTP routes for one workspace; `createApp` runs all workspaces in memory for tests                                                                                |
 | `apps/desktop/src/renderer/src/sync/syncClient.ts`   | `SyncClient`: bootstrap, socket, applying deltas, rebasing, the change methods the UI calls                                                                       |
@@ -65,7 +65,7 @@ Data is normalized into flat records linked by id, like database rows:
 - **Thread**: one ask, meeting, focus block or conversation (`kind`). References people by id: `requesterId`,
   `assigneeId`, `attendeeIds` (a meeting's attendees or a conversation's people). Has
   `status` (`open`, `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`,
-  `effortHours`, `tagIds`, `schedule`, `createdById`, `createdAtMs`, `updatedAtMs`.
+  `effortHours`, `labelIds`, `schedule`, `createdById`, `createdAtMs`, `updatedAtMs`.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
   `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
 - **A thread's description** is not a field: it's the message the thread was opened with, and it has the thread's
@@ -218,13 +218,38 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   one and also leaves every list and the notifications, but stays searchable. Right-clicking a thread in a list
   (`ThreadMenuContext` in `threadMenu.ts`) offers Open, Open beside, Close or Reopen, and Archive or Unarchive.
 
+## Organization, groups and labels
+
+- **The organization** (`Organization`, one record, `ORGANIZATION_ID`): one per workspace. Its name is empty until someone
+  names it at first run (`OrganizationPrompt`, which can't be skipped); anyone can rename it from their profile, since
+  there are no roles yet. `ensureOrganization` makes sure a workspace has it and the seeded labels.
+- **Labels** (`Label`): how threads are filed, on every kind but conversations. Names are unique across the
+  organization; a label's id is `labelSlug(name)`, so "Back-end" and "back end" are one label, and making one that exists
+  does nothing rather than refusing the batch (and any thread made in it). `SEEDED_LABELS` in `score.ts` are the only
+  ones with a priority, so making a label can't move anything up a schedule. Labels aren't deleted.
+- **Groups** (`Group`): a project, program or team. Anyone can make one and add anyone. Making one makes its label
+  (`Label.groupId`), and **a thread is in a group because it has that label**: there's no `groupId` on a thread, so a
+  thread can be in several, and the group page is just the threads with its label (`threadsWithLabel` in `groups.ts`).
+  Other labels are manual and for filtering; a group doesn't hold any of its own besides that one. A group's name is
+  unique among labels too. Renaming it renames the label but keeps the label's id, so its threads stay.
+- **Who can change a group**: any member (rename, add or remove people, archive). Anyone else can only join. A group can't
+  be left empty; archive it instead. Each change adds a line to its `activity`, and `targetIds` on an "added" line is who
+  it's news for (`groupNoticesFor`, shown in the notifications). Membership decides what's in your sidebar, not what you
+  can see: everyone can see everything until there are real identities (see Sync groups).
+- **Inheriting**: a branch or blocker takes its parent's group labels on the server, so a project's blockers stay in the
+  project. Its other labels don't carry over, and conversations take none.
+- **In the app**: the sidebar's Groups tab lists your groups, others', and plain labels; `LabelView` is the page for
+  either. A thread made from one starts with its label. The new-thread palette's last step has the labels (⇧⇥), and a
+  thread's label chip can find or make one.
+- **A wipe** (`#reset` in `worker.ts`) clears threads and schedules but keeps the organization, labels and groups.
+
 ## Scoring and scheduling
 
 Responses are scheduled automatically. Clients can't set a response's time; meetings and focus blocks keep theirs. A
 response holds `blocks`, any number of them, each as long as the free time allows; `schedule` is its next one.
 
 - **The score** (`threadScore` in `packages/model/src/score.ts`) rates a thread from 1 to 100: its due date, priority,
-  estimated effort, most important tag (`TAGS`) and the level of the person waiting on the answer (`askerId`). It's
+  estimated effort, most important seeded label (`SEEDED_LABELS`) and the level of the person waiting on the answer (`askerId`). It's
   computed when needed and never stored, because it changes as due dates approach and saving it would fill the sync
   log. Client and server share the function, so the inbox sorts by the same number the schedule uses.
 - **The plan** (`planSchedule` in `apps/api/src/scheduler.ts`) lays out one person's open responses around their

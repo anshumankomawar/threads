@@ -2899,3 +2899,188 @@ body * {
   font-size: 12px;
   white-space: nowrap;
 }
+
+/* A group or label's page: built on the list page, with its members, its actions and a row of filters. */
+.group-page .list-page-summary svg {
+  vertical-align: -1px;
+}
+
+.group-title-button {
+  padding: 0;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: text;
+}
+
+.group-title-input {
+  width: min(100%, 640px);
+  padding: 0;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.2px;
+  background: transparent;
+}
+
+.group-title-taken {
+  margin: 2px 0 0;
+  color: var(--urgent);
+}
+
+.group-members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  max-width: 640px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.group-member {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  height: 22px;
+  padding: 0 7px 0 5px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 5px;
+  color: var(--text-secondary);
+}
+
+.group-member-remove {
+  display: flex;
+  padding: 0;
+  border: none;
+  color: var(--icon-tertiary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.group-member-remove:hover {
+  color: var(--text-primary);
+}
+
+.group-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.group-action {
+  padding: 0;
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.group-action:hover {
+  color: var(--text-primary);
+}
+
+.group-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  max-width: 640px;
+  margin-top: 22px;
+}
+
+.group-new {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--stroke-focused);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.group-new:hover {
+  background-color: var(--bg-tertiary);
+}
+
+.group-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.group-page .list-page-items {
+  margin-top: 12px;
+}
+
+.group-empty {
+  margin: 16px 0 0;
+  color: var(--text-tertiary);
+}
+
+.group-heading {
+  margin: 28px 0 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.group-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  color: var(--text-tertiary);
+  list-style: none;
+}
+
+/* The sidebar's Groups tab. */
+.sidebar-new-group {
+  display: block;
+  padding: 6px var(--sidebar-inset);
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sidebar-new-group:hover {
+  color: var(--text-primary);
+}
+
+/* A second control beside "Asked by" on the new-thread palette's last step. */
+.palette-asker + .palette-asker {
+  margin-left: 14px;
+}
+
+.org-rename,
+.details-label-link {
+  padding: 0;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.org-rename:hover,
+.details-label-link:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}

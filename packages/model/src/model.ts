@@ -90,8 +90,8 @@ export type Thread = {
   dueAtMs: number | null;
   // How much work it is, in hours; sets the length of its slot and feeds its score. Null until someone estimates it.
   effortHours: number | null;
-  // Ids from `TAGS`; the most important one feeds its score.
-  tagIds: string[];
+  // Ids of its labels. A group's label puts it in that group; the most important of `SEEDED_LABELS` feeds its score.
+  labelIds: string[];
   // When it happens or when you've planned to work on it; for a response, its next block.
   schedule: Schedule | null;
   // Every block of time it holds on the schedule of whoever it's waiting on, including ones already over. A response
@@ -208,4 +208,49 @@ export function withoutLeadingMentions(text: string): string {
 // Who a message mentions.
 export function mentionsIn(text: string): string[] {
   return [...text.matchAll(MENTION)].map((match) => match[1]);
+}
+
+// The organization a workspace belongs to; there's exactly one. Its name is empty until someone names it at first run.
+export const ORGANIZATION_ID = "organization";
+export type Organization = { id: string; name: string };
+
+// What a thread is filed under. Names are unique across the organization. A label is either one anyone made for their
+// own filtering, one of the `SEEDED_LABELS`, or a group's own label (`groupId`), which is what puts a thread in the group.
+export type Label = {
+  id: string;
+  name: string;
+  groupId: string | null;
+  createdById: string | null;
+  createdAtMs: number;
+};
+
+export type GroupActivity = {
+  actorId: string;
+  text: string;
+  // Who this line is news for: people it added.
+  targetIds: string[];
+  atMs: number;
+};
+
+// A project, program or team: anyone can make one and add anyone. Its threads are the ones carrying its label.
+export type Group = {
+  id: string;
+  name: string;
+  labelId: string;
+  memberIds: string[];
+  createdById: string;
+  archived: boolean;
+  activity: GroupActivity[];
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
+// A name's id: the same however it's capitalized or punctuated, so two people making "Back-end" and "back end" get one
+// label. Empty when the name has no letters or numbers.
+export function labelSlug(name: string): string {
+  return name
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
 }

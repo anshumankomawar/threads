@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import type { AnyRecord, ModelName, SyncAction, SyncMessage } from "model";
 import { createWorkspaceApp } from "./app.ts";
 import {
+  ensureOrganization,
   isWorkspaceName,
   refreshSeedPeople,
   SAMPLE_ME,
@@ -32,6 +33,7 @@ function utcOffset(request: Request): number | undefined {
 export class Workspace extends DurableObject<Env> {
   #engine: SyncEngine | undefined;
   #app: Hono | undefined;
+  #kept: { modelName: ModelName; data: AnyRecord }[] = [];
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -56,6 +58,13 @@ export class Workspace extends DurableObject<Env> {
   // dropped; they reconnect, find the server behind their cache and rebuild.
   async #reset(): Promise<void> {
     for (const socket of this.ctx.getWebSockets()) socket.close(1012, "Workspace reset");
+    // A wipe is for threads and schedules; the organization, its labels and its groups stay.
+    this.#kept = this.ctx.storage.sql
+      .exec<{ modelName: ModelName; data: string }>(
+        "SELECT modelName, data FROM models WHERE modelName IN ('Organization', 'Label', 'Group')",
+      )
+      .toArray()
+      .map((row) => ({ modelName: row.modelName, data: JSON.parse(row.data) as AnyRecord }));
     await this.ctx.storage.deleteAll();
     this.#engine = undefined;
     this.#app = undefined;
@@ -135,6 +144,7 @@ export class Workspace extends DurableObject<Env> {
     engine.load(rows, lastSyncId);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME, utcOffsetMinutes);
     refreshSeedPeople(engine, name, SAMPLE_ME);
+    ensureOrganization(engine, name);
     engine.replanAll();
     void this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
     this.#engine = engine;
@@ -173,7 +183,11 @@ export class Workspace extends DurableObject<Env> {
     const { pathname } = new URL(request.url);
     if (pathname === "/sync/reset" && request.method === "POST") await this.#reset();
     const engine = this.#load(name, utcOffset(request));
-    if (pathname === "/sync/reset") return Response.json({ lastSyncId: engine.lastSyncId });
+    if (pathname === "/sync/reset") {
+      if (this.#kept.length > 0) engine.restore(this.#kept);
+      this.#kept = [];
+      return Response.json({ lastSyncId: engine.lastSyncId });
+    }
 
     // The sync socket: a handshake with the current lastSyncId, then a delta packet per committed batch. It
     // hibernates while idle, so open connections cost next to nothing.

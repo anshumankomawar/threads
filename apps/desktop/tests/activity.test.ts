@@ -44,7 +44,7 @@ function thread(id: string, entries: Entry[], fields: Partial<Thread> = {}): Thr
     createdBy: me,
     seenBy: {},
     effortHours: null,
-    tagIds: [],
+    labelIds: [],
     updatedAtMs: NOW,
     entries,
     ...fields,

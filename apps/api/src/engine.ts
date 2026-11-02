@@ -2,8 +2,11 @@ import {
   askerId,
   DUMMY_ZOOM_LINK,
   entryFromCreate,
+  groupFromCreate,
+  labelFromCreate,
   formatEffort,
   fromThread,
+  labelSlug,
   levelPositions,
   localPeople,
   mentionsIn,
@@ -11,11 +14,12 @@ import {
   MODEL_NAMES,
   PRIORITY_LABELS,
   recordBlocks,
+  ORGANIZATION_ID,
+  sampleGroup,
   samplePeople,
+  SEEDED_LABELS,
   sampleThreads,
   STATUS_LABELS,
-  TAGS,
-  TAG_IDS,
   threadFromCreate,
   threadLink,
   threadScore,
@@ -24,6 +28,7 @@ import {
   toThreads,
   workdayOf,
   type AnyRecord,
+  type Label,
   type ModelName,
   type ModelRecords,
   type Person,
@@ -91,6 +96,9 @@ const emptyModels = (): Models => ({
   Person: new Map(),
   Thread: new Map(),
   Entry: new Map(),
+  Organization: new Map(),
+  Label: new Map(),
+  Group: new Map(),
 });
 
 // The writes of one batch, staged until the whole batch succeeds. Reads see staged writes first.
@@ -182,6 +190,7 @@ const threadCreate = z.object({
   branchedFromId: id.nullable().optional(),
   blocksId: id.nullable().optional(),
   onBehalfOfId: id.nullable().optional(),
+  labelIds: z.array(id).optional(),
 });
 
 const threadChanges = z
@@ -193,9 +202,9 @@ const threadChanges = z
     priority: z.enum(["none", "low", "medium", "high", "urgent"]),
     dueAtMs: z.number().int().nullable(),
     effortHours: z.number().min(MIN_EFFORT_HOURS).multipleOf(MIN_EFFORT_HOURS).nullable(),
-    tagIds: z
-      .array(z.enum(TAG_IDS))
-      .refine((tags) => new Set(tags).size === tags.length, "Tags must be unique"),
+    labelIds: z
+      .array(id)
+      .refine((labels) => new Set(labels).size === labels.length, "Labels must be unique"),
     schedule: schedule.nullable(),
     seen: z.literal(true),
   })
@@ -221,6 +230,18 @@ const workday = z
 
 const personChanges = z.strictObject({ workday }).partial();
 
+const labelName = z.string().trim().min(1).max(80);
+
+const labelCreate = z.object({ id, name: labelName });
+
+const groupCreate = z.object({ id, name: labelName, memberIds: z.array(id) });
+
+const groupChanges = z
+  .strictObject({ name: labelName, memberIds: z.array(id), archived: z.boolean() })
+  .partial();
+
+const organizationChanges = z.strictObject({ name: z.string().trim().min(1).max(100) });
+
 const entryCreate = z.object({
   id,
   threadId: id,
@@ -231,6 +252,8 @@ const entryCreate = z.object({
 export const transactionInput = z.union([
   z.object({ id, type: z.literal("create"), modelName: z.literal("Thread"), data: threadCreate }),
   z.object({ id, type: z.literal("create"), modelName: z.literal("Entry"), data: entryCreate }),
+  z.object({ id, type: z.literal("create"), modelName: z.literal("Label"), data: labelCreate }),
+  z.object({ id, type: z.literal("create"), modelName: z.literal("Group"), data: groupCreate }),
   z.object({
     id,
     type: z.literal("update"),
@@ -244,6 +267,20 @@ export const transactionInput = z.union([
     modelName: z.literal("Person"),
     modelId: id,
     changes: personChanges,
+  }),
+  z.object({
+    id,
+    type: z.literal("update"),
+    modelName: z.literal("Group"),
+    modelId: id,
+    changes: groupChanges,
+  }),
+  z.object({
+    id,
+    type: z.literal("update"),
+    modelName: z.literal("Organization"),
+    modelId: id,
+    changes: organizationChanges,
   }),
   z.object({
     id,
@@ -276,6 +313,7 @@ function describeChanges(
   changes: ThreadChanges,
   actor: Person,
   people: (id: string) => Person | undefined,
+  labelOf: (id: string) => Label | undefined,
   offsetMinutes: number,
 ): string[] {
   const lines: string[] = [];
@@ -321,13 +359,17 @@ function describeChanges(
         ? "removed the estimate"
         : `estimated this at ${formatEffort(changes.effortHours)}`,
     );
-  if (changes.tagIds !== undefined) {
-    const before = thread.tagIds ?? [];
-    for (const tag of TAGS) {
-      if (changes.tagIds.includes(tag.id) && !before.includes(tag.id))
-        lines.push(`tagged this ${tag.name}`);
-      if (before.includes(tag.id) && !changes.tagIds.includes(tag.id))
-        lines.push(`removed the ${tag.name} tag`);
+  if (changes.labelIds !== undefined) {
+    const before = thread.labelIds ?? [];
+    const after = changes.labelIds;
+    for (const labelId of [...before, ...after].filter((id, at, all) => all.indexOf(id) === at)) {
+      const label = labelOf(labelId);
+      if (label === undefined || before.includes(labelId) === after.includes(labelId)) continue;
+      const inGroup = label.groupId !== null;
+      if (after.includes(labelId))
+        lines.push(inGroup ? `added this to ${label.name}` : `labelled this ${label.name}`);
+      else
+        lines.push(inGroup ? `removed this from ${label.name}` : `removed the ${label.name} label`);
     }
   }
   if (changes.schedule !== undefined && changes.schedule?.startMs !== thread.schedule?.startMs)
@@ -346,8 +388,9 @@ function touchedThreads(batch: Batch, transaction: TransactionInput): string[] {
   // A blocker reaches the thread it blocks: making one blocks it, and closing it can unblock it.
   if (transaction.type === "create" && transaction.modelName === "Thread")
     return [transaction.data.id, ...(transaction.data.blocksId ? [transaction.data.blocksId] : [])];
-  if (transaction.type === "create") return [transaction.data.threadId];
-  if (transaction.type === "update" && transaction.modelName === "Person") return [];
+  if (transaction.type === "create")
+    return transaction.modelName === "Entry" ? [transaction.data.threadId] : [];
+  if (transaction.type === "update" && transaction.modelName !== "Thread") return [];
   if (transaction.type === "update") {
     const blocksId = batch.get("Thread", transaction.modelId)?.blocksId;
     return [transaction.modelId, ...(blocksId ? [blocksId] : [])];
@@ -384,9 +427,21 @@ export class SyncEngine {
 
   // Restores models and the sync position from storage.
   load(records: { modelName: ModelName; data: AnyRecord }[], lastSyncId: number): void {
-    for (const { modelName, data } of records)
-      (this.models[modelName] as Map<string, AnyRecord>).set(data.id, data);
+    for (const { modelName, data } of records) {
+      // Threads stored when labels were called tags.
+      const record =
+        modelName === "Thread" && "tagIds" in data
+          ? (({ tagIds, ...thread }) => ({ ...thread, labelIds: tagIds }))(
+              data as ThreadRecord & { tagIds: string[] },
+            )
+          : data;
+      (this.models[modelName] as Map<string, AnyRecord>).set(record.id, record);
+    }
     this.lastSyncId = lastSyncId;
+  }
+
+  get nowMs(): number {
+    return this.#now();
   }
 
   get isEmpty(): boolean {
@@ -542,6 +597,14 @@ export class SyncEngine {
     }
   }
 
+  // Puts back what a wipe keeps: the organization, its labels and its groups.
+  restore(records: { modelName: ModelName; data: AnyRecord }[]): void {
+    this.write((batch) => {
+      for (const { modelName, data } of records)
+        batch.put(modelName, data as ModelRecords[typeof modelName]);
+    });
+  }
+
   // Looks over every schedule: on load, and each morning, when due dates have drawn closer and slots have passed.
   replanAll(): void {
     const nowMs = this.#now();
@@ -567,6 +630,132 @@ export class SyncEngine {
     const requirePerson = (personId: string): void => {
       if (person(personId) === undefined) throw missingUser(personId);
     };
+    const requireLabels = (labelIds: string[]): void => {
+      for (const labelId of labelIds)
+        if (batch.get("Label", labelId) === undefined)
+          throw new EngineError(404, `Label not found: ${labelId}`);
+    };
+    // Whether a label other than `exceptId` already has this name, however it's capitalized or punctuated.
+    const nameTaken = (slug: string, exceptId?: string): boolean =>
+      batch
+        .all("Label")
+        .some(
+          (label) => label.id !== exceptId && (label.id === slug || labelSlug(label.name) === slug),
+        );
+
+    // Making a label that exists does nothing, so a thread made with it in the same batch isn't refused along with it.
+    if (transaction.type === "create" && transaction.modelName === "Label") {
+      const { data } = transaction;
+      const slug = labelSlug(data.name);
+      if (slug === "" || data.id !== slug)
+        throw new EngineError(400, "A label's id comes from its name");
+      const existing = batch.get("Label", slug);
+      if (existing !== undefined && labelSlug(existing.name) === slug) return;
+      if (nameTaken(slug)) throw new EngineError(409, `That label name is taken: ${data.name}`);
+      batch.put("Label", labelFromCreate(data, actor.id, nowMs));
+      return;
+    }
+
+    if (transaction.type === "create" && transaction.modelName === "Group") {
+      const { data } = transaction;
+      if (batch.get("Group", data.id) !== undefined)
+        throw new EngineError(409, `Group already exists: ${data.id}`);
+      const slug = labelSlug(data.name);
+      if (slug === "") throw new EngineError(400, "A group's name needs a letter or number");
+      if (nameTaken(slug)) throw new EngineError(409, `That name is taken: ${data.name}`);
+      for (const member of data.memberIds) requirePerson(member);
+      const group = groupFromCreate(data, actor.id, nowMs);
+      const others = group.memberIds.filter((member) => member !== actor.id);
+      batch.put("Group", {
+        ...group,
+        activity: [
+          { actorId: actor.id, text: "created this group", targetIds: [], atMs: nowMs },
+          ...(others.length === 0
+            ? []
+            : [
+                {
+                  actorId: actor.id,
+                  text: `added ${others.map((member) => person(member)?.name ?? member).join(", ")}`,
+                  targetIds: others,
+                  atMs: nowMs,
+                },
+              ]),
+        ],
+      });
+      batch.put("Label", {
+        ...labelFromCreate({ id: slug, name: data.name }, actor.id, nowMs),
+        groupId: data.id,
+      });
+      return;
+    }
+
+    if (transaction.type === "update" && transaction.modelName === "Organization") {
+      const organization = batch.get("Organization", transaction.modelId);
+      if (organization === undefined) throw new EngineError(404, "Organization not found");
+      batch.put("Organization", { ...organization, ...transaction.changes });
+      return;
+    }
+
+    if (transaction.type === "update" && transaction.modelName === "Group") {
+      const group = batch.get("Group", transaction.modelId);
+      if (group === undefined) throw new EngineError(404, "Group not found");
+      const { changes } = transaction;
+      const memberIds = changes.memberIds;
+      if (memberIds !== undefined) {
+        if (new Set(memberIds).size !== memberIds.length)
+          throw new EngineError(400, "Members must be unique");
+        if (memberIds.length === 0)
+          throw new EngineError(400, "A group needs a member; archive it instead");
+        for (const member of memberIds) requirePerson(member);
+      }
+      const added = (memberIds ?? []).filter((member) => !group.memberIds.includes(member));
+      const removed =
+        memberIds === undefined
+          ? []
+          : group.memberIds.filter((member) => !memberIds.includes(member));
+      // Any member can change a group. Anyone else can only join it.
+      const joining =
+        Object.keys(changes).length === 1 &&
+        added.length === 1 &&
+        added[0] === actor.id &&
+        removed.length === 0;
+      if (!group.memberIds.includes(actor.id) && !joining)
+        throw new EngineError(403, "Only a group's members can change it");
+
+      const names = (ids: string[]): string =>
+        ids.map((member) => person(member)?.name ?? member).join(", ");
+      const lines: { text: string; targetIds: string[] }[] = [];
+      if (added.includes(actor.id)) lines.push({ text: "joined", targetIds: [] });
+      const addedOthers = added.filter((member) => member !== actor.id);
+      if (addedOthers.length > 0)
+        lines.push({ text: `added ${names(addedOthers)}`, targetIds: addedOthers });
+      if (removed.includes(actor.id)) lines.push({ text: "left", targetIds: [] });
+      const removedOthers = removed.filter((member) => member !== actor.id);
+      if (removedOthers.length > 0)
+        lines.push({ text: `removed ${names(removedOthers)}`, targetIds: [] });
+      if (changes.name !== undefined && changes.name !== group.name) {
+        const slug = labelSlug(changes.name);
+        if (slug === "") throw new EngineError(400, "A group's name needs a letter or number");
+        if (nameTaken(slug, group.labelId))
+          throw new EngineError(409, `That name is taken: ${changes.name}`);
+        const label = batch.get("Label", group.labelId);
+        if (label !== undefined) batch.put("Label", { ...label, name: changes.name });
+        lines.push({ text: `renamed this to “${changes.name}”`, targetIds: [] });
+      }
+      if (changes.archived !== undefined && changes.archived !== group.archived)
+        lines.push({ text: changes.archived ? "archived this" : "unarchived this", targetIds: [] });
+      if (lines.length === 0) return;
+      batch.put("Group", {
+        ...group,
+        ...changes,
+        updatedAtMs: nowMs,
+        activity: [
+          ...group.activity,
+          ...lines.map((line) => ({ ...line, actorId: actor.id, atMs: nowMs })),
+        ],
+      });
+      return;
+    }
 
     if (transaction.type === "create" && transaction.modelName === "Thread") {
       const { data } = transaction;
@@ -597,7 +786,21 @@ export class SyncEngine {
           throw new EngineError(400, "Only a thread can be made on someone's behalf");
         requirePerson(onBehalfOf);
       }
-      batch.put("Thread", threadFromCreate(data, actor.id, nowMs));
+      if (data.kind === "conversation" && (data.labelIds ?? []).length > 0)
+        throw new EngineError(400, "A conversation has no labels");
+      requireLabels(data.labelIds ?? []);
+      // A branch or blocker stays in its parent's groups, so a project's blockers don't fall out of the project.
+      const inherited =
+        data.kind === "conversation"
+          ? []
+          : [...(parent?.labelIds ?? []), ...(blocked?.labelIds ?? [])].filter(
+              (labelId) => batch.get("Label", labelId)?.groupId != null,
+            );
+      const made = threadFromCreate(data, actor.id, nowMs);
+      batch.put("Thread", {
+        ...made,
+        labelIds: [...new Set([...made.labelIds, ...inherited])],
+      });
       if (onBehalfOf !== null)
         batch.put("Entry", {
           id: `${data.id}:on-behalf`,
@@ -742,11 +945,23 @@ export class SyncEngine {
         throw new EngineError(400, "Only a thread has a requester to change");
       requirePerson(changes.requesterId);
     }
+    if (changes.labelIds !== undefined) {
+      if (thread.kind === "conversation")
+        throw new EngineError(400, "A conversation has no labels");
+      requireLabels(changes.labelIds);
+    }
     // Opening a thread marks it seen, quietly: no activity line, and it doesn't count as an update.
     const { seen, ...edits } = changes;
     if (seen) batch.put("Thread", { ...thread, seenBy: { ...thread.seenBy, [actor.id]: nowMs } });
     const current = batch.get("Thread", thread.id) ?? thread;
-    const lines = describeChanges(current, edits, actor, person, offsetMinutes);
+    const lines = describeChanges(
+      current,
+      edits,
+      actor,
+      person,
+      (labelId) => batch.get("Label", labelId),
+      offsetMinutes,
+    );
     if (lines.length === 0) return;
     batch.put("Thread", { ...current, ...edits, updatedAtMs: nowMs });
     lines.forEach((text, index) =>
@@ -823,11 +1038,30 @@ export function seed(
   engine.write((batch) => {
     for (const person of seedPeople(workspace, me)) batch.put("Person", person);
     if (workspace !== "sample") return;
+    const { group, label } = sampleGroup(me, nowMs);
+    batch.put("Group", group);
+    batch.put("Label", label);
     for (const sample of sampleThreads(me, nowMs, utcOffsetMinutes)) {
       const { thread, entries } = fromThread(sample);
       batch.put("Thread", thread);
       for (const entry of entries) batch.put("Entry", entry);
     }
+  });
+}
+
+// Makes sure a workspace has its organization and the seeded labels, including one that was stored before they existed.
+// The local organization starts unnamed, for whoever opens it first to name.
+export function ensureOrganization(engine: SyncEngine, workspace: WorkspaceName): void {
+  const nowMs = engine.nowMs;
+  engine.write((batch) => {
+    if (batch.get("Organization", ORGANIZATION_ID) === undefined)
+      batch.put("Organization", {
+        id: ORGANIZATION_ID,
+        name: workspace === "sample" ? "Sample Organization" : "",
+      });
+    for (const { id, name } of SEEDED_LABELS)
+      if (batch.get("Label", id) === undefined)
+        batch.put("Label", { id, name, groupId: null, createdById: null, createdAtMs: nowMs });
   });
 }
 

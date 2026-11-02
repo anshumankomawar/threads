@@ -1,4 +1,4 @@
-import { levelPositions, threadScore, TAGS, type Priority, type Schedule } from "model";
+import { levelPositions, threadScore, SEEDED_LABELS, type Priority, type Schedule } from "model";
 import { expect, test } from "vite-plus/test";
 import { nextPlanningMs, planSchedule, workingSlots, type Plannable } from "../src/scheduler.ts";
 
@@ -19,14 +19,14 @@ const score = (
     priority: Priority;
     dueAtMs: number | null;
     effortHours: number | null;
-    tagIds: string[];
+    labelIds: string[];
   }> = {},
   level = 0,
 ): number => threadScore({ priority: "none", dueAtMs: null, ...fields }, level, NOW);
 
 test("scores run from 1 to 100, with decimals", () => {
   const everything = score(
-    { priority: "urgent", dueAtMs: NOW - HOUR, effortHours: 0.5, tagIds: ["incident"] },
+    { priority: "urgent", dueAtMs: NOW - HOUR, effortHours: 0.5, labelIds: ["incident"] },
     1,
   );
   expect(everything).toBe(100);
@@ -41,18 +41,18 @@ test("a nearer due date, higher priority, more senior asker or weightier tag all
   expect(score({ dueAtMs: NOW - HOUR })).toBeGreaterThan(score({ dueAtMs: NOW + DAY }));
   expect(score({ priority: "high" })).toBeGreaterThan(score({ priority: "low" }));
   expect(score({}, 1)).toBeGreaterThan(score({}, 0));
-  expect(score({ tagIds: ["security"] })).toBeGreaterThan(score({ tagIds: ["housekeeping"] }));
+  expect(score({ labelIds: ["security"] })).toBeGreaterThan(score({ labelIds: ["housekeeping"] }));
 });
 
 test("only the weightiest tag counts", () => {
-  expect(score({ tagIds: ["security", "housekeeping", "bug"] })).toBe(
-    score({ tagIds: ["security"] }),
+  expect(score({ labelIds: ["security", "housekeeping", "bug"] })).toBe(
+    score({ labelIds: ["security"] }),
   );
 });
 
 test("there are ten tags, each with its own priority", () => {
-  expect(TAGS).toHaveLength(10);
-  expect(new Set(TAGS.map((tag) => tag.priority)).size).toBe(10);
+  expect(SEEDED_LABELS).toHaveLength(10);
+  expect(new Set(SEEDED_LABELS.map((tag) => tag.priority)).size).toBe(10);
 });
 
 test("quick work scores above big work, with no estimate in between", () => {

@@ -15,9 +15,11 @@ import {
 } from "./components/Sidebar";
 import {
   isDone,
+  labelSlug,
   plainThreadLinks,
   splitThreadLinks,
   UNREAD_THREAD_IDS,
+  type Label,
   type Person,
   type Thread,
   type ThreadChanges,
@@ -47,7 +49,11 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon, Cancel01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { Identicon } from "./components/Identicon";
 import { ProfileView } from "./components/ProfileView";
+import { LabelView } from "./components/LabelView";
 import { ListPage } from "./components/ListPage";
+import { NewGroupPalette } from "./components/NewGroupPalette";
+import { OrganizationPrompt } from "./components/OrganizationPrompt";
+import { groupNoticesFor, groupsFor, selectableLabels } from "./groups";
 import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { buildDay, homeDayMs, upNext } from "./inbox";
@@ -197,6 +203,8 @@ const App = observer(function App(): React.JSX.Element {
   const client = useSyncClient(source);
   const threads = client.threads;
   const people = client.people;
+  const labels = client.labels;
+  const groups = client.groups;
   const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedSource()));
   const fallbackMe = useContext(MeContext);
   // You view the app as the chosen person, or the first person in the data until you pick one.
@@ -248,7 +256,10 @@ const App = observer(function App(): React.JSX.Element {
     setViewAsOpen(false);
     remember(viewerKey(source), person.id);
     setViewerId(person.id);
-    setLastSeen(Object.fromEntries(threads.map((thread) => [thread.id, thread.updatedAtMs])));
+    setLastSeen({
+      ...Object.fromEntries(threads.map((thread) => [thread.id, thread.updatedAtMs])),
+      ...Object.fromEntries(groups.map((group) => [group.id, group.updatedAtMs])),
+    });
   };
 
   // Opening a thread marks it, and the one you're leaving, as seen. A conversation opens beside the thread it's in.
@@ -284,7 +295,30 @@ const App = observer(function App(): React.JSX.Element {
     openThread(null);
     setPage(next);
   };
+  // A label's threads; for a group's label, the group's page, which also counts as having seen it.
+  const openLabel = (labelId: string): void => {
+    openPage({ label: labelId });
+    const group = groups.find((candidate) => candidate.labelId === labelId);
+    if (group !== undefined) setLastSeen((current) => ({ ...current, [group.id]: Date.now() }));
+  };
   const toggleSidebar = (): void => setSidebarOpen((open) => !open);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [renamingOrganization, setRenamingOrganization] = useState(false);
+  const organization = client.organization;
+  const shownLabelId = page !== null && typeof page === "object" ? page.label : null;
+  const shownGroup = groups.find((group) => group.labelId === shownLabelId);
+  // A group's label comes back from the server just after the group, so go by the group until then.
+  const shownLabel: Label | undefined =
+    labels.find((label) => label.id === shownLabelId) ??
+    (shownGroup === undefined
+      ? undefined
+      : {
+          id: shownGroup.labelId,
+          name: shownGroup.name,
+          groupId: shownGroup.id,
+          createdById: shownGroup.createdById,
+          createdAtMs: shownGroup.createdAtMs,
+        });
 
   // Starting a thread opens the new-thread panel on the chosen kind.
   const [newThreadKind, setNewThreadKind] = useState<NewThreadKind | null>(null);
@@ -346,6 +380,8 @@ const App = observer(function App(): React.JSX.Element {
     nameOf: (personId) => people.find((person) => person.id === personId)?.name,
     people,
     threads,
+    labels,
+    groups,
     open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
     search: (query) => {
       const needle = query.toLowerCase();
@@ -566,7 +602,14 @@ const App = observer(function App(): React.JSX.Element {
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
       onSetEffort: (effortHours) => edit({ effortHours }),
-      onSetTags: (tagIds) => edit({ tagIds }),
+      onToggleLabel: (label) => {
+        const labelId = client.ensureLabel(label.name, me);
+        edit({
+          labelIds: thread.labelIds.includes(labelId)
+            ? thread.labelIds.filter((id) => id !== labelId)
+            : [...thread.labelIds, labelId],
+        });
+      },
       onSetAssignee: (person) => edit({ assigneeId: person.id }),
       onSetRequester: (person) => edit({ requesterId: person.id }),
       onSetSchedule: (schedule) => edit({ schedule }),
@@ -625,11 +668,24 @@ const App = observer(function App(): React.JSX.Element {
               conversations={conversationsFor(threads, me)}
               splitThreadId={splitThread?.id ?? null}
               activity={activityFor(threads, me, seenAt, nowMs)}
+              groupNotices={groupNoticesFor(
+                groups,
+                people,
+                me,
+                (group) => lastSeen[group.id] ?? client.readyAtMs,
+                nowMs,
+              )}
+              groups={groupsFor(groups, me)}
+              labels={labels}
+              threads={threads}
+              onNewGroup={() => setNewGroupOpen(true)}
+              onOpenLabel={openLabel}
               onMarkAllRead={() => {
                 const now = Date.now();
                 setLastSeen((current) => ({
                   ...current,
                   ...Object.fromEntries(threads.map((thread) => [thread.id, now])),
+                  ...Object.fromEntries(groups.map((group) => [group.id, now])),
                 }));
               }}
               nowMs={nowMs}
@@ -661,7 +717,7 @@ const App = observer(function App(): React.JSX.Element {
                     ? "Not scheduled yet"
                     : page === "settings"
                       ? "Settings"
-                      : activeThread?.title}
+                      : (shownLabel?.name ?? activeThread?.title)}
               </span>
               <span className="topbar-end">
                 <button
@@ -690,7 +746,9 @@ const App = observer(function App(): React.JSX.Element {
                 me={me}
                 threads={threads}
                 nowMs={nowMs}
+                organizationName={organization?.name ?? ""}
                 onWorkday={(workday) => client.updatePerson({ workday }, me)}
+                onRenameOrganization={() => setRenamingOrganization(true)}
               />
             ) : page === "unplaced" ? (
               <ListPage
@@ -701,6 +759,23 @@ const App = observer(function App(): React.JSX.Element {
               />
             ) : page === "settings" ? (
               <SettingsView me={me} people={people} />
+            ) : shownLabel !== undefined ? (
+              <LabelView
+                key={shownLabel.id}
+                label={shownLabel}
+                group={shownGroup}
+                threads={threads}
+                people={people}
+                labels={labels}
+                me={me}
+                nowMs={nowMs}
+                unreadIds={unreadIds}
+                onUpdateGroup={(changes) => {
+                  if (shownGroup !== undefined) client.updateGroup(shownGroup.id, changes, me);
+                }}
+                onNewThread={() => openNew()}
+                onOpenThread={openThread}
+              />
             ) : activeThread === undefined ? null : (
               <div className="thread-panes">
                 <ThreadView
@@ -742,7 +817,12 @@ const App = observer(function App(): React.JSX.Element {
             )}
           </main>
           {detailsOpen && (
-            <DetailsPanel thread={activeThread} nowMs={nowMs} onOpenThread={openThread} />
+            <DetailsPanel
+              thread={activeThread}
+              nowMs={nowMs}
+              onOpenThread={openThread}
+              onOpenLabel={openLabel}
+            />
           )}
           {newThreadKind !== null && (
             <NewThreadPalette
@@ -750,8 +830,34 @@ const App = observer(function App(): React.JSX.Element {
               people={people}
               me={me}
               nowMs={nowMs}
+              labels={selectableLabels(labels, groups)}
+              // Made from a group or label's page, a thread starts with that label.
+              initialLabels={shownLabel === undefined ? [] : [shownLabel]}
               onCreate={createThread}
               onClose={() => setNewThreadKind(null)}
+            />
+          )}
+          {newGroupOpen && (
+            <NewGroupPalette
+              people={people}
+              me={me}
+              labels={labels}
+              onCreate={(name, members) => {
+                setNewGroupOpen(false);
+                client.createGroup(name, members, me);
+                openPage({ label: labelSlug(name) });
+              }}
+              onClose={() => setNewGroupOpen(false)}
+            />
+          )}
+          {(organization?.name === "" || renamingOrganization) && (
+            <OrganizationPrompt
+              current={organization?.name ?? ""}
+              onSave={(name) => {
+                client.renameOrganization(name, me);
+                setRenamingOrganization(false);
+              }}
+              onClose={() => setRenamingOrganization(false)}
             />
           )}
           {blocking !== null && (
@@ -794,6 +900,12 @@ const App = observer(function App(): React.JSX.Element {
                 setViewAsOpen(true);
               }}
               onOpenProfile={openProfile}
+              labels={labels}
+              onOpenLabel={openLabel}
+              onNewGroup={() => {
+                setSearchOpen(false);
+                setNewGroupOpen(true);
+              }}
               onNewThread={openNew}
               onOpenThread={openThread}
               onClose={() => setSearchOpen(false)}

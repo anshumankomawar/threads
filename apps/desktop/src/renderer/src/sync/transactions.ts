@@ -1,5 +1,7 @@
 import {
   entryFromCreate,
+  groupFromCreate,
+  labelFromCreate,
   threadFromCreate,
   type AnyRecord,
   type ModelName,
@@ -65,9 +67,10 @@ export class CreationTransaction extends BaseTransaction {
     const nowMs = Date.now();
     const { input } = this;
     if (input.type !== "create") throw new Error("Not a creation");
-    return input.modelName === "Thread"
-      ? threadFromCreate(input.data, this.actorId, nowMs)
-      : entryFromCreate(input.data, this.actorId, nowMs);
+    if (input.modelName === "Thread") return threadFromCreate(input.data, this.actorId, nowMs);
+    if (input.modelName === "Label") return labelFromCreate(input.data, this.actorId, nowMs);
+    if (input.modelName === "Group") return groupFromCreate(input.data, this.actorId, nowMs);
+    return entryFromCreate(input.data, this.actorId, nowMs);
   }
 
   apply(pool: ObjectPool): void {

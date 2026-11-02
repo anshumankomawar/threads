@@ -8,6 +8,7 @@ import {
   PanelRightIcon,
   PencilEdit02Icon,
   Search01Icon,
+  UserGroupIcon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { useResizablePanel } from "./useResizablePanel";
@@ -17,7 +18,14 @@ import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
 import { useThreadMenu } from "../threadMenu";
 import { Identicon } from "./Identicon";
-import { plainThreadLinks, withoutLeadingMentions, type Thread } from "model";
+import {
+  plainThreadLinks,
+  withoutLeadingMentions,
+  type Group,
+  type Label,
+  type Thread,
+} from "model";
+import { filterLabels, threadsWithLabel, type GroupLists, type GroupNotice } from "../groups";
 import { latestFromOthers, type Conversations } from "../conversations";
 import { KIND_ICONS } from "../kindIcons";
 import { formatRange } from "../format";
@@ -419,8 +427,80 @@ function Tracking({
   );
 }
 
+// Your groups, everyone else's, and the labels people file things under, each with how many open threads it has. Any
+// of them opens its threads in the main area.
+function GroupList({
+  groups,
+  labels,
+  threads,
+  page,
+  onOpenLabel,
+  onNewGroup,
+}: {
+  groups: GroupLists;
+  labels: Label[];
+  threads: Thread[];
+  page: SidebarPage | null;
+  onOpenLabel: (id: string) => void;
+  onNewGroup: () => void;
+}): React.JSX.Element {
+  const count = (labelId: string): number => threadsWithLabel(threads, labelId).length;
+  const activeLabel = typeof page === "object" ? page?.label : undefined;
+  const row = (id: string, labelId: string, name: string): React.JSX.Element => {
+    const open = (): void => onOpenLabel(labelId);
+    const openThreads = count(labelId);
+    return (
+      <li key={id} className="thread-item">
+        <div
+          className="sidebar-row"
+          data-active={activeLabel === labelId}
+          role="button"
+          tabIndex={0}
+          onClick={open}
+          onKeyDown={(event) => activateOnKey(event, open)}
+        >
+          <span className="sidebar-row-label">{name}</span>
+          {openThreads > 0 && <span className="sidebar-row-meta">{openThreads}</span>}
+        </div>
+      </li>
+    );
+  };
+  const section = (
+    title: string,
+    items: { id: string; labelId: string; name: string }[],
+  ): React.JSX.Element | null =>
+    items.length === 0 ? null : (
+      <section className="conversation-group">
+        <h2 className="conversation-group-label">{title}</h2>
+        <ul className="thread-list" aria-label={title}>
+          {items.map((item) => row(item.id, item.labelId, item.name))}
+        </ul>
+      </section>
+    );
+  const asItems = (list: Group[]): { id: string; labelId: string; name: string }[] =>
+    list.map((group) => ({ id: group.id, labelId: group.labelId, name: group.name }));
+  return (
+    <>
+      <button type="button" className="sidebar-new-group" onClick={onNewGroup}>
+        New group
+      </button>
+      {section("Your groups", asItems(groups.mine))}
+      {section("Other groups", asItems(groups.others))}
+      {section(
+        "Labels",
+        filterLabels(labels).map((label) => ({
+          id: label.id,
+          labelId: label.id,
+          name: label.name,
+        })),
+      )}
+      {section("Archived groups", asItems(groups.archived))}
+    </>
+  );
+}
+
 // The sidebar shows one list at a time, picked by the icon tabs under its top bar, like Obsidian's side panes.
-type SidebarTab = "schedule" | "conversations" | "tracking";
+type SidebarTab = "schedule" | "conversations" | "tracking" | "groups";
 
 const TAB_KEY = "sidebar-tab";
 
@@ -428,6 +508,7 @@ const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
   { tab: "schedule", label: "Schedule", icon: Calendar03Icon },
   { tab: "conversations", label: "Conversations", icon: BubbleChatIcon },
   { tab: "tracking", label: "Tracking", icon: ViewIcon },
+  { tab: "groups", label: "Groups", icon: UserGroupIcon },
 ];
 
 function savedTab(): SidebarTab {
@@ -462,6 +543,7 @@ function SidebarTabs({
     schedule: 0,
     conversations: conversationCount,
     tracking: trackingCount,
+    groups: 0,
   };
   // Each name's own width, so the chosen tab grows to exactly fit it (animating to a guessed maximum finishes early
   // and looks rushed).
@@ -507,14 +589,21 @@ function SidebarTabs({
   );
 }
 
-// What opens in the main area from the sidebar: what's yours with no time yet, or settings.
-export type SidebarPage = "unplaced" | "settings";
+// What opens in the main area from the sidebar: what's yours with no time yet, settings, or a label's threads (a group's,
+// when it's a group's label).
+export type SidebarPage = "unplaced" | "settings" | { label: string };
 
 export function Sidebar({
   day,
   conversations,
   splitThreadId,
   activity,
+  groupNotices,
+  groups,
+  labels,
+  threads,
+  onNewGroup,
+  onOpenLabel,
   onMarkAllRead,
   nowMs,
   unreadIds,
@@ -535,6 +624,13 @@ export function Sidebar({
   splitThreadId: string | null;
   // What changed on your threads, for the notifications bell.
   activity: ActivityItem[];
+  // Groups someone added you to, for the same bell.
+  groupNotices: GroupNotice[];
+  groups: GroupLists;
+  labels: Label[];
+  threads: Thread[];
+  onNewGroup: () => void;
+  onOpenLabel: (id: string) => void;
   onMarkAllRead: () => void;
   nowMs: number;
   unreadIds: Set<string>;
@@ -575,6 +671,13 @@ export function Sidebar({
         <span className="topbar-end">
           <NotificationsButton
             items={activity}
+            groupNotices={groupNotices}
+            onOpenGroup={(id) => {
+              const group = [...groups.mine, ...groups.others, ...groups.archived].find(
+                (candidate) => candidate.id === id,
+              );
+              if (group !== undefined) onOpenLabel(group.labelId);
+            }}
             nowMs={nowMs}
             activeThreadId={activeThreadId}
             onOpenThread={onOpenThread}
@@ -628,6 +731,16 @@ export function Sidebar({
               </button>
             )}
           </>
+        )}
+        {tab === "groups" && (
+          <GroupList
+            groups={groups}
+            labels={labels}
+            threads={threads}
+            page={page}
+            onOpenLabel={onOpenLabel}
+            onNewGroup={onNewGroup}
+          />
         )}
         {tab === "tracking" && (
           <Tracking

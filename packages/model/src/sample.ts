@@ -1,6 +1,8 @@
 import {
   DUMMY_ZOOM_LINK,
   type Entry,
+  type Group,
+  type Label,
   type Person,
   type Priority,
   type Schedule,
@@ -133,7 +135,7 @@ type Fields = {
   priority?: Priority;
   dueAtMs?: number | null;
   effortHours?: number;
-  tagIds?: string[];
+  labelIds?: string[];
   schedule?: Schedule | null;
   attendees?: Person[];
 };
@@ -164,7 +166,7 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     priority: fields.priority ?? "none",
     dueAtMs: fields.dueAtMs ?? null,
     effortHours: fields.effortHours ?? null,
-    tagIds: fields.tagIds ?? [],
+    labelIds: fields.labelIds ?? [],
     schedule: fields.schedule ?? null,
     blocks: fields.schedule ? [fields.schedule] : [],
     workedMinutes: 0,
@@ -197,7 +199,7 @@ export function sampleThreads(
         priority: "high",
         dueAtMs: todayAt(clock, 23),
         effortHours: 1,
-        tagIds: ["planning"],
+        labelIds: ["planning", "q4-planning"],
       },
       nowMs,
       [
@@ -266,7 +268,7 @@ export function sampleThreads(
         priority: "low",
         dueAtMs: nowMs + 6 * DAY,
         effortHours: 2,
-        tagIds: ["launch"],
+        labelIds: ["launch"],
       },
       nowMs,
       [
@@ -579,7 +581,7 @@ export function sampleThreads(
         priority: "urgent",
         dueAtMs: todayAt(clock, 23),
         effortHours: 2,
-        tagIds: ["incident"],
+        labelIds: ["incident"],
       },
       nowMs,
       conversation(3 * HOUR, 12 * MINUTE, [
@@ -628,7 +630,7 @@ export function sampleThreads(
         priority: "medium",
         dueAtMs: nowMs + 4 * DAY,
         effortHours: 2,
-        tagIds: ["planning"],
+        labelIds: ["planning", "q4-planning"],
       },
       nowMs,
       [
@@ -669,7 +671,7 @@ export function sampleThreads(
         priority: "medium",
         dueAtMs: nowMs + 3 * DAY,
         effortHours: 1,
-        tagIds: ["compliance", "customer-escalation"],
+        labelIds: ["compliance", "customer-escalation"],
       },
       nowMs,
       [
@@ -690,7 +692,7 @@ export function sampleThreads(
         priority: "low",
         dueAtMs: nowMs + 7 * DAY,
         effortHours: 1,
-        tagIds: ["bug"],
+        labelIds: ["bug"],
       },
       nowMs,
       [
@@ -711,7 +713,7 @@ export function sampleThreads(
         priority: "low",
         dueAtMs: nowMs + 9 * DAY,
         effortHours: 4,
-        tagIds: ["compliance"],
+        labelIds: ["compliance"],
       },
       nowMs,
       [
@@ -732,7 +734,7 @@ export function sampleThreads(
         priority: "low",
         dueAtMs: nowMs + 12 * DAY,
         effortHours: 8,
-        tagIds: ["housekeeping"],
+        labelIds: ["housekeeping"],
       },
       nowMs,
       [
@@ -769,4 +771,31 @@ export function sampleThreads(
       ],
     ]),
   ];
+}
+
+const SAMPLE_GROUP_ID = "group-q4-planning";
+
+// The sample organization's one group, whose label is already on its planning threads.
+export function sampleGroup(me: Person, nowMs: number): { group: Group; label: Label } {
+  const name = "Q4 Planning";
+  return {
+    group: {
+      id: SAMPLE_GROUP_ID,
+      name,
+      labelId: "q4-planning",
+      memberIds: [me.id, priya.id, maya.id],
+      createdById: priya.id,
+      archived: false,
+      activity: [],
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    },
+    label: {
+      id: "q4-planning",
+      name,
+      groupId: SAMPLE_GROUP_ID,
+      createdById: priya.id,
+      createdAtMs: nowMs,
+    },
+  };
 }

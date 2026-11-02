@@ -1,4 +1,4 @@
-import type { Person, Thread } from "model";
+import type { Group, Label, Person, Thread } from "model";
 import { createContext, useContext } from "react";
 
 // How links in a message show: thread links (`[[thread:<id>]]`) by the linked thread's current title, opening into
@@ -12,6 +12,8 @@ export type ThreadLinks = {
   people: Person[];
   // Every thread, for working out when a question reaches someone (their meetings and focus blocks).
   threads: Thread[];
+  labels: Label[];
+  groups: Group[];
 };
 
 export const ThreadLinksContext = createContext<ThreadLinks>({
@@ -21,6 +23,8 @@ export const ThreadLinksContext = createContext<ThreadLinks>({
   search: () => [],
   people: [],
   threads: [],
+  labels: [],
+  groups: [],
 });
 
 export const useThreadLinks = (): ThreadLinks => useContext(ThreadLinksContext);

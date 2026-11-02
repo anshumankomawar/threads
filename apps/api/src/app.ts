@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 import {
   EngineError,
+  ensureOrganization,
   isWorkspaceName,
   seed,
   SyncEngine,
@@ -91,6 +92,7 @@ export function createApp({ now = Date.now, me = { id: "you", name: "You" } }: A
     WORKSPACES.map((name) => {
       const engine = new SyncEngine({ now });
       seed(engine, name, me, undefined, now());
+      ensureOrganization(engine, name);
       engine.replanAll();
       return [name, createWorkspaceApp(engine)];
     }),

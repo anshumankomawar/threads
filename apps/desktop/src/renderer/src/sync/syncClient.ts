@@ -1,11 +1,17 @@
 import { computed, makeObservable, observable, runInAction } from "mobx";
 import {
+  labelSlug,
   MODEL_NAMES,
+  ORGANIZATION_ID,
   SCHEMA_HASH,
   toThreads,
   type BootstrapResponse,
   type DeltasResponse,
   type EntryCreate,
+  type Group,
+  type GroupChanges,
+  type Label,
+  type Organization,
   type Person,
   type PersonChanges,
   type Schedule,
@@ -60,6 +66,8 @@ export type NewThread = {
   movedEntryIds?: string[];
   // Who's really asking, when you're making it for someone else.
   onBehalfOf?: Person | null;
+  // Its labels from the start, by name; any that don't exist yet are made with it.
+  labelNames?: string[];
 };
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -113,6 +121,9 @@ export class SyncClient {
       error: observable,
       threads: computed,
       people: computed,
+      organization: computed,
+      labels: computed,
+      groups: computed,
     });
   }
 
@@ -129,6 +140,18 @@ export class SyncClient {
 
   get people(): Person[] {
     return [...this.pool.maps.Person.values()];
+  }
+
+  get organization(): Organization | undefined {
+    return this.pool.maps.Organization.get(ORGANIZATION_ID);
+  }
+
+  get labels(): Label[] {
+    return [...this.pool.maps.Label.values()];
+  }
+
+  get groups(): Group[] {
+    return [...this.pool.maps.Group.values()];
   }
 
   // Starts (or restarts) syncing. Each run gets a token; a run that's been stopped or superseded bails at its next
@@ -193,7 +216,8 @@ export class SyncClient {
         const response = await this.#transport.bootstrap();
         if (run !== this.#run) return;
         const models: StoredModel[] = MODEL_NAMES.flatMap((modelName) =>
-          response.models[modelName].map((data) => ({ modelName, id: data.id, data })),
+          // A server that hasn't been updated yet may not send every model.
+          (response.models[modelName] ?? []).map((data) => ({ modelName, id: data.id, data })),
         );
         await this.#db().reset(models, {
           lastSyncId: response.lastSyncId,
@@ -295,9 +319,71 @@ export class SyncClient {
     });
   }
 
+  // A label by name: the one that exists, however it's written, or a new one sent along with whatever needs it. Making
+  // one that someone else just made is harmless, so it can't sink the thread it's for. Returns its id.
+  ensureLabel(name: string, me: Person): string {
+    const id = labelSlug(name);
+    const existing = this.labels.find((label) => label.id === id || labelSlug(label.name) === id);
+    if (existing !== undefined) return existing.id;
+    this.#enqueue(
+      new CreationTransaction(
+        {
+          id: crypto.randomUUID(),
+          type: "create",
+          modelName: "Label",
+          data: { id, name: name.trim() },
+        },
+        me.id,
+      ),
+    );
+    return id;
+  }
+
+  // Makes a group, with you in it. The server makes its label. Returns its id.
+  createGroup(name: string, members: Person[], me: Person): string {
+    const groupId = crypto.randomUUID();
+    this.#enqueue(
+      new CreationTransaction(
+        {
+          id: crypto.randomUUID(),
+          type: "create",
+          modelName: "Group",
+          data: { id: groupId, name: name.trim(), memberIds: members.map((person) => person.id) },
+        },
+        me.id,
+      ),
+    );
+    return groupId;
+  }
+
+  updateGroup(groupId: string, changes: GroupChanges, me: Person): void {
+    this.#enqueue(
+      new UpdateTransaction(
+        { id: crypto.randomUUID(), type: "update", modelName: "Group", modelId: groupId, changes },
+        me.id,
+      ),
+    );
+  }
+
+  renameOrganization(name: string, me: Person): void {
+    this.#enqueue(
+      new UpdateTransaction(
+        {
+          id: crypto.randomUUID(),
+          type: "update",
+          modelName: "Organization",
+          modelId: ORGANIZATION_ID,
+          changes: { name },
+        },
+        me.id,
+      ),
+    );
+  }
+
   // A thread and its description (or the messages moved in to open it), sent together. Returns its id.
   createThread(draft: NewThread, me: Person): string {
     const threadId = crypto.randomUUID();
+    const labelIds = (draft.labelNames ?? []).map((name) => this.ensureLabel(name, me));
     this.#enqueue(
       new CreationTransaction(
         {
@@ -314,6 +400,7 @@ export class SyncClient {
             branchedFromId: draft.branchedFromId ?? null,
             blocksId: draft.blocksId ?? null,
             onBehalfOfId: draft.onBehalfOf?.id ?? null,
+            labelIds,
           },
         },
         me.id,

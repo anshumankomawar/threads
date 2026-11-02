@@ -2,7 +2,19 @@
 // models in an object pool, transactions sent to the server, and delta packets of sync actions broadcast back,
 // all ordered by a monotonically increasing sync id.
 
-import type { Entry, Person, Priority, Schedule, Status, Thread, ThreadKind } from "./model";
+import { labelSlug } from "./model";
+import type {
+  Entry,
+  Group,
+  Label,
+  Organization,
+  Person,
+  Priority,
+  Schedule,
+  Status,
+  Thread,
+  ThreadKind,
+} from "./model";
 
 // --- Models -----------------------------------------------------------------------------------------------
 
@@ -19,7 +31,7 @@ export type ThreadRecord = {
   priority: Priority;
   dueAtMs: number | null;
   effortHours: number | null;
-  tagIds: string[];
+  labelIds: string[];
   schedule: Schedule | null;
   blocks: Schedule[];
   workedMinutes: number;
@@ -53,12 +65,22 @@ export type ModelRecords = {
   Person: Person;
   Thread: ThreadRecord;
   Entry: EntryRecord;
+  Organization: Organization;
+  Label: Label;
+  Group: Group;
 };
 
 export type ModelName = keyof ModelRecords;
 export type AnyRecord = ModelRecords[ModelName];
 
-export const MODEL_NAMES: ModelName[] = ["Person", "Thread", "Entry"];
+export const MODEL_NAMES: ModelName[] = [
+  "Person",
+  "Thread",
+  "Entry",
+  "Organization",
+  "Label",
+  "Group",
+];
 
 // Each model's metadata, as in LSE's ModelRegistry: how it loads, and which properties reference other models.
 // Every model loads instantly at bootstrap for now; lazy and partial loading can come with more data.
@@ -73,7 +95,7 @@ export const ModelRegistry = {
       branchedFromId: "Thread",
       blocksId: "Thread",
     },
-    referenceArrays: { attendeeIds: "Person" },
+    referenceArrays: { attendeeIds: "Person", labelIds: "Label" },
     backReferences: { entries: "Entry" },
   },
   Entry: {
@@ -83,7 +105,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v15");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v16");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -128,9 +150,19 @@ export type SyncMessage =
 export type TransactionInput =
   | { id: string; type: "create"; modelName: "Thread"; data: ThreadCreate }
   | { id: string; type: "create"; modelName: "Entry"; data: EntryCreate }
+  | { id: string; type: "create"; modelName: "Label"; data: LabelCreate }
+  | { id: string; type: "create"; modelName: "Group"; data: GroupCreate }
   | { id: string; type: "update"; modelName: "Thread"; modelId: string; changes: ThreadChanges }
   // People change only their own profile.
   | { id: string; type: "update"; modelName: "Person"; modelId: string; changes: PersonChanges }
+  | { id: string; type: "update"; modelName: "Group"; modelId: string; changes: GroupChanges }
+  | {
+      id: string;
+      type: "update";
+      modelName: "Organization";
+      modelId: string;
+      changes: OrganizationChanges;
+    }
   // Moves messages from one thread into another. The source thread gets an activity line where they were.
   | { id: string; type: "move"; modelName: "Entry"; entryIds: string[]; threadId: string };
 
@@ -147,7 +179,18 @@ export type ThreadCreate = {
   blocksId?: string | null;
   // Who is really asking, when it isn't whoever is making the thread. They become its requester.
   onBehalfOfId?: string | null;
+  // Its labels from the start, such as the group it's made in.
+  labelIds?: string[];
 };
+
+// The id is `labelSlug(name)`, so everyone making the same label makes one label.
+export type LabelCreate = { id: string; name: string };
+
+export type GroupCreate = { id: string; name: string; memberIds: string[] };
+
+export type GroupChanges = Partial<Pick<Group, "name" | "memberIds" | "archived">>;
+
+export type OrganizationChanges = Pick<Organization, "name">;
 
 export type PersonChanges = Partial<Pick<Person, "workday">>;
 
@@ -161,7 +204,7 @@ export type ThreadChanges = Partial<
     | "priority"
     | "dueAtMs"
     | "effortHours"
-    | "tagIds"
+    | "labelIds"
     | "schedule"
   >
 > & {
@@ -203,7 +246,7 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     priority: "none",
     dueAtMs: null,
     effortHours: null,
-    tagIds: [],
+    labelIds: data.labelIds ?? [],
     schedule: data.schedule,
     blocks: [],
     workedMinutes: 0,
@@ -214,6 +257,31 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     branchedFromId: data.branchedFromId ?? null,
     blocksId: data.blocksId ?? null,
     seenBy: {},
+    createdAtMs: nowMs,
+    updatedAtMs: nowMs,
+  };
+}
+
+export function labelFromCreate(data: LabelCreate, actorId: string, nowMs: number): Label {
+  return {
+    id: data.id,
+    name: data.name.trim(),
+    groupId: null,
+    createdById: actorId,
+    createdAtMs: nowMs,
+  };
+}
+
+// Whoever makes a group is in it. Its label is made alongside it, by the server.
+export function groupFromCreate(data: GroupCreate, actorId: string, nowMs: number): Group {
+  return {
+    id: data.id,
+    name: data.name.trim(),
+    labelId: labelSlug(data.name),
+    memberIds: [actorId, ...data.memberIds.filter((id) => id !== actorId)],
+    createdById: actorId,
+    archived: false,
+    activity: [],
     createdAtMs: nowMs,
     updatedAtMs: nowMs,
   };
@@ -285,7 +353,7 @@ export function toThread(
     dueAtMs: record.dueAtMs,
     // Threads stored before estimates and tags existed have no fields.
     effortHours: record.effortHours ?? null,
-    tagIds: record.tagIds ?? [],
+    labelIds: record.labelIds ?? [],
     schedule: record.schedule,
     blocks: recordBlocks(record),
     workedMinutes: record.workedMinutes ?? 0,
@@ -365,7 +433,7 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       priority: thread.priority,
       dueAtMs: thread.dueAtMs,
       effortHours: thread.effortHours,
-      tagIds: thread.tagIds,
+      labelIds: thread.labelIds,
       schedule: thread.schedule,
       blocks: thread.blocks,
       workedMinutes: thread.workedMinutes,

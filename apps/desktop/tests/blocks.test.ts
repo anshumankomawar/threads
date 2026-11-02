@@ -24,7 +24,7 @@ function thread(fields: Partial<Thread>): Thread {
     priority: "none",
     dueAtMs: null,
     effortHours: null,
-    tagIds: [],
+    labelIds: [],
     schedule: null,
     blocks: [],
     workedMinutes: 0,

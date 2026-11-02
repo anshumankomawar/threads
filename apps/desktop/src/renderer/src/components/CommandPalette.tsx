@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Person, Thread, ThreadKind } from "model";
+import type { Label, Person, Thread, ThreadKind } from "model";
 import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
 import type { NewThreadKind } from "./NewThreadPalette";
 
@@ -56,6 +56,9 @@ export function CommandPalette({
   onSwitchSource,
   onViewAs,
   onOpenProfile,
+  labels,
+  onOpenLabel,
+  onNewGroup,
   onNewThread,
   onOpenThread,
   onClose,
@@ -66,6 +69,9 @@ export function CommandPalette({
   onSwitchSource: (source: DataSource) => void;
   onViewAs: () => void;
   onOpenProfile: () => void;
+  labels: Label[];
+  onOpenLabel: (id: string) => void;
+  onNewGroup: () => void;
   onNewThread: (kind: NewThreadKind) => void;
   onOpenThread: (id: string) => void;
   onClose: () => void;
@@ -101,7 +107,21 @@ export function CommandPalette({
       ? [
           {
             title: "Views",
-            items: [{ id: "profile", label: "Profile and organization", run: run(onOpenProfile) }],
+            items: [
+              { id: "profile", label: "Profile and organization", run: run(onOpenProfile) },
+              { id: "new-group", label: "New Group", run: onNewGroup },
+            ],
+          },
+          {
+            title: "Groups and Labels",
+            items: labels
+              .toSorted((a, b) => a.name.localeCompare(b.name))
+              .map((label) => ({
+                id: `label-${label.id}`,
+                label: label.name,
+                shortcut: label.groupId === null ? "Label" : "Group",
+                run: run(() => onOpenLabel(label.id)),
+              })),
           },
           {
             title: "Data",

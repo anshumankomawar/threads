@@ -140,7 +140,7 @@ test("a tag change moves a thread only once it beats the one ahead by the margin
   await transact("anshu", ask("t1"));
   await transact("anshu", ask("t2"));
   // The top tag alone adds 9.9 points, just short of the margin.
-  await transact("anshu", [update("t2", { tagIds: ["incident"] })]);
+  await transact("anshu", [update("t2", { labelIds: ["incident"] })]);
   expect((await thread("t2")).schedule?.startMs).toBe(NINE + HALF_HOUR);
   await transact("anshu", [update("t2", { priority: "high" })]);
   expect((await thread("t2")).schedule?.startMs).toBe(NINE);
@@ -163,22 +163,21 @@ test("effort sets how much time a thread gets, and shows in the activity", async
 
 test("tags are saved and show in the activity", async () => {
   await transact("anshu", ask("t1"));
-  await transact("anshu", [update("t1", { tagIds: ["security", "bug"] })]);
-  await transact("anshu", [update("t1", { tagIds: ["bug"] })]);
+  await transact("anshu", [update("t1", { labelIds: ["security", "bug"] })]);
+  await transact("anshu", [update("t1", { labelIds: ["bug"] })]);
   const found = await thread("t1");
-  expect(found.tagIds).toEqual(["bug"]);
+  expect(found.labelIds).toEqual(["bug"]);
   expect(activity(found)).toEqual([
-    "tagged this Security",
-    "tagged this Bug",
-    "removed the Security tag",
+    "labelled this Security",
+    "labelled this Bug",
+    "removed the Security label",
   ]);
 });
 
 test.each<[string, object]>([
   ["an effort below 30 minutes", { effortHours: 0.25 }],
   ["an effort that isn't in half hours", { effortHours: 1.2 }],
-  ["an unknown tag", { tagIds: ["nope"] }],
-  ["a repeated tag", { tagIds: ["bug", "bug"] }],
+  ["a repeated label", { labelIds: ["bug", "bug"] }],
 ])("an update with %s is refused", async (_, changes) => {
   await transact("anshu", ask("t1"));
   expect((await transact("anshu", [update("t1", changes)])).status).toBe(400);
@@ -262,7 +261,7 @@ const oldThread: ThreadRecord = {
   priority: "none",
   dueAtMs: null,
   effortHours: null,
-  tagIds: [],
+  labelIds: [],
   schedule: null,
   blocks: [],
   workedMinutes: 0,
@@ -295,7 +294,7 @@ test("looking over schedules places threads without a slot and skips closed ones
 });
 
 test("looking over schedules moves slots that passed, on threads stored before effort and tags", () => {
-  const { effortHours: _effort, tagIds: _tags, ...stored } = oldThread;
+  const { effortHours: _effort, labelIds: _labels, ...stored } = oldThread;
   const engine = loaded([{ ...stored, schedule: slotAt(NOW - 24 * 60 * 60_000) } as ThreadRecord]);
   engine.replanAll();
   expect(engine.models.Thread.get("t1")?.schedule).toEqual(slotAt(NINE));

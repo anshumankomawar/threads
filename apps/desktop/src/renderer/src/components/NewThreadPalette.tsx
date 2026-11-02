@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatClock, formatWhen, parseWhen, startOfDay, DAY } from "../format";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
-import type { Person, Schedule, ThreadKind } from "model";
+import { labelSlug, type Label, type Person, type Schedule, type ThreadKind } from "model";
 import { Identicon } from "./Identicon";
 
 // What the form makes; conversations start from a mention in a reply instead.
@@ -19,10 +19,12 @@ export type NewThreadDraft = {
   schedule: Schedule | null;
   // Who's really asking, when you're making a thread for someone else. They track it; you don't.
   onBehalfOf: Person | null;
+  // Its labels by name; any that don't exist yet are made with it.
+  labelNames: string[];
 };
 
-// `asker` is a detour from assigning a thread, for making it on someone's behalf.
-type Step = "write" | "describe" | "invite" | "pick" | "asker";
+// `asker` and `labels` are detours from the last step: making a thread on someone's behalf, and filing it.
+type Step = "write" | "describe" | "invite" | "pick" | "asker" | "labels";
 
 // Every kind gets a title then an optional description. Then a thread is assigned; a meeting gets invitees, then a
 // time; focus work is scheduled.
@@ -83,6 +85,8 @@ export function NewThreadPalette({
   people,
   me,
   nowMs,
+  labels,
+  initialLabels,
   onCreate,
   onClose,
 }: {
@@ -90,6 +94,10 @@ export function NewThreadPalette({
   people: Person[];
   me: Person;
   nowMs: number;
+  // The labels on offer.
+  labels: Label[];
+  // What it starts with, such as the group you're making it in.
+  initialLabels: Label[];
   onCreate: (draft: NewThreadDraft) => void;
   onClose: () => void;
 }): React.JSX.Element {
@@ -102,6 +110,7 @@ export function NewThreadPalette({
   const [selected, setSelected] = useState(0);
   const [invitees, setInvitees] = useState<Person[]>([]);
   const [asker, setAsker] = useState<Person>(me);
+  const [chosenLabels, setChosenLabels] = useState<{ id: string; name: string }[]>(initialLabels);
 
   useEffect(() => inputRef.current?.focus(), []);
 
@@ -142,11 +151,24 @@ export function NewThreadPalette({
             value: typed,
           },
         ];
+  const newLabel = labelSlug(filter);
+  const labelOptions: Option[] = [
+    ...labels
+      .filter((label) => matches(label.name))
+      .map((label) => ({ id: label.id, label: label.name, value: null })),
+    ...(step === "labels" &&
+    newLabel !== "" &&
+    !labels.some((label) => label.id === newLabel || labelSlug(label.name) === newLabel)
+      ? [{ id: newLabel, label: `Make “${filter.trim()}”`, hint: filter.trim(), value: null }]
+      : []),
+  ];
   const options = [
     ...typedOption,
-    ...(step === "invite" ? inviteOptions : step === "asker" ? askerOptions : pickOptions).filter(
-      (option) => typed !== null || matches(option.label),
-    ),
+    ...(step === "labels"
+      ? labelOptions
+      : (step === "invite" ? inviteOptions : step === "asker" ? askerOptions : pickOptions).filter(
+          (option) => typed !== null || matches(option.label),
+        )),
   ];
   const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));
   const title = text.trim();
@@ -180,7 +202,24 @@ export function NewThreadPalette({
   };
 
   const back = (): void =>
-    goTo(step === "asker" ? "pick" : (steps[steps.indexOf(step) - 1] ?? "write"));
+    goTo(
+      step === "asker" || step === "labels" ? "pick" : (steps[steps.indexOf(step) - 1] ?? "write"),
+    );
+
+  const hasLabel = (id: string): boolean => chosenLabels.some((label) => label.id === id);
+  // Adds or removes a label, including one that doesn't exist yet, which is made along with the thread.
+  const toggleLabel = (option: Option | undefined): void => {
+    if (option === undefined) return;
+    const name = option.hint ?? option.label;
+    setChosenLabels((current) =>
+      hasLabel(option.id)
+        ? current.filter((label) => label.id !== option.id)
+        : [...current, { id: option.id, name }],
+    );
+    setFilter("");
+    setSelected(0);
+    focusInput();
+  };
 
   // You can pick anyone as who's asking. It's a detour, since most threads are your own ask.
   const chooseAsker = (option: Option | undefined): void => {
@@ -206,6 +245,7 @@ export function NewThreadPalette({
       invitees: kind === "meeting" ? invitees : [],
       schedule: kind === "response" ? null : (option.value as Schedule | null),
       onBehalfOf: kind === "response" && asker.id !== me.id ? asker : null,
+      labelNames: chosenLabels.map((label) => label.name),
     });
   };
 
@@ -263,9 +303,15 @@ export function NewThreadPalette({
         event.preventDefault();
         chooseAsker(options[selectedIndex]);
       }
-    } else if (event.key === "Tab" && kind === "response") {
+    } else if (step === "labels") {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        toggleLabel(options[selectedIndex]);
+      }
+    } else if (event.key === "Tab") {
       event.preventDefault();
-      goTo("asker");
+      if (event.shiftKey || kind !== "response") goTo("labels");
+      else goTo("asker");
     } else if (event.key === "Enter") {
       event.preventDefault();
       create(options[selectedIndex]);
@@ -281,9 +327,11 @@ export function NewThreadPalette({
           ? "Invite people…"
           : step === "asker"
             ? "Who's asking?"
-            : kind === "response"
-              ? "Assign to…"
-              : "When… (fri 3pm, tomorrow 10:30 for 45m)";
+            : step === "labels"
+              ? "Find or make a label…"
+              : kind === "response"
+                ? "Assign to…"
+                : "When… (fri 3pm, tomorrow 10:30 for 45m)";
   const summary =
     step === "describe"
       ? "Describe"
@@ -291,9 +339,11 @@ export function NewThreadPalette({
         ? "Invite to"
         : step === "asker"
           ? "Who's asking for"
-          : kind === "response"
-            ? "Assign"
-            : "Schedule";
+          : step === "labels"
+            ? "Label"
+            : kind === "response"
+              ? "Assign"
+              : "Schedule";
   const nextLabel = (): string => {
     if (text.trim().length === 0) {
       const what =
@@ -336,7 +386,8 @@ export function NewThreadPalette({
             }}
           />
           <span className="palette-step">
-            Step {steps.indexOf(step === "asker" ? "pick" : step) + 1} of {steps.length}
+            Step {steps.indexOf(step === "asker" || step === "labels" ? "pick" : step) + 1} of{" "}
+            {steps.length}
           </span>
         </div>
         <div className="palette-tabs" role="tablist">
@@ -390,6 +441,21 @@ export function NewThreadPalette({
                     {invitees.length === 0 ? "Just you so far" : `You + ${invitees.length}`}
                   </span>
                 )}
+                {step === "pick" && (
+                  <button
+                    type="button"
+                    className="palette-asker"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => goTo("labels")}
+                  >
+                    {chosenLabels.length === 0
+                      ? "No labels"
+                      : chosenLabels.length === 1
+                        ? chosenLabels[0].name
+                        : `${chosenLabels[0].name} +${chosenLabels.length - 1}`}
+                    <span className="palette-row-shortcut">{kind === "response" ? "⇧⇥" : "⇥"}</span>
+                  </button>
+                )}
                 {step === "pick" && kind === "response" && (
                   <button
                     type="button"
@@ -405,26 +471,31 @@ export function NewThreadPalette({
               {options.length === 0 && <div className="palette-empty">No matches</div>}
               {options.map((option, index) => {
                 const invited =
-                  step === "invite" && option.person !== undefined && isInvited(option.person);
+                  step === "labels"
+                    ? hasLabel(option.id)
+                    : step === "invite" && option.person !== undefined && isInvited(option.person);
                 return (
                   <div
                     key={option.id}
                     className="palette-row"
                     data-selected={index === selectedIndex}
                     role="option"
-                    aria-selected={step === "invite" ? invited : index === selectedIndex}
+                    aria-selected={
+                      step === "invite" || step === "labels" ? invited : index === selectedIndex
+                    }
                     onMouseDown={(event) => event.preventDefault()}
                     onMouseMove={() => setSelected(index)}
                     onClick={() => {
                       if (step === "invite" && option.person !== undefined)
                         toggleInvitee(option.person);
                       else if (step === "asker") chooseAsker(option);
+                      else if (step === "labels") toggleLabel(option);
                       else create(option);
                     }}
                   >
                     {option.person !== undefined && <Identicon seed={option.person.id} size={16} />}
                     <span className="palette-row-label">{option.label}</span>
-                    {step === "invite" ? (
+                    {step === "invite" || step === "labels" ? (
                       <span className="palette-check" data-checked={invited} aria-hidden>
                         {invited && <HugeiconsIcon icon={Tick02Icon} size={12} />}
                       </span>
@@ -436,6 +507,18 @@ export function NewThreadPalette({
                   </div>
                 );
               })}
+              {step === "labels" && (
+                <div
+                  className="palette-row palette-continue"
+                  role="option"
+                  aria-selected={false}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={back}
+                >
+                  <span className="palette-row-label">Done</span>
+                  <span className="palette-row-shortcut">esc</span>
+                </div>
+              )}
               {step === "invite" && (
                 <div
                   className="palette-row palette-continue"

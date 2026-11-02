@@ -34,7 +34,7 @@ function conversation(id: string, fields: Partial<Thread>): Thread {
     createdBy: sam,
     seenBy: {},
     effortHours: null,
-    tagIds: [],
+    labelIds: [],
     updatedAtMs: NOW,
     entries: [message(`${id}-0`, sam, "[[person:me]] can you look?", NOW - 60_000)],
     ...fields,

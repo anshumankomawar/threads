@@ -4,6 +4,7 @@ import { plainThreadLinks, type Person } from "model";
 import { useEffect, useRef, useState } from "react";
 import type { ActivityItem } from "../activity";
 import { formatRelativeTime } from "../format";
+import type { GroupNotice } from "../groups";
 import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
@@ -28,22 +29,29 @@ function notificationText(item: ActivityItem, me: Person, plain: (text: string) 
 // a click outside closes it too.
 export function NotificationsButton({
   items,
+  groupNotices,
   nowMs,
   activeThreadId,
   onOpenThread,
+  onOpenGroup,
   onMarkAllRead,
 }: {
   items: ActivityItem[];
+  // Groups someone added you to.
+  groupNotices: GroupNotice[];
   nowMs: number;
   activeThreadId: string | null;
   onOpenThread: (id: string) => void;
+  onOpenGroup: (id: string) => void;
   onMarkAllRead: () => void;
 }): React.JSX.Element {
   const { titleOf, nameOf } = useThreadLinks();
   const me = useMe();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const fresh = items.filter((item) => item.unread > 0).length;
+  const fresh =
+    items.filter((item) => item.unread > 0).length +
+    groupNotices.filter((notice) => notice.unread).length;
 
   useEffect(() => {
     if (!open) return;
@@ -85,6 +93,31 @@ export function NotificationsButton({
             )}
           </div>
           <ul className="notifications-list">
+            {groupNotices.map((notice) => (
+              <li key={notice.group.id}>
+                <button
+                  type="button"
+                  className="notification"
+                  data-read={!notice.unread}
+                  onClick={() => {
+                    setOpen(false);
+                    onOpenGroup(notice.group.id);
+                  }}
+                >
+                  <Identicon seed={notice.actor.id} size={16} />
+                  <span className="notification-body">
+                    <span className="notification-text">
+                      {notice.actor.name.split(" ")[0]} {notice.text}
+                    </span>
+                    <span className="notification-thread">{notice.group.name}</span>
+                  </span>
+                  <span className="notification-time">
+                    {notice.unread && <span className="unread-dot" aria-label="New" />}
+                    {formatRelativeTime(notice.atMs, nowMs)}
+                  </span>
+                </button>
+              </li>
+            ))}
             {items.map((item) => (
               <li key={item.thread.id}>
                 <button

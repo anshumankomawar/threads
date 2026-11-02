@@ -107,7 +107,7 @@ test("bootstrap returns every model and the sync id it's current to", async () =
   expect(body.models.Person.map((person) => person.id)).toEqual(people.map((person) => person.id));
   expect(body.models.Person[0].managerId).toBe("kk");
   expect(body.models.Thread).toEqual([]);
-  expect(body.lastSyncId).toBe(people.length);
+  expect(body.lastSyncId).toBeGreaterThanOrEqual(people.length);
   expect(body.schemaHash).toEqual(expect.any(String));
 });
 

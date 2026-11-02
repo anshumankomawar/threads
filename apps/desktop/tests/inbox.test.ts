@@ -28,7 +28,7 @@ function thread(fields: Partial<Thread>): Thread {
     createdBy: other,
     seenBy: {},
     effortHours: null,
-    tagIds: [],
+    labelIds: [],
     updatedAtMs: NOW,
     entries: [],
     ...fields,

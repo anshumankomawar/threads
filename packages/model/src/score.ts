@@ -1,7 +1,8 @@
 import type { Person, Priority } from "./model";
 
-// The tags a thread can carry, with how much each matters from 1 to 100. Fixed in code for now.
-export const TAGS = [
+// The labels every workspace starts with, and the only ones that count towards a thread's score, from 1 to 100. Labels
+// people make have no priority, so nobody can jump the queue by making one.
+export const SEEDED_LABELS = [
   { id: "incident", name: "Incident", priority: 100 },
   { id: "security", name: "Security", priority: 95 },
   { id: "customer-escalation", name: "Customer escalation", priority: 85 },
@@ -13,8 +14,6 @@ export const TAGS = [
   { id: "tech-debt", name: "Tech debt", priority: 20 },
   { id: "housekeeping", name: "Housekeeping", priority: 10 },
 ] as const;
-
-export const TAG_IDS = TAGS.map((tag) => tag.id);
 
 // How much work a thread is, in hours, in half-hour steps. It can run as long as it needs to.
 export const EFFORT_OPTIONS = [0.5, 1, 2, 4, 8, 16, 24, 40];
@@ -64,17 +63,19 @@ export type ScoreFields = {
   priority: Priority;
   dueAtMs: number | null;
   effortHours?: number | null;
-  tagIds?: string[];
+  labelIds?: string[];
 };
 
 // How important a thread is, from 1 to 100. `askerLevel` is `levelPositions` of whoever is waiting on the answer.
-// Only the most important tag counts, so piling tags on doesn't raise it. Urgent threads never fall below the floor.
+// Only the most important label counts, so piling labels on doesn't raise it. Urgent threads never fall below the floor.
 export function threadScore(fields: ScoreFields, askerLevel: number, nowMs: number): number {
   const effortHours = fields.effortHours ?? null;
   const urgency = dueUrgency(fields.dueAtMs, effortHours, nowMs);
   const tag = Math.max(
     0,
-    ...TAGS.filter(({ id }) => fields.tagIds?.includes(id)).map(({ priority }) => priority / 100),
+    ...SEEDED_LABELS.filter(({ id }) => fields.labelIds?.includes(id)).map(
+      ({ priority }) => priority / 100,
+    ),
   );
   const weighted =
     WEIGHTS.due * urgency +

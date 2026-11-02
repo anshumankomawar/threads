@@ -49,12 +49,14 @@ export function DetailsPanel({
   thread,
   nowMs,
   onOpenThread,
+  onOpenLabel,
 }: {
   thread: Thread | undefined;
   nowMs: number;
   onOpenThread: (id: string) => void;
+  onOpenLabel: (id: string) => void;
 }): React.JSX.Element {
-  const { threads, titleOf, people } = useThreadLinks();
+  const { threads, titleOf, people, labels } = useThreadLinks();
   const { panelRef, width, handle } = useResizablePanel({
     storageKey: "details-width",
     defaultWidth: 280,
@@ -80,6 +82,7 @@ export function DetailsPanel({
     entry.actionItems.map((item) => ({ ...item, entryId: entry.id })),
   );
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
+  const onLabels = labels.filter((label) => thread.labelIds.includes(label.id));
   const history = thread.entries.flatMap((entry) => (entry.kind === "event" ? [entry] : []));
   const nameOf = (personId: string): string | undefined =>
     people.find((person) => person.id === personId)?.name;
@@ -116,6 +119,21 @@ export function DetailsPanel({
                   </div>
                 ))}
           </Row>
+          {onLabels.length > 0 && (
+            <Row label="Labels">
+              {onLabels.map((label) => (
+                <div key={label.id}>
+                  <button
+                    type="button"
+                    className="details-label-link"
+                    onClick={() => onOpenLabel(label.id)}
+                  >
+                    {label.name}
+                  </button>
+                </div>
+              ))}
+            </Row>
+          )}
         </Section>
 
         <ThreadGraph current={thread} threads={threads} onOpenThread={onOpenThread} />
