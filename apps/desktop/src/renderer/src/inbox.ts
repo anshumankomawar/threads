@@ -1,6 +1,6 @@
 import {
+  isDone,
   askerId,
-  lastMessage,
   otherSide,
   pendingAsks,
   levelPositions,
@@ -30,27 +30,35 @@ export type TimelineItem = InboxItem & { block: Schedule };
 export type Day = {
   // The day the timeline shows (its local midnight); today unless you've stepped to another.
   dayMs: number;
-  // The hours the timeline lays out: the working day (9 to 5), plus any hour with something booked outside it.
-  startHour: number;
-  endHour: number;
   // Blocks of time on that day, in start order.
   timeline: TimelineItem[];
   // Waiting on you and not on today's timeline: responses (on whatever day their slot is) and unplanned focus.
   unscheduled: InboxItem[];
   // Responses you're in that are waiting on the other person, labelled with who and when their slot is.
   outbox: InboxItem[];
+  // What the sidebar shows besides the schedule, which is everything else that's yours: what you're waiting on (the
+  // outbox, and your blocked threads, by who they're blocked on), and what's yours but has no time yet.
+  waiting: InboxItem[];
+  unplaced: InboxItem[];
+  // Questions waiting on you (someone mentioned you and you haven't written since), newest first. They take no time
+  // on the schedule: you answer them in the slack the scheduler leaves, or turn one into a task with `/task`.
+  mentions: InboxItem[];
   later: InboxItem[];
 };
 
 const DAY = 24 * 60 * 60 * 1000;
-// The working day the schedule shows, matching the hours the server schedules in.
-const WORK_START_HOUR = 9;
-const WORK_END_HOUR = 17;
 
 export function startOfDay(ms: number): number {
   const date = new Date(ms);
   date.setHours(0, 0, 0, 0);
   return date.getTime();
+}
+
+// The day the schedule treats as today: today, or at the weekend Monday, the next day anything is scheduled.
+export function homeDayMs(nowMs: number): number {
+  const day = new Date(startOfDay(nowMs));
+  while (day.getDay() === 0 || day.getDay() === 6) day.setDate(day.getDate() + 1);
+  return day.getTime();
 }
 
 function daysUntil(atMs: number, nowMs: number): number {
@@ -129,13 +137,14 @@ export function buildDay(
   const timeline: TimelineItem[] = [];
   const unscheduled: InboxItem[] = [];
   const outbox: InboxItem[] = [];
+  const mentions: (InboxItem & { atMs: number })[] = [];
   const later: InboxItem[] = [];
 
   for (const thread of threads) {
-    if (thread.status === "closed") continue;
+    if (isDone(thread.status)) continue;
     const turn = waitingOn(thread);
 
-    // A question for you in someone else's thread: its reply block on the timeline, and the inbox until it's due.
+    // A question for you in someone else's thread.
     const ask =
       turn === me.id
         ? undefined
@@ -151,7 +160,6 @@ export function buildDay(
         thread.entries.flatMap((entry) =>
           entry.kind === "message" && entry.author.id === ask.askerId ? [entry.author] : [],
         )[0] ?? null;
-      const replies = thread.replyBlocks.filter((reply) => reply.personId === me.id);
       const asked = {
         thread,
         from: asker,
@@ -161,11 +169,13 @@ export function buildDay(
         score: 100,
         asked: asker ?? undefined,
       };
-      for (const reply of replies)
-        if (on(dayMs, reply.startMs))
-          timeline.push({ ...asked, block: { startMs: reply.startMs, endMs: reply.endMs } });
-      if (!replies.some((reply) => on(today, reply.startMs))) unscheduled.push(asked);
-      continue;
+      mentions.push({ ...asked, atMs: ask.atMs });
+      // A thread you're in (one you asked for, say) still shows where it would otherwise.
+      const inIt =
+        thread.requester.id === me.id ||
+        thread.assignee?.id === me.id ||
+        thread.attendees.some((person) => person.id === me.id);
+      if (!inIt) continue;
     }
 
     const involved =
@@ -173,13 +183,14 @@ export function buildDay(
       thread.assignee?.id === me.id ||
       thread.attendees.some((person) => person.id === me.id);
     if (!involved && turn !== me.id) continue;
-    const sender = lastMessage(thread)?.author ?? thread.requester;
+    // Who it's from: the other person in it (messages are a worklog, so the last one may be yours).
+    const sender = otherSide(thread, me.id) ?? thread.requester;
     const due = thread.dueAtMs;
     const when = thread.schedule?.startMs ?? due;
     const overdue = thread.kind === "response" && due !== null && due < nowMs;
     // A blocked thread waits on its open blockers' assignees; it stays yours, off the schedule, labelled Blocked.
     const blockers = threads.filter(
-      (candidate) => candidate.blocksId === thread.id && candidate.status !== "closed",
+      (candidate) => candidate.blocksId === thread.id && !isDone(candidate.status),
     );
     const blockedOn = blockers.flatMap((blocker) => blocker.assignee ?? []);
     const isBlocked = thread.status === "blocked";
@@ -239,15 +250,31 @@ export function buildDay(
   const blocked = ({ thread }: InboxItem): number => Number(thread.status === "blocked");
   const byScore = (a: InboxItem, b: InboxItem): number =>
     blocked(a) - blocked(b) || unassigned(b) - unassigned(a) || b.score - a.score;
-  // Working hours, widened only to show anything booked outside them.
-  const hours = timeline.map((item) => new Date(item.block.startMs).getHours());
+  const sortedInbox = unscheduled.sort(byScore);
+  const sortedOutbox = outbox.sort((a, b) => b.thread.updatedAtMs - a.thread.updatedAtMs);
+  // A blocked thread waits on whoever its open blockers are with.
+  const blockedOn = (item: InboxItem): Person | null =>
+    threads.find((candidate) => candidate.blocksId === item.thread.id && !isDone(candidate.status))
+      ?.assignee ?? null;
   return {
     dayMs,
-    startHour: Math.min(WORK_START_HOUR, ...hours),
-    endHour: Math.max(WORK_END_HOUR, ...hours),
     timeline,
-    unscheduled: unscheduled.sort(byScore),
-    outbox: outbox.sort((a, b) => b.thread.updatedAtMs - a.thread.updatedAtMs),
+    unscheduled: sortedInbox,
+    outbox: sortedOutbox,
+    waiting: [
+      ...sortedOutbox,
+      ...sortedInbox
+        .filter((item) => item.thread.status === "blocked")
+        .map((item) => ({ ...item, from: blockedOn(item) })),
+    ],
+    unplaced: sortedInbox.filter(
+      (item) =>
+        item.thread.status !== "blocked" &&
+        (item.thread.kind === "response"
+          ? item.thread.blocks.length === 0
+          : item.thread.schedule === null),
+    ),
+    mentions: mentions.sort((a, b) => b.atMs - a.atMs),
     later: later.sort(byScore),
   };
 }

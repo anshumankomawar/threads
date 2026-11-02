@@ -1,21 +1,8 @@
-import { formatClock, formatDue, formatRelativeTime } from "../format";
-import { scoreOf } from "../inbox";
-import {
-  formatEffort,
-  KIND_LABELS,
-  plainThreadLinks,
-  PRIORITY_LABELS,
-  STATUS_LABELS,
-  TAGS,
-  type Entry,
-  type Person,
-  type Thread,
-} from "model";
+import { formatClock, formatDue } from "../format";
+import { mentionsIn, plainThreadLinks, STATUS_LABELS, type Person, type Thread } from "model";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 import { useResizablePanel } from "./useResizablePanel";
-
-type MessageEntry = Extract<Entry, { kind: "message" }>;
 
 function PersonChip({ person }: { person: Person }): React.JSX.Element {
   return (
@@ -56,18 +43,18 @@ function reveal(entryId: string): void {
     ?.scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
-// The task at a glance: its properties, the latest update, what's been decided and what's left to do,
-// all read from the thread so you don't have to scroll through it.
+// The task at a glance: when it's happening, how it branched and who was asked what, and what's been decided and
+// what's left to do, all read from the thread so you don't have to scroll through it.
 export function DetailsPanel({
   thread,
-  team,
   nowMs,
+  onOpenThread,
 }: {
   thread: Thread | undefined;
-  team: Person[];
   nowMs: number;
+  onOpenThread: (id: string) => void;
 }): React.JSX.Element {
-  const { titleOf, nameOf } = useThreadLinks();
+  const { threads } = useThreadLinks();
   const { panelRef, width, handle } = useResizablePanel({
     storageKey: "details-width",
     defaultWidth: 280,
@@ -80,18 +67,11 @@ export function DetailsPanel({
     return (
       <aside ref={panelRef} className="details" style={{ width }}>
         <div className="topbar details-topbar">Details</div>
-        <div className="details-empty">Select a thread to see its details.</div>
         {handle}
       </aside>
     );
   }
 
-  const messages = thread.entries.filter(
-    (entry): entry is MessageEntry => entry.kind === "message",
-  );
-  const latest = [...thread.entries]
-    .reverse()
-    .find((entry) => entry.kind === "message" || entry.kind === "event");
   const notes = thread.entries.flatMap((entry) => (entry.kind === "notes" ? [entry] : []));
   const noteDecisions = notes.flatMap((entry) =>
     entry.decisions.map((text) => ({ text, entryId: entry.id })),
@@ -99,12 +79,6 @@ export function DetailsPanel({
   const actionItems = notes.flatMap((entry) =>
     entry.actionItems.map((item) => ({ ...item, entryId: entry.id })),
   );
-  const people = new Map<string, Person>();
-  for (const person of [thread.requester, thread.assignee, ...thread.attendees]) {
-    if (person !== null) people.set(person.id, person);
-  }
-  for (const message of messages) people.set(message.author.id, message.author);
-  const started = thread.entries[0]?.createdAtMs;
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
   // A meeting keeps its time once it's over; a response only lists what's still to come.
   const upcoming =
@@ -116,32 +90,20 @@ export function DetailsPanel({
     <aside ref={panelRef} className="details" style={{ width }}>
       <div className="topbar details-topbar">Details</div>
       <div className="details-content">
+        {/* Who and what are in the thread's header; this is when and how far along. */}
         <Section title="Overview">
-          <Row label="Kind">{KIND_LABELS[thread.kind]}</Row>
           {thread.kind !== "meeting" && (
             <Row label="Status">
               <span className="status-dot" data-status={thread.status} aria-hidden />
               {STATUS_LABELS[thread.status]}
             </Row>
           )}
-          {thread.kind === "response" && (
-            <>
-              <Row label="Priority">{PRIORITY_LABELS[thread.priority]}</Row>
-              <Row label="Due">
-                <span data-overdue={due?.overdue ?? false}>{due?.label ?? "No due date"}</span>
-              </Row>
-              <Row label="Effort">
-                {thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
-              </Row>
-              <Row label="Tags">
-                {TAGS.filter((tag) => thread.tagIds.includes(tag.id))
-                  .map((tag) => tag.name)
-                  .join(", ") || "None"}
-              </Row>
-              <Row label="Score">{scoreOf(thread, team, nowMs).toFixed(1)}</Row>
-            </>
+          {thread.kind === "response" && due !== null && (
+            <Row label="Due">
+              <span data-overdue={due.overdue}>{due.label}</span>
+            </Row>
           )}
-          <Row label={thread.kind === "meeting" ? "When" : "Scheduled"}>
+          <Row label={thread.kind === "response" ? "Scheduled" : "When"}>
             {upcoming.length === 0
               ? "Not scheduled"
               : upcoming.map((block) => (
@@ -151,52 +113,9 @@ export function DetailsPanel({
                   </div>
                 ))}
           </Row>
-          {thread.kind === "response" && (
-            <>
-              <Row label="Requested by">
-                <PersonChip person={thread.requester} />
-              </Row>
-              <Row label="Assignee">
-                {thread.assignee === null ? "Unassigned" : <PersonChip person={thread.assignee} />}
-              </Row>
-            </>
-          )}
-          {thread.kind === "meeting" && (
-            <>
-              <Row label="Organizer">
-                <PersonChip person={thread.requester} />
-              </Row>
-              <Row label="Attendees">
-                <span className="details-people">
-                  {thread.attendees.map((person) => (
-                    <PersonChip key={person.id} person={person} />
-                  ))}
-                </span>
-              </Row>
-            </>
-          )}
-          {thread.kind === "focus" && (
-            <Row label="Owner">
-              <PersonChip person={thread.requester} />
-            </Row>
-          )}
         </Section>
 
-        {latest !== undefined && (
-          <Section title="Latest">
-            <button type="button" className="details-latest" onClick={() => reveal(latest.id)}>
-              <span className="details-latest-meta">
-                <PersonChip person={latest.kind === "event" ? latest.actor : latest.author} />
-                <span className="details-time">
-                  {formatRelativeTime(latest.createdAtMs, nowMs)}
-                </span>
-              </span>
-              <span className="details-latest-text">
-                {plainThreadLinks(latest.text, titleOf, nameOf)}
-              </span>
-            </button>
-          </Section>
-        )}
+        <ThreadGraph current={thread} threads={threads} onOpenThread={onOpenThread} />
 
         {noteDecisions.length > 0 && (
           <Section title={`Decisions · ${noteDecisions.length}`}>
@@ -231,16 +150,146 @@ export function DetailsPanel({
             </ul>
           </Section>
         )}
-
-        <Section title="Activity">
-          <div className="details-stats">
-            {messages.length} {messages.length === 1 ? "message" : "messages"} · {people.size}{" "}
-            {people.size === 1 ? "person" : "people"}
-            {started !== undefined && ` · started ${formatRelativeTime(started, nowMs)} ago`}
-          </div>
-        </Section>
       </div>
       {handle}
     </aside>
   );
+}
+
+// One step in a thread's history: someone asked people a question in it, or a thread branched off it.
+type GraphItem =
+  | {
+      kind: "ask";
+      id: string;
+      atMs: number;
+      from: Person;
+      to: Person[];
+      text: string;
+      answered: boolean;
+    }
+  | { kind: "branch"; id: string; atMs: number; thread: Thread };
+
+// What happened in a thread, oldest first: its questions (mentions) and its branches.
+function graphItems(thread: Thread, threads: Thread[]): GraphItem[] {
+  const asks = thread.entries.flatMap((entry): GraphItem[] => {
+    if (entry.kind !== "message") return [];
+    const to = mentionsIn(entry.text).flatMap((id) => {
+      const person = threads
+        .flatMap((other) => [other.requester, other.assignee, ...other.attendees])
+        .find((candidate) => candidate?.id === id);
+      return person == null || id === entry.author.id ? [] : [person];
+    });
+    if (to.length === 0) return [];
+    const answered = to.every((person) =>
+      thread.entries.some(
+        (later) =>
+          later.kind === "message" &&
+          later.author.id === person.id &&
+          later.createdAtMs > entry.createdAtMs,
+      ),
+    );
+    return [
+      {
+        kind: "ask",
+        id: entry.id,
+        atMs: entry.createdAtMs,
+        from: entry.author,
+        to,
+        text: entry.text,
+        answered,
+      },
+    ];
+  });
+  const branches = threads.flatMap((other): GraphItem[] =>
+    other.branchedFromId === thread.id
+      ? [{ kind: "branch", id: other.id, atMs: other.entries[0]?.createdAtMs ?? 0, thread: other }]
+      : [],
+  );
+  return [...asks, ...branches].sort((a, b) => a.atMs - b.atMs);
+}
+
+// The thread's family as a graph, like `git log --graph`: from the thread everything branched from, each branch
+// forks off where it started, with the questions asked along the way. Click a thread to open it, a question to jump
+// to it. Nothing shows for a thread with no branches or questions.
+function ThreadGraph({
+  current,
+  threads,
+  onOpenThread,
+}: {
+  current: Thread;
+  threads: Thread[];
+  onOpenThread: (id: string) => void;
+}): React.JSX.Element | null {
+  const { titleOf, nameOf } = useThreadLinks();
+  let root = current;
+  const seen = new Set([root.id]);
+  for (;;) {
+    const parent = threads.find((other) => other.id === root.branchedFromId);
+    if (parent === undefined || seen.has(parent.id)) break;
+    seen.add(parent.id);
+    root = parent;
+  }
+  if (root === current && graphItems(current, threads).length === 0) return null;
+  // A question as its words, without the mentions it opens with.
+  const questionText = (text: string): string =>
+    plainThreadLinks(text, titleOf, nameOf).replace(/^(@\S+\s*)+/, "");
+
+  const renderThread = (thread: Thread, depth: number): React.JSX.Element => {
+    const items = depth < 8 ? graphItems(thread, threads) : [];
+    return (
+      <>
+        <button
+          type="button"
+          className="graph-thread"
+          data-current={thread.id === current.id}
+          onClick={() => onOpenThread(thread.id)}
+        >
+          <span className="status-dot" data-status={thread.status} aria-hidden />
+          <span className="graph-title">{thread.title}</span>
+        </button>
+        {items.length > 0 && (
+          <ul className="graph-children">
+            {items.map((item) => (
+              <li key={item.id}>
+                {item.kind === "branch" ? (
+                  renderThread(item.thread, depth + 1)
+                ) : (
+                  <button
+                    type="button"
+                    className="graph-ask"
+                    data-answered={item.answered}
+                    onClick={() =>
+                      thread.id === current.id ? reveal(item.id) : onOpenThread(thread.id)
+                    }
+                  >
+                    <span className="graph-at" aria-hidden>
+                      @
+                    </span>
+                    <span
+                      className="graph-title"
+                      title={`${firstName(item.from)} asked ${item.to.map(firstName).join(", ")}`}
+                    >
+                      <span className="graph-asker">{firstName(item.from)}</span>{" "}
+                      {questionText(item.text)}
+                    </span>
+                    {item.answered && <span className="graph-answered">answered</span>}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <Section title="Branches">
+      <div className="graph">{renderThread(root, 0)}</div>
+    </Section>
+  );
+}
+
+function firstName(person: Person): string {
+  return person.name.split(" ")[0];
 }

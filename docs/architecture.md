@@ -45,7 +45,7 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 | `packages/model/src/sync.ts`                         | The sync protocol: records, `ModelRegistry`, `SCHEMA_HASH`, `SyncAction`, `TransactionInput`, records ↔ `Thread` conversion, `threadFromCreate`/`entryFromCreate` |
 | `packages/model/src/sample.ts`                       | Seed data: local people, the sample team and threads                                                                                                              |
 | `apps/api/src/engine.ts`                             | `SyncEngine`: transaction validation (zod), business rules and side effects, sync ids, the log, seeding                                                           |
-| `apps/api/src/scheduler.ts`                          | `planSchedule`: where one person's threads go; `WORKING_HOURS`                                                                                                    |
+| `apps/api/src/scheduler.ts`                          | `planSchedule`: where one person's threads go                                                                                                                     |
 | `packages/model/src/score.ts`                        | `threadScore`, `TAGS`, effort options: how important a thread is, shared by the API and the desktop app                                                           |
 | `apps/api/src/worker.ts`                             | The `Workspace` Durable Object (SQLite storage, WebSocket, broadcast, morning alarm) and the Worker entry (token, routing)                                        |
 | `apps/api/src/app.ts`                                | HTTP routes for one workspace; `createApp` runs all workspaces in memory for tests                                                                                |
@@ -59,12 +59,20 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 
 Data is normalized into flat records linked by id, like database rows:
 
-- **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree).
-- **Thread**: one ask, meeting or focus block. References people by id: `requesterId`, `assigneeId`,
-  `attendeeIds`. Has `status` (`open`, `blocked`, `closed`), `priority`, `dueAtMs`, `effortHours`, `tagIds`, `schedule`,
-  `createdAtMs`, `updatedAtMs`.
+- **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree), and `workday` (their own
+  working hours and catch-up times, set on their profile; `workdayOf` falls back to the org's `WORKING_HOURS` and
+  `CATCH_UP_TIMES`). Seeds refresh who people are but keep their `workday`.
+- **Thread**: one ask, meeting or focus block. References people by id: `requesterId`, `assigneeId`, `attendeeIds`. Has
+  `status` (`open`, `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`,
+  `effortHours`, `tagIds`, `schedule`, `createdAtMs`, `updatedAtMs`.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
   `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
+- **A thread's description** is not a field: it's the message the thread was opened with, and it has the thread's
+  own id (`descriptionOf`). The thread view shows it in the heading under the title; it's otherwise an ordinary
+  message, so mentions in it ask people and it counts as "opened" in notifications. The new-thread form asks for a
+  title, then an optional description (`createThread` sends the message with `id: threadId` only when there is one).
+  The server lets only the requester write it, only as a message, keeps it out of moves, and lets no entry take
+  another thread's id. Threads stored before this got theirs on load (`migrateDescriptions`).
 
 The UI never works with records. `toThreads()` resolves references into the nested `Thread` shape from
 `model.ts`, which is what components receive. Keep components on that shape; convert at the edge.
@@ -87,7 +95,8 @@ also needs `Authorization: Bearer <API_TOKEN>` (`?token=` on the socket).
 A **sync action** is `{ id, modelName, modelId, action: "I" | "U" | "D", data }`. Inserts and updates carry the
 whole record.
 
-A **transaction** is a create of a `Thread` or `Entry`, an update of a `Thread`, or a `move` of messages into another
+A **transaction** is a create of a `Thread` or `Entry`, an update of a `Thread` or of a `Person` (only your own:
+`PersonChanges`, today just `workday`; anyone else's is refused with 403), or a `move` of messages into another
 thread (`MoveTransaction`; entries are otherwise append-only).
 Ids for new models are made on the client (`crypto.randomUUID()`), so later transactions in the same batch can refer to them.
 
@@ -157,8 +166,7 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   shift-click for a range; the selection bar and `MovePalette` pick an existing thread or a new branch. The `move`
   transaction changes each message's `threadId`; the server adds one activity line to the source thread, timed at the
   first moved message so it sits where they were ("moved 3 messages to <link>"). A new branch opens with the moved
-  messages instead of an opening message (`movedEntryIds`), so the thread header only absorbs a first message whose
-  first line is the title.
+  messages instead of a description (`movedEntryIds`), so moved messages always stay messages.
 - A branch is an ordinary `response` thread with `branchedFromId` set, between the same people as its parent
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
@@ -169,15 +177,24 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   or whoever asked while nobody's assigned. That person has it in their inbox; whoever asked has it in their
   outbox. Messages never move it: a thread is a worklog. It leaves both when it's closed, and a closed thread takes
   no more replies. Closing one from your inbox opens the next.
-- Questions: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Someone mentioned
-  by another person who hasn't written in the thread since has a question waiting (`pendingAsks` in `model.ts`,
-  `Batch.asks` on the server). A mention arriving while the app is open shows a toast (`MentionToasts`) that opens
-  the thread. Questions get time on the schedule only once they pile up: three waiting, or the oldest two hours old
-  (`REPLY_BATCH`, `REPLY_WAIT_MS` in `engine.ts`; the Workspace object's alarm wakes for the two-hour mark). Then
-  they share one half-hour block (`replyBlocks` on each thread, one per person) at the next break, ahead of the
-  person's own work but never inside the frozen next half hour (`afterFreeze`); a block already scheduled takes in
-  new questions. Writing anything in the thread answers it; closing the thread clears it. Waiting questions show in
-  the inbox as "Reply to: …" and on the timeline at their block. Ownership doesn't move.
+- Questions: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Someone mentioned by
+  another person who hasn't written in the thread since has a question waiting (`pendingAsks` in `model.ts`). Questions
+  are messages, not work: they take no time on anyone's schedule. They show in the sidebar's Questions tab (the sidebar
+  shows one list at a time: Schedule, Questions, Outbox) and as a toast (`MentionToasts`), which waits while you're in a
+  meeting or focus block and shows when it ends; questions showing at once share one toast. A card says "Blocking
+  <name>" when the asker is on that thread now or within the hour, or how long it's waited once it's past a catch-up
+  window. Under your own question, a line tells you whether it has reached them yet, been seen (`seenBy`, set quietly by
+  the `seen` change when they open the thread) or answered (`askStatuses` in `questions.ts`). You answer them in the
+  slack the scheduler leaves (two catch-up half hours a day, `CATCH_UP_TIMES` in `model.ts`, kept free by `catchUpTimes`
+  in `scheduler.ts`); writing anything in the thread answers it. When one needs real work, `/task` turns it into a task
+  of your own: a new thread assigned to you, branched from the conversation, with "Taking this on in <link>" posted
+  there (which answers it).
+- Notifications (`activityFor` in `activity.ts`, the bell in the sidebar's top bar, `Notifications.tsx`) list, per
+  thread you're part of, the latest thing someone else did there in the past week: replies (marked when they answer your
+  question) and the status lines worth knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved).
+  Questions for you, the scheduler's moves and routine edits stay out. It's derived from entries, with nothing stored;
+  what's new counts against the same last-seen times as the unread dots, which live on this device ("Mark all read"
+  moves them all to now).
 - `/blocked` (the `/` menu, `components/slashCommands.ts`, then `BlockedPalette`) makes a blocker: an ordinary
   response to the chosen person, with `blocksId` (and `branchedFromId`) set to the thread you're in. The server
   marks that thread Blocked, which takes it off the schedule, and adds "is blocked on <link>". When its last open
@@ -185,7 +202,9 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   it again. A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their outbox.
 - `buildDay` in `inbox.ts` lays this out: a response waiting on you is on the timeline on its slot's day and in your
   inbox until then; responses waiting on others are the outbox. The schedule can step to other days (`dayMs`).
-- Closing is a status change; nothing else closes a thread.
+- Closing is a status change; nothing else closes a thread. Archiving is too: an archived thread is done like a closed
+  one and also leaves every list and the notifications, but stays searchable. Right-clicking a thread in a list
+  (`ThreadMenuContext` in `threadMenu.ts`) offers Open, Open beside, Close or Reopen, and Archive or Unarchive.
 
 ## Scoring and scheduling
 
@@ -197,19 +216,19 @@ response holds `blocks`, any number of them, each as long as the free time allow
   computed when needed and never stored, because it changes as due dates approach and saving it would fill the sync
   log. Client and server share the function, so the inbox sorts by the same number the schedule uses.
 - **The plan** (`planSchedule` in `apps/api/src/scheduler.ts`) lays out one person's open responses around their
-  meetings and focus blocks, in `WORKING_HOURS`, on the next five weekdays. It's pure and has no randomness. In order,
-  each thread takes free half hours until it has the time it needs, breaking only around fixed time and the end of the
-  day, and carrying over to the next working day. A thread only moves ahead of another by outscoring it by 10. Time
-  under way or starting within 30 minutes stays put, but only that stretch; the rest of a long block can give way.
-  What doesn't fit stays in the inbox and waits for a later run.
+  meetings and focus blocks, in their working hours (`workdayOf`), on the next five weekdays. It's pure and has no
+  randomness. In order, each thread takes free half hours until it has the time it needs, breaking only around fixed
+  time and the end of the day, and carrying over to the next working day. A thread only moves ahead of another by
+  outscoring it by 10. Time under way or starting within 30 minutes stays put, but only that stretch; the rest of a long
+  block can give way. What doesn't fit stays in the inbox and waits for a later run.
 - **How much time a thread needs** (`SyncEngine.#plan`): the assignee gets its `effortHours`, less `workedMinutes` and
   blocks that have ended, which count as work done. Anyone else it's waiting on, a thread with no estimate, or one with
   its estimate used up gets 30 minutes.
-- **When it runs** (`SyncEngine.#replanAfter`): after every batch, for whoever the touched threads are waiting on,
-  and every attendee of a touched meeting. A response handed to someone gives up its blocks, adding the assignee's time
-  so far to `workedMinutes`. Closing a thread reschedules nobody, so its time stays a gap until the next change. Block
-  moves are side effects in the same delta packet as the change that caused them, with no activity lines; only threads
-  whose blocks change are written.
+- **When it runs** (`SyncEngine.#replanAfter`): after every batch, for whoever the touched threads are waiting on, every
+  attendee of a touched meeting, and anyone who changed their working day. A response handed to someone gives up its
+  blocks, adding the assignee's time so far to `workedMinutes`. Closing a thread reschedules nobody, so its time stays a
+  gap until the next change. Block moves are side effects in the same delta packet as the change that caused them, with
+  no activity lines; only threads whose blocks change are written.
 - **The morning run** (`SyncEngine.replanAll`, from the `Workspace` Durable Object's `alarm`) looks over every schedule
   half an hour before the working day, for closer due dates and blocks that passed with the thread still open. It also
   runs whenever a workspace loads.
@@ -252,8 +271,8 @@ back.
 
 ### Change sample or local seed data
 
-Edit `packages/model/src/sample.ts`. Existing workspaces keep their stored threads; seeded **people** refresh
-automatically on load (`refreshSeedPeople`). To see new sample threads, reset the local Worker's state (delete
+Edit `packages/model/src/sample.ts`. A sample thread's first message is its description (it gets the thread's id).
+Existing workspaces keep their stored threads; seeded **people** refresh automatically on load (`refreshSeedPeople`). To see new sample threads, reset the local Worker's state (delete
 `apps/api/.cloudflare/state/v3/do` with the API stopped); clients notice and rebuild.
 
 ## Testing and running

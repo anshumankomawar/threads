@@ -2,8 +2,15 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
-import { DetailsToggle, SearchButton, Sidebar, SidebarToggle } from "./components/Sidebar";
 import {
+  DetailsToggle,
+  SearchButton,
+  Sidebar,
+  SidebarToggle,
+  type SidebarPage,
+} from "./components/Sidebar";
+import {
+  isDone,
   plainThreadLinks,
   splitThreadLinks,
   UNREAD_THREAD_IDS,
@@ -12,6 +19,8 @@ import {
   type ThreadChanges,
   type ThreadKind,
   waitingOn,
+  pendingAsks,
+  threadLink,
 } from "model";
 import { observer } from "mobx-react-lite";
 import {
@@ -28,12 +37,18 @@ import { BlockedPalette } from "./components/BlockedPalette";
 import { MentionToasts } from "./components/MentionToasts";
 import { MeContext } from "./me";
 import { ThreadLinksContext, type ThreadLinks } from "./threadLinks";
-import { Maximize2, Trash2, X } from "lucide-react";
+import { ThreadMenuContext } from "./threadMenu";
+import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { ArrowExpand01Icon, Cancel01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { Identicon } from "./components/Identicon";
-import { OrgView } from "./components/OrgView";
+import { ProfileView } from "./components/ProfileView";
+import { ListPage } from "./components/ListPage";
+import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
-import { Welcome } from "./components/Welcome";
-import { buildDay, upNext } from "./inbox";
+import { buildDay, homeDayMs, upNext } from "./inbox";
+import { quietTimes } from "./questions";
+import { activityFor } from "./activity";
 
 // Mouse moves within this many pixels of the top nudge the drag-region resync element.
 const DRAG_RESYNC_ZONE_PX = 96;
@@ -99,6 +114,10 @@ const ZOOM_STEP = 0.1;
 const MIN_ZOOM = 0.7;
 const MAX_ZOOM = 2;
 
+// The main content's zoom, kept in range and to one decimal.
+const clampZoom = (zoom: number): number =>
+  Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom)) * 10) / 10;
+
 function savedContentZoom(): number {
   try {
     const zoom = Number(localStorage.getItem(CONTENT_ZOOM_KEY));
@@ -162,7 +181,7 @@ function WipeButton({ onWipe }: { onWipe: () => Promise<void> }): React.JSX.Elem
         void onWipe().finally(() => setState("idle"));
       }}
     >
-      <Trash2 size={13} strokeWidth={1.7} aria-hidden />
+      <HugeiconsIcon icon={Delete02Icon} size={13} aria-hidden />
       {state === "confirm" && <span>Wipe all threads?</span>}
       {state === "wiping" && <span>Wiping…</span>}
     </button>
@@ -186,7 +205,7 @@ const App = observer(function App(): React.JSX.Element {
     remember(CONTENT_ZOOM_KEY, String(contentZoom));
   }, [contentZoom]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [orgOpen, setOrgOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -195,10 +214,9 @@ const App = observer(function App(): React.JSX.Element {
   const [lastSeen, setLastSeen] = useState<Record<string, number>>({});
   const nowMs = useNow(60_000);
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
-  // The day the schedule shows, as days from today.
+  // The day the schedule shows, as days from today, or on a weekend from Monday (the next day anything is scheduled).
   const [dayOffset, setDayOffset] = useState(0);
-  const shownDay = new Date(nowMs);
-  shownDay.setHours(0, 0, 0, 0);
+  const shownDay = new Date(homeDayMs(nowMs));
   shownDay.setDate(shownDay.getDate() + dayOffset);
   const day = buildDay(threads, me, people, nowMs, shownDay.getTime());
   const seenAt = (thread: Thread): number =>
@@ -238,14 +256,21 @@ const App = observer(function App(): React.JSX.Element {
       ...(id === null ? {} : { [id]: now }),
     }));
     setActiveThreadId(id);
-    setOrgOpen(false);
+    setProfileOpen(false);
+    setPage(null);
     // A thread opened as the main one leaves the split view.
     if (id !== null && id === splitThreadId) setSplitThreadId(null);
   };
-  // The org view takes the thread's place in the main area.
-  const openOrg = (): void => {
+  // Your profile and the org take the thread's place in the main area.
+  const openProfile = (): void => {
     openThread(null);
-    setOrgOpen(true);
+    setProfileOpen(true);
+  };
+  // The lists behind the sidebar's counts (inbox, waiting, questions for you), likewise.
+  const [page, setPage] = useState<SidebarPage | null>(null);
+  const openPage = (next: SidebarPage): void => {
+    openThread(null);
+    setPage(next);
   };
   const toggleSidebar = (): void => setSidebarOpen((open) => !open);
 
@@ -256,8 +281,7 @@ const App = observer(function App(): React.JSX.Element {
     setNewThreadKind(kind);
   };
 
-  // The panel's text becomes the opening message (and its first line the title). The thread appears at once and
-  // syncs in the background.
+  // The panel's title and description make the thread. It appears at once and syncs in the background.
   const createThread = (draft: NewThreadDraft): void => {
     setNewThreadKind(null);
     openThread(client.createThread(draft, me));
@@ -272,11 +296,7 @@ const App = observer(function App(): React.JSX.Element {
       const zoom = { "=": ZOOM_STEP, "+": ZOOM_STEP, "-": -ZOOM_STEP }[event.key];
       if (zoom !== undefined || event.key === "0") {
         event.preventDefault();
-        setContentZoom((current) =>
-          zoom === undefined
-            ? 1
-            : Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current + zoom)) * 10) / 10,
-        );
+        setContentZoom((current) => (zoom === undefined ? 1 : clampZoom(current + zoom)));
         return;
       }
       if (event.shiftKey) return;
@@ -308,6 +328,7 @@ const App = observer(function App(): React.JSX.Element {
     titleOf: (threadId) => threads.find((thread) => thread.id === threadId)?.title,
     nameOf: (personId) => people.find((person) => person.id === personId)?.name,
     people,
+    threads,
     open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
     search: (query) => {
       const needle = query.toLowerCase();
@@ -322,7 +343,7 @@ const App = observer(function App(): React.JSX.Element {
   // you're talking to in the parent (`with`, or the first other person on it).
   const createBranch = (
     from: Thread,
-    text: string,
+    title: string,
     withPerson?: Person,
     movedEntryIds?: string[],
   ): string => {
@@ -332,7 +353,8 @@ const App = observer(function App(): React.JSX.Element {
     return client.createThread(
       {
         kind: "response",
-        text,
+        title,
+        description: "",
         assignee: others[0] ?? null,
         invitees: [],
         schedule: null,
@@ -343,14 +365,36 @@ const App = observer(function App(): React.JSX.Element {
     );
   };
 
+  // Opening a thread with a question for you marks it seen, so whoever asked can tell.
+  const unseenAsk = [activeThread, splitThread].find((thread) => {
+    if (thread === undefined) return false;
+    const ask = pendingAsks(
+      thread.entries.flatMap((entry) =>
+        entry.kind === "message"
+          ? [{ authorId: entry.author.id, text: entry.text, createdAtMs: entry.createdAtMs }]
+          : [],
+      ),
+    ).get(me.id);
+    return ask !== undefined && (thread.seenBy[me.id] ?? 0) < ask.atMs;
+  })?.id;
+  useEffect(() => {
+    if (unseenAsk !== undefined) client.updateThread(unseenAsk, { seen: true }, me);
+  }, [unseenAsk, client, me]);
+
   // `/blocked`: the thread the form is for while it's open, and the new thread asking someone for what it needs,
   // which blocks it until it closes.
   const [blocking, setBlocking] = useState<Thread | null>(null);
-  const createBlocker = (from: Thread, person: Person, text: string): void => {
+  const createBlocker = (
+    from: Thread,
+    person: Person,
+    title: string,
+    description: string,
+  ): void => {
     client.createThread(
       {
         kind: "response",
-        text,
+        title,
+        description,
         assignee: person,
         invitees: [],
         schedule: null,
@@ -382,33 +426,101 @@ const App = observer(function App(): React.JSX.Element {
     setSplitThreadId(threadId === activeThreadId ? null : threadId);
   };
 
-  // After you close a thread from your inbox, the next one opens, or, with nothing left, the start view says so. In
-  // the split view, just the split closes.
+  // After you close a thread of yours, the next thing on your agenda opens, or, with nothing left, the start view says
+  // so. In the split view, just the split closes.
   const moveOn = (thread: Thread): void => {
     if (thread.id === splitThreadId) {
       setSplitThreadId(null);
       return;
     }
-    const inbox = day.unscheduled.map((item) => item.thread);
-    const index = inbox.findIndex((candidate) => candidate.id === thread.id);
-    const rest = inbox.filter(
-      (candidate) => candidate.id !== thread.id && candidate.id !== splitThreadId,
-    );
-    const next = rest[Math.max(0, index)] ?? rest[0];
+    // The next thing on your agenda, else anything of yours without time yet.
+    const next = [
+      ...upNext(threads, me, people, nowMs, 8).map((item) => item.thread),
+      ...day.unplaced.map((item) => item.thread),
+    ].find((candidate) => candidate.id !== thread.id && candidate.id !== splitThreadId);
     openThread(next?.id ?? null);
   };
 
   // Every change is a transaction: applied here at once, then sent to the server, which records property changes
   // as activity lines that sync back. Each open thread (main or split) gets its own actions.
+  // The menu for a thread right-clicked in a list: open it here or beside the one you're in, close or reopen it,
+  // archive or unarchive it.
+  const [threadMenu, setThreadMenu] = useState<{ x: number; y: number; thread: Thread } | null>(
+    null,
+  );
+  const openThreadMenu = (event: React.MouseEvent, thread: Thread): void => {
+    event.preventDefault();
+    setThreadMenu({ x: event.clientX, y: event.clientY, thread });
+  };
+  const threadMenuItems = (thread: Thread): ContextMenuItem[] => {
+    const setStatus = actionsFor(thread).onSetStatus;
+    const items: ContextMenuItem[] = [{ label: "Open", run: () => openThread(thread.id) }];
+    if (activeThreadId !== null && activeThreadId !== thread.id)
+      items.push({ label: "Open beside", run: () => setSplitThreadId(thread.id) });
+    items.push("separator");
+    // Meetings have no status of their own to close; they can still be put away.
+    if (thread.kind !== "meeting")
+      items.push(
+        isDone(thread.status)
+          ? { label: "Reopen", run: () => setStatus("open") }
+          : { label: "Close", run: () => setStatus("closed") },
+      );
+    items.push(
+      thread.status === "archived"
+        ? { label: "Unarchive", run: () => setStatus("open") }
+        : { label: "Archive", run: () => setStatus("archived") },
+    );
+    return items;
+  };
+
   const actionsFor = (thread: Thread): ThreadActions => {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
       onSend: (text) => client.addEntry(thread.id, "message", text, me),
       onBlocked: () => setBlocking(thread),
+      onTask: () => {
+        // The question you were asked, if one is waiting on you; else the thread itself.
+        const messages = thread.entries.filter(
+          (entry): entry is Extract<typeof entry, { kind: "message" }> => entry.kind === "message",
+        );
+        const ask = pendingAsks(
+          messages.map((entry) => ({
+            authorId: entry.author.id,
+            text: entry.text,
+            createdAtMs: entry.createdAtMs,
+          })),
+        ).get(me.id);
+        const question = ask
+          ? messages.findLast(
+              (entry) => entry.author.id === ask.askerId && entry.createdAtMs === ask.atMs,
+            )
+          : undefined;
+        const asked = question
+          ? plainThreadLinks(question.text, threadLinks.titleOf, threadLinks.nameOf)
+              .replace(/^@\S+\s*/, "")
+              .trim()
+          : "";
+        const title = (asked.split("\n")[0] || `Follow up: ${thread.title}`).slice(0, 80);
+        const taskId = client.createThread(
+          {
+            kind: "response",
+            title,
+            description: question ? `${question.author.name}: “${asked}”` : "",
+            assignee: me,
+            invitees: [],
+            schedule: null,
+            branchedFromId: thread.id,
+          },
+          me,
+        );
+        // Saying so here answers the question.
+        client.addEntry(thread.id, "message", `Taking this on in ${threadLink(taskId)}`, me);
+        setSplitThreadId(taskId);
+      },
       // Closing something in your inbox finishes it there, so the next thread opens.
       onSetStatus: (status) => {
         edit({ status });
-        if (status === "closed" && waitingOn(thread) === me.id) moveOn(thread);
+        if (isDone(status) && waitingOn(thread) === me.id) moveOn(thread);
       },
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
@@ -462,168 +574,211 @@ const App = observer(function App(): React.JSX.Element {
   return (
     <MeContext value={me}>
       <ThreadLinksContext value={threadLinks}>
-        <div aria-hidden className="titlebar" />
-        <DragRegionResync />
-        {sidebarOpen && (
-          <Sidebar
-            day={day}
-            nowMs={nowMs}
-            unreadIds={unreadIds}
-            activeThreadId={activeThreadId}
-            orgOpen={orgOpen}
-            onNewThread={() => openNew()}
-            onOpenThread={openThread}
-            onToggleOrg={() => (orgOpen ? setOrgOpen(false) : openOrg())}
-            onToggle={toggleSidebar}
-            onSearch={() => setSearchOpen(true)}
-            onShiftDay={(days) => setDayOffset((offset) => (days === null ? 0 : offset + days))}
-          />
-        )}
-        <main className="main">
-          <div className="topbar main-topbar" data-sidebar-open={sidebarOpen}>
-            {!sidebarOpen && (
-              <>
-                <SidebarToggle onToggle={toggleSidebar} />
-                <SearchButton onSearch={() => setSearchOpen(true)} />
-              </>
-            )}
-            <span className="topbar-title">{orgOpen ? "Organization" : activeThread?.title}</span>
-            <span className="topbar-end">
-              <button
-                type="button"
-                className="view-as-button"
-                aria-label={`Viewing as ${me.name}. Switch user`}
-                onClick={() => setViewAsOpen(true)}
-              >
-                <span className="view-as-source">
-                  {SOURCE_LABELS[source]}
-                  {client.connected ? "" : " · Offline"}
-                </span>
-                <Identicon seed={me.id} size={14} />
-                <span>{me.name}</span>
-              </button>
-              <WipeButton onWipe={() => client.wipe()} />
-              <DetailsToggle onToggle={() => setDetailsOpen((open) => !open)} />
-            </span>
-          </div>
-          {orgOpen ? (
-            <OrgView people={people} me={me} />
-          ) : activeThread === undefined ? (
-            <Welcome
-              me={me}
-              source={source}
-              upNext={upNext(threads, me, people, nowMs, 4)}
-              inboxCount={day.unscheduled.length}
-              outboxCount={day.outbox.length}
+        <ThreadMenuContext value={openThreadMenu}>
+          <div aria-hidden className="titlebar" />
+          <DragRegionResync />
+          {sidebarOpen && (
+            <Sidebar
+              day={day}
+              activity={activityFor(threads, me, seenAt, nowMs)}
+              onMarkAllRead={() => {
+                const now = Date.now();
+                setLastSeen((current) => ({
+                  ...current,
+                  ...Object.fromEntries(threads.map((thread) => [thread.id, now])),
+                }));
+              }}
               nowMs={nowMs}
+              unreadIds={unreadIds}
+              activeThreadId={activeThreadId}
+              profileOpen={profileOpen}
+              onNewThread={() => openNew()}
               onOpenThread={openThread}
-              onNewThread={openNew}
+              onToggleProfile={() => (profileOpen ? setProfileOpen(false) : openProfile())}
+              onToggle={toggleSidebar}
               onSearch={() => setSearchOpen(true)}
-              onViewAs={() => setViewAsOpen(true)}
+              onShiftDay={(days) => setDayOffset((offset) => (days === null ? 0 : offset + days))}
+              page={page}
+              onOpenPage={openPage}
             />
-          ) : (
-            <div className="thread-panes">
-              <ThreadView
-                key={activeThread.id}
-                thread={activeThread}
-                people={people}
-                actions={actionsFor(activeThread)}
-              />
-              {splitThread !== undefined && (
-                <section className="split-pane" aria-label={splitThread.title}>
-                  <div className="split-pane-bar">
-                    <span className="split-pane-title">{splitThread.title}</span>
-                    <button
-                      type="button"
-                      className="topbar-button"
-                      aria-label="Open as the main thread"
-                      onClick={() => openThread(splitThread.id)}
-                    >
-                      <Maximize2 size={13} strokeWidth={1.7} aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      className="topbar-button"
-                      aria-label="Close"
-                      onClick={() => setSplitThreadId(null)}
-                    >
-                      <X size={14} strokeWidth={1.7} aria-hidden />
-                    </button>
-                  </div>
-                  <ThreadView
-                    key={splitThread.id}
-                    thread={splitThread}
-                    people={people}
-                    actions={actionsFor(splitThread)}
-                  />
-                </section>
-              )}
-            </div>
           )}
-        </main>
-        {detailsOpen && <DetailsPanel thread={activeThread} team={people} nowMs={nowMs} />}
-        {newThreadKind !== null && (
-          <NewThreadPalette
-            initialKind={newThreadKind}
-            people={people}
-            me={me}
-            nowMs={nowMs}
-            onCreate={createThread}
-            onClose={() => setNewThreadKind(null)}
-          />
-        )}
-        {blocking !== null && (
-          <BlockedPalette
-            people={people}
-            me={me}
-            blockedTitle={blocking.title}
-            onCreate={(person, text) => createBlocker(blocking, person, text)}
-            onClose={() => setBlocking(null)}
-          />
-        )}
-        {moving !== null && (
-          <MovePalette
-            count={moving.messages.length}
-            fromThreadId={moving.from.id}
-            linkedThreadIds={moving.messages.flatMap((message) =>
-              splitThreadLinks(message.text).flatMap((part) =>
-                "threadId" in part ? [part.threadId] : [],
-              ),
+          <main className="main">
+            <div className="topbar main-topbar" data-sidebar-open={sidebarOpen}>
+              {!sidebarOpen && (
+                <>
+                  <SidebarToggle open={false} onToggle={toggleSidebar} />
+                  <SearchButton onSearch={() => setSearchOpen(true)} />
+                </>
+              )}
+              <span className="topbar-title">
+                {profileOpen
+                  ? me.name
+                  : page === "unplaced"
+                    ? "Not scheduled yet"
+                    : page === "settings"
+                      ? "Settings"
+                      : activeThread?.title}
+              </span>
+              <span className="topbar-end">
+                <button
+                  type="button"
+                  className="view-as-button"
+                  aria-label={`Viewing as ${me.name}. Switch user`}
+                  onClick={() => setViewAsOpen(true)}
+                >
+                  <span className="view-as-source">
+                    {SOURCE_LABELS[source]}
+                    {client.connected ? "" : " · Offline"}
+                  </span>
+                  <Identicon seed={me.id} size={14} />
+                  <span>{me.name}</span>
+                </button>
+                <WipeButton onWipe={() => client.wipe()} />
+                <DetailsToggle
+                  open={detailsOpen}
+                  onToggle={() => setDetailsOpen((open) => !open)}
+                />
+              </span>
+            </div>
+            {profileOpen ? (
+              <ProfileView
+                people={people}
+                me={me}
+                threads={threads}
+                nowMs={nowMs}
+                onWorkday={(workday) => client.updatePerson({ workday }, me)}
+              />
+            ) : page === "unplaced" ? (
+              <ListPage
+                title="Not scheduled yet"
+                items={day.unplaced}
+                unreadIds={unreadIds}
+                onOpenThread={openThread}
+              />
+            ) : page === "settings" ? (
+              <SettingsView me={me} people={people} />
+            ) : activeThread === undefined ? null : (
+              <div className="thread-panes">
+                <ThreadView
+                  key={activeThread.id}
+                  thread={activeThread}
+                  people={people}
+                  actions={actionsFor(activeThread)}
+                />
+                {splitThread !== undefined && (
+                  <section className="split-pane" aria-label={splitThread.title}>
+                    <div className="split-pane-bar">
+                      <span className="split-pane-title">{splitThread.title}</span>
+                      <button
+                        type="button"
+                        className="topbar-button"
+                        aria-label="Open as the main thread"
+                        onClick={() => openThread(splitThread.id)}
+                      >
+                        <HugeiconsIcon icon={ArrowExpand01Icon} size={13} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        className="topbar-button"
+                        aria-label="Close"
+                        onClick={() => setSplitThreadId(null)}
+                      >
+                        <HugeiconsIcon icon={Cancel01Icon} size={14} aria-hidden />
+                      </button>
+                    </div>
+                    <ThreadView
+                      key={splitThread.id}
+                      thread={splitThread}
+                      people={people}
+                      actions={actionsFor(splitThread)}
+                    />
+                  </section>
+                )}
+              </div>
             )}
-            suggestedTitle={plainThreadLinks(
-              moving.messages[0].text.split("\n")[0],
-              threadLinks.titleOf,
-              threadLinks.nameOf,
-            ).slice(0, 80)}
-            onMove={moveTo}
-            onClose={() => setMoving(null)}
-          />
-        )}
-        {searchOpen && (
-          <CommandPalette
+          </main>
+          {detailsOpen && (
+            <DetailsPanel thread={activeThread} nowMs={nowMs} onOpenThread={openThread} />
+          )}
+          {newThreadKind !== null && (
+            <NewThreadPalette
+              initialKind={newThreadKind}
+              people={people}
+              me={me}
+              nowMs={nowMs}
+              onCreate={createThread}
+              onClose={() => setNewThreadKind(null)}
+            />
+          )}
+          {blocking !== null && (
+            <BlockedPalette
+              people={people}
+              me={me}
+              blockedTitle={blocking.title}
+              onCreate={(person, title, description) =>
+                createBlocker(blocking, person, title, description)
+              }
+              onClose={() => setBlocking(null)}
+            />
+          )}
+          {moving !== null && (
+            <MovePalette
+              count={moving.messages.length}
+              fromThreadId={moving.from.id}
+              linkedThreadIds={moving.messages.flatMap((message) =>
+                splitThreadLinks(message.text).flatMap((part) =>
+                  "threadId" in part ? [part.threadId] : [],
+                ),
+              )}
+              suggestedTitle={plainThreadLinks(
+                moving.messages[0].text.split("\n")[0],
+                threadLinks.titleOf,
+                threadLinks.nameOf,
+              ).slice(0, 80)}
+              onMove={moveTo}
+              onClose={() => setMoving(null)}
+            />
+          )}
+          {searchOpen && (
+            <CommandPalette
+              threads={threads}
+              source={source}
+              me={me}
+              onSwitchSource={switchSource}
+              onViewAs={() => {
+                setSearchOpen(false);
+                setViewAsOpen(true);
+              }}
+              onOpenProfile={openProfile}
+              onNewThread={openNew}
+              onOpenThread={openThread}
+              onClose={() => setSearchOpen(false)}
+            />
+          )}
+          {viewAsOpen && (
+            <ViewAsPalette
+              people={people}
+              me={me}
+              onPick={viewAs}
+              onClose={() => setViewAsOpen(false)}
+            />
+          )}
+          <MentionToasts
             threads={threads}
-            source={source}
             me={me}
-            onSwitchSource={switchSource}
-            onViewAs={() => {
-              setSearchOpen(false);
-              setViewAsOpen(true);
-            }}
-            onOpenOrg={openOrg}
-            onNewThread={openNew}
-            onOpenThread={openThread}
-            onClose={() => setSearchOpen(false)}
+            sinceMs={client.readyAtMs}
+            quiet={quietTimes(threads, me.id)}
+            onOpen={openThread}
           />
-        )}
-        {viewAsOpen && (
-          <ViewAsPalette
-            people={people}
-            me={me}
-            onPick={viewAs}
-            onClose={() => setViewAsOpen(false)}
-          />
-        )}
-        <MentionToasts threads={threads} me={me} sinceMs={client.readyAtMs} onOpen={openThread} />
+          {threadMenu !== null && (
+            <ContextMenu
+              x={threadMenu.x}
+              y={threadMenu.y}
+              items={threadMenuItems(threadMenu.thread)}
+              onClose={() => setThreadMenu(null)}
+            />
+          )}
+        </ThreadMenuContext>
       </ThreadLinksContext>
     </MeContext>
   );

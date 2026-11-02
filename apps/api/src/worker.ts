@@ -5,6 +5,7 @@ import type { AnyRecord, ModelName, SyncAction, SyncMessage } from "model";
 import { createWorkspaceApp } from "./app.ts";
 import {
   isWorkspaceName,
+  migrateDescriptions,
   refreshSeedPeople,
   SAMPLE_ME,
   seed,
@@ -124,10 +125,7 @@ export class Workspace extends DurableObject<Env> {
     sql.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('workspace', ?)", name);
     const engine = new SyncEngine({
       storage: this.#storage(),
-      onActions: (actions) => {
-        this.#broadcast(actions);
-        this.#setAlarm();
-      },
+      onActions: (actions) => this.#broadcast(actions),
     });
     const rows = sql
       .exec<{ modelName: ModelName; data: string }>("SELECT modelName, data FROM models")
@@ -138,19 +136,11 @@ export class Workspace extends DurableObject<Env> {
     engine.load(rows, lastSyncId);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME, utcOffsetMinutes);
     refreshSeedPeople(engine, name, SAMPLE_ME);
-    this.#engine = engine;
+    migrateDescriptions(engine);
     engine.replanAll();
-    this.#setAlarm();
+    void this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
+    this.#engine = engine;
     return engine;
-  }
-
-  // Wakes for the morning look over every schedule, or sooner when a waiting question is due some time.
-  #setAlarm(): void {
-    const replyCheck = this.#engine?.nextReplyCheckMs() ?? null;
-    const morning = nextPlanningMs(Date.now());
-    const next =
-      replyCheck === null ? morning : Math.min(morning, Math.max(replyCheck, Date.now() + 1000));
-    void this.ctx.storage.setAlarm(next);
   }
 
   // Each morning, reschedule everyone for what time has changed: closer due dates and slots that passed.
@@ -163,7 +153,7 @@ export class Workspace extends DurableObject<Env> {
     const engine = this.#load(row.value, undefined);
     // Loading already looked over the schedules.
     if (loaded !== undefined) engine.replanAll();
-    this.#setAlarm();
+    await this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
   }
 
   #broadcast(actions: SyncAction[]): void {

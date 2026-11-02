@@ -2,16 +2,7 @@
 // models in an object pool, transactions sent to the server, and delta packets of sync actions broadcast back,
 // all ordered by a monotonically increasing sync id.
 
-import type {
-  Entry,
-  Person,
-  Priority,
-  ReplyBlock,
-  Schedule,
-  Status,
-  Thread,
-  ThreadKind,
-} from "./model";
+import type { Entry, Person, Priority, Schedule, Status, Thread, ThreadKind } from "./model";
 
 // --- Models -----------------------------------------------------------------------------------------------
 
@@ -29,13 +20,14 @@ export type ThreadRecord = {
   tagIds: string[];
   schedule: Schedule | null;
   blocks: Schedule[];
-  replyBlocks: ReplyBlock[];
   workedMinutes: number;
   attendeeIds: string[];
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
   // The thread this one blocks (made with `/blocked`): that thread stays blocked until this one closes.
   blocksId: string | null;
+  // When each person last opened it, so whoever asked them a question can see it was seen.
+  seenBy: Record<string, number>;
   createdAtMs: number;
   updatedAtMs: number;
 };
@@ -88,7 +80,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v8");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v13");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -134,6 +126,8 @@ export type TransactionInput =
   | { id: string; type: "create"; modelName: "Thread"; data: ThreadCreate }
   | { id: string; type: "create"; modelName: "Entry"; data: EntryCreate }
   | { id: string; type: "update"; modelName: "Thread"; modelId: string; changes: ThreadChanges }
+  // People change only their own profile.
+  | { id: string; type: "update"; modelName: "Person"; modelId: string; changes: PersonChanges }
   // Moves messages from one thread into another. The source thread gets an activity line where they were.
   | { id: string; type: "move"; modelName: "Entry"; entryIds: string[]; threadId: string };
 
@@ -150,6 +144,8 @@ export type ThreadCreate = {
   blocksId?: string | null;
 };
 
+export type PersonChanges = Partial<Pick<Person, "workday">>;
+
 export type ThreadChanges = Partial<
   Pick<
     ThreadRecord,
@@ -162,7 +158,10 @@ export type ThreadChanges = Partial<
     | "tagIds"
     | "schedule"
   >
->;
+> & {
+  // Marks the thread seen by whoever sends it, now. Records nothing in the activity.
+  seen?: true;
+};
 
 export type EntryCreate = {
   id: string;
@@ -200,12 +199,12 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     tagIds: [],
     schedule: data.schedule,
     blocks: [],
-    replyBlocks: [],
     workedMinutes: 0,
     attendeeIds:
       data.kind === "meeting" ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)] : [],
     branchedFromId: data.branchedFromId ?? null,
     blocksId: data.blocksId ?? null,
+    seenBy: {},
     createdAtMs: nowMs,
     updatedAtMs: nowMs,
   };
@@ -278,12 +277,12 @@ export function toThread(
     tagIds: record.tagIds ?? [],
     schedule: record.schedule,
     blocks: recordBlocks(record),
-    replyBlocks: record.replyBlocks ?? [],
     workedMinutes: record.workedMinutes ?? 0,
     attendees: record.attendeeIds.map(person),
     // Threads stored before branching existed have no field.
     branchedFromId: record.branchedFromId ?? null,
     blocksId: record.blocksId ?? null,
+    seenBy: record.seenBy ?? {},
     updatedAtMs: record.updatedAtMs,
     // Oldest first. Within the same instant messages lead, so a meeting's agenda comes before its call link.
     entries: [...entries]
@@ -357,11 +356,11 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       tagIds: thread.tagIds,
       schedule: thread.schedule,
       blocks: thread.blocks,
-      replyBlocks: thread.replyBlocks,
       workedMinutes: thread.workedMinutes,
       attendeeIds: thread.attendees.map((person) => person.id),
       branchedFromId: thread.branchedFromId,
       blocksId: thread.blocksId,
+      seenBy: thread.seenBy,
       createdAtMs,
       updatedAtMs: thread.updatedAtMs,
     },

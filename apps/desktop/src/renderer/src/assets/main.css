@@ -3,6 +3,9 @@
   --base: oklch(0.955 0 0);
   --sidebar: oklch(0.209 0 0);
   --chrome: oklch(0.191 0 0);
+  /* The side panels and the title bar are solid, at the shades they had over the window's glass. */
+  --sidebar-solid: #1a1a1a;
+  --titlebar-solid: #161515;
 
   --text-primary: var(--base);
   --text-secondary: color-mix(in srgb, var(--base) 74%, transparent);
@@ -26,7 +29,8 @@
 
   /* Task status colors (from Cursor Dark's palette) and urgency. */
   --status-waiting: oklch(0.681 0.131 252.629);
-  --status-blocked: oklch(0.75 0.15 45);
+  /* Blocked is the same red as urgent. */
+  --status-blocked: var(--urgent);
   --status-closed: oklch(0.713 0.094 155.438);
   --urgent: oklch(0.712 0.177 12.651);
 }
@@ -85,13 +89,19 @@ body * {
 
 /* Delta's compact sidebar: width set inline (268px default), glass colors from Cursor Dark. */
 .sidebar {
+  /* How far everything in the sidebar sits from its edges, so icons, times and lines all line up. */
+  --sidebar-inset: 12px;
+  /* Rows' hover and selected fills are pills this far in from the edges, rounded like the tab buttons; their content
+     stays on the inset. */
+  --row-gutter: 6px;
+  --row-radius: 6px;
   position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   min-width: 0;
   height: 100%;
-  background-color: color-mix(in srgb, var(--sidebar) 36%, transparent);
+  background-color: var(--sidebar-solid);
   border-right: 1px solid var(--stroke-tertiary);
 }
 
@@ -105,10 +115,15 @@ body * {
   border-bottom: 1px solid var(--stroke-tertiary);
 }
 
-/* Keeps Delta's 14px gap between the last traffic light (larger on macOS 26) and the toggle icon. */
+.main-topbar {
+  background-color: var(--titlebar-solid);
+}
+
+/* The toggle icon sits as far from the last traffic light (larger on macOS 26) as the top bar's last icon sits from the
+   sidebar's right edge, the sidebar inset. */
 .sidebar-topbar,
 .main-topbar[data-sidebar-open="false"] {
-  padding-left: 78px;
+  padding-left: 71.5px;
 }
 
 .topbar-button {
@@ -150,56 +165,6 @@ body * {
   overflow-y: auto;
 }
 
-.sidebar-section {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Delta's 6px gap follows an open section's content; collapsed headers stack evenly, like the rows above them. */
-.sidebar-section:has(> .sidebar-section-label[data-collapsed="false"]) + .sidebar-section {
-  margin-top: 6px;
-}
-
-/* Delta's section header: hover reveals a chevron and the section's buttons. */
-.sidebar-section-label {
-  display: flex;
-  align-items: center;
-  height: 28px;
-  padding: 0 8px 0 9px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  outline: none;
-}
-
-.sidebar-section-label:hover {
-  background-color: var(--bg-quaternary);
-}
-
-.section-chevron {
-  display: flex;
-  margin-left: 6px;
-  color: var(--icon-tertiary);
-  visibility: hidden;
-}
-
-.sidebar-section-label[data-collapsed="true"] .section-chevron {
-  transform: rotate(-90deg);
-}
-
-.section-actions {
-  display: none;
-  gap: 2px;
-  margin-left: auto;
-}
-
-.sidebar-section-label:hover .section-chevron {
-  visibility: visible;
-}
-
-.sidebar-section-label:hover .section-actions {
-  display: flex;
-}
-
 /* Delta's 22px icon buttons; only the row behind them shows a hover fill. */
 .icon-button {
   display: flex;
@@ -235,14 +200,16 @@ body * {
   list-style: none;
 }
 
-/* Delta's rows: 28px, full-width fill with no rounding, labels at 31px. */
+/* Rows: 28px, labels at 31px, filled as an inset pill on hover and when selected. */
 .sidebar-row {
   position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
   height: 28px;
-  padding: 0 8px 0 31px;
+  margin: 0 var(--row-gutter);
+  padding: 0 calc(var(--sidebar-inset) - var(--row-gutter)) 0 calc(31px - var(--row-gutter));
+  border-radius: var(--row-radius);
   color: var(--text-primary);
   cursor: pointer;
   outline: none;
@@ -254,16 +221,6 @@ body * {
 
 .sidebar-row[data-active="true"] {
   background-color: var(--bg-tertiary);
-}
-
-/* A top-level destination such as Organization: no icon, lined up with the section labels. */
-.sidebar-nav-row {
-  padding-left: 9px;
-  color: var(--text-secondary);
-}
-
-.sidebar-nav-row[data-active="true"] {
-  color: var(--text-primary);
 }
 
 /* Clipped labels fade out over the last 24px instead of using an ellipsis. */
@@ -503,13 +460,14 @@ body * {
 }
 
 /* 20px avatar in a 22px column, starting just below the top of the name so the name leads the row. */
+/* The avatar (or marker) is centered between the first two lines: the author's name and the first line of text. */
 .thread-avatar {
   display: flex;
   flex-shrink: 0;
   justify-content: center;
   width: 22px;
   height: 20px;
-  margin-top: 6px;
+  margin-top: 10.5px;
 }
 
 .thread-kind-marker,
@@ -631,6 +589,7 @@ body * {
 
 /* The assignee sits inline in the author line, so it drops the border. */
 .chip[data-tone="assignee"] {
+  gap: 6px;
   height: 21px;
   padding: 0 4px;
   border-color: transparent;
@@ -648,45 +607,7 @@ body * {
   top: calc(100% + 4px);
   left: 0;
   z-index: 30;
-  display: flex;
-  flex-direction: column;
   min-width: 160px;
-  padding: 4px 0;
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  background-color: var(--panel);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
-}
-
-.chip-menu-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 26px;
-  margin: 0 4px;
-  padding: 0 6px;
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 12px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.chip-menu-row:hover {
-  background-color: var(--panel-selected);
-}
-
-.chip-menu-input {
-  height: 26px;
-  margin: 0 4px 4px;
-  padding: 0 6px;
-  border: none;
-  border-bottom: 1px solid var(--panel-border);
-  color: var(--text-primary);
-  font: inherit;
-  font-size: 12px;
-  background: none;
-  outline: none;
 }
 
 /* Status: a hollow ring while open, filled colors as work moves along. */
@@ -703,14 +624,24 @@ body * {
   background-color: var(--status-blocked);
 }
 
+.status-dot[data-status="archived"] {
+  border-color: var(--icon-tertiary);
+  background-color: var(--icon-tertiary);
+}
+
 .status-dot[data-status="closed"] {
   border-color: var(--status-closed);
   background-color: var(--status-closed);
 }
 
-.thread-ask-arrow {
+/* "Anshu asked Ben": who asked, then who it's for. */
+.thread-byline-verb {
   color: var(--text-tertiary);
-  font-size: 13px;
+}
+
+/* The assignee chip's padding would double the gap after "asked". */
+.thread-byline-verb + .chip-anchor {
+  margin-left: -4px;
 }
 
 /* Activity lines: muted, and tighter to the messages around them. */
@@ -780,27 +711,14 @@ body * {
   font-weight: 500;
 }
 
-/* Due date or start time on the right. */
-.sidebar-row-meta {
-  flex-shrink: 0;
-  margin-left: auto;
-  padding-right: 2px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.sidebar-row-meta[data-overdue="true"] {
-  color: var(--urgent);
-}
-
 /* Today's date on its own line under the Schedule header, clear of the header's hover fill. */
 .schedule-date {
   display: flex;
   align-items: center;
   height: 18px;
   margin: 2px 0 4px;
-  padding-left: 9px;
+  /* The day arrows' icons sit 2px inside their buttons. */
+  padding: 0 calc(var(--sidebar-inset) - 2px) 0 var(--sidebar-inset);
   color: var(--text-tertiary);
   font-size: 11px;
 }
@@ -822,6 +740,81 @@ body * {
   color: var(--text-primary);
 }
 
+/* The sidebar's tabs, under the top bar, as in Notion: the chosen one opens out to show its name in a soft pill, the
+   others are just their icon and get a lighter fill on hover. */
+.sidebar-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  align-items: center;
+  /* The tabs' icons sit 6px inside their buttons, so they land on the inset, under the new-thread button. */
+  padding: 4px calc(var(--sidebar-inset) - 6px) 6px;
+}
+
+.sidebar-tab-group {
+  display: flex;
+  gap: 2px;
+}
+
+.sidebar-tab {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  min-width: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  color: var(--icon-tertiary);
+  font: inherit;
+  font-size: 12px;
+  background: none;
+  cursor: pointer;
+}
+
+.sidebar-tab:hover {
+  background-color: var(--bg-quaternary);
+}
+
+/* The pill and the bright colour switch at once; only the width moves. */
+.sidebar-tab[aria-selected="true"],
+.sidebar-tab[aria-pressed="true"] {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+/* The name is uncovered as the chosen tab grows to its measured width (`--label-width`), and cut off as the old one
+   shrinks: no fade, slow at both ends and quickest in the middle. */
+.sidebar-tab-label {
+  width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition:
+    width 280ms cubic-bezier(0.45, 0, 0.25, 1),
+    margin-left 280ms cubic-bezier(0.45, 0, 0.25, 1);
+}
+
+.sidebar-tab[aria-selected="true"] .sidebar-tab-label {
+  width: var(--label-width, auto);
+  margin-left: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-tab-label {
+    transition: none;
+  }
+}
+
+.sidebar-tab-count {
+  margin-left: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-tab-end {
+  margin-left: auto;
+}
+
 /* Day arrows: quiet until the schedule is hovered. */
 .schedule-date-nav {
   display: flex;
@@ -829,7 +822,7 @@ body * {
   opacity: 0;
 }
 
-.sidebar-section:hover .schedule-date-nav,
+.sidebar-content:hover .schedule-date-nav,
 .schedule-date-nav:focus-within {
   opacity: 1;
 }
@@ -842,73 +835,6 @@ body * {
 
 .schedule-date-nav .icon-button:hover {
   color: var(--text-primary);
-}
-
-/* Day timeline: hour headings with a hairline, earlier hours and finished blocks dimmed. */
-/* The day's hours scroll inside a fixed height. */
-.timeline-scroll {
-  position: relative;
-  max-height: 280px;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.timeline-hour {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 22px;
-  padding: 0 10px 0 31px;
-  color: var(--text-tertiary);
-  font-size: 10.5px;
-  list-style: none;
-}
-
-.timeline-hour::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background-color: var(--stroke-tertiary);
-}
-
-.timeline-hour[data-past="true"],
-.sidebar-row[data-past="true"] {
-  opacity: 0.5;
-}
-
-/* The current time: a line across the timeline with the time on the left. */
-.timeline-now {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 14px;
-  padding: 0 10px 0 9px;
-  color: var(--status-waiting);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  list-style: none;
-}
-
-.timeline-now::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background-color: var(--status-waiting);
-}
-
-.timeline-now-time {
-  flex-shrink: 0;
-  min-width: 18px;
-}
-
-/* Kind marker for meetings and focus blocks, in the row's left indent. */
-.kind-marker {
-  position: absolute;
-  top: 50%;
-  left: 12px;
-  display: flex;
-  color: var(--icon-tertiary);
-  transform: translateY(-50%);
 }
 
 /* Meeting header: a calendar marker in place of an avatar, attendees under the title. */
@@ -1120,7 +1046,7 @@ body * {
   flex-direction: column;
   flex-shrink: 0;
   height: 100%;
-  background-color: color-mix(in srgb, var(--sidebar) 36%, transparent);
+  background-color: var(--sidebar-solid);
   border-left: 1px solid var(--stroke-tertiary);
 }
 
@@ -1136,11 +1062,6 @@ body * {
   min-height: 0;
   padding-bottom: 16px;
   overflow-y: auto;
-}
-
-.details-empty {
-  padding: 12px;
-  color: var(--text-tertiary);
 }
 
 .details-section {
@@ -1206,6 +1127,109 @@ body * {
 .details-stats {
   color: var(--text-tertiary);
   font-size: 12px;
+}
+
+/* The branch graph: threads as status dots joined by lines, like git log --graph; the last child turns the corner. */
+.graph-children {
+  margin: 0 0 0 3.5px;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-children > li {
+  position: relative;
+  padding-left: 14px;
+}
+
+.graph-children > li::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-left: 1px solid var(--stroke-focused);
+  content: "";
+}
+
+.graph-children > li::after {
+  position: absolute;
+  top: 12px;
+  left: 0;
+  width: 10px;
+  border-top: 1px solid var(--stroke-focused);
+  content: "";
+}
+
+.graph-children > li:last-child::before {
+  bottom: auto;
+  width: 10px;
+  height: 12px;
+  border-bottom: 1px solid var(--stroke-focused);
+  border-bottom-left-radius: 6px;
+}
+
+.graph-children > li:last-child::after {
+  display: none;
+}
+
+.graph-thread,
+.graph-ask {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  width: 100%;
+  height: 24px;
+  padding: 0 4px 0 0;
+  border: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.graph-thread:hover,
+.graph-ask:hover,
+.graph-thread[data-current="true"] {
+  color: var(--text-primary);
+}
+
+.graph-thread[data-current="true"] {
+  font-weight: 500;
+}
+
+.graph-ask {
+  color: var(--text-tertiary);
+}
+
+.graph-ask[data-answered="true"] {
+  opacity: 0.7;
+}
+
+.graph-at {
+  display: flex;
+  justify-content: center;
+  width: 8px;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.graph-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-asker {
+  color: var(--text-secondary);
+}
+
+.graph-answered {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--status-closed);
+  font-size: 11px;
 }
 
 /* Latest update and list items jump to their place in the thread. */
@@ -1299,7 +1323,8 @@ body * {
   align-items: center;
   justify-content: flex-end;
   width: 32px;
-  height: 10px;
+  /* TICK_SPACING. */
+  height: 6px;
   padding: 0;
   border: none;
   background: transparent;
@@ -1309,7 +1334,7 @@ body * {
 .minimap-tick::after {
   content: "";
   width: var(--tick-length);
-  height: 2px;
+  height: 1.5px;
   border-radius: 1px;
   background-color: var(--icon-tertiary);
   opacity: 0.45;
@@ -1336,7 +1361,7 @@ body * {
   border-radius: 8px;
   background-color: var(--panel);
   box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
-  transform: translateY(-14px);
+  transform: translateY(-16px);
   pointer-events: none;
 }
 
@@ -1489,108 +1514,6 @@ body * {
   color: var(--accent);
 }
 
-/* Welcome: the main view with no thread open, laid out where a thread's page would be. */
-.welcome {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  align-items: flex-start;
-  min-height: 0;
-  padding: 52px 15px 48px 52px;
-  overflow-y: auto;
-}
-
-.welcome-title {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 28px;
-  letter-spacing: -0.2px;
-}
-
-.welcome-summary {
-  margin: 2px 0 0;
-  color: var(--text-tertiary);
-}
-
-.welcome-actions,
-.welcome-list {
-  display: flex;
-  flex-direction: column;
-  width: min(100%, 420px);
-  /* The same gap as below the actions (.welcome-viewer). */
-  margin-top: 20px;
-}
-
-/* Up next: the same rows as the actions, under a quiet label. */
-.welcome-list-label {
-  margin-bottom: 4px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.welcome-list .welcome-action-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.welcome-action {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  height: 30px;
-  margin-left: -8px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 5px;
-  color: var(--text-secondary);
-  font: inherit;
-  text-align: left;
-  background: transparent;
-  cursor: pointer;
-}
-
-.welcome-action:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-tertiary);
-}
-
-.welcome-action-icon {
-  display: flex;
-  color: var(--icon-tertiary);
-}
-
-.welcome-action:hover .welcome-action-icon {
-  color: var(--text-secondary);
-}
-
-.welcome-action-label {
-  flex: 1;
-}
-
-.welcome-shortcut {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.welcome-viewer {
-  margin-top: 20px;
-  padding: 0;
-  border: none;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: 12px;
-  background: transparent;
-  cursor: pointer;
-}
-
-.welcome-viewer:hover {
-  color: var(--text-secondary);
-}
-
 /* Pinned under the scrolling sections, so the org view stays one click away. */
 /* Org: who reports to whom, laid out where a thread's page would be. */
 .org {
@@ -1598,8 +1521,8 @@ body * {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  /* The same place as the start view's greeting. */
-  padding: 52px 15px 48px 52px;
+  /* The same margins as a thread: the title where a thread's title sits (the thread's padding plus its header's). */
+  padding: calc(13.75px + 4px) 15px 48px 52px;
   overflow-y: auto;
 }
 
@@ -1610,6 +1533,132 @@ body * {
   font-weight: 600;
   line-height: 28px;
   letter-spacing: -0.2px;
+}
+
+/* Your profile, above the org tree: avatar beside your name and details, then a few facts. */
+.profile {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.profile-facts {
+  display: grid;
+  /* The same label column as the settings below. */
+  grid-template-columns: 120px 1fr;
+  gap: 6px 20px;
+  margin: 20px 0 0;
+}
+
+.profile-facts dt {
+  color: var(--text-tertiary);
+}
+
+.profile-facts dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+/* A setting: label on the left like the facts above, the control beside it. */
+.profile-setting {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 20px;
+  align-items: center;
+  min-height: 32px;
+}
+
+.profile-setting-label {
+  color: var(--text-tertiary);
+}
+
+.profile-setting-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-primary);
+}
+
+.profile-hint {
+  max-width: 520px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  margin: 6px 0 0 140px;
+  line-height: 18px;
+}
+
+.profile-select {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font: inherit;
+  /* After the shorthand, which would reset it: digits the same width, so times line up. */
+  font-variant-numeric: tabular-nums;
+  background-color: var(--bg-quaternary);
+  outline: none;
+  cursor: pointer;
+}
+
+.profile-select:hover,
+.profile-select:focus-visible {
+  border-color: var(--stroke-focused);
+}
+
+.profile-select-add {
+  color: var(--text-secondary);
+}
+
+.profile-chip {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  height: 26px;
+  padding: 0 4px 0 9px;
+  border-radius: 13px;
+  background-color: var(--bg-tertiary);
+}
+
+.profile-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  background: none;
+  cursor: pointer;
+}
+
+.profile-chip-remove:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.profile-link {
+  padding: 0;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.profile-link:hover {
+  text-decoration: underline;
+}
+
+.profile-heading {
+  margin: 32px 0 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .org-summary {
@@ -1630,52 +1679,14 @@ body * {
   margin-left: -6px;
 }
 
-/* Reports sit 22px in. */
-.org-reports {
-  padding-left: 22px;
-}
-
-.org-branch {
-  position: relative;
-}
-
-/* Guides: from under each manager's avatar (its center is 15px into a row) a line runs down, with a rounded elbow
-   into each report's avatar. */
-.org-reports > .org-branch::before,
-.org-reports > .org-branch::after {
-  position: absolute;
-  left: -7px;
-  content: "";
-  pointer-events: none;
-}
-
-.org-reports > .org-branch::before {
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background-color: var(--stroke-tertiary);
-}
-
-.org-reports > .org-branch:last-child::before {
-  display: none;
-}
-
-.org-reports > .org-branch::after {
-  top: -5px;
-  width: 11px;
-  height: 19px;
-  border-bottom: 1px solid var(--stroke-tertiary);
-  border-left: 1px solid var(--stroke-tertiary);
-  border-bottom-left-radius: 6px;
-}
-
-/* A row: avatar and name, then aligned columns for level and reports. */
+/* A row, as in a file tree: indent guides, avatar and name, then aligned columns for level and
+   reports. The highlight spans the full width whatever the depth. */
 .org-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  height: 28px;
-  padding: 0 8px 0 6px;
+  height: 26px;
+  padding: 0 8px 0 4px;
   border-radius: 5px;
   outline: none;
 }
@@ -1687,6 +1698,62 @@ body * {
 .org-row[data-manager="true"]:hover,
 .org-row[data-manager="true"]:focus-visible {
   background-color: var(--bg-quaternary);
+}
+
+/* You, like the open file. */
+.org-row[data-me="true"] {
+  background-color: var(--bg-tertiary);
+}
+
+/* The guides, in 24px cells with no gap, then the avatar. Guides run the row's full height so lines join row to row.
+   A line runs 7.5px into its cell, right under the 16px avatar of the manager above, and the rest of the cell is the
+   tee's arm. */
+.org-indent {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  align-self: stretch;
+}
+
+.org-guide {
+  position: relative;
+  align-self: stretch;
+  width: 24px;
+}
+
+.org-guide::before,
+.org-guide::after {
+  position: absolute;
+  content: "";
+  background-color: var(--stroke-focused);
+}
+
+.org-guide[data-kind="rail"]::before,
+.org-guide[data-kind="tee"]::before {
+  top: 0;
+  bottom: 0;
+  left: 7.5px;
+  width: 1px;
+}
+
+.org-guide[data-kind="elbow"]::before {
+  top: 0;
+  left: 7.5px;
+  width: 1px;
+  height: 50%;
+}
+
+.org-guide[data-kind="tee"]::after,
+.org-guide[data-kind="elbow"]::after {
+  top: 50%;
+  right: 4px;
+  left: 7.5px;
+  height: 1px;
+}
+
+.org-guide[data-kind="blank"]::before,
+.org-guide[data-kind="blank"]::after {
+  display: none;
 }
 
 .org-name {
@@ -1738,8 +1805,8 @@ body * {
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 4px;
   color: var(--text-tertiary);
   background-color: var(--bg-tertiary);
@@ -1747,7 +1814,7 @@ body * {
 
 /* The main content zooms on its own (⌘+, ⌘-, ⌘0); the sidebar, top bar and palettes keep their size. */
 .thread-doc,
-.welcome,
+.list-page,
 .org {
   zoom: var(--content-zoom, 1);
 }
@@ -1822,9 +1889,15 @@ body * {
   color: var(--text-tertiary);
 }
 
+/* Who and when sit just above the title, the description follows it, and the properties come last with a little
+   more room, so the heading reads as title then description. */
+.thread-header .thread-byline + .thread-title {
+  margin-top: -6px;
+}
+
 .thread-header .thread-attendees,
 .thread-header .thread-properties {
-  margin-top: 0;
+  margin-top: 4px;
 }
 
 .thread-header .chip[data-tone="assignee"] {
@@ -1929,39 +2002,11 @@ body * {
   font-size: 12px;
 }
 
-/* The `#` menu in a reply: threads to link, then a new one titled by what you typed. */
+/* The `#`, `@` and `/` menus in a reply, at the caret. */
 .thread-menu {
   position: fixed;
   z-index: 50;
-  display: flex;
-  flex-direction: column;
   width: 300px;
-  padding: 4px 0;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background-color: var(--panel);
-  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
-}
-
-.thread-menu-item {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  height: 27.5px;
-  margin: 0 4px;
-  padding: 0 8px 1px 6px;
-  border: none;
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font: inherit;
-  text-align: left;
-  background: none;
-  cursor: pointer;
-}
-
-.thread-menu-item[aria-selected="true"] {
-  color: var(--text-primary);
-  background-color: var(--panel-selected);
 }
 
 .thread-menu-title {
@@ -2073,63 +2118,80 @@ body * {
   color: var(--text-primary);
 }
 
-/* Right-click menus: compact rows inset in a rounded panel, groups split by lines, shortcuts on the right. */
+/* Right-click menus, at the pointer. */
 .context-menu {
   position: fixed;
   z-index: 60;
-  display: flex;
-  flex-direction: column;
   min-width: 200px;
-  padding: 4px;
-  border: 1px solid rgb(255 255 255 / 8%);
-  border-radius: 5px;
-  background-color: var(--panel);
-  box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
 }
 
-.context-menu-item {
+/* Every menu: right-click menus, the property dropdowns and the reply's `#` `@` `/` menus share one panel and one row.
+   Menus you move through with the keyboard mark the row with aria-selected; the others highlight on hover. */
+.menu {
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+  /* About eleven rows; longer lists, like everyone in the org, scroll. */
+  max-height: 320px;
+  padding: 4px 0;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background-color: var(--panel);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 28%);
+}
+
+.menu-item {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  height: 20px;
-  padding: 0 6px;
+  height: 27.5px;
+  margin: 0 4px;
+  padding: 0 8px 1px 6px;
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   color: var(--text-primary);
   font: inherit;
-  font-size: 12px;
   text-align: left;
   white-space: nowrap;
   background: none;
-  cursor: default;
+  cursor: pointer;
 }
 
-.context-menu-item:hover {
+.menu-item[aria-selected="true"],
+.menu[role="menu"] .menu-item:hover {
   background-color: var(--panel-selected);
 }
 
-.context-menu-shortcut {
+.menu-shortcut {
+  margin-left: auto;
+  padding-left: 16px;
   color: var(--text-tertiary);
   word-spacing: 1px;
 }
 
-.context-menu-separator {
+.menu-separator {
+  flex-shrink: 0;
   height: 1px;
-  margin: 5px -4px;
-  background-color: rgb(255 255 255 / 8%);
+  margin: 4px 0;
+  background-color: var(--panel-border);
+}
+
+.menu-input {
+  height: 27.5px;
+  margin: 0 4px 4px;
+  padding: 0 8px 1px 6px;
+  border: none;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  font: inherit;
+  background: none;
+  outline: none;
 }
 
 /* A link to the thread you're in: plain text, nowhere to go. */
 .thread-link-self {
   color: var(--text-secondary);
-}
-
-/* Inbox zero, under the greeting once nothing is waiting on you. */
-.welcome-zero {
-  margin: 10px 0 0;
-  color: var(--status-closed);
-  font-size: 13px;
 }
 
 /* Who a palette's next step is about, ahead of the input. */
@@ -2193,6 +2255,12 @@ body * {
   background-color: var(--panel-selected);
 }
 
+/* Centered between the first two lines: who asked and where, then what they said. */
+.toast > .identicon {
+  flex-shrink: 0;
+  margin-top: 7.5px;
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -2239,4 +2307,594 @@ body * {
 
 .toast-close:hover {
   color: var(--text-primary);
+}
+
+/* The agenda: each block as a row with its start time, free time between blocks as a quiet line, finished blocks
+   folded into "N done". */
+.agenda {
+  margin-top: 2px;
+}
+
+.agenda-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 28px;
+  margin: 0 var(--row-gutter);
+  padding: 0 calc(var(--sidebar-inset) - var(--row-gutter)) 0 calc(10px - var(--row-gutter));
+  border-radius: var(--row-radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.agenda-row:hover:not([data-active="true"]) {
+  background-color: var(--bg-quaternary);
+}
+
+.agenda-row[data-active="true"] {
+  background-color: var(--bg-tertiary);
+}
+
+/* What's over is dimmed, unless it's the one you have open. */
+.agenda-row[data-past="true"]:not([data-active="true"]) {
+  opacity: 0.5;
+}
+
+.agenda-time {
+  flex-shrink: 0;
+  width: 56px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* The icon sits a little closer to the title than to the time: 10px after the time, 6px before the title. */
+.agenda-icon {
+  display: flex;
+  flex-shrink: 0;
+  margin: 0 -2px 0 2px;
+  color: var(--icon-tertiary);
+}
+
+/* Now: a narrow gap between rows with the time and a 1px blue line from the icon column to the edge. */
+.agenda-now {
+  display: flex;
+  /* The rows' gap plus the icon's 2px margin, so the line starts where the icons do. */
+  gap: 10px;
+  align-items: center;
+  height: 14px;
+  /* Lined up with the rows: the time in their time column, the rule from their icon column to the edge. */
+  padding: 0 var(--sidebar-inset) 0 10px;
+  list-style: none;
+}
+
+.agenda-now-time {
+  flex-shrink: 0;
+  width: 56px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.agenda-now-rule {
+  flex: 1;
+  height: 1px;
+  background-color: var(--accent);
+}
+
+.agenda-free {
+  display: flex;
+  align-items: center;
+  height: 22px;
+  padding-left: 74px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  list-style: none;
+}
+
+/* Outbox and Not scheduled pages, laid out like Organization. */
+.list-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 52px 15px 48px 52px;
+  overflow-y: auto;
+  zoom: var(--content-zoom, 1);
+}
+
+.list-page-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.2px;
+}
+
+.list-page-summary {
+  margin: 2px 0 0;
+  color: var(--text-tertiary);
+}
+
+.list-page-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 640px;
+  margin: 20px 0 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+
+.list-page-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.list-page-item:hover {
+  background-color: var(--bg-quaternary);
+}
+
+.list-page-icon {
+  display: flex;
+  margin-top: 3px;
+  color: var(--icon-tertiary);
+}
+
+.list-page-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.list-page-name {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-primary);
+}
+
+.list-page-reason {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.list-page-meta {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.list-page-meta[data-overdue="true"] {
+  color: var(--urgent);
+}
+
+/* Yours without time yet: one quiet line under the agenda. */
+.agenda-unplaced {
+  display: block;
+  margin: 4px 0 0;
+  padding: 0 0 0 84px;
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.agenda-unplaced:hover,
+.agenda-unplaced[data-active="true"] {
+  color: var(--text-primary);
+}
+
+/* The sidebar's bottom row, as in Delta: a divider above, as tall as the top bar, your avatar and name, then a thin
+   line and a quiet detail. */
+.sidebar-footer {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+  height: 34px;
+  padding: 0 var(--sidebar-inset);
+  border: none;
+  border-top: 1px solid var(--stroke-tertiary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.sidebar-footer:hover {
+  background-color: var(--bg-quaternary);
+}
+
+.sidebar-footer > .identicon {
+  flex-shrink: 0;
+}
+
+.sidebar-footer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Settings: the profile page's layout, with a few controls of its own. */
+.settings {
+  zoom: var(--content-zoom, 1);
+}
+
+.settings-note {
+  margin-left: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.settings-input {
+  width: 260px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font: inherit;
+  background-color: var(--bg-quaternary);
+  outline: none;
+}
+
+.settings-input:focus {
+  border-color: var(--stroke-focused);
+}
+
+.settings-button {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font: inherit;
+  background-color: var(--bg-quaternary);
+  cursor: pointer;
+}
+
+.settings-button:hover {
+  border-color: var(--stroke-focused);
+}
+
+.settings-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 6px;
+  background-color: var(--bg-quaternary);
+}
+
+.settings-segmented button {
+  height: 22px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.settings-segmented button[aria-checked="true"] {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+.settings-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.settings-swatch[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 2px var(--chrome),
+    0 0 0 3.5px var(--text-secondary);
+}
+
+/* An on/off switch: a pill with a knob that slides right when on. */
+.settings-switch {
+  position: relative;
+  width: 30px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background-color: var(--bg-tertiary);
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.settings-switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--text-secondary);
+  content: "";
+  transition:
+    transform 150ms,
+    background-color 150ms;
+}
+
+.settings-switch[aria-checked="true"] {
+  background-color: var(--accent);
+}
+
+.settings-switch[aria-checked="true"]::after {
+  background-color: #fff;
+  transform: translateX(12px);
+}
+
+.settings-kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.settings-footer {
+  margin-top: 32px;
+}
+
+/* Notifications: a bell in the sidebar's top bar with a dot while something's new, and a panel under it like the
+   context menu's surface. */
+.notifications {
+  position: relative;
+  display: flex;
+}
+
+.notifications .topbar-button {
+  position: relative;
+}
+
+.notifications .topbar-button[data-open="true"] {
+  background-color: var(--bg-tertiary);
+}
+
+.notifications-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--chrome);
+  border-radius: 50%;
+  background-color: var(--accent);
+  box-sizing: content-box;
+}
+
+.notifications-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: 340px;
+  max-height: min(480px, 70vh);
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 8px;
+  background-color: var(--panel);
+  box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
+  animation: toast-in 120ms ease-out;
+}
+
+.notifications-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.notifications-mark {
+  padding: 0;
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  background: none;
+  cursor: pointer;
+}
+
+.notifications-mark:hover {
+  color: var(--text-primary);
+}
+
+.notifications-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.notification {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 5px;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.notification:hover,
+.notification[data-active="true"] {
+  background-color: var(--panel-selected);
+}
+
+.notification > .identicon {
+  flex-shrink: 0;
+}
+
+.notification-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.notification-text,
+.notification-thread {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-text {
+  line-height: 18px;
+}
+
+/* Ones you've seen step back. */
+.notification[data-read="true"] .notification-text {
+  color: var(--text-secondary);
+}
+
+.notification-thread {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.notification-time {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+  align-self: flex-start;
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Questions for you: messages, at the top, until you reply. */
+/* Like a card: the question is the title, who asked and where sits under it, and the avatar is centered beside both. */
+.question-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0 var(--row-gutter);
+  padding: 6px calc(var(--sidebar-inset) - var(--row-gutter));
+  border-radius: var(--row-radius);
+  cursor: pointer;
+  outline: none;
+}
+
+.question-row:hover:not([data-active="true"]) {
+  background-color: var(--bg-quaternary);
+}
+
+.question-row[data-active="true"] {
+  background-color: var(--bg-tertiary);
+}
+
+.question-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.question-row > .identicon {
+  flex-shrink: 0;
+}
+
+.question-meta {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.question-author {
+  color: var(--text-secondary);
+}
+
+.question-text {
+  overflow: hidden;
+  color: var(--text-primary);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Why a question matters now: it's holding up the asker's own work, or it's been waiting past a catch-up window. */
+.question-flag {
+  color: var(--text-secondary);
+}
+
+.question-flag[data-overdue] {
+  color: var(--status-blocked);
+}
+
+/* A plain sidebar list row (the Outbox): icon, title, and who and when on the right. */
+.sidebar-row-icon {
+  position: absolute;
+  top: 50%;
+  left: calc(12px - var(--row-gutter));
+  display: flex;
+  color: var(--icon-tertiary);
+  transform: translateY(-50%);
+}
+
+.sidebar-row-meta {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Under your message: how a question you asked is doing. One quiet line. */
+.ask-line {
+  margin-top: 2px;
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.ask-line[data-overdue="true"] {
+  color: var(--status-blocked);
 }

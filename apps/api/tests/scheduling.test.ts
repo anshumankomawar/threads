@@ -150,13 +150,13 @@ test("effort sets how much time a thread gets, and shows in the activity", async
   await transact("anshu", ask("t1"));
   await transact("arjun", [update("t1", { effortHours: 1 })]);
   expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 60));
-  await transact("arjun", [update("t1", { effortHours: 8 })]);
-  expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 480));
+  await transact("arjun", [update("t1", { effortHours: 3 })]);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE, 180));
   await transact("arjun", [update("t1", { effortHours: null })]);
   expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
   expect(activity(await thread("t1"))).toEqual([
     "estimated this at 1h",
-    "estimated this at 8h",
+    "estimated this at 3h",
     "removed the estimate",
   ]);
 });
@@ -265,10 +265,10 @@ const oldThread: ThreadRecord = {
   tagIds: [],
   schedule: null,
   blocks: [],
-  replyBlocks: [],
   workedMinutes: 0,
   branchedFromId: null,
   blocksId: null,
+  seenBy: {},
   createdAtMs: NOW,
   updatedAtMs: NOW,
 };
@@ -344,8 +344,8 @@ test("the sample schedules sit in working hours, on weekdays, with no overlaps",
 
 test("a long thread runs as one block across the free time, and splits around a meeting", async () => {
   await transact("anshu", ask("t1"));
-  await transact("arjun", [update("t1", { effortHours: 8 })]);
-  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 480)]);
+  await transact("arjun", [update("t1", { effortHours: 3 })]);
+  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 180)]);
   await transact("anshu", [
     {
       id: txId(),
@@ -362,14 +362,22 @@ test("a long thread runs as one block across the free time, and splits around a 
     },
   ]);
   const { blocks, schedule } = await thread("t1");
-  expect(blocks).toEqual([slotAt(NINE, 120), slotAt(NINE + 3 * HOUR, 300), slotAt(NINE + DAY, 60)]);
+  // 11 to 12 is the meeting and 12 is catch-up time, so the last hour goes after lunch.
+  expect(blocks).toEqual([slotAt(NINE, 120), slotAt(NINE + 3.5 * HOUR, 60)]);
   expect(schedule).toEqual(blocks[0]);
 });
 
 test("effort has no upper limit; it just spans more days", async () => {
   await transact("anshu", ask("t1"));
   await transact("arjun", [update("t1", { effortHours: 16 })]);
-  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 480), slotAt(NINE + DAY, 480)]);
+  // Seven hours a day, around the catch-up half hours at 12 and 4:30.
+  expect((await thread("t1")).blocks).toEqual([
+    slotAt(NINE, 180),
+    slotAt(NINE + 3.5 * HOUR, 240),
+    slotAt(NINE + DAY, 180),
+    slotAt(NINE + DAY + 3.5 * HOUR, 240),
+    slotAt(NINE + 2 * DAY, 120),
+  ]);
   expect(activity(await thread("t1"))).toEqual(["estimated this at 16h"]);
 });
 
@@ -378,7 +386,11 @@ test("an estimate is the assignee's work: while nobody's assigned, whoever asked
   await transact("anshu", [update("t1", { effortHours: 8 })]);
   expect((await thread("t1")).blocks).toEqual([slotAt(NINE)]);
   await transact("anshu", [update("t1", { assigneeId: "arjun" })]);
-  expect((await thread("t1")).blocks).toEqual([slotAt(NINE, 480)]);
+  expect((await thread("t1")).blocks).toEqual([
+    slotAt(NINE, 180),
+    slotAt(NINE + 3.5 * HOUR, 240),
+    slotAt(NINE + DAY, 60),
+  ]);
 });
 
 test("blocks that ended count as work done, and stay on the thread", () => {
@@ -436,62 +448,74 @@ test("a thread with two blockers stays blocked until both close", async () => {
   expect((await thread("t1")).status).toBe("open");
 });
 
-const replies = (subject: Thread, personId: string) =>
-  subject.replyBlocks
-    .filter((reply) => reply.personId === personId)
-    .map(({ startMs, endMs }) => ({ startMs, endMs }));
-
-test("questions wait until three pile up, then share one block at the next break, ahead of the person's own work", async () => {
-  await transact("arjun", ask("theirs", { assigneeId: "anshu" }));
-  expect((await thread("theirs")).schedule).toEqual(slotAt(NINE));
-  for (const id of ["t1", "t2", "t3"]) await transact("anshu", ask(id));
-  // Two questions: nothing on Anshu's schedule yet; a notification is how she'd see them.
-  await transact("arjun", [message("q1", "t1", "[[person:anshu]] which audience?")]);
-  await transact("arjun", [message("q2", "t2", "[[person:anshu]] which plan?")]);
-  expect([
-    ...replies(await thread("t1"), "anshu"),
-    ...replies(await thread("t2"), "anshu"),
-  ]).toEqual([]);
-  // The third: all three share half an hour first thing, and her own work moves after it.
-  await transact("arjun", [message("q3", "t3", "[[person:anshu]] which date?")]);
-  for (const id of ["t1", "t2", "t3"])
-    expect(replies(await thread(id), "anshu")).toEqual([slotAt(NINE)]);
-  expect((await thread("theirs")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
-  // Answering one leaves the block for the other two.
-  await transact("anshu", [message("a1", "t1", "Existing customers")]);
-  expect(replies(await thread("t1"), "anshu")).toEqual([]);
-  expect(replies(await thread("t2"), "anshu")).toEqual([slotAt(NINE)]);
-  // Answering the rest gives the time back.
-  await transact("anshu", [message("a2", "t2", "Team"), message("a3", "t3", "Friday")]);
-  expect(replies(await thread("t3"), "anshu")).toEqual([]);
-  expect((await thread("theirs")).schedule).toEqual(slotAt(NINE));
+test("each working day keeps 12:00 and 4:30 free to catch up on questions", async () => {
+  // A day's worth of threads fills everything but the two catch-up half hours.
+  for (let index = 0; index < 14; index++) await transact("anshu", ask(`t${index}`));
+  const taken = (await threads())
+    .flatMap((subject) => subject.blocks)
+    .filter((block) => block.startMs < NINE + DAY)
+    .map((block) => block.startMs);
+  expect(taken).not.toContain(NINE + 3 * HOUR);
+  expect(taken).not.toContain(NINE + 7.5 * HOUR);
+  expect(taken).toHaveLength(14);
 });
 
-test("a lone question gets time once it has waited two hours, at the next break", async () => {
+test("opening a thread marks it seen, quietly", async () => {
   await transact("anshu", ask("t1"));
-  clock = NINE + 10 * 60_000;
-  await transact("arjun", [message("q1", "t1", "[[person:anshu]] quick question")]);
-  expect(replies(await thread("t1"), "anshu")).toEqual([]);
-  // Two hours on, the next look at the schedule finds it due: it lands after the frozen half hour.
-  clock = NINE + 2 * HOUR + 10 * 60_000;
-  await transact("arjun", [message("n1", "t1", "Still working on the rest")]);
-  expect(replies(await thread("t1"), "anshu")).toEqual([slotAt(NINE + 3 * HOUR)]);
-  // Closing the thread clears it.
-  await transact("arjun", [update("t1", { status: "closed" })]);
-  expect((await thread("t1")).replyBlocks).toEqual([]);
+  const before = await thread("t1");
+  clock = NOW + HOUR;
+  await transact("arjun", [update("t1", { seen: true })]);
+  const after = await thread("t1");
+  expect(after.seenBy).toEqual({ arjun: NOW + HOUR });
+  expect(after.updatedAtMs).toBe(before.updatedAtMs);
+  expect(activity(after)).toEqual(activity(before));
 });
 
-test("the server knows when a waiting question will be due some time", () => {
-  const engine = new SyncEngine({ now: () => NINE });
-  engine.load(
-    [
-      { modelName: "Person", data: { id: "anshu", name: "Anshu" } },
-      { modelName: "Person", data: { id: "arjun", name: "Arjun" } },
-    ],
-    2,
-  );
-  expect(engine.nextReplyCheckMs()).toBeNull();
-  engine.execute("anshu", ask("t1"));
-  engine.execute("arjun", [message("q1", "t1", "[[person:anshu]] a question")]);
-  expect(engine.nextReplyCheckMs()).toBe(NINE + 2 * HOUR);
+const setWorkday = (personId: string, workday: object): TransactionInput =>
+  ({
+    id: txId(),
+    type: "update",
+    modelName: "Person",
+    modelId: personId,
+    changes: { workday },
+  }) as TransactionInput;
+
+test("someone's own working day moves their schedule into it, catch-up times included", async () => {
+  await transact("anshu", ask("t1"));
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE));
+  const response = await transact("arjun", [
+    setWorkday("arjun", { startHour: 10, endHour: 14, catchUp: [{ hour: 10, minute: 0 }] }),
+  ]);
+  expect(response.status).toBe(200);
+  expect((await thread("t1")).schedule).toEqual(slotAt(NINE + 1.5 * HOUR));
+  // A day's worth fills 10:30 to 2, then carries over to 10:30 the next day.
+  for (let index = 2; index <= 8; index++) await transact("anshu", ask(`t${index}`));
+  expect((await thread("t8")).schedule).toEqual(slotAt(NINE + DAY + 1.5 * HOUR));
+  const { models } = await bootstrap();
+  expect(models.Person.find((person) => person.id === "arjun")?.workday?.startHour).toBe(10);
+});
+
+test("nobody changes someone else's profile, and catch-up times sit in working hours", async () => {
+  const theirs = await transact("anshu", [
+    setWorkday("arjun", { startHour: 10, endHour: 14, catchUp: [] }),
+  ]);
+  expect(theirs.status).toBe(403);
+  const outside = await transact("arjun", [
+    setWorkday("arjun", { startHour: 10, endHour: 14, catchUp: [{ hour: 16, minute: 30 }] }),
+  ]);
+  expect(outside.status).toBe(400);
+});
+
+test("archiving puts a thread away: off the schedule, said in the activity, and back with unarchive", async () => {
+  await transact("anshu", ask("t1"));
+  await transact("anshu", ask("t2"));
+  expect((await thread("t2")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
+  await transact("anshu", [update("t1", { status: "archived" })]);
+  expect(activity(await thread("t1")).at(-1)).toBe("archived this");
+  // Archiving leaves a gap like closing does; the next change fills it.
+  await transact("anshu", ask("t3"));
+  expect((await thread("t2")).schedule).toEqual(slotAt(NINE));
+  expect((await thread("t3")).schedule).toEqual(slotAt(NINE + HALF_HOUR));
+  await transact("anshu", [update("t1", { status: "open" })]);
+  expect(activity(await thread("t1")).at(-1)).toBe("reopened this");
 });

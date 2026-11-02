@@ -1,24 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import { formatClock, formatWhen, parseWhen, startOfDay, DAY } from "../format";
-import { Check } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
 import type { Person, Schedule, ThreadKind } from "model";
 import { Identicon } from "./Identicon";
 
 export type NewThreadDraft = {
   kind: ThreadKind;
-  text: string;
+  title: string;
+  // Empty for none.
+  description: string;
   assignee: Person | null;
   // People invited to a meeting, besides you.
   invitees: Person[];
   schedule: Schedule | null;
 };
 
-type Step = "write" | "invite" | "pick";
+type Step = "write" | "describe" | "invite" | "pick";
 
-// A thread is written then assigned; a meeting is written, gets invitees, then a time; focus work is written
-// then scheduled.
+// Every kind gets a title then an optional description. Then a thread is assigned; a meeting gets invitees, then a
+// time; focus work is scheduled.
 function stepsFor(kind: ThreadKind): Step[] {
-  return kind === "meeting" ? ["write", "invite", "pick"] : ["write", "pick"];
+  return kind === "meeting"
+    ? ["write", "describe", "invite", "pick"]
+    : ["write", "describe", "pick"];
 }
 
 const TABS: { kind: ThreadKind; label: string; shortcut: string }[] = [
@@ -65,8 +70,8 @@ function whenOptions(kind: ThreadKind, nowMs: number): Option[] {
     : options;
 }
 
-// Starting a thread step by step: write the opening message and pick the kind, invite people (meetings only),
-// then choose who it's for (a thread) or when it happens (a meeting or focus block).
+// Starting a thread step by step: write its title and pick the kind, describe it if you like, invite people (meetings
+// only), then choose who it's for (a thread) or when it happens (a meeting or focus block).
 export function NewThreadPalette({
   initialKind,
   people,
@@ -86,6 +91,7 @@ export function NewThreadPalette({
   const [kind, setKind] = useState(initialKind);
   const [step, setStep] = useState<Step>("write");
   const [text, setText] = useState("");
+  const [description, setDescription] = useState("");
   const [filter, setFilter] = useState("");
   const [selected, setSelected] = useState(0);
   const [invitees, setInvitees] = useState<Person[]>([]);
@@ -132,7 +138,7 @@ export function NewThreadPalette({
     ),
   ];
   const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));
-  const title = text.trim().split("\n")[0];
+  const title = text.trim();
   const isInvited = (person: Person): boolean =>
     invitees.some((invitee) => invitee.id === person.id);
 
@@ -175,7 +181,8 @@ export function NewThreadPalette({
     if (option === undefined) return;
     onCreate({
       kind,
-      text: text.trim(),
+      title,
+      description: description.trim(),
       assignee: kind === "response" ? (option.value as Person | null) : null,
       invitees: kind === "meeting" ? invitees : [],
       schedule: kind === "response" ? null : (option.value as Schedule | null),
@@ -194,10 +201,18 @@ export function NewThreadPalette({
       changeKind(TABS[Number(event.key) - 1].kind);
       return;
     }
-    if (step === "write") {
+    if (step === "write" || step === "describe") {
       if (event.key === "Enter") {
         event.preventDefault();
         forward();
+      } else if (
+        step === "describe" &&
+        event.key === "Backspace" &&
+        description === "" &&
+        !event.repeat
+      ) {
+        event.preventDefault();
+        back();
       }
       return;
     }
@@ -232,12 +247,21 @@ export function NewThreadPalette({
   const placeholder =
     step === "write"
       ? PLACEHOLDERS[kind]
+      : step === "describe"
+        ? "Add a description… (optional)"
+        : step === "invite"
+          ? "Invite people…"
+          : kind === "response"
+            ? "Assign to…"
+            : "When… (fri 3pm, tomorrow 10:30 for 45m)";
+  const summary =
+    step === "describe"
+      ? "Describe"
       : step === "invite"
-        ? "Invite people…"
+        ? "Invite to"
         : kind === "response"
-          ? "Assign to…"
-          : "When… (fri 3pm, tomorrow 10:30 for 45m)";
-  const summary = step === "invite" ? "Invite to" : kind === "response" ? "Assign" : "Schedule";
+          ? "Assign"
+          : "Schedule";
   const nextLabel = (): string => {
     if (text.trim().length === 0) {
       const what =
@@ -245,11 +269,13 @@ export function NewThreadPalette({
       return `Write ${what} to continue`;
     }
     const nextStep = steps[steps.indexOf(step) + 1];
-    return nextStep === "invite"
-      ? "Continue to invite"
-      : kind === "response"
-        ? "Continue to assign"
-        : "Continue to schedule";
+    return nextStep === "describe"
+      ? "Continue to describe"
+      : nextStep === "invite"
+        ? "Continue to invite"
+        : kind === "response"
+          ? "Continue to assign"
+          : "Continue to schedule";
   };
 
   return (
@@ -267,9 +293,10 @@ export function NewThreadPalette({
             className="palette-input"
             placeholder={placeholder}
             spellCheck={false}
-            value={step === "write" ? text : filter}
+            value={step === "write" ? text : step === "describe" ? description : filter}
             onChange={(event) => {
               if (step === "write") setText(event.target.value);
+              else if (step === "describe") setDescription(event.target.value);
               else {
                 setFilter(event.target.value);
                 setSelected(0);
@@ -297,9 +324,17 @@ export function NewThreadPalette({
           ))}
         </div>
         <div className="palette-results">
-          {step === "write" ? (
+          {step === "write" || step === "describe" ? (
             <div className="palette-section">
-              <div className="palette-section-label palette-summary">Next</div>
+              <div className="palette-section-label palette-summary">
+                {step === "write" ? (
+                  "Next"
+                ) : (
+                  <>
+                    {summary} <span className="palette-summary-title">“{title}”</span>
+                  </>
+                )}
+              </div>
               <div
                 className="palette-row"
                 data-selected={text.trim().length > 0}
@@ -347,7 +382,7 @@ export function NewThreadPalette({
                     <span className="palette-row-label">{option.label}</span>
                     {step === "invite" ? (
                       <span className="palette-check" data-checked={invited} aria-hidden>
-                        {invited && <Check size={12} strokeWidth={2.2} />}
+                        {invited && <HugeiconsIcon icon={Tick02Icon} size={12} />}
                       </span>
                     ) : (
                       option.hint !== undefined && (

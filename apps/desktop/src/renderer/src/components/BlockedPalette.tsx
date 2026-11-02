@@ -18,8 +18,8 @@ export function BlockedPalette({
   me: Person;
   // The thread that's blocked, for the prompt.
   blockedTitle: string;
-  // The new thread's opening message: the title, then the reason on the lines after it.
-  onCreate: (person: Person, text: string) => void;
+  // The new thread's title, and the reason as its description (empty for none).
+  onCreate: (person: Person, title: string, description: string) => void;
   onClose: () => void;
 }): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,8 +56,7 @@ export function BlockedPalette({
       setTitle(text.trim());
       goTo("why");
     } else if (step === "why" && person !== null) {
-      const reason = text.trim();
-      onCreate(person, reason.length > 0 ? `${title}\n${reason}` : title);
+      onCreate(person, title, text.trim());
     }
   };
 

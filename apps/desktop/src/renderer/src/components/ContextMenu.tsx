@@ -50,7 +50,7 @@ export function ContextMenu({
   return createPortal(
     <div
       ref={ref}
-      className="context-menu"
+      className="menu context-menu"
       role="menu"
       style={position}
       onMouseDown={(event) => event.stopPropagation()}
@@ -58,22 +58,20 @@ export function ContextMenu({
     >
       {items.map((item, index) =>
         item === "separator" ? (
-          <div key={`separator-${index}`} className="context-menu-separator" role="separator" />
+          <div key={`separator-${index}`} className="menu-separator" role="separator" />
         ) : (
           <button
             key={item.label}
             type="button"
             role="menuitem"
-            className="context-menu-item"
+            className="menu-item"
             onClick={() => {
               onClose();
               item.run();
             }}
           >
             <span>{item.label}</span>
-            {item.shortcut !== undefined && (
-              <span className="context-menu-shortcut">{item.shortcut}</span>
-            )}
+            {item.shortcut !== undefined && <span className="menu-shortcut">{item.shortcut}</span>}
           </button>
         ),
       )}

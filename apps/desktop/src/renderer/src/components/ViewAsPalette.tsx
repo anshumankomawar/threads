@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Check } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { Tick02Icon } from "@hugeicons/core-free-icons";
 import type { Person } from "model";
 import { Identicon } from "./Identicon";
 
@@ -86,7 +87,7 @@ export function ViewAsPalette({
                 <Identicon seed={person.id} size={16} />
                 <span className="palette-row-label">{person.name}</span>
                 {person.id === me.id && (
-                  <Check size={12} strokeWidth={2.2} className="palette-current" />
+                  <HugeiconsIcon icon={Tick02Icon} size={12} className="palette-current" />
                 )}
               </div>
             ))}

@@ -4,12 +4,12 @@ import { plainThreadLinks, type Entry, type Person } from "model";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 
-const TICK_SPACING = 10;
+const TICK_SPACING = 6;
 // Every tick rests at the same length, whatever kind of entry it marks. While hovering, the tick under the cursor is
 // longest and its neighbors taper back to rest; at rest the entry you're reading is marked by color alone.
-const RESTING_LENGTH = 12;
-const PEAK_LENGTH = 21;
-const TAPER_PER_TICK = 4;
+const RESTING_LENGTH = 8;
+const PEAK_LENGTH = 14;
+const TAPER_PER_TICK = 2;
 // Gap between ⌥ + scroll jumps, so one flick moves one marker.
 const JUMP_THROTTLE_MS = 180;
 

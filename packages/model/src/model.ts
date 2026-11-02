@@ -6,16 +6,30 @@ export type Person = {
   role?: "sde" | "pm";
   // Who they report to, which places them in the org tree. Nobody's at the top.
   managerId?: string;
+  // Their own working day, set on their profile; without one, the org's (`workdayOf`).
+  workday?: Workday;
 };
 
-export type Status = "open" | "blocked" | "closed";
+// The hours someone's schedule is laid out in, and the half hours in them kept free for answering questions.
+export type Workday = {
+  startHour: number;
+  endHour: number;
+  catchUp: { hour: number; minute: number }[];
+};
+
+// Archived is closed and put away: off every list, still there to search and open.
+export type Status = "open" | "blocked" | "closed" | "archived";
 export type Priority = "none" | "low" | "medium" | "high" | "urgent";
 
 export const STATUS_LABELS: Record<Status, string> = {
   open: "Open",
   blocked: "Blocked",
   closed: "Closed",
+  archived: "Archived",
 };
+
+// Whether a thread is finished: closed or archived. It takes no time and no more replies.
+export const isDone = (status: Status): boolean => status === "closed" || status === "archived";
 
 export const PRIORITY_LABELS: Record<Priority, string> = {
   none: "No priority",
@@ -60,9 +74,6 @@ export const KIND_LABELS: Record<ThreadKind, string> = {
 
 export type Schedule = { startMs: number; endMs: number };
 
-// A block on someone's schedule for answering a question in a thread.
-export type ReplyBlock = Schedule & { personId: string };
-
 export type Thread = {
   id: string;
   kind: ThreadKind;
@@ -81,9 +92,6 @@ export type Thread = {
   // Every block of time it holds on the schedule of whoever it's waiting on, including ones already over. A response
   // can have any number, each as long as the free time allows. Meetings and focus blocks have just their `schedule`.
   blocks: Schedule[];
-  // Time set aside for people asked a question in it (mentioned, and not yet answered): one block each, on their
-  // schedule, placed by the server like `blocks`.
-  replyBlocks: ReplyBlock[];
   // Time the assignee already spent in blocks before the thread last changed hands.
   workedMinutes: number;
   // Who's in it: meeting attendees; empty for other kinds.
@@ -92,14 +100,45 @@ export type Thread = {
   branchedFromId: string | null;
   // The thread this one blocks, if it was made with `/blocked`.
   blocksId: string | null;
+  // When each person last opened it, by id.
+  seenBy: Record<string, number>;
   updatedAtMs: number;
   entries: Entry[];
 };
+
+// The organization's working hours. Every schedule is laid out in them, on weekdays.
+export const WORKING_HOURS = { timeZone: "America/Los_Angeles", startHour: 9, endHour: 17 };
+
+// The two half hours a working day keeps free for answering questions; the scheduler never fills them.
+export const CATCH_UP_TIMES = [
+  { hour: 12, minute: 0 },
+  { hour: 16, minute: 30 },
+];
+
+// Someone's working day: their own, or the org's.
+export function workdayOf(person: Person | undefined): Workday {
+  return (
+    person?.workday ?? {
+      startHour: WORKING_HOURS.startHour,
+      endHour: WORKING_HOURS.endHour,
+      catchUp: CATCH_UP_TIMES,
+    }
+  );
+}
 
 // Every meeting's video call link, until meetings get real ones.
 export const DUMMY_ZOOM_LINK = "zoom.us/j/0000000000";
 
 type Message = Extract<Entry, { kind: "message" }>;
+
+// A thread's description: the message it was opened with, shown in its heading under the title. It's an ordinary
+// message (mentions in it ask people, like any other), told apart by sharing the thread's id. Only whoever opened
+// the thread writes it, it stays put when messages move, and a thread opened without one has none.
+export function descriptionOf(thread: Thread): Message | undefined {
+  return thread.entries.find(
+    (entry): entry is Message => entry.kind === "message" && entry.id === thread.id,
+  );
+}
 
 export function lastMessage(thread: Thread): Message | undefined {
   return thread.entries.findLast((entry): entry is Message => entry.kind === "message");

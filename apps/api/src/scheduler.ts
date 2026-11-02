@@ -1,7 +1,4 @@
-import type { Schedule } from "model";
-
-// The organization's working hours. Every schedule is laid out in them.
-export const WORKING_HOURS = { timeZone: "America/Los_Angeles", startHour: 9, endHour: 17 };
+import { WORKING_HOURS, workdayOf, type Schedule, type Workday } from "model";
 
 const SLOT_MS = 30 * 60_000;
 export const MIN_BLOCK_MINUTES = 30;
@@ -34,20 +31,32 @@ function localTime(ms: number): { weekday: string; day: string; hour: number; mi
 
 const nextSlotBoundary = (ms: number): number => Math.ceil(ms / SLOT_MS) * SLOT_MS;
 
-// Every half hour that can hold work from now through the next few working days.
-export function workingSlots(nowMs: number): number[] {
+// Every half hour that can hold work from now through someone's next few working days, in their working hours (the
+// org's by default).
+export function workingSlots(nowMs: number, workday: Workday = workdayOf(undefined)): number[] {
   const slots: number[] = [];
   const workingDays = new Set<string>();
   const end = nowMs + MAX_DAYS_SCANNED * 24 * 60 * 60_000;
   for (let start = nextSlotBoundary(nowMs); start < end; start += SLOT_MS) {
     const { weekday, day, hour } = localTime(start);
     if (weekday === "Sat" || weekday === "Sun") continue;
-    if (hour < WORKING_HOURS.startHour || hour >= WORKING_HOURS.endHour) continue;
+    if (hour < workday.startHour || hour >= workday.endHour) continue;
     workingDays.add(day);
     if (workingDays.size > WORKING_DAYS_AHEAD) break;
     slots.push(start);
   }
   return slots;
+}
+
+// Half hours each working day that no thread is scheduled into (someone's `catchUp` times): slack for catching up on
+// questions and messages, which arrive as they're asked rather than taking time on anyone's schedule.
+export function catchUpTimes(slots: number[], catchUp: Workday["catchUp"]): Schedule[] {
+  return slots
+    .filter((start) => {
+      const { hour, minute } = localTime(start);
+      return catchUp.some((time) => time.hour === hour && time.minute === minute);
+    })
+    .map((start) => ({ startMs: start, endMs: start + SLOT_MS }));
 }
 
 // When to next look over every schedule: half an hour before the working day starts.
@@ -76,9 +85,6 @@ export type Plannable = {
   minutes: number;
   // The blocks it holds that aren't over yet.
   blocks: Schedule[];
-  // Keeps clear of the next half hour or so, like time that's frozen, when it takes new time (a question's reply
-  // block lands at the next break, not in the middle of what's happening now).
-  afterFreeze?: boolean;
 };
 
 // Joins blocks that touch, so unbroken time reads as one block.
@@ -144,7 +150,7 @@ export function planSchedule(
     const claimed: Schedule[] = [];
     for (const start of slots) {
       if (neededMs <= 0) break;
-      if (!free.has(start) || (thread.afterFreeze && start < frozenUntil)) continue;
+      if (!free.has(start)) continue;
       free.delete(start);
       claimed.push({ startMs: start, endMs: start + SLOT_MS });
       neededMs -= SLOT_MS;

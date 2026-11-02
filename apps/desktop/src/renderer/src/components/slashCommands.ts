@@ -18,6 +18,7 @@ export type CommandMenuState = {
 // What `/` offers, in order.
 export const COMMANDS = [
   { name: "blocked", label: "Blocked", hint: "Ask someone for what you need in a new thread" },
+  { name: "task", label: "Task", hint: "Turn what you were asked into a task of your own" },
   { name: "close", label: "Close", hint: "Mark this thread done" },
 ] as const;
 

@@ -7,6 +7,7 @@ import {
   type DeltasResponse,
   type EntryCreate,
   type Person,
+  type PersonChanges,
   type Schedule,
   type SyncAction,
   type SyncMessage,
@@ -45,7 +46,9 @@ export type Transport = {
 
 export type NewThread = {
   kind: ThreadKind;
-  text: string;
+  title: string;
+  // Its description (`descriptionOf`), shown under the title; empty for none.
+  description: string;
   assignee: Person | null;
   invitees: Person[];
   schedule: Schedule | null;
@@ -53,11 +56,10 @@ export type NewThread = {
   branchedFromId?: string | null;
   // The thread this one blocks (`/blocked`).
   blocksId?: string | null;
-  // Messages moved in from the parent to open the thread; `text` is then only its title.
+  // Messages moved in from the parent to open the thread, in place of a description.
   movedEntryIds?: string[];
 };
 
-const firstLine = (text: string): string => text.split("\n")[0].slice(0, 80);
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 const MAX_RECONNECT_MS = 10_000;
 
@@ -291,7 +293,7 @@ export class SyncClient {
     });
   }
 
-  // A thread and its opening message (or the messages moved in to open it), sent together. Returns its id.
+  // A thread and its description (or the messages moved in to open it), sent together. Returns its id.
   createThread(draft: NewThread, me: Person): string {
     const threadId = crypto.randomUUID();
     this.#enqueue(
@@ -303,7 +305,7 @@ export class SyncClient {
           data: {
             id: threadId,
             kind: draft.kind,
-            title: firstLine(draft.text),
+            title: draft.title.trim().slice(0, 200),
             assigneeId: draft.assignee?.id ?? null,
             attendeeIds: draft.invitees.map((person) => person.id),
             schedule: draft.schedule,
@@ -314,8 +316,9 @@ export class SyncClient {
         me.id,
       ),
     );
-    if (draft.movedEntryIds === undefined) this.addEntry(threadId, "message", draft.text, me);
-    else this.moveMessages(draft.movedEntryIds, threadId, me);
+    if (draft.movedEntryIds !== undefined) this.moveMessages(draft.movedEntryIds, threadId, me);
+    else if (draft.description.trim() !== "")
+      this.addEntry(threadId, "message", draft.description, me, threadId);
     return threadId;
   }
 
@@ -323,6 +326,16 @@ export class SyncClient {
     this.#enqueue(
       new MoveTransaction(
         { id: crypto.randomUUID(), type: "move", modelName: "Entry", entryIds, threadId },
+        me.id,
+      ),
+    );
+  }
+
+  // Changes your own profile; the server refuses anyone else's.
+  updatePerson(changes: PersonChanges, me: Person): void {
+    this.#enqueue(
+      new UpdateTransaction(
+        { id: crypto.randomUUID(), type: "update", modelName: "Person", modelId: me.id, changes },
         me.id,
       ),
     );
@@ -343,14 +356,21 @@ export class SyncClient {
     );
   }
 
-  addEntry(threadId: string, kind: EntryCreate["kind"], text: string, me: Person): void {
+  // `id` is given only for a thread's description, which takes the thread's id.
+  addEntry(
+    threadId: string,
+    kind: EntryCreate["kind"],
+    text: string,
+    me: Person,
+    id: string = crypto.randomUUID(),
+  ): void {
     this.#enqueue(
       new CreationTransaction(
         {
           id: crypto.randomUUID(),
           type: "create",
           modelName: "Entry",
-          data: { id: crypto.randomUUID(), threadId, kind, text },
+          data: { id, threadId, kind, text },
         },
         me.id,
       ),

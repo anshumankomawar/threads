@@ -1,5 +1,5 @@
 import type { SyncAction, Thread, TransactionInput } from "model";
-import { toThreads } from "model";
+import { localPeople, toThreads } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
 
@@ -102,10 +102,11 @@ const update = (threadId: string, changes: object): TransactionInput =>
 
 test("bootstrap returns every model and the sync id it's current to", async () => {
   const body = await bootstrap();
-  expect(body.models.Person.map((person) => person.id)).toEqual(["anshu", "arjun", "kk"]);
+  const people = localPeople();
+  expect(body.models.Person.map((person) => person.id)).toEqual(people.map((person) => person.id));
   expect(body.models.Person[0].managerId).toBe("kk");
   expect(body.models.Thread).toEqual([]);
-  expect(body.lastSyncId).toBe(3);
+  expect(body.lastSyncId).toBe(people.length);
   expect(body.schemaHash).toEqual(expect.any(String));
 });
 
@@ -138,6 +139,35 @@ test("a new thread and its opening message become one ordered batch of sync acti
     updatedAtMs: NOW,
     entries: [{ kind: "message", author: { id: "anshu" }, createdAtMs: NOW }],
   });
+});
+
+test("a thread's description shares its id, is written by whoever opened it, and stays when messages move", async () => {
+  await transact("anshu", [createThread("t1"), message("t1", "t1", "Somewhere warm")]);
+  expect((await thread("t1"))?.entries).toMatchObject([{ id: "t1", text: "Somewhere warm" }]);
+  await transact("anshu", [createThread("t2", { title: "Pricing" })]);
+  // Only by whoever opened it, only as a message, and no entry takes another thread's id.
+  expect((await transact("arjun", [message("t2", "t2")])).status).toBe(403);
+  expect(
+    (
+      await transact("anshu", [
+        {
+          id: txId(),
+          type: "create",
+          modelName: "Entry",
+          data: { id: "t2", threadId: "t2", kind: "resolution", text: "Done" },
+        },
+      ])
+    ).status,
+  ).toBe(400);
+  expect((await transact("anshu", [message("t1", "t2")])).status).toBe(409);
+  expect((await transact("anshu", [message("t2", "t1")])).status).toBe(400);
+  expect(
+    (
+      await transact("anshu", [
+        { id: txId(), type: "move", modelName: "Entry", entryIds: ["t1"], threadId: "t2" },
+      ])
+    ).status,
+  ).toBe(400);
 });
 
 test("a meeting includes its creator and invitees and gets a call link after its agenda", async () => {

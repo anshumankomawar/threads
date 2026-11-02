@@ -1,4 +1,5 @@
 import {
+  descriptionOf,
   SCHEMA_HASH,
   threadFromCreate,
   type AnyRecord,
@@ -125,7 +126,13 @@ async function started(server = new FakeServer(), database: SyncDatabase = memor
   return { client, server, database };
 }
 
-const draft = { kind: "response" as const, assignee: arjun, invitees: [], schedule: null };
+const draft = {
+  kind: "response" as const,
+  description: "Somewhere warm",
+  assignee: arjun,
+  invitees: [],
+  schedule: null,
+};
 
 test("bootstraps the pool from the server and opens the socket", async () => {
   const { client } = await started();
@@ -137,7 +144,7 @@ test("bootstraps the pool from the server and opens the socket", async () => {
 
 test("a change shows at once, goes out in one batch per tick, and completes when its sync id arrives", async () => {
   const { client, server } = await started();
-  const threadId = client.createThread({ ...draft, text: "Plan the offsite" }, anshu);
+  const threadId = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
   client.updateThread(threadId, { priority: "high" }, anshu);
   // Optimistic: visible before the server has seen anything.
   expect(client.threads.find((thread) => thread.id === threadId)?.priority).toBe("high");
@@ -152,10 +159,26 @@ test("a change shows at once, goes out in one batch per tick, and completes when
   expect(client.lastSyncId).toBe(server.lastSyncId);
 });
 
+test("a thread's description is a message with the thread's id, and a thread can have none", async () => {
+  const { client, server } = await started();
+  const described = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
+  const bare = client.createThread({ ...draft, title: "Pricing", description: "  " }, anshu);
+  await settle();
+  const thread = client.threads.find((candidate) => candidate.id === described);
+  expect(thread === undefined ? undefined : descriptionOf(thread)?.text).toBe("Somewhere warm");
+  const empty = client.threads.find((candidate) => candidate.id === bare);
+  expect(empty?.entries).toEqual([]);
+  expect(server.sent[0].transactions.map((transaction) => transaction.modelName)).toEqual([
+    "Thread",
+    "Entry",
+    "Thread",
+  ]);
+});
+
 test("a refused batch is rolled back", async () => {
   const { client, server } = await started();
   server.refuse = true;
-  const threadId = client.createThread({ ...draft, text: "Doomed" }, anshu);
+  const threadId = client.createThread({ ...draft, title: "Doomed" }, anshu);
   expect(client.threads.some((thread) => thread.id === threadId)).toBe(true);
   await settle();
   expect(client.threads.some((thread) => thread.id === threadId)).toBe(false);
@@ -164,7 +187,7 @@ test("a refused batch is rolled back", async () => {
 
 test("a newer server change is rebased under a pending local edit, and the local edit wins", async () => {
   const { client, server } = await started();
-  const threadId = client.createThread({ ...draft, text: "Plan the offsite" }, anshu);
+  const threadId = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
   await settle();
   const thread = server.log.at(-1)?.data as ThreadRecord;
 
@@ -184,7 +207,7 @@ test("offline edits are kept, survive a restart, and send once the server is bac
   const database = memoryDatabase();
   const first = await started(server, database);
   server.online = false;
-  const threadId = first.client.createThread({ ...draft, text: "Written offline" }, anshu);
+  const threadId = first.client.createThread({ ...draft, title: "Written offline" }, anshu);
   await settle();
   expect(await database.transactions()).toHaveLength(2);
   first.client.stop();
@@ -217,8 +240,8 @@ test("a gap in sync ids is filled from the server's log", async () => {
 
 test("moving messages shows at once, and is undone if the server refuses it", async () => {
   const { client, server } = await started();
-  const source = client.createThread({ ...draft, text: "Plan the offsite" }, anshu);
-  const destination = client.createThread({ ...draft, text: "Pricing" }, anshu);
+  const source = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
+  const destination = client.createThread({ ...draft, title: "Pricing" }, anshu);
   await settle();
   server.change("Entry", {
     id: "m1",
@@ -248,7 +271,7 @@ test("moving messages shows at once, and is undone if the server refuses it", as
 
 test("wiping leaves the people and clears every thread at once", async () => {
   const { client } = await started();
-  client.createThread({ ...draft, text: "Plan the offsite" }, anshu);
+  client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
   await settle();
   expect(client.threads).toHaveLength(1);
   await client.wipe();

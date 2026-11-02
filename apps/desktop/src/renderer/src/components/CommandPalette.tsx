@@ -52,7 +52,7 @@ export function CommandPalette({
   me,
   onSwitchSource,
   onViewAs,
-  onOpenOrg,
+  onOpenProfile,
   onNewThread,
   onOpenThread,
   onClose,
@@ -62,7 +62,7 @@ export function CommandPalette({
   me: Person;
   onSwitchSource: (source: DataSource) => void;
   onViewAs: () => void;
-  onOpenOrg: () => void;
+  onOpenProfile: () => void;
   onNewThread: (kind: ThreadKind) => void;
   onOpenThread: (id: string) => void;
   onClose: () => void;
@@ -95,7 +95,10 @@ export function CommandPalette({
     // Who you're viewing as, and where the data comes from.
     ...(tab === "all"
       ? [
-          { title: "Views", items: [{ id: "org", label: "Organization", run: run(onOpenOrg) }] },
+          {
+            title: "Views",
+            items: [{ id: "profile", label: "Profile and organization", run: run(onOpenProfile) }],
+          },
           {
             title: "Data",
             items: [

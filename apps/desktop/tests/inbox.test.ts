@@ -25,13 +25,13 @@ function thread(fields: Partial<Thread>): Thread {
     attendees: [],
     branchedFromId: null,
     blocksId: null,
+    seenBy: {},
     effortHours: null,
     tagIds: [],
     updatedAtMs: NOW,
     entries: [],
     ...fields,
     blocks: fields.blocks ?? (fields.schedule ? [fields.schedule] : []),
-    replyBlocks: fields.replyBlocks ?? [],
   };
 }
 
@@ -209,8 +209,7 @@ test("up next lists each thread once at its next block, soonest first, skipping 
   expect(ids).toEqual(["now", "later", "tomorrow"]);
 });
 
-test("a question for you shows at its reply block and in your inbox, until you write in the thread", () => {
-  const reply = { startMs: NOW + HOUR, endMs: NOW + HOUR + HOUR / 2, personId: "kk" };
+test("questions for you are listed, never scheduled, until you write in the thread", () => {
   const message = (id: string, author: Person, text: string) => ({
     kind: "message" as const,
     id,
@@ -218,24 +217,25 @@ test("a question for you shows at its reply block and in your inbox, until you w
     text,
     createdAtMs: NOW,
   });
-  const asked = conversation([arjun], {
-    entries: [
-      message("m0", arjun, "Text"),
-      message("m1", anshu, "[[person:kk]] what do you think?"),
-    ],
-    replyBlocks: [reply],
-  });
-  const day = buildDay([asked], kk, [], NOW);
-  expect(day.timeline.map((item) => [item.asked?.name, item.block.startMs])).toEqual([
-    ["Anshu", reply.startMs],
+  const askedIn = (id: string) =>
+    conversation([arjun], {
+      id,
+      entries: [
+        message(`${id}-0`, arjun, "Text"),
+        message(`${id}-1`, anshu, "[[person:kk]] what do you think?"),
+      ],
+    });
+  const day = buildDay([askedIn("a"), askedIn("b")], kk, [], NOW);
+  expect(day.mentions.map((item) => [item.thread.id, item.asked?.name])).toEqual([
+    ["a", "Anshu"],
+    ["b", "Anshu"],
   ]);
-  // Its block is today, so it's on the timeline rather than the inbox.
-  expect(day.unscheduled).toEqual([]);
-  // Without a block today, it waits in the inbox, from whoever asked.
-  const unslotted = buildDay([{ ...asked, replyBlocks: [] }], kk, [], NOW).unscheduled;
-  expect(unslotted.map((item) => [item.from?.name, item.dueLabel])).toEqual([["Anshu", "Asked"]]);
-  // KK writes back: the question is answered.
-  const answered = { ...asked, entries: [...asked.entries, message("m2", kk, "Go for it")] };
-  const after = buildDay([answered], kk, [], NOW);
-  expect([after.timeline, after.unscheduled]).toEqual([[], []]);
+  // They take no time and aren't KK's work.
+  expect([day.timeline, day.unscheduled]).toEqual([[], []]);
+  // KK writes back in one: that question is answered.
+  const answered = askedIn("a");
+  answered.entries.push(message("a-2", kk, "Go for it"));
+  expect(
+    buildDay([answered, askedIn("b")], kk, [], NOW).mentions.map((item) => item.thread.id),
+  ).toEqual(["b"]);
 });

@@ -1,28 +1,32 @@
 import { Placeholder } from "@tiptap/extensions";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
-  ArrowDown,
-  Calendar,
-  CalendarDays,
-  Check,
-  CircleSlash,
-  Clock,
-  GitBranch,
-  Hourglass,
-  Link2,
-  MicOff,
-  Plus,
-  Sparkles,
-  Tag as TagIcon,
-  Target,
-  Video,
-  X,
-} from "lucide-react";
+  Add01Icon,
+  ArrowDown02Icon,
+  Calendar01Icon,
+  Calendar03Icon,
+  Cancel01Icon,
+  CheckmarkCircle02Icon,
+  Clock01Icon,
+  GitBranchIcon,
+  HourglassIcon,
+  Link01Icon,
+  MicOff01Icon,
+  SparklesIcon,
+  Tag01Icon,
+  Target02Icon,
+  TaskAdd01Icon,
+  Tick02Icon,
+  UnavailableIcon,
+  Video01Icon,
+} from "@hugeicons/core-free-icons";
 import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMe } from "../me";
 import { CurrentThreadContext, useThreadLinks } from "../threadLinks";
+import { askStatuses } from "../questions";
 import {
   closeThreadMenu,
   offerKey,
@@ -47,6 +51,7 @@ import {
 } from "./mentionNode";
 import { slotMissesDue } from "../inbox";
 import {
+  isDone,
   EFFORT_OPTIONS,
   formatEffort,
   plainThreadLinks,
@@ -63,6 +68,7 @@ import {
   type Thread,
   mention,
   pendingAsks,
+  descriptionOf,
 } from "model";
 import {
   DAY,
@@ -77,7 +83,14 @@ import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
-const ICON_PROPS = { size: 13, strokeWidth: 1.7, "aria-hidden": true } as const;
+const ICON_PROPS = { size: 13, "aria-hidden": true } as const;
+
+// What each `/` command shows in the menu.
+const COMMAND_ICONS: Record<CommandName, IconSvgElement> = {
+  blocked: UnavailableIcon,
+  task: TaskAdd01Icon,
+  close: CheckmarkCircle02Icon,
+};
 
 export type MessageEntry = Extract<Entry, { kind: "message" }>;
 type EventEntry = Extract<Entry, { kind: "event" }>;
@@ -92,6 +105,8 @@ export type ThreadActions = {
   onSend: (text: string) => void;
   // `/blocked`: opens the form for asking someone what this thread needs, in a new thread that blocks it.
   onBlocked: () => void;
+  // `/task`: turns what you were asked here into a task of your own, a new thread linked from this one.
+  onTask: () => void;
   onSetStatus: (status: Status) => void;
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueAtMs: number | null) => void;
@@ -121,7 +136,7 @@ function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
         links.open(threadId);
       }}
     >
-      <GitBranch size={11} strokeWidth={1.8} aria-hidden />
+      <HugeiconsIcon icon={GitBranchIcon} size={11} aria-hidden />
       {title}
     </button>
   );
@@ -292,10 +307,10 @@ function MenuChip<T>({
         {label}
       </button>
       {open && (
-        <div className="chip-menu" role="menu">
+        <div className="menu chip-menu" role="menu">
           {typed !== undefined && (
             <input
-              className="chip-menu-input"
+              className="menu-input"
               placeholder={typed.placeholder}
               spellCheck={false}
               autoFocus
@@ -307,14 +322,14 @@ function MenuChip<T>({
             />
           )}
           {parsed !== null && (
-            <div className="chip-menu-row" role="menuitem" onClick={() => choose(parsed.value)}>
+            <div className="menu-item" role="menuitem" onClick={() => choose(parsed.value)}>
               {parsed.label}
             </div>
           )}
           {options.map((option) => (
             <div
               key={option.label}
-              className="chip-menu-row"
+              className="menu-item"
               role="menuitem"
               onClick={() => choose(option.value)}
             >
@@ -363,19 +378,14 @@ function ThreadHeader({
   const dueTone = due === null ? "muted" : due.overdue ? "urgent" : undefined;
   const isResponse = thread.kind === "response";
 
-  // The title is the ask's first line, so the description is whatever follows it.
-  const askText = ask?.text ?? "";
-  const description = askText.startsWith(thread.title)
-    ? askText.slice(thread.title.length).trim()
-    : askText.trim();
+  const description = ask?.text.trim() ?? "";
 
   return (
     <header className="thread-header" id={ask === undefined ? undefined : `entry-${ask.id}`}>
-      <h1 className="thread-title">{thread.title}</h1>
       <div className="thread-byline">
         {thread.kind === "meeting" ? (
           <>
-            <CalendarDays {...ICON_PROPS} />
+            <HugeiconsIcon icon={Calendar03Icon} {...ICON_PROPS} />
             <span>Meeting</span>
             <span className="thread-byline-dot">·</span>
             <span>organized by {thread.requester.name}</span>
@@ -391,7 +401,7 @@ function ThreadHeader({
           </>
         ) : thread.kind === "focus" ? (
           <>
-            <Target {...ICON_PROPS} />
+            <HugeiconsIcon icon={Target02Icon} {...ICON_PROPS} />
             <span>Focus block</span>
             <span className="thread-byline-dot">·</span>
             <span>{thread.requester.name}</span>
@@ -402,11 +412,16 @@ function ThreadHeader({
               <Identicon seed={thread.requester.id} size={14} />
               {thread.requester.name}
             </span>
-            <span className="thread-ask-arrow">→</span>
+            <span className="thread-byline-verb">asked</span>
             <MenuChip
-              label={thread.assignee?.name ?? "Unassigned"}
+              label={thread.assignee?.name ?? "no one yet"}
+              icon={thread.assignee !== null && <Identicon seed={thread.assignee.id} size={14} />}
               tone="assignee"
-              options={people.map((person) => ({ label: person.name, value: person }))}
+              options={people.map((person) => ({
+                label: person.name,
+                value: person,
+                icon: <Identicon seed={person.id} size={14} />,
+              }))}
               onSelect={actions.onSetAssignee}
             />
           </>
@@ -418,13 +433,11 @@ function ThreadHeader({
             <ThreadLinkChip threadId={thread.branchedFromId} />
           </>
         )}
-        {ask !== undefined && (
-          <>
-            <span className="thread-byline-dot">·</span>
-            <span>{formatRelativeTime(ask.createdAtMs, nowMs)}</span>
-          </>
-        )}
       </div>
+      <h1 className="thread-title">{thread.title}</h1>
+      {description !== "" && (
+        <MessageText text={description} className="thread-text thread-description" />
+      )}
       <div className="thread-properties">
         {thread.kind !== "meeting" && (
           <MenuChip
@@ -452,7 +465,7 @@ function ThreadHeader({
                 .map((block) => formatSchedule(block, nowMs)),
             ].join("\n")}
           >
-            <Clock {...ICON_PROPS} />
+            <HugeiconsIcon icon={Clock01Icon} {...ICON_PROPS} />
             {formatBlocks(thread, nowMs)}
           </span>
         ) : (
@@ -460,7 +473,7 @@ function ThreadHeader({
             label={
               thread.schedule === null ? "Not scheduled" : formatSchedule(thread.schedule, nowMs)
             }
-            icon={<Clock {...ICON_PROPS} />}
+            icon={<HugeiconsIcon icon={Clock01Icon} {...ICON_PROPS} />}
             tone={thread.schedule === null ? "muted" : undefined}
             options={scheduleOptions(thread.schedule, nowMs)}
             onSelect={actions.onSetSchedule}
@@ -492,14 +505,14 @@ function ThreadHeader({
             />
             <MenuChip
               label={due?.label ?? "No due date"}
-              icon={<Calendar {...ICON_PROPS} />}
+              icon={<HugeiconsIcon icon={Calendar01Icon} {...ICON_PROPS} />}
               tone={dueTone}
               options={dueOptions(nowMs)}
               onSelect={actions.onSetDue}
             />
             <MenuChip
               label={thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
-              icon={<Hourglass {...ICON_PROPS} />}
+              icon={<HugeiconsIcon icon={HourglassIcon} {...ICON_PROPS} />}
               tone={thread.effortHours === null ? "muted" : undefined}
               options={[
                 ...EFFORT_OPTIONS.map((hours) => ({
@@ -512,12 +525,14 @@ function ThreadHeader({
             />
             <MenuChip
               label={tagsLabel(thread.tagIds)}
-              icon={<TagIcon {...ICON_PROPS} />}
+              icon={<HugeiconsIcon icon={Tag01Icon} {...ICON_PROPS} />}
               tone={thread.tagIds.length === 0 ? "muted" : undefined}
               options={TAGS.map((tag) => ({
                 label: tag.name,
                 value: tag.id as string,
-                icon: thread.tagIds.includes(tag.id) ? <Check {...ICON_PROPS} /> : undefined,
+                icon: thread.tagIds.includes(tag.id) ? (
+                  <HugeiconsIcon icon={Tick02Icon} {...ICON_PROPS} />
+                ) : undefined,
               }))}
               onSelect={(tagId) =>
                 actions.onSetTags(
@@ -530,14 +545,48 @@ function ThreadHeader({
           </>
         )}
       </div>
-      {description !== "" && (
-        <MessageText text={description} className="thread-text thread-description" />
-      )}
     </header>
   );
 }
 
+// Under a message of yours that asks someone something: how it's doing, in one quiet line. On its way ("Reaches
+// Arjun at 3:00 PM", while he's heads-down), with them, seen, answered, or still unanswered after their catch-up time.
+function AskLine({
+  thread,
+  message,
+  nowMs,
+}: {
+  thread: Thread;
+  message: MessageEntry;
+  nowMs: number;
+}): React.JSX.Element | null {
+  const { people, threads } = useThreadLinks();
+  const statuses = askStatuses(thread, message.id, people, threads, nowMs);
+  if (statuses.length === 0) return null;
+  const words = statuses.map((status) => {
+    const name = status.person.name.split(" ")[0];
+    switch (status.kind) {
+      case "answered":
+        return `${name} answered`;
+      case "seen":
+        return `Seen by ${name}`;
+      case "overdue":
+        return `No reply from ${name} yet`;
+      case "waiting":
+        return status.reachesAtMs > nowMs
+          ? `Reaches ${name} at ${formatClock(status.reachesAtMs)}, after their focus time`
+          : `Sent to ${name}`;
+    }
+  });
+  return (
+    <div className="ask-line" data-overdue={statuses.some((status) => status.kind === "overdue")}>
+      {words.join(" · ")}
+    </div>
+  );
+}
+
 function MessageBlock({
+  thread,
   message,
   nowMs,
   selected,
@@ -546,6 +595,7 @@ function MessageBlock({
   onSelect,
   onContextMenu,
 }: {
+  thread: Thread;
   message: MessageEntry;
   nowMs: number;
   selected: boolean;
@@ -556,6 +606,7 @@ function MessageBlock({
   onSelect: (mode: SelectMode) => void;
   onContextMenu: (event: React.MouseEvent) => void;
 }): React.JSX.Element {
+  const me = useMe();
   const modeFor = (event: React.MouseEvent): SelectMode | undefined =>
     event.shiftKey ? "range" : event.metaKey || selecting ? "toggle" : undefined;
   return (
@@ -583,6 +634,7 @@ function MessageBlock({
           <span className="thread-time">{formatRelativeTime(message.createdAtMs, nowMs)}</span>
         </div>
         <MessageText text={message.text} />
+        {message.author.id === me.id && <AskLine thread={thread} message={message} nowMs={nowMs} />}
       </div>
     </div>
   );
@@ -605,7 +657,7 @@ function EventLine({ event, nowMs }: { event: EventEntry; nowMs: number }): Reac
 function ResolutionMarker(): React.JSX.Element {
   return (
     <span className="thread-avatar thread-resolution-marker" aria-hidden>
-      <Check size={12} strokeWidth={2.2} />
+      <HugeiconsIcon icon={Tick02Icon} size={12} />
     </span>
   );
 }
@@ -658,7 +710,7 @@ function CallBlock({
   return (
     <div className="thread-block" id={`entry-${call.id}`}>
       <span className="thread-avatar thread-kind-marker" aria-hidden>
-        <Video size={12} strokeWidth={1.8} />
+        <HugeiconsIcon icon={Video01Icon} size={12} />
       </span>
       <div className="thread-body">
         <div className="thread-meta">
@@ -671,7 +723,7 @@ function CallBlock({
               <div key={person.id} className="call-tile">
                 <Identicon seed={person.id} size={26} />
                 <span className="call-tile-name">
-                  <MicOff size={10} strokeWidth={2} aria-hidden />
+                  <HugeiconsIcon icon={MicOff01Icon} size={10} aria-hidden />
                   {person.name}
                 </span>
               </div>
@@ -679,11 +731,11 @@ function CallBlock({
           </div>
           <div className="call-bar">
             <span className="call-link">
-              <Link2 {...ICON_PROPS} />
+              <HugeiconsIcon icon={Link01Icon} {...ICON_PROPS} />
               {call.link}
             </span>
             <button type="button" className="call-join" disabled={ended}>
-              <Video {...ICON_PROPS} />
+              <HugeiconsIcon icon={Video01Icon} {...ICON_PROPS} />
               {ended ? "Call ended" : "Join"}
             </button>
           </div>
@@ -698,7 +750,7 @@ function NotesBlock({ notes, nowMs }: { notes: NotesEntry; nowMs: number }): Rea
   return (
     <div className="thread-block" id={`entry-${notes.id}`}>
       <span className="thread-avatar thread-kind-marker thread-notes-marker" aria-hidden>
-        <Sparkles size={12} strokeWidth={1.8} />
+        <HugeiconsIcon icon={SparklesIcon} size={12} />
       </span>
       <div className="thread-body">
         <div className="thread-meta">
@@ -954,7 +1006,7 @@ function ThreadMenu({
   if (rect === null) return null;
   return createPortal(
     <div
-      className="thread-menu"
+      className="menu thread-menu"
       role="listbox"
       aria-label="Link a thread"
       style={{ left: rect.left, top: rect.bottom + 6 }}
@@ -974,7 +1026,7 @@ function ThreadMenu({
           type="button"
           role="option"
           aria-selected={index === selected}
-          className="thread-menu-item"
+          className="menu-item"
           onMouseEnter={() => onHover(index)}
           onClick={() => onChoose(option)}
         >
@@ -990,19 +1042,19 @@ function ThreadMenu({
             </>
           ) : option.kind === "command" ? (
             <>
-              <CircleSlash {...ICON_PROPS} />
+              <HugeiconsIcon icon={COMMAND_ICONS[option.name]} {...ICON_PROPS} />
               <span className="thread-menu-title">
                 {option.label} <span className="thread-menu-hint">{option.hint}</span>
               </span>
             </>
           ) : option.kind === "link" ? (
             <>
-              <GitBranch {...ICON_PROPS} />
+              <HugeiconsIcon icon={GitBranchIcon} {...ICON_PROPS} />
               <span className="thread-menu-title">{option.link.title}</span>
             </>
           ) : (
             <>
-              <Plus {...ICON_PROPS} />
+              <HugeiconsIcon icon={Add01Icon} {...ICON_PROPS} />
               <span className="thread-menu-title">
                 New thread <span className="thread-menu-new">“{option.title}”</span>
               </span>
@@ -1038,14 +1090,9 @@ export function ThreadView({
   const nowMs = useNow(60_000);
   const me = useMe();
   const entries = thread.entries;
-  // The opening message moves into the header: a response's ask, a meeting's agenda, a focus block's note. Only the
-  // one that opened the thread (its first line is the title); messages moved in from elsewhere stay as messages.
-  const [first] = entries;
-  const ask =
-    first?.kind === "message" && first.text.split("\n")[0].trim() === thread.title.trim()
-      ? first
-      : undefined;
-  const rest = ask === undefined ? entries : entries.slice(1);
+  // The description moves into the header: a response's ask, a meeting's agenda, a focus block's note.
+  const ask = descriptionOf(thread);
+  const rest = ask === undefined ? entries : entries.filter((entry) => entry !== ask);
 
   // Whether you're following the conversation: the reply block is on screen. Scroll it away to read back and new
   // entries from others stop moving the view; a pill counts them instead. `seenCount` is how many entries the thread
@@ -1224,6 +1271,7 @@ export function ThreadView({
                 return (
                   <MessageBlock
                     key={entry.id}
+                    thread={thread}
                     message={entry}
                     nowMs={nowMs}
                     selected={pickedIds.includes(entry.id)}
@@ -1244,7 +1292,7 @@ export function ThreadView({
                 return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
               return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
             })}
-            {thread.status === "closed" ? null : (
+            {isDone(thread.status) ? null : (
               <ReplyBlock
                 // A new question changes the prompt, which the editor only takes when it's made.
                 key={`${thread.id}:${askerId ?? ""}`}
@@ -1255,6 +1303,7 @@ export function ThreadView({
                 onCommand={(name) => {
                   if (name === "blocked") actions.onBlocked();
                   if (name === "close") actions.onSetStatus("closed");
+                  if (name === "task") actions.onTask();
                 }}
                 threadId={thread.id}
               />
@@ -1272,7 +1321,7 @@ export function ThreadView({
               className="selection-bar-move"
               onClick={() => actions.onMoveMessages(selected)}
             >
-              <GitBranch {...ICON_PROPS} />
+              <HugeiconsIcon icon={GitBranchIcon} {...ICON_PROPS} />
               Move to thread…
             </button>
             <button
@@ -1282,7 +1331,7 @@ export function ThreadView({
               title="Clear selection (Esc)"
               onClick={clearSelection}
             >
-              <X {...ICON_PROPS} />
+              <HugeiconsIcon icon={Cancel01Icon} {...ICON_PROPS} />
             </button>
           </div>
         )}
@@ -1295,7 +1344,7 @@ export function ThreadView({
             className="thread-new-pill"
             onClick={() => bringReplyIntoView("smooth")}
           >
-            <ArrowDown {...ICON_PROPS} />
+            <HugeiconsIcon icon={ArrowDown02Icon} {...ICON_PROPS} />
             {unseenMessages === 0
               ? "New activity"
               : `${unseenMessages} new ${unseenMessages === 1 ? "message" : "messages"}`}

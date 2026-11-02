@@ -45,12 +45,32 @@ const sam: Person = {
 // Threads with activity you haven't seen yet when the app opens.
 export const UNREAD_THREAD_IDS = ["headcount-plan", "headcount-review"];
 
-// The people the local workspace starts with, for trying the app as each of them. No threads yet.
+// The people the local workspace starts with, for trying the app as each of them. No threads yet. Anshu, Arjun
+// and KK are the real team; everyone above and beside them is made up, so the org view has a company to show.
 export function localPeople(): Person[] {
   return [
     { id: "anshu", name: "Anshu", level: "l1", managerId: "kk" },
     { id: "arjun", name: "Arjun", level: "l1", managerId: "kk" },
-    { id: "kk", name: "KK", level: "l2" },
+    { id: "kk", name: "KK", level: "l2", managerId: "tomas" },
+    { id: "nora", name: "Nora Alvarez", level: "l8" },
+    { id: "marcus", name: "Marcus Bell", level: "l7", role: "sde", managerId: "nora" },
+    { id: "lena", name: "Lena Novak", level: "l6", role: "sde", managerId: "marcus" },
+    { id: "tomas", name: "Tomás Ruiz", level: "l5", role: "sde", managerId: "lena" },
+    { id: "ivy", name: "Ivy Zhang", level: "l3", role: "sde", managerId: "tomas" },
+    { id: "omar", name: "Omar Haddad", level: "l2", role: "sde", managerId: "tomas" },
+    { id: "wei", name: "Wei Liu", level: "l5", role: "sde", managerId: "lena" },
+    { id: "grace", name: "Grace Kim", level: "l3", role: "sde", managerId: "wei" },
+    { id: "ben", name: "Ben Carter", level: "l2", role: "sde", managerId: "wei" },
+    { id: "devika", name: "Devika Rao", level: "l6", managerId: "marcus" },
+    { id: "hana", name: "Hana Sato", level: "l4", managerId: "devika" },
+    { id: "leo", name: "Leo Moreau", level: "l3", managerId: "devika" },
+    { id: "sofia", name: "Sofia Marin", level: "l7", role: "pm", managerId: "nora" },
+    { id: "raj", name: "Raj Mehta", level: "l6", role: "pm", managerId: "sofia" },
+    { id: "ella", name: "Ella Brooks", level: "l4", role: "pm", managerId: "raj" },
+    { id: "noah", name: "Noah Fischer", level: "l3", role: "pm", managerId: "raj" },
+    { id: "amara", name: "Amara Osei", level: "l5", role: "pm", managerId: "sofia" },
+    { id: "felix", name: "Felix Wagner", level: "l7", managerId: "nora" },
+    { id: "zoe", name: "Zoe Martin", level: "l4", managerId: "felix" },
   ];
 }
 
@@ -120,7 +140,8 @@ type Fields = {
 
 function thread(id: string, title: string, fields: Fields, nowMs: number, drafts: Draft[]): Thread {
   const entries: Entry[] = drafts.map((draft, index) => {
-    const entryId = `${id}-${index}`;
+    // The opening message is the thread's description (`descriptionOf`).
+    const entryId = index === 0 && draft[0] === "message" ? id : `${id}-${index}`;
     const createdAtMs = nowMs - (draft[0] === "call" || draft[0] === "notes" ? draft[2] : draft[3]);
     if (draft[0] === "message") {
       const [, author, text] = draft;
@@ -145,11 +166,11 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     tagIds: fields.tagIds ?? [],
     schedule: fields.schedule ?? null,
     blocks: fields.schedule ? [fields.schedule] : [],
-    replyBlocks: [],
     workedMinutes: 0,
     attendees: fields.attendees ?? [],
     branchedFromId: null,
     blocksId: null,
+    seenBy: {},
     updatedAtMs: Math.max(...entries.map((entry) => entry.createdAtMs)),
     entries,
   };
