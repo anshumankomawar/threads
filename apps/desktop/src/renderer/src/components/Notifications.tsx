@@ -20,7 +20,7 @@ function notificationText(item: ActivityItem, me: Person, plain: (text: string) 
     return item.thread.assignee?.id === me.id ? `${name} asked you` : `${name} started this`;
   }
   const text = entry.kind === "message" || entry.kind === "resolution" ? plain(entry.text) : "";
-  return `${name}${item.summary === "answered" ? " answered" : ""}: ${text}`;
+  return `${name}: ${text}`;
 }
 
 // The bell in the sidebar's top bar, as in Delta: a dot on it while something's new, and a panel under it listing what

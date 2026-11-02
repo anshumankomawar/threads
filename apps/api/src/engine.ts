@@ -6,6 +6,7 @@ import {
   fromThread,
   levelPositions,
   localPeople,
+  mentionsIn,
   MIN_EFFORT_HOURS,
   MODEL_NAMES,
   PRIORITY_LABELS,
@@ -124,6 +125,31 @@ class Batch {
     return records;
   }
 
+  // A thread that's done closes the conversations still open in it, each saying why.
+  closeConversations(
+    threadId: string,
+    actorId: string,
+    nowMs: number,
+    transactionId: string,
+  ): void {
+    for (const conversation of this.all("Thread"))
+      if (
+        conversation.kind === "conversation" &&
+        conversation.branchedFromId === threadId &&
+        !isDone(conversation.status)
+      ) {
+        this.put("Thread", { ...conversation, status: "closed", updatedAtMs: nowMs });
+        this.put("Entry", {
+          id: `${transactionId}:closed:${conversation.id}`,
+          threadId: conversation.id,
+          kind: "event",
+          actorId,
+          text: `closed with ${threadLink(threadId)}`,
+          createdAtMs: nowMs,
+        });
+      }
+  }
+
   // Whose inbox a response is in, the same rule as `waitingOn` in the model.
   waitingOn(threadId: string): string | null {
     const thread = this.get("Thread", threadId);
@@ -148,7 +174,7 @@ const schedule = z
 
 const threadCreate = z.object({
   id,
-  kind: z.enum(["response", "meeting", "focus"]),
+  kind: z.enum(["response", "meeting", "focus", "conversation"]),
   title: z.string().trim().min(1).max(200),
   assigneeId: id.nullable(),
   attendeeIds: z.array(id),
@@ -544,8 +570,19 @@ export class SyncEngine {
         throw new EngineError(409, `Thread already exists: ${data.id}`);
       if (data.assigneeId !== null) requirePerson(data.assigneeId);
       for (const attendee of data.attendeeIds) requirePerson(attendee);
-      if (data.branchedFromId && batch.get("Thread", data.branchedFromId) === undefined)
+      const parent = data.branchedFromId ? batch.get("Thread", data.branchedFromId) : undefined;
+      if (data.branchedFromId && parent === undefined)
         throw new EngineError(404, "Thread not found");
+      // A conversation is with the people mentioned, inside an open thread that isn't itself a conversation (mentioning
+      // someone in a conversation adds them to it instead).
+      if (data.kind === "conversation") {
+        if (parent === undefined || parent.kind === "conversation" || isDone(parent.status))
+          throw new EngineError(400, "A conversation starts in an open thread");
+        if (data.attendeeIds.every((id) => id === actor.id))
+          throw new EngineError(400, "A conversation needs someone to talk to");
+        if (data.assigneeId !== null || data.schedule !== null)
+          throw new EngineError(400, "A conversation has no assignee or time");
+      }
       const blocked = data.blocksId ? batch.get("Thread", data.blocksId) : undefined;
       if (data.blocksId && (blocked === undefined || isDone(blocked.status)))
         throw new EngineError(404, "Thread not found");
@@ -561,6 +598,21 @@ export class SyncEngine {
           text: `is blocked on ${threadLink(data.id)}`,
           createdAtMs: nowMs,
         });
+      }
+      // The thread it started in says so, with a link to it.
+      if (data.kind === "conversation" && parent !== undefined) {
+        const names = data.attendeeIds
+          .filter((id) => id !== actor.id)
+          .map((id) => person(id)?.name ?? id);
+        batch.put("Entry", {
+          id: `${data.id}:started`,
+          threadId: parent.id,
+          kind: "event",
+          actorId: actor.id,
+          text: `started a conversation with ${names.join(", ")} in ${threadLink(data.id)}`,
+          createdAtMs: nowMs,
+        });
+        batch.put("Thread", { ...parent, updatedAtMs: nowMs });
       }
       // Every meeting gets a video call.
       if (data.kind === "meeting")
@@ -625,11 +677,30 @@ export class SyncEngine {
         throw new EngineError(400, "An entry can't take another thread's id");
       // Entries sort by time, so one made in the same batch as its thread still comes after the call link.
       batch.put("Entry", entryFromCreate(data, actor.id, nowMs));
+      // Mentioning someone in a conversation brings them into it.
+      const joining =
+        thread.kind === "conversation" && data.kind === "message"
+          ? mentionsIn(data.text).filter(
+              (id) => !thread.attendeeIds.includes(id) && person(id) !== undefined,
+            )
+          : [];
       batch.put("Thread", {
         ...thread,
+        attendeeIds: [...thread.attendeeIds, ...joining],
         status: data.kind === "resolution" ? "closed" : thread.status,
         updatedAtMs: nowMs,
       });
+      if (joining.length > 0)
+        batch.put("Entry", {
+          id: `${data.id}:added`,
+          threadId: thread.id,
+          kind: "event",
+          actorId: actor.id,
+          text: `added ${joining.map((id) => person(id)?.name ?? id).join(", ")}`,
+          createdAtMs: nowMs,
+        });
+      if (data.kind === "resolution")
+        batch.closeConversations(thread.id, actor.id, nowMs, transaction.id);
       return;
     }
 
@@ -666,6 +737,9 @@ export class SyncEngine {
         createdAtMs: nowMs,
       }),
     );
+
+    if (changes.status !== undefined && isDone(changes.status))
+      batch.closeConversations(thread.id, actor.id, nowMs, transaction.id);
 
     // Closing (or archiving) the last open blocker unblocks the thread it was for, which goes back on the schedule.
     const blocked = thread.blocksId ? batch.get("Thread", thread.blocksId) : undefined;

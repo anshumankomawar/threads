@@ -1,5 +1,5 @@
 import { formatClock, formatDue } from "../format";
-import { mentionsIn, plainThreadLinks, STATUS_LABELS, type Person, type Thread } from "model";
+import { STATUS_LABELS, type Person, type Thread } from "model";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 import { useResizablePanel } from "./useResizablePanel";
@@ -156,61 +156,15 @@ export function DetailsPanel({
   );
 }
 
-// One step in a thread's history: someone asked people a question in it, or a thread branched off it.
-type GraphItem =
-  | {
-      kind: "ask";
-      id: string;
-      atMs: number;
-      from: Person;
-      to: Person[];
-      text: string;
-      answered: boolean;
-    }
-  | { kind: "branch"; id: string; atMs: number; thread: Thread };
-
-// What happened in a thread, oldest first: its questions (mentions) and its branches.
-function graphItems(thread: Thread, threads: Thread[]): GraphItem[] {
-  const asks = thread.entries.flatMap((entry): GraphItem[] => {
-    if (entry.kind !== "message") return [];
-    const to = mentionsIn(entry.text).flatMap((id) => {
-      const person = threads
-        .flatMap((other) => [other.requester, other.assignee, ...other.attendees])
-        .find((candidate) => candidate?.id === id);
-      return person == null || id === entry.author.id ? [] : [person];
-    });
-    if (to.length === 0) return [];
-    const answered = to.every((person) =>
-      thread.entries.some(
-        (later) =>
-          later.kind === "message" &&
-          later.author.id === person.id &&
-          later.createdAtMs > entry.createdAtMs,
-      ),
-    );
-    return [
-      {
-        kind: "ask",
-        id: entry.id,
-        atMs: entry.createdAtMs,
-        from: entry.author,
-        to,
-        text: entry.text,
-        answered,
-      },
-    ];
-  });
-  const branches = threads.flatMap((other): GraphItem[] =>
-    other.branchedFromId === thread.id
-      ? [{ kind: "branch", id: other.id, atMs: other.entries[0]?.createdAtMs ?? 0, thread: other }]
-      : [],
-  );
-  return [...asks, ...branches].sort((a, b) => a.atMs - b.atMs);
+// The threads branched off a thread, conversations included, oldest first.
+function branchesOf(thread: Thread, threads: Thread[]): Thread[] {
+  return threads
+    .filter((other) => other.branchedFromId === thread.id)
+    .toSorted((a, b) => (a.entries[0]?.createdAtMs ?? 0) - (b.entries[0]?.createdAtMs ?? 0));
 }
 
-// The thread's family as a graph, like `git log --graph`: from the thread everything branched from, each branch
-// forks off where it started, with the questions asked along the way. Click a thread to open it, a question to jump
-// to it. Nothing shows for a thread with no branches or questions.
+// The thread's family as a graph, like `git log --graph`: from the thread everything branched from, each branch and
+// conversation forks off where it started. Click one to open it. Nothing shows for a thread with no branches.
 function ThreadGraph({
   current,
   threads,
@@ -220,7 +174,6 @@ function ThreadGraph({
   threads: Thread[];
   onOpenThread: (id: string) => void;
 }): React.JSX.Element | null {
-  const { titleOf, nameOf } = useThreadLinks();
   let root = current;
   const seen = new Set([root.id]);
   for (;;) {
@@ -229,13 +182,10 @@ function ThreadGraph({
     seen.add(parent.id);
     root = parent;
   }
-  if (root === current && graphItems(current, threads).length === 0) return null;
-  // A question as its words, without the mentions it opens with.
-  const questionText = (text: string): string =>
-    plainThreadLinks(text, titleOf, nameOf).replace(/^(@\S+\s*)+/, "");
+  if (root === current && branchesOf(current, threads).length === 0) return null;
 
   const renderThread = (thread: Thread, depth: number): React.JSX.Element => {
-    const items = depth < 8 ? graphItems(thread, threads) : [];
+    const branches = depth < 8 ? branchesOf(thread, threads) : [];
     return (
       <>
         <button
@@ -244,38 +194,28 @@ function ThreadGraph({
           data-current={thread.id === current.id}
           onClick={() => onOpenThread(thread.id)}
         >
-          <span className="status-dot" data-status={thread.status} aria-hidden />
-          <span className="graph-title">{thread.title}</span>
+          {thread.kind === "conversation" ? (
+            <span className="graph-at" aria-hidden>
+              @
+            </span>
+          ) : (
+            <span className="status-dot" data-status={thread.status} aria-hidden />
+          )}
+          <span
+            className="graph-title"
+            title={
+              thread.kind === "conversation"
+                ? `With ${thread.attendees.map(firstName).join(", ")}`
+                : undefined
+            }
+          >
+            {thread.title}
+          </span>
         </button>
-        {items.length > 0 && (
+        {branches.length > 0 && (
           <ul className="graph-children">
-            {items.map((item) => (
-              <li key={item.id}>
-                {item.kind === "branch" ? (
-                  renderThread(item.thread, depth + 1)
-                ) : (
-                  <button
-                    type="button"
-                    className="graph-ask"
-                    data-answered={item.answered}
-                    onClick={() =>
-                      thread.id === current.id ? reveal(item.id) : onOpenThread(thread.id)
-                    }
-                  >
-                    <span className="graph-at" aria-hidden>
-                      @
-                    </span>
-                    <span
-                      className="graph-title"
-                      title={`${firstName(item.from)} asked ${item.to.map(firstName).join(", ")}`}
-                    >
-                      <span className="graph-asker">{firstName(item.from)}</span>{" "}
-                      {questionText(item.text)}
-                    </span>
-                    {item.answered && <span className="graph-answered">answered</span>}
-                  </button>
-                )}
-              </li>
+            {branches.map((branch) => (
+              <li key={branch.id}>{renderThread(branch, depth + 1)}</li>
             ))}
           </ul>
         )}

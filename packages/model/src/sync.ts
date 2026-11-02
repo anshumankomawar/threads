@@ -80,7 +80,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v13");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v14");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -201,7 +201,9 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     blocks: [],
     workedMinutes: 0,
     attendeeIds:
-      data.kind === "meeting" ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)] : [],
+      data.kind === "meeting" || data.kind === "conversation"
+        ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)]
+        : [],
     branchedFromId: data.branchedFromId ?? null,
     blocksId: data.blocksId ?? null,
     seenBy: {},

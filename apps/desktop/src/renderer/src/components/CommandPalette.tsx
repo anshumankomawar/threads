@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Person, Thread, ThreadKind } from "model";
 import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
+import type { NewThreadKind } from "./NewThreadPalette";
 
 type Tab = "all" | ThreadKind;
 
@@ -10,9 +11,10 @@ const TABS: { id: Tab; label: string; shortcut: string }[] = [
   { id: "response", label: "Threads", shortcut: "⌘ 2" },
   { id: "meeting", label: "Meetings", shortcut: "⌘ 3" },
   { id: "focus", label: "Work", shortcut: "⌘ 4" },
+  { id: "conversation", label: "Conversations", shortcut: "⌘ 5" },
 ];
 
-const NEW_ACTIONS: { kind: ThreadKind; label: string; shortcut?: string }[] = [
+const NEW_ACTIONS: { kind: NewThreadKind; label: string; shortcut?: string }[] = [
   { kind: "response", label: "New Thread", shortcut: "⌘ N" },
   { kind: "meeting", label: "New Meeting" },
   { kind: "focus", label: "New Focus Block" },
@@ -30,6 +32,7 @@ const SECTION_TITLES: Record<ThreadKind, string> = {
   response: "Threads",
   meeting: "Meetings",
   focus: "Work",
+  conversation: "Conversations",
 };
 
 // When a scheduled thread happens: "4:00 PM" today, "Mon 10:00 AM" otherwise.
@@ -63,7 +66,7 @@ export function CommandPalette({
   onSwitchSource: (source: DataSource) => void;
   onViewAs: () => void;
   onOpenProfile: () => void;
-  onNewThread: (kind: ThreadKind) => void;
+  onNewThread: (kind: NewThreadKind) => void;
   onOpenThread: (id: string) => void;
   onClose: () => void;
 }): React.JSX.Element {
@@ -81,7 +84,8 @@ export function CommandPalette({
     onClose();
   };
 
-  const kinds: ThreadKind[] = tab === "all" ? ["response", "meeting", "focus"] : [tab];
+  const kinds: ThreadKind[] =
+    tab === "all" ? ["response", "meeting", "focus", "conversation"] : [tab];
   const sections: Section[] = [
     {
       title: "Quick Actions",
@@ -155,7 +159,7 @@ export function CommandPalette({
     } else if (event.key === "Enter") {
       event.preventDefault();
       items[selectedIndex]?.run();
-    } else if (event.metaKey && ["1", "2", "3", "4"].includes(event.key)) {
+    } else if (event.metaKey && ["1", "2", "3", "4", "5"].includes(event.key)) {
       event.preventDefault();
       changeTab(TABS[Number(event.key) - 1].id);
     }

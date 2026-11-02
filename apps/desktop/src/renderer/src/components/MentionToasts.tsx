@@ -1,6 +1,14 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Cancel01Icon } from "@hugeicons/core-free-icons";
-import { mentionsIn, plainThreadLinks, type Person, type Schedule, type Thread } from "model";
+import {
+  isDone,
+  mentionsIn,
+  plainThreadLinks,
+  withoutLeadingMentions,
+  type Person,
+  type Schedule,
+  type Thread,
+} from "model";
 import { useEffect, useState } from "react";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
@@ -10,8 +18,21 @@ const SHOW_MS = 6000;
 
 type Mention = { id: string; thread: Thread; author: Person; text: string; atMs: number };
 
-// Someone mentioning you, as a short toast in the top right: who, in which thread, and what they said. Clicking it
-// opens the thread to answer; it goes away on its own after a few seconds. Mentions showing at the same time share
+// Someone's meetings and focus blocks: when nothing should interrupt them.
+function quietTimes(threads: Thread[], personId: string): Schedule[] {
+  return threads.flatMap((thread) =>
+    !isDone(thread.status) &&
+    thread.schedule !== null &&
+    (thread.kind === "meeting"
+      ? thread.attendees.some((person) => person.id === personId)
+      : thread.kind === "focus" && (thread.assignee ?? thread.requester).id === personId)
+      ? [thread.schedule]
+      : [],
+  );
+}
+
+// Someone mentioning you, as a short toast in the top right: who, in which conversation, and what they said. Clicking
+// it opens the conversation; it goes away on its own after a few seconds. Mentions showing at the same time share
 // one toast. Only mentions that arrive while the app is
 // open show, never ones from before it loaded. While you're in a meeting or focus block they wait, and show when it
 // ends.
@@ -19,15 +40,12 @@ export function MentionToasts({
   threads,
   me,
   sinceMs,
-  quiet,
   onOpen,
 }: {
   threads: Thread[];
   me: Person;
   // When the app finished loading; older mentions aren't news.
   sinceMs: number;
-  // Your meetings and focus blocks, when nothing should interrupt you.
-  quiet: Schedule[];
   onOpen: (threadId: string) => void;
 }): React.JSX.Element | null {
   const { titleOf, nameOf } = useThreadLinks();
@@ -35,6 +53,7 @@ export function MentionToasts({
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
 
   // When a mention shows: as it arrives, or at the end of the meeting or focus block it arrived in.
+  const quiet = quietTimes(threads, me.id);
   const releaseAt = (atMs: number): number =>
     quiet.find((block) => block.startMs <= atMs && atMs < block.endMs)?.endMs ?? atMs;
   const toasts: Mention[] = threads
@@ -93,18 +112,18 @@ export function MentionToasts({
           <div className="toast-title">
             {toasts.length === 1 ? (
               <>
-                <span className="toast-author">{latest.author.name}</span> asked you in{" "}
+                <span className="toast-author">{latest.author.name}</span> mentioned you in{" "}
                 <span className="toast-thread">{latest.thread.title}</span>
               </>
             ) : (
               <>
-                <span className="toast-author">{toasts.length} questions</span> from{" "}
+                <span className="toast-author">{toasts.length} mentions</span> from{" "}
                 <span className="toast-author">{namesList(authors)}</span>
               </>
             )}
           </div>
           <div className="toast-text">
-            {plainThreadLinks(latest.text, titleOf, nameOf).replace(/^@\S+\s*/, "")}
+            {plainThreadLinks(withoutLeadingMentions(latest.text), titleOf, nameOf)}
           </div>
         </div>
         <button

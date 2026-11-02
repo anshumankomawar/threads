@@ -95,7 +95,7 @@ const anshu: Person = { id: "anshu", name: "Anshu" };
 const kk: Person = { id: "kk", name: "KK" };
 
 // A thread from Arjun to Anshu with these people writing in it, in order.
-function conversation(authors: Person[], fields: Partial<Thread> = {}): Thread {
+function exchange(authors: Person[], fields: Partial<Thread> = {}): Thread {
   return thread({
     requester: arjun,
     assignee: anshu,
@@ -117,43 +117,43 @@ function inboxFrom(subject: Thread, person: Person): string | null {
 }
 
 test("a new thread is in the assignee's inbox, from whoever asked", () => {
-  const asked = conversation([arjun]);
+  const asked = exchange([arjun]);
   expect(inboxFrom(asked, anshu)).toBe("Arjun Bulusu");
   expect(inboxFrom(asked, arjun)).toBeNull();
 });
 
 test("a reply alone is a worklog note: the thread stays with the assignee", () => {
-  const noted = conversation([arjun, anshu, anshu]);
+  const noted = exchange([arjun, anshu, anshu]);
   expect(inboxFrom(noted, anshu)).toBe("Arjun Bulusu");
   expect(inboxFrom(noted, arjun)).toBeNull();
 });
 
 test("replying back returns the thread to the assignee", () => {
-  const followedUp = conversation([arjun, anshu, arjun]);
+  const followedUp = exchange([arjun, anshu, arjun]);
   expect(inboxFrom(followedUp, anshu)).toBe("Arjun Bulusu");
   expect(inboxFrom(followedUp, arjun)).toBeNull();
 });
 
 test("a thread waiting on someone else is in your outbox, labelled with who has it", () => {
-  const asked = conversation([arjun, anshu]);
+  const asked = exchange([arjun, anshu]);
   const day = buildDay([asked], arjun, [], NOW);
   expect(day.outbox.map((item) => [item.thread, item.from?.name])).toEqual([[asked, "Anshu"]]);
   expect(day.unscheduled).toEqual([]);
   // Asking someone puts it in your outbox straight away.
-  expect(buildDay([conversation([arjun])], arjun, [], NOW).outbox).toHaveLength(1);
+  expect(buildDay([exchange([arjun])], arjun, [], NOW).outbox).toHaveLength(1);
 });
 
 test("a message from someone else leaves the thread with the assignee, from whoever asked", () => {
-  const joined = conversation([arjun, kk]);
+  const joined = exchange([arjun, kk]);
   expect(inboxFrom(joined, anshu)).toBe("Arjun Bulusu");
   expect(inboxFrom(joined, arjun)).toBeNull();
 });
 
 test("a blocked thread stays in your inbox, last, labelled Blocked and off the schedule", () => {
   const schedule = { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR };
-  const stuck = conversation([arjun], { id: "stuck", status: "blocked", schedule, blocks: [] });
+  const stuck = exchange([arjun], { id: "stuck", status: "blocked", schedule, blocks: [] });
   const blocker = thread({ id: "blocker", requester: anshu, assignee: kk, blocksId: "stuck" });
-  const ready = conversation([arjun], { id: "ready" });
+  const ready = exchange([arjun], { id: "ready" });
   const day = buildDay([stuck, blocker, ready], anshu, [], NOW);
   expect(day.unscheduled.map((item) => [item.thread.id, item.dueLabel])).toEqual([
     ["ready", null],
@@ -166,14 +166,14 @@ test("a blocked thread stays in your inbox, last, labelled Blocked and off the s
 });
 
 test("a thread you assigned to yourself is in your inbox with no name on it", () => {
-  const own = conversation([arjun], { assignee: arjun });
+  const own = exchange([arjun], { assignee: arjun });
   expect(inboxFrom(own, arjun)).toBe("nobody");
-  expect(inboxFrom(conversation([arjun, arjun], { assignee: arjun }), arjun)).toBe("nobody");
+  expect(inboxFrom(exchange([arjun, arjun], { assignee: arjun }), arjun)).toBe("nobody");
 });
 
 test("a slot belongs to whoever the thread is waiting on", () => {
   const schedule = { startMs: NOW + HOUR, endMs: NOW + 2 * HOUR };
-  const asked = conversation([arjun, anshu], { schedule, blocks: [schedule] });
+  const asked = exchange([arjun, anshu], { schedule, blocks: [schedule] });
   expect(buildDay([asked], anshu, [], NOW).timeline).toHaveLength(1);
   expect(buildDay([asked], arjun, [], NOW).timeline).toHaveLength(0);
 });
@@ -188,7 +188,7 @@ test("reassigning moves the thread to the new assignee's inbox", () => {
 
 test("an outbox item says when the other person is slotted to get to it", () => {
   const answered = (startMs: number) =>
-    conversation([arjun, anshu], { schedule: { startMs, endMs: startMs + HOUR } });
+    exchange([arjun, anshu], { schedule: { startMs, endMs: startMs + HOUR } });
   const [later] = buildDay([answered(NOW + 2 * DAY)], arjun, [], NOW).outbox;
   expect(later.dueLabel).toBe(
     new Date(NOW + 2 * DAY).toLocaleDateString(undefined, { weekday: "short" }),
@@ -209,33 +209,14 @@ test("up next lists each thread once at its next block, soonest first, skipping 
   expect(ids).toEqual(["now", "later", "tomorrow"]);
 });
 
-test("questions for you are listed, never scheduled, until you write in the thread", () => {
-  const message = (id: string, author: Person, text: string) => ({
-    kind: "message" as const,
-    id,
-    author,
-    text,
-    createdAtMs: NOW,
+test("a conversation you're in takes no time and isn't on any list here", () => {
+  const talk = thread({
+    kind: "conversation",
+    requester: other,
+    assignee: null,
+    attendees: [other, me],
+    branchedFromId: "parent",
   });
-  const askedIn = (id: string) =>
-    conversation([arjun], {
-      id,
-      entries: [
-        message(`${id}-0`, arjun, "Text"),
-        message(`${id}-1`, anshu, "[[person:kk]] what do you think?"),
-      ],
-    });
-  const day = buildDay([askedIn("a"), askedIn("b")], kk, [], NOW);
-  expect(day.mentions.map((item) => [item.thread.id, item.asked?.name])).toEqual([
-    ["a", "Anshu"],
-    ["b", "Anshu"],
-  ]);
-  // They take no time and aren't KK's work.
-  expect([day.timeline, day.unscheduled]).toEqual([[], []]);
-  // KK writes back in one: that question is answered.
-  const answered = askedIn("a");
-  answered.entries.push(message("a-2", kk, "Go for it"));
-  expect(
-    buildDay([answered, askedIn("b")], kk, [], NOW).mentions.map((item) => item.thread.id),
-  ).toEqual(["b"]);
+  expect(plan(talk)).toEqual(NOWHERE);
+  expect(buildDay([talk], me, [], NOW).outbox).toEqual([]);
 });

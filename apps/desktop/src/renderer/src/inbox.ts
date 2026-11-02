@@ -2,7 +2,6 @@ import {
   isDone,
   askerId,
   otherSide,
-  pendingAsks,
   levelPositions,
   threadScore,
   waitingOn,
@@ -20,8 +19,6 @@ export type InboxItem = {
   overdue: boolean;
   // How important it is, from 1 to 100; the same score the server schedules by.
   score: number;
-  // Who asked you a question in it (mentioned you), when that's why it's here rather than it being yours.
-  asked?: Person;
 };
 
 // One block of time on the timeline. A thread has one of these for each of its blocks that day.
@@ -40,9 +37,6 @@ export type Day = {
   // outbox, and your blocked threads, by who they're blocked on), and what's yours but has no time yet.
   waiting: InboxItem[];
   unplaced: InboxItem[];
-  // Questions waiting on you (someone mentioned you and you haven't written since), newest first. They take no time
-  // on the schedule: you answer them in the slack the scheduler leaves, or turn one into a task with `/task`.
-  mentions: InboxItem[];
   later: InboxItem[];
 };
 
@@ -137,46 +131,14 @@ export function buildDay(
   const timeline: TimelineItem[] = [];
   const unscheduled: InboxItem[] = [];
   const outbox: InboxItem[] = [];
-  const mentions: (InboxItem & { atMs: number })[] = [];
   const later: InboxItem[] = [];
 
   for (const thread of threads) {
     if (isDone(thread.status)) continue;
-    const turn = waitingOn(thread);
 
-    // A question for you in someone else's thread.
-    const ask =
-      turn === me.id
-        ? undefined
-        : pendingAsks(
-            thread.entries.flatMap((entry) =>
-              entry.kind === "message"
-                ? [{ authorId: entry.author.id, text: entry.text, createdAtMs: entry.createdAtMs }]
-                : [],
-            ),
-          ).get(me.id);
-    if (ask !== undefined) {
-      const asker =
-        thread.entries.flatMap((entry) =>
-          entry.kind === "message" && entry.author.id === ask.askerId ? [entry.author] : [],
-        )[0] ?? null;
-      const asked = {
-        thread,
-        from: asker,
-        reason: `${asker?.name ?? "Someone"} asked you`,
-        dueLabel: "Asked",
-        overdue: false,
-        score: 100,
-        asked: asker ?? undefined,
-      };
-      mentions.push({ ...asked, atMs: ask.atMs });
-      // A thread you're in (one you asked for, say) still shows where it would otherwise.
-      const inIt =
-        thread.requester.id === me.id ||
-        thread.assignee?.id === me.id ||
-        thread.attendees.some((person) => person.id === me.id);
-      if (!inIt) continue;
-    }
+    // Conversations take no time; they're in their own list.
+    if (thread.kind === "conversation") continue;
+    const turn = waitingOn(thread);
 
     const involved =
       thread.requester.id === me.id ||
@@ -274,7 +236,6 @@ export function buildDay(
           ? item.thread.blocks.length === 0
           : item.thread.schedule === null),
     ),
-    mentions: mentions.sort((a, b) => b.atMs - a.atMs),
     later: later.sort(byScore),
   };
 }

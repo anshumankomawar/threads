@@ -5,8 +5,11 @@ import { Tick02Icon } from "@hugeicons/core-free-icons";
 import type { Person, Schedule, ThreadKind } from "model";
 import { Identicon } from "./Identicon";
 
+// What the form makes; conversations start from a mention in a reply instead.
+export type NewThreadKind = Exclude<ThreadKind, "conversation">;
+
 export type NewThreadDraft = {
-  kind: ThreadKind;
+  kind: NewThreadKind;
   title: string;
   // Empty for none.
   description: string;
@@ -20,19 +23,19 @@ type Step = "write" | "describe" | "invite" | "pick";
 
 // Every kind gets a title then an optional description. Then a thread is assigned; a meeting gets invitees, then a
 // time; focus work is scheduled.
-function stepsFor(kind: ThreadKind): Step[] {
+function stepsFor(kind: NewThreadKind): Step[] {
   return kind === "meeting"
     ? ["write", "describe", "invite", "pick"]
     : ["write", "describe", "pick"];
 }
 
-const TABS: { kind: ThreadKind; label: string; shortcut: string }[] = [
+const TABS: { kind: NewThreadKind; label: string; shortcut: string }[] = [
   { kind: "response", label: "Thread", shortcut: "⌘ 1" },
   { kind: "meeting", label: "Meeting", shortcut: "⌘ 2" },
   { kind: "focus", label: "Focus", shortcut: "⌘ 3" },
 ];
 
-const PLACEHOLDERS: Record<ThreadKind, string> = {
+const PLACEHOLDERS: Record<NewThreadKind, string> = {
   response: "What do you need?",
   meeting: "What's the meeting about?",
   focus: "What are you working on?",
@@ -47,7 +50,7 @@ type Option = {
 };
 
 // When it can happen: each remaining hour today (9 to 6), tomorrow morning, and for focus work, no time yet.
-function whenOptions(kind: ThreadKind, nowMs: number): Option[] {
+function whenOptions(kind: NewThreadKind, nowMs: number): Option[] {
   const lengthMs = (kind === "focus" ? 60 : 30) * 60_000;
   const at = (dayOffset: number, hour: number): Schedule => {
     const date = new Date(startOfDay(nowMs) + dayOffset * DAY);
@@ -80,7 +83,7 @@ export function NewThreadPalette({
   onCreate,
   onClose,
 }: {
-  initialKind: ThreadKind;
+  initialKind: NewThreadKind;
   people: Person[];
   me: Person;
   nowMs: number;
@@ -151,7 +154,7 @@ export function NewThreadPalette({
     focusInput();
   };
 
-  const changeKind = (next: ThreadKind): void => {
+  const changeKind = (next: NewThreadKind): void => {
     setKind(next);
     // Stay put if the new kind has this step; otherwise drop back to writing.
     goTo(stepsFor(next).includes(step) ? step : "write");

@@ -4,6 +4,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Add01Icon,
+  BubbleChatIcon,
   ArrowDown02Icon,
   Calendar01Icon,
   Calendar03Icon,
@@ -26,7 +27,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMe } from "../me";
 import { CurrentThreadContext, useThreadLinks } from "../threadLinks";
-import { askStatuses } from "../questions";
+import { latestFromOthers } from "../conversations";
 import {
   closeThreadMenu,
   offerKey,
@@ -67,7 +68,6 @@ import {
   type Status,
   type Thread,
   mention,
-  pendingAsks,
   descriptionOf,
 } from "model";
 import {
@@ -371,7 +371,11 @@ function ThreadHeader({
   actions: ThreadActions;
 }): React.JSX.Element {
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
-  const statuses = Object.keys(STATUS_LABELS) as Status[];
+  // A conversation is open or closed; it's never blocked or archived on its own.
+  const statuses =
+    thread.kind === "conversation"
+      ? (["open", "closed"] as Status[])
+      : (Object.keys(STATUS_LABELS) as Status[]);
   const priorities = Object.keys(PRIORITY_LABELS) as Priority[];
   const priorityTone =
     thread.priority === "urgent" ? "urgent" : thread.priority === "none" ? "muted" : undefined;
@@ -406,6 +410,18 @@ function ThreadHeader({
             <span className="thread-byline-dot">·</span>
             <span>{thread.requester.name}</span>
           </>
+        ) : thread.kind === "conversation" ? (
+          <>
+            <HugeiconsIcon icon={BubbleChatIcon} {...ICON_PROPS} />
+            <span className="thread-attendees">
+              {thread.attendees.map((person) => (
+                <span key={person.id} className="thread-attendee">
+                  <Identicon seed={person.id} size={14} />
+                  {person.name}
+                </span>
+              ))}
+            </span>
+          </>
         ) : (
           <>
             <span className="thread-byline-person">
@@ -429,7 +445,7 @@ function ThreadHeader({
         {thread.branchedFromId !== null && (
           <>
             <span className="thread-byline-dot">·</span>
-            <span>Branched from</span>
+            <span>{thread.kind === "conversation" ? "In" : "Branched from"}</span>
             <ThreadLinkChip threadId={thread.branchedFromId} />
           </>
         )}
@@ -468,7 +484,7 @@ function ThreadHeader({
             <HugeiconsIcon icon={Clock01Icon} {...ICON_PROPS} />
             {formatBlocks(thread, nowMs)}
           </span>
-        ) : (
+        ) : thread.kind === "conversation" ? null : (
           <MenuChip
             label={
               thread.schedule === null ? "Not scheduled" : formatSchedule(thread.schedule, nowMs)
@@ -549,44 +565,7 @@ function ThreadHeader({
   );
 }
 
-// Under a message of yours that asks someone something: how it's doing, in one quiet line. On its way ("Reaches
-// Arjun at 3:00 PM", while he's heads-down), with them, seen, answered, or still unanswered after their catch-up time.
-function AskLine({
-  thread,
-  message,
-  nowMs,
-}: {
-  thread: Thread;
-  message: MessageEntry;
-  nowMs: number;
-}): React.JSX.Element | null {
-  const { people, threads } = useThreadLinks();
-  const statuses = askStatuses(thread, message.id, people, threads, nowMs);
-  if (statuses.length === 0) return null;
-  const words = statuses.map((status) => {
-    const name = status.person.name.split(" ")[0];
-    switch (status.kind) {
-      case "answered":
-        return `${name} answered`;
-      case "seen":
-        return `Seen by ${name}`;
-      case "overdue":
-        return `No reply from ${name} yet`;
-      case "waiting":
-        return status.reachesAtMs > nowMs
-          ? `Reaches ${name} at ${formatClock(status.reachesAtMs)}, after their focus time`
-          : `Sent to ${name}`;
-    }
-  });
-  return (
-    <div className="ask-line" data-overdue={statuses.some((status) => status.kind === "overdue")}>
-      {words.join(" · ")}
-    </div>
-  );
-}
-
 function MessageBlock({
-  thread,
   message,
   nowMs,
   selected,
@@ -595,7 +574,6 @@ function MessageBlock({
   onSelect,
   onContextMenu,
 }: {
-  thread: Thread;
   message: MessageEntry;
   nowMs: number;
   selected: boolean;
@@ -606,7 +584,6 @@ function MessageBlock({
   onSelect: (mode: SelectMode) => void;
   onContextMenu: (event: React.MouseEvent) => void;
 }): React.JSX.Element {
-  const me = useMe();
   const modeFor = (event: React.MouseEvent): SelectMode | undefined =>
     event.shiftKey ? "range" : event.metaKey || selecting ? "toggle" : undefined;
   return (
@@ -634,7 +611,6 @@ function MessageBlock({
           <span className="thread-time">{formatRelativeTime(message.createdAtMs, nowMs)}</span>
         </div>
         <MessageText text={message.text} />
-        {message.author.id === me.id && <AskLine thread={thread} message={message} nowMs={nowMs} />}
       </div>
     </div>
   );
@@ -813,8 +789,11 @@ function ReplyBlock({
   onBranch,
   onCommand,
   threadId,
+  inConversation,
 }: {
   threadId: string;
+  // Mentions in a conversation add people to it; elsewhere they start one.
+  inConversation: boolean;
   placeholder: string;
   focusRef: React.RefObject<(() => void) | null>;
   onSubmit: (text: string) => void;
@@ -957,6 +936,7 @@ function ReplyBlock({
           rect={open.rect}
           options={options}
           selected={Math.min(selected, options.length - 1)}
+          inConversation={inConversation}
           onHover={setSelected}
           onChoose={choose}
         />
@@ -994,12 +974,14 @@ function ThreadMenu({
   rect,
   options,
   selected,
+  inConversation,
   onHover,
   onChoose,
 }: {
   rect: DOMRect | null;
   options: MenuOption[];
   selected: number;
+  inConversation: boolean;
   onHover: (index: number) => void;
   onChoose: (option: MenuOption) => void;
 }): React.JSX.Element | null {
@@ -1036,7 +1018,9 @@ function ThreadMenu({
               <span className="thread-menu-title">
                 {option.person.name}{" "}
                 <span className="thread-menu-hint">
-                  asks them; time to answer goes on their schedule
+                  {inConversation
+                    ? "adds them to this conversation"
+                    : "starts a conversation with them"}
                 </span>
               </span>
             </>
@@ -1217,17 +1201,9 @@ export function ThreadView({
       (entry.kind === "message" || entry.kind === "resolution") && entryPerson(entry)?.id !== me.id,
   ).length;
 
-  // A question waiting on you here says who you're replying to.
-  const askerId = pendingAsks(
-    entries.flatMap((entry) =>
-      entry.kind === "message"
-        ? [{ authorId: entry.author.id, text: entry.text, createdAtMs: entry.createdAtMs }]
-        : [],
-    ),
-  ).get(me.id)?.askerId;
-  const asker = entries.find(
-    (entry): entry is MessageEntry => entry.kind === "message" && entry.author.id === askerId,
-  )?.author;
+  // In a conversation, you're replying to whoever wrote last.
+  const asker =
+    thread.kind === "conversation" ? latestFromOthers(thread, me.id)?.author : undefined;
   const placeholder =
     asker !== undefined
       ? `Reply to ${asker.name.split(" ")[0]}…`
@@ -1271,7 +1247,6 @@ export function ThreadView({
                 return (
                   <MessageBlock
                     key={entry.id}
-                    thread={thread}
                     message={entry}
                     nowMs={nowMs}
                     selected={pickedIds.includes(entry.id)}
@@ -1294,8 +1269,8 @@ export function ThreadView({
             })}
             {isDone(thread.status) ? null : (
               <ReplyBlock
-                // A new question changes the prompt, which the editor only takes when it's made.
-                key={`${thread.id}:${askerId ?? ""}`}
+                // Someone new to reply to changes the prompt, which the editor only takes when it's made.
+                key={`${thread.id}:${asker?.id ?? ""}`}
                 placeholder={placeholder}
                 focusRef={focusReplyRef}
                 onSubmit={actions.onSend}
@@ -1306,6 +1281,7 @@ export function ThreadView({
                   if (name === "task") actions.onTask();
                 }}
                 threadId={thread.id}
+                inConversation={thread.kind === "conversation"}
               />
             )}
             <div ref={endRef} />

@@ -62,14 +62,16 @@ export type Entry =
       createdAtMs: number;
     };
 
-// Every item on your day is a thread. A response is someone's ask of you; a meeting is a scheduled thread with
-// attendees; a focus block is your own work. They share the same document, replies and resolution.
-export type ThreadKind = "response" | "meeting" | "focus";
+// Everything is a thread. A response is someone's ask of you; a meeting is a scheduled thread with attendees; a focus
+// block is your own work; a conversation is a talk with the people you @mention, branched off the thread it started in,
+// taking no time on anyone's schedule. They share the same document, replies and resolution.
+export type ThreadKind = "response" | "meeting" | "focus" | "conversation";
 
 export const KIND_LABELS: Record<ThreadKind, string> = {
   response: "Response",
   meeting: "Meeting",
   focus: "Focus block",
+  conversation: "Conversation",
 };
 
 export type Schedule = { startMs: number; endMs: number };
@@ -94,7 +96,8 @@ export type Thread = {
   blocks: Schedule[];
   // Time the assignee already spent in blocks before the thread last changed hands.
   workedMinutes: number;
-  // Who's in it: meeting attendees; empty for other kinds.
+  // Who's in it: a meeting's attendees, or the people in a conversation (whoever started it and everyone mentioned);
+  // empty for other kinds.
   attendees: Person[];
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
@@ -194,22 +197,12 @@ export function plainThreadLinks(
     .replace(MENTION, (_, personId: string) => `@${nameOf(personId) ?? "someone"}`);
 }
 
+// A message's words without the mentions it opens with: "[[person:arjun]] can you look?" is "can you look?".
+export function withoutLeadingMentions(text: string): string {
+  return text.replace(/^(\[\[person:[^\]]+\]\][\s,]*)+/, "");
+}
+
 // Who a message mentions.
 export function mentionsIn(text: string): string[] {
   return [...text.matchAll(MENTION)].map((match) => match[1]);
-}
-
-// The questions still waiting in a thread's messages: everyone mentioned by someone else who hasn't written since,
-// with who asked and when. Writing anything in the thread answers it.
-export function pendingAsks(
-  messages: { authorId: string; text: string; createdAtMs: number }[],
-): Map<string, { askerId: string; atMs: number }> {
-  const pending = new Map<string, { askerId: string; atMs: number }>();
-  for (const message of [...messages].sort((a, b) => a.createdAtMs - b.createdAtMs)) {
-    pending.delete(message.authorId);
-    for (const personId of mentionsIn(message.text))
-      if (personId !== message.authorId)
-        pending.set(personId, { askerId: message.authorId, atMs: message.createdAtMs });
-  }
-  return pending;
 }

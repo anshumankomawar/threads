@@ -1,13 +1,6 @@
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
-import { Calendar03Icon, Message01Icon, Target02Icon } from "@hugeicons/core-free-icons";
-import type { ThreadKind } from "model";
+import { HugeiconsIcon } from "@hugeicons/react";
 import type { InboxItem } from "../inbox";
-
-const KIND_ICONS: Record<ThreadKind, IconSvgElement> = {
-  response: Message01Icon,
-  meeting: Calendar03Icon,
-  focus: Target02Icon,
-};
+import { KIND_ICONS } from "../kindIcons";
 
 // A list of threads in the main area, opened from the sidebar's counts: your inbox (what's waiting on you, by who
 // it's from) or what you're waiting on (by who has it and when they'll get to it). Laid out like the Organization

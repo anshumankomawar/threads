@@ -65,6 +65,7 @@ const createThread = (
     title: string;
     assigneeId: string | null;
     attendeeIds: string[];
+    branchedFromId: string;
   }> = {},
 ): TransactionInput =>
   ({
@@ -168,6 +169,77 @@ test("a thread's description shares its id, is written by whoever opened it, and
       ])
     ).status,
   ).toBe(400);
+});
+
+// --- Conversations ---
+
+const conversation = (id: string, parentId: string, attendeeIds: string[]): TransactionInput =>
+  createThread(id, {
+    kind: "conversation",
+    title: "Which endpoint?",
+    assigneeId: null,
+    attendeeIds,
+    branchedFromId: parentId,
+  });
+
+test("a conversation is with the people mentioned, and the thread it's in links to it", async () => {
+  await transact("anshu", [createThread("t1")]);
+  await transact("anshu", [conversation("c1", "t1", ["arjun"]), message("m1", "c1", "Which one?")]);
+  expect(await thread("c1")).toMatchObject({
+    kind: "conversation",
+    requester: { id: "anshu" },
+    assignee: null,
+    attendees: [{ id: "anshu" }, { id: "arjun" }],
+    branchedFromId: "t1",
+  });
+  expect((await thread("t1"))?.entries.at(-1)).toMatchObject({
+    kind: "event",
+    text: "started a conversation with Arjun in [[thread:c1]]",
+  });
+  // Only in an open thread that isn't itself a conversation, with someone else, and with no assignee or time.
+  expect((await transact("anshu", [conversation("c2", "c1", ["kk"])])).status).toBe(400);
+  expect((await transact("anshu", [conversation("c3", "t1", ["anshu"])])).status).toBe(400);
+  expect((await transact("anshu", [conversation("c4", "missing", ["kk"])])).status).toBe(404);
+  const assigned = createThread("c5", {
+    kind: "conversation",
+    assigneeId: "kk",
+    attendeeIds: ["kk"],
+    branchedFromId: "t1",
+  });
+  expect((await transact("anshu", [assigned])).status).toBe(400);
+});
+
+test("mentioning someone in a conversation brings them in", async () => {
+  await transact("anshu", [createThread("t1"), conversation("c1", "t1", ["arjun"])]);
+  await transact("arjun", [message("m1", "c1", "Ask [[person:kk]] too")]);
+  const talk = await thread("c1");
+  expect(talk?.attendees.map((person) => person.id)).toEqual(["anshu", "arjun", "kk"]);
+  expect(talk?.entries.at(-1)).toMatchObject({ kind: "event", text: "added KK" });
+});
+
+test("closing or resolving a thread closes the conversations in it", async () => {
+  await transact("anshu", [
+    createThread("t1"),
+    conversation("c1", "t1", ["arjun"]),
+    conversation("c2", "t1", ["kk"]),
+  ]);
+  await transact("arjun", [update("c2", { status: "closed" })]);
+  await transact("anshu", [update("t1", { status: "closed" })]);
+  expect((await thread("c1"))?.status).toBe("closed");
+  expect((await thread("c1"))?.entries.at(-1)).toMatchObject({ text: "closed with [[thread:t1]]" });
+  // One already closed by hand says nothing more.
+  expect((await thread("c2"))?.entries.at(-1)).toMatchObject({ text: "changed status to Closed" });
+
+  await transact("anshu", [createThread("t2"), conversation("c3", "t2", ["arjun"])]);
+  await transact("arjun", [
+    {
+      id: txId(),
+      type: "create",
+      modelName: "Entry",
+      data: { id: "r1", threadId: "t2", kind: "resolution", text: "Done" },
+    },
+  ]);
+  expect((await thread("c3"))?.status).toBe("closed");
 });
 
 test("a meeting includes its creator and invitees and gets a call link after its agenda", async () => {

@@ -1,5 +1,9 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
+import {
+  NewThreadPalette,
+  type NewThreadDraft,
+  type NewThreadKind,
+} from "./components/NewThreadPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
 import {
@@ -17,10 +21,10 @@ import {
   type Person,
   type Thread,
   type ThreadChanges,
-  type ThreadKind,
   waitingOn,
-  pendingAsks,
+  mentionsIn,
   threadLink,
+  withoutLeadingMentions,
 } from "model";
 import { observer } from "mobx-react-lite";
 import {
@@ -47,7 +51,7 @@ import { ListPage } from "./components/ListPage";
 import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { buildDay, homeDayMs, upNext } from "./inbox";
-import { quietTimes } from "./questions";
+import { conversationsFor, isUnread } from "./conversations";
 import { activityFor } from "./activity";
 
 // Mouse moves within this many pixels of the top nudge the drag-region resync element.
@@ -247,8 +251,16 @@ const App = observer(function App(): React.JSX.Element {
     setLastSeen(Object.fromEntries(threads.map((thread) => [thread.id, thread.updatedAtMs])));
   };
 
-  // Opening a thread marks it, and the one you're leaving, as seen.
+  // Opening a thread marks it, and the one you're leaving, as seen. A conversation opens beside the thread it's in.
   const openThread = (id: string | null): void => {
+    const conversation = threads.find(
+      (thread) => thread.id === id && thread.kind === "conversation",
+    );
+    if (conversation?.branchedFromId) {
+      openThread(conversation.branchedFromId);
+      setSplitThreadId(conversation.id);
+      return;
+    }
     const now = Date.now();
     setLastSeen((current) => ({
       ...current,
@@ -275,8 +287,8 @@ const App = observer(function App(): React.JSX.Element {
   const toggleSidebar = (): void => setSidebarOpen((open) => !open);
 
   // Starting a thread opens the new-thread panel on the chosen kind.
-  const [newThreadKind, setNewThreadKind] = useState<ThreadKind | null>(null);
-  const openNew = (kind: ThreadKind = "response"): void => {
+  const [newThreadKind, setNewThreadKind] = useState<NewThreadKind | null>(null);
+  const openNew = (kind: NewThreadKind = "response"): void => {
     setSearchOpen(false);
     setNewThreadKind(kind);
   };
@@ -365,21 +377,20 @@ const App = observer(function App(): React.JSX.Element {
     );
   };
 
-  // Opening a thread with a question for you marks it seen, so whoever asked can tell.
-  const unseenAsk = [activeThread, splitThread].find((thread) => {
-    if (thread === undefined) return false;
-    const ask = pendingAsks(
-      thread.entries.flatMap((entry) =>
-        entry.kind === "message"
-          ? [{ authorId: entry.author.id, text: entry.text, createdAtMs: entry.createdAtMs }]
-          : [],
-      ),
-    ).get(me.id);
-    return ask !== undefined && (thread.seenBy[me.id] ?? 0) < ask.atMs;
-  })?.id;
+  // A conversation stays Unread while it's open and moves to Read once you click off it (open something else or close
+  // it), so it doesn't jump between groups under you. Whoever wrote can tell it's been seen.
+  const openConversation = [splitThread, activeThread].find(
+    (thread) => thread?.kind === "conversation",
+  )?.id;
+  const conversationOpenRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (unseenAsk !== undefined) client.updateThread(unseenAsk, { seen: true }, me);
-  }, [unseenAsk, client, me]);
+    const left = conversationOpenRef.current;
+    conversationOpenRef.current = openConversation;
+    if (left === undefined || left === openConversation) return;
+    const conversation = threads.find((thread) => thread.id === left);
+    if (conversation !== undefined && isUnread(conversation, me.id))
+      client.updateThread(left, { seen: true }, me);
+  }, [openConversation, threads, client, me]);
 
   // `/blocked`: the thread the form is for while it's open, and the new thread asking someone for what it needs,
   // which blocks it until it closes.
@@ -476,29 +487,54 @@ const App = observer(function App(): React.JSX.Element {
   const actionsFor = (thread: Thread): ThreadActions => {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
-      onSend: (text) => client.addEntry(thread.id, "message", text, me),
+      onSend: (text) => {
+        // Mentioning people in a thread starts a conversation with them, beside it; in a conversation it adds them.
+        const mentioned = people.filter(
+          (person) => person.id !== me.id && mentionsIn(text).includes(person.id),
+        );
+        if (thread.kind === "conversation" || mentioned.length === 0) {
+          client.addEntry(thread.id, "message", text, me);
+          return;
+        }
+        const said = plainThreadLinks(
+          withoutLeadingMentions(text),
+          threadLinks.titleOf,
+          threadLinks.nameOf,
+        ).trim();
+        const firstLine = said.split("\n")[0];
+        const conversationId = client.createThread(
+          {
+            kind: "conversation",
+            title: (firstLine === ""
+              ? `With ${mentioned.map((person) => person.name).join(", ")}`
+              : firstLine.charAt(0).toUpperCase() + firstLine.slice(1)
+            ).slice(0, 80),
+            description: "",
+            assignee: null,
+            invitees: mentioned,
+            schedule: null,
+            branchedFromId: thread.id,
+          },
+          me,
+        );
+        client.addEntry(conversationId, "message", text, me);
+        setSplitThreadId(conversationId);
+      },
       onBlocked: () => setBlocking(thread),
       onTask: () => {
-        // The question you were asked, if one is waiting on you; else the thread itself.
-        const messages = thread.entries.filter(
-          (entry): entry is Extract<typeof entry, { kind: "message" }> => entry.kind === "message",
+        // The latest message that asked you something, if there is one; else the thread itself.
+        const question = thread.entries.findLast(
+          (entry): entry is Extract<typeof entry, { kind: "message" }> =>
+            entry.kind === "message" &&
+            entry.author.id !== me.id &&
+            mentionsIn(entry.text).includes(me.id),
         );
-        const ask = pendingAsks(
-          messages.map((entry) => ({
-            authorId: entry.author.id,
-            text: entry.text,
-            createdAtMs: entry.createdAtMs,
-          })),
-        ).get(me.id);
-        const question = ask
-          ? messages.findLast(
-              (entry) => entry.author.id === ask.askerId && entry.createdAtMs === ask.atMs,
-            )
-          : undefined;
         const asked = question
-          ? plainThreadLinks(question.text, threadLinks.titleOf, threadLinks.nameOf)
-              .replace(/^@\S+\s*/, "")
-              .trim()
+          ? plainThreadLinks(
+              withoutLeadingMentions(question.text),
+              threadLinks.titleOf,
+              threadLinks.nameOf,
+            ).trim()
           : "";
         const title = (asked.split("\n")[0] || `Follow up: ${thread.title}`).slice(0, 80);
         const taskId = client.createThread(
@@ -513,7 +549,7 @@ const App = observer(function App(): React.JSX.Element {
           },
           me,
         );
-        // Saying so here answers the question.
+        // Saying so where you were asked lets them know.
         client.addEntry(thread.id, "message", `Taking this on in ${threadLink(taskId)}`, me);
         setSplitThreadId(taskId);
       },
@@ -580,6 +616,8 @@ const App = observer(function App(): React.JSX.Element {
           {sidebarOpen && (
             <Sidebar
               day={day}
+              conversations={conversationsFor(threads, me)}
+              splitThreadId={splitThread?.id ?? null}
               activity={activityFor(threads, me, seenAt, nowMs)}
               onMarkAllRead={() => {
                 const now = Date.now();
@@ -763,13 +801,7 @@ const App = observer(function App(): React.JSX.Element {
               onClose={() => setViewAsOpen(false)}
             />
           )}
-          <MentionToasts
-            threads={threads}
-            me={me}
-            sinceMs={client.readyAtMs}
-            quiet={quietTimes(threads, me.id)}
-            onOpen={openThread}
-          />
+          <MentionToasts threads={threads} me={me} sinceMs={client.readyAtMs} onOpen={openThread} />
           {threadMenu !== null && (
             <ContextMenu
               x={threadMenu.x}

@@ -1171,8 +1171,7 @@ body * {
   display: none;
 }
 
-.graph-thread,
-.graph-ask {
+.graph-thread {
   display: flex;
   gap: 7px;
   align-items: center;
@@ -1189,21 +1188,12 @@ body * {
 }
 
 .graph-thread:hover,
-.graph-ask:hover,
 .graph-thread[data-current="true"] {
   color: var(--text-primary);
 }
 
 .graph-thread[data-current="true"] {
   font-weight: 500;
-}
-
-.graph-ask {
-  color: var(--text-tertiary);
-}
-
-.graph-ask[data-answered="true"] {
-  opacity: 0.7;
 }
 
 .graph-at {
@@ -1219,17 +1209,6 @@ body * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.graph-asker {
-  color: var(--text-secondary);
-}
-
-.graph-answered {
-  margin-left: auto;
-  flex-shrink: 0;
-  color: var(--status-closed);
-  font-size: 11px;
 }
 
 /* Latest update and list items jump to their place in the thread. */
@@ -2808,9 +2787,20 @@ body * {
   font-variant-numeric: tabular-nums;
 }
 
-/* Questions for you: messages, at the top, until you reply. */
-/* Like a card: the question is the title, who asked and where sits under it, and the avatar is centered beside both. */
-.question-row {
+/* Conversations, as cards: the latest message, who wrote it and the thread it's in, the avatar centered beside both. */
+.conversation-group + .conversation-group {
+  margin-top: 8px;
+}
+
+.conversation-group-label {
+  margin: 0;
+  padding: 6px var(--sidebar-inset) 4px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.conversation-row {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -2821,26 +2811,26 @@ body * {
   outline: none;
 }
 
-.question-row:hover:not([data-active="true"]) {
+.conversation-row:hover:not([data-active="true"]) {
   background-color: var(--bg-quaternary);
 }
 
-.question-row[data-active="true"] {
+.conversation-row[data-active="true"] {
   background-color: var(--bg-tertiary);
 }
 
-.question-body {
+.conversation-body {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
 }
 
-.question-row > .identicon {
+.conversation-row > .identicon {
   flex-shrink: 0;
 }
 
-.question-meta {
+.conversation-meta {
   overflow: hidden;
   color: var(--text-tertiary);
   font-size: 11px;
@@ -2848,25 +2838,21 @@ body * {
   white-space: nowrap;
 }
 
-.question-author {
+.conversation-author {
   color: var(--text-secondary);
 }
 
-.question-text {
+.conversation-text {
   overflow: hidden;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* Why a question matters now: it's holding up the asker's own work, or it's been waiting past a catch-up window. */
-.question-flag {
-  color: var(--text-secondary);
-}
-
-.question-flag[data-overdue] {
-  color: var(--status-blocked);
+.conversation-row[data-unread="true"] .conversation-text {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 /* A plain sidebar list row (the Outbox): icon, title, and who and when on the right. */
@@ -2886,15 +2872,4 @@ body * {
   color: var(--text-tertiary);
   font-size: 12px;
   white-space: nowrap;
-}
-
-/* Under your message: how a question you asked is doing. One quiet line. */
-.ask-line {
-  margin-top: 2px;
-  color: var(--text-tertiary);
-  font-size: 11.5px;
-}
-
-.ask-line[data-overdue="true"] {
-  color: var(--status-blocked);
 }

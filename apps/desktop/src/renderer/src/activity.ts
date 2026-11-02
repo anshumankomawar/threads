@@ -1,9 +1,9 @@
-import { mentionsIn, type Entry, type Person, type Thread } from "model";
+import type { Entry, Person, Thread } from "model";
 
-// What changed on your threads that doesn't need you to act: replies, answers to your questions, and the status lines
-// worth knowing about (closed, reopened, renamed, handed over, blocked, unblocked, messages moved). Questions for you
-// aren't here (they have their own list), nor are the scheduler's moves or edits to priority, due dates, estimates and
-// tags. Read straight from the threads, like everything else; nothing is stored.
+// What changed on your threads that doesn't need you to act: replies and the status lines worth knowing about (closed,
+// reopened, renamed, handed over, blocked, unblocked, messages moved, a conversation started). Conversations aren't
+// here (they have their own list), nor are the scheduler's moves or edits to priority, due dates, estimates and tags.
+// Read straight from the threads, like everything else; nothing is stored.
 
 // Activity lines worth a mention, by how the server words them.
 const NOTEWORTHY = [
@@ -15,6 +15,7 @@ const NOTEWORTHY = [
   /^is blocked on/,
   /^is unblocked/,
   /^moved /,
+  /^started a conversation/,
 ];
 
 // How far back activity goes.
@@ -27,7 +28,7 @@ export type ActivityItem = {
   actor: Person;
   entry: Entry;
   // A new thread's description is "opened" (`descriptionOf`).
-  summary: "opened" | "answered" | "replied" | "event";
+  summary: "opened" | "replied" | "event";
   atMs: number;
   // How many things happened since you last looked; 0 when you're caught up.
   unread: number;
@@ -49,20 +50,6 @@ function author(entry: Entry): Person | null {
   return null;
 }
 
-// A message that answers a question you asked its author: their first since you mentioned them.
-function answersYou(thread: Thread, message: Entry, me: Person): boolean {
-  if (message.kind !== "message") return false;
-  const before = thread.entries.filter((entry) => entry.createdAtMs < message.createdAtMs);
-  for (let index = before.length - 1; index >= 0; index--) {
-    const entry = before[index];
-    if (entry.kind !== "message") continue;
-    if (entry.author.id === message.author.id) return false;
-    if (entry.author.id === me.id && mentionsIn(entry.text).includes(message.author.id))
-      return true;
-  }
-  return false;
-}
-
 // One row per thread, newest first: the latest thing someone else did there in the past week.
 export function activityFor(
   threads: Thread[],
@@ -73,14 +60,13 @@ export function activityFor(
   return threads
     .flatMap((thread): ActivityItem[] => {
       // Archived threads are put away, news and all.
-      if (thread.status === "archived" || !involves(thread, me)) return [];
+      if (thread.kind === "conversation" || thread.status === "archived" || !involves(thread, me))
+        return [];
       const relevant = thread.entries.filter((entry) => {
         const person = author(entry);
         if (person === null || person.id === me.id || entry.createdAtMs < nowMs - WINDOW_MS)
           return false;
-        if (entry.kind === "event") return NOTEWORTHY.some((pattern) => pattern.test(entry.text));
-        // A question for you is in Questions, not here.
-        return !(entry.kind === "message" && mentionsIn(entry.text).includes(me.id));
+        return entry.kind !== "event" || NOTEWORTHY.some((pattern) => pattern.test(entry.text));
       });
       const latest = relevant.at(-1);
       const actor = latest && author(latest);
@@ -91,13 +77,7 @@ export function activityFor(
           actor,
           entry: latest,
           summary:
-            latest.kind === "event"
-              ? "event"
-              : latest.id === thread.id
-                ? "opened"
-                : answersYou(thread, latest, me)
-                  ? "answered"
-                  : "replied",
+            latest.kind === "event" ? "event" : latest.id === thread.id ? "opened" : "replied",
           atMs: latest.createdAtMs,
           unread: relevant.filter((entry) => entry.createdAtMs > seenAt(thread)).length,
         },

@@ -2,15 +2,13 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   ArrowLeft01Icon,
   ArrowRight01Icon,
-  BubbleChatQuestionIcon,
+  BubbleChatIcon,
   Calendar03Icon,
-  Message01Icon,
   PanelLeftIcon,
   PanelRightIcon,
   PencilEdit02Icon,
   Search01Icon,
   SentIcon,
-  Target02Icon,
 } from "@hugeicons/core-free-icons";
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -19,8 +17,9 @@ import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
 import { useThreadMenu } from "../threadMenu";
 import { Identicon } from "./Identicon";
-import { mentionsIn, plainThreadLinks, waitingOn, workdayOf, type ThreadKind } from "model";
-import { isOverdue, quietTimes } from "../questions";
+import { plainThreadLinks, withoutLeadingMentions, type Thread } from "model";
+import { latestFromOthers, type Conversations } from "../conversations";
+import { KIND_ICONS } from "../kindIcons";
 import { formatRange } from "../format";
 import type { ActivityItem } from "../activity";
 import { NotificationsButton } from "./Notifications";
@@ -111,12 +110,6 @@ function activateOnKey(event: React.KeyboardEvent, activate: () => void): void {
   event.preventDefault();
   activate();
 }
-
-const KIND_ICONS: Record<ThreadKind, IconSvgElement> = {
-  response: Message01Icon,
-  meeting: Calendar03Icon,
-  focus: Target02Icon,
-};
 
 const MIN_GAP_MS = 30 * 60_000;
 
@@ -299,91 +292,76 @@ function AgendaView({
   );
 }
 
-// Questions waiting on you: who asked, where, and what they said. They're messages, not work: replying
-// clears one, and `/task` in the thread turns one that needs real work into a task of your own.
-function Questions({
-  items,
-  nowMs,
-  activeThreadId,
+// Your open conversations, in two groups: Unread (someone else wrote since you last looked) and Read. Each row is the
+// latest message, who wrote it, and the thread the conversation is in. Opening one shows it beside that thread.
+function ConversationList({
+  conversations,
+  splitThreadId,
   onOpenThread,
 }: {
-  items: InboxItem[];
-  nowMs: number;
-  activeThreadId: string | null;
+  conversations: Conversations;
+  splitThreadId: string | null;
   onOpenThread: (id: string) => void;
-}): React.JSX.Element | null {
-  const { titleOf, nameOf, threads } = useThreadLinks();
+}): React.JSX.Element {
+  const { titleOf, nameOf } = useThreadLinks();
   const me = useMe();
   const openMenu = useThreadMenu();
-  if (items.length === 0) return null;
-  const quiet = quietTimes(threads, me.id);
-  return (
-    <ul className="thread-list" aria-label="Questions for you">
-      {items.map(({ thread, asked }) => {
-        const question = thread.entries.findLast(
-          (entry) =>
-            entry.kind === "message" &&
-            entry.author.id === asked?.id &&
-            mentionsIn(entry.text).includes(me.id),
-        );
-        const text =
-          question?.kind === "message"
-            ? plainThreadLinks(question.text, titleOf, nameOf).replace(/^@\S+\s*/, "")
-            : "";
-        const askerName = asked?.name.split(" ")[0] ?? "Someone";
-        // The asker is working on this thread now, or within the hour, so they're waiting on your answer.
-        const blocking =
-          asked !== undefined &&
-          waitingOn(thread) === asked.id &&
-          thread.schedule !== null &&
-          thread.schedule.startMs <= nowMs + 60 * 60_000 &&
-          nowMs < thread.schedule.endMs;
-        const overdue =
-          question !== undefined && isOverdue(question.createdAtMs, quiet, nowMs, workdayOf(me));
-        return (
-          <li key={thread.id} className="thread-item">
-            <div
-              className="question-row"
-              onContextMenu={(event) => openMenu(event, thread)}
-              data-active={thread.id === activeThreadId}
-              role="button"
-              tabIndex={0}
-              onClick={() => onOpenThread(thread.id)}
-              onKeyDown={(event) => activateOnKey(event, () => onOpenThread(thread.id))}
-            >
-              <Identicon seed={asked?.id ?? thread.id} size={16} />
-              <span className="question-body">
-                <span className="question-text">{text}</span>
-                <span className="question-meta">
-                  <span className="question-author">{askerName}</span>
-                  {" · "}
-                  {blocking ? (
-                    <span className="question-flag">Blocking {askerName}</span>
-                  ) : (
-                    thread.title
-                  )}
-                  {overdue && question !== undefined && (
-                    <span className="question-flag" data-overdue>
-                      {" · since "}
-                      {formatSince(question.createdAtMs, nowMs)}
-                    </span>
-                  )}
-                </span>
+  const row = (conversation: Thread, unread: boolean): React.JSX.Element => {
+    const latest =
+      latestFromOthers(conversation, me.id) ??
+      conversation.entries.findLast((entry) => entry.kind === "message");
+    const author = latest?.kind === "message" ? latest.author : conversation.requester;
+    // The words, without the mentions a message opens with.
+    const text =
+      latest?.kind === "message"
+        ? plainThreadLinks(withoutLeadingMentions(latest.text), titleOf, nameOf)
+        : conversation.title;
+    const where =
+      conversation.branchedFromId === null ? undefined : titleOf(conversation.branchedFromId);
+    const open = (): void => onOpenThread(conversation.id);
+    return (
+      <li key={conversation.id} className="thread-item">
+        <div
+          className="conversation-row"
+          onContextMenu={(event) => openMenu(event, conversation)}
+          data-active={conversation.id === splitThreadId}
+          data-unread={unread}
+          role="button"
+          tabIndex={0}
+          onClick={open}
+          onKeyDown={(event) => activateOnKey(event, open)}
+        >
+          <Identicon seed={author.id} size={16} />
+          <span className="conversation-body">
+            <span className="conversation-text">{text}</span>
+            <span className="conversation-meta">
+              <span className="conversation-author">
+                {author.id === me.id ? "You" : author.name.split(" ")[0]}
               </span>
-            </div>
-          </li>
-        );
-      })}
-    </ul>
+              {where !== undefined && ` · ${where}`}
+            </span>
+          </span>
+          {unread && <span className="unread-dot" aria-label="Unread" />}
+        </div>
+      </li>
+    );
+  };
+  if (conversations.unread.length === 0 && conversations.read.length === 0)
+    return <p className="sidebar-empty">No conversations</p>;
+  return (
+    <>
+      {(["unread", "read"] as const).map((group) =>
+        conversations[group].length === 0 ? null : (
+          <section key={group} className="conversation-group">
+            <h2 className="conversation-group-label">{group === "unread" ? "Unread" : "Read"}</h2>
+            <ul className="thread-list" aria-label={group === "unread" ? "Unread" : "Read"}>
+              {conversations[group].map((conversation) => row(conversation, group === "unread"))}
+            </ul>
+          </section>
+        ),
+      )}
+    </>
   );
-}
-
-// When a question was asked, short: the time today, else the weekday.
-function formatSince(atMs: number, nowMs: number): string {
-  const at = new Date(atMs);
-  return at.toDateString() === new Date(nowMs).toDateString()
-    ? at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : at.toLocaleDateString([], { weekday: "short" });
 }
 
 // What you've asked others for, and your blocked threads: the title, who has it, and when they'll get to it. It leaves
@@ -435,13 +413,13 @@ function Outbox({
 }
 
 // The sidebar shows one list at a time, picked by the icon tabs under its top bar, like Obsidian's side panes.
-type SidebarTab = "schedule" | "questions" | "outbox";
+type SidebarTab = "schedule" | "conversations" | "outbox";
 
 const TAB_KEY = "sidebar-tab";
 
 const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
   { tab: "schedule", label: "Schedule", icon: Calendar03Icon },
-  { tab: "questions", label: "Questions", icon: BubbleChatQuestionIcon },
+  { tab: "conversations", label: "Conversations", icon: BubbleChatIcon },
   { tab: "outbox", label: "Outbox", icon: SentIcon },
 ];
 
@@ -455,18 +433,18 @@ function savedTab(): SidebarTab {
 }
 
 // The tab strip, as in Notion: the chosen tab opens out to show its name, the others fold back to their icon, with a
-// count beside Questions and Outbox while they have anything. Your avatar at the far end opens your profile and
+// count beside Conversations (the unread ones) and Outbox while they have anything. Your avatar at the far end opens your profile and
 // the org (in the main area, like a thread).
 function SidebarTabs({
   tab,
-  questionCount,
+  conversationCount,
   outboxCount,
   profileOpen,
   onTab,
   onToggleProfile,
 }: {
   tab: SidebarTab;
-  questionCount: number;
+  conversationCount: number;
   outboxCount: number;
   profileOpen: boolean;
   onTab: (tab: SidebarTab) => void;
@@ -475,7 +453,7 @@ function SidebarTabs({
   const me = useMe();
   const counts: Record<SidebarTab, number> = {
     schedule: 0,
-    questions: questionCount,
+    conversations: conversationCount,
     outbox: outboxCount,
   };
   // Each name's own width, so the chosen tab grows to exactly fit it (animating to a guessed maximum finishes early
@@ -527,6 +505,8 @@ export type SidebarPage = "unplaced" | "settings";
 
 export function Sidebar({
   day,
+  conversations,
+  splitThreadId,
   activity,
   onMarkAllRead,
   nowMs,
@@ -543,6 +523,9 @@ export function Sidebar({
   onShiftDay,
 }: {
   day: Day;
+  conversations: Conversations;
+  // The thread open beside the main one, which is where a conversation opens.
+  splitThreadId: string | null;
   // What changed on your threads, for the notifications bell.
   activity: ActivityItem[];
   onMarkAllRead: () => void;
@@ -602,18 +585,17 @@ export function Sidebar({
       </div>
       <SidebarTabs
         tab={tab}
-        questionCount={day.mentions.length}
+        conversationCount={conversations.unread.length}
         outboxCount={day.waiting.length}
         profileOpen={profileOpen}
         onTab={chooseTab}
         onToggleProfile={onToggleProfile}
       />
       <div className="sidebar-content">
-        {tab === "questions" && (
-          <Questions
-            items={day.mentions}
-            nowMs={nowMs}
-            activeThreadId={activeThreadId}
+        {tab === "conversations" && (
+          <ConversationList
+            conversations={conversations}
+            splitThreadId={splitThreadId}
             onOpenThread={onOpenThread}
           />
         )}

@@ -9,7 +9,7 @@ bundles in that repo (`code/*.js`); they are Linear's proprietary code.
 
 ## The product principle: the thread is the atomic unit
 
-Everything in the app is a thread: an ask, a meeting, a focus block, a side discussion. Don't invent new kinds of
+Everything in the app is a thread: an ask, a meeting, a focus block, a side discussion, a conversation. Don't invent new kinds of
 objects or special thread types for a new use case; express it with what a thread already has (people, schedule,
 status, entries) or a small field on it, and keep the code and the UX consolidated around that one unit. Branching
 is the model: a side discussion is an ordinary thread with `branchedFromId`, linked from a message by
@@ -62,7 +62,8 @@ Data is normalized into flat records linked by id, like database rows:
 - **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree), and `workday` (their own
   working hours and catch-up times, set on their profile; `workdayOf` falls back to the org's `WORKING_HOURS` and
   `CATCH_UP_TIMES`). Seeds refresh who people are but keep their `workday`.
-- **Thread**: one ask, meeting or focus block. References people by id: `requesterId`, `assigneeId`, `attendeeIds`. Has
+- **Thread**: one ask, meeting, focus block or conversation (`kind`). References people by id: `requesterId`,
+  `assigneeId`, `attendeeIds` (a meeting's attendees or a conversation's people). Has
   `status` (`open`, `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`,
   `effortHours`, `tagIds`, `schedule`, `createdAtMs`, `updatedAtMs`.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
@@ -177,22 +178,28 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   or whoever asked while nobody's assigned. That person has it in their inbox; whoever asked has it in their
   outbox. Messages never move it: a thread is a worklog. It leaves both when it's closed, and a closed thread takes
   no more replies. Closing one from your inbox opens the next.
-- Questions: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Someone mentioned by
-  another person who hasn't written in the thread since has a question waiting (`pendingAsks` in `model.ts`). Questions
-  are messages, not work: they take no time on anyone's schedule. They show in the sidebar's Questions tab (the sidebar
-  shows one list at a time: Schedule, Questions, Outbox) and as a toast (`MentionToasts`), which waits while you're in a
-  meeting or focus block and shows when it ends; questions showing at once share one toast. A card says "Blocking
-  <name>" when the asker is on that thread now or within the hour, or how long it's waited once it's past a catch-up
-  window. Under your own question, a line tells you whether it has reached them yet, been seen (`seenBy`, set quietly by
-  the `seen` change when they open the thread) or answered (`askStatuses` in `questions.ts`). You answer them in the
-  slack the scheduler leaves (two catch-up half hours a day, `CATCH_UP_TIMES` in `model.ts`, kept free by `catchUpTimes`
-  in `scheduler.ts`); writing anything in the thread answers it. When one needs real work, `/task` turns it into a task
-  of your own: a new thread assigned to you, branched from the conversation, with "Taking this on in <link>" posted
-  there (which answers it).
+- Conversations: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Sending a reply
+  that mentions people in an ordinary thread starts a conversation with them instead of posting there: a thread of kind
+  `conversation`, branched off the thread it started in (`branchedFromId`), with whoever started it and everyone
+  mentioned as its `attendees`, and the reply as its first message (`onSend` in `App.tsx`). The server adds "started a
+  conversation with … in <link>" to the thread it's in. Mentioning someone inside a conversation brings them into it
+  ("added …"). A conversation has no assignee, schedule, due date or estimate; it takes no time on anyone's schedule
+  and isn't in the inbox or outbox. It opens beside the thread it's in (the split view; `openThread` routes it there).
+  The sidebar's Conversations tab (Schedule, Conversations, Outbox) lists your open ones in two groups
+  (`conversationsFor` in `conversations.ts`): Unread, when someone else has written since you last opened it or
+  replied, and Read. Reading or replying never removes one; a new message from someone else moves it back to Unread.
+  Read state is the synced `seenBy`, set quietly by the `seen` change once you click off an open conversation (it stays
+  Unread while it's open, so it doesn't jump groups under you). A conversation closes by hand
+  (Open/Closed are its only statuses) or when the thread it's in is closed, archived or resolved
+  (`Batch.closeConversations`, which says "closed with <link>"). A message that mentions you also shows as a toast
+  (`MentionToasts`), which waits while you're in a meeting or focus block and shows when it ends; several at once share
+  one toast. When one needs real work, `/task` turns it into a task of your own: a new thread assigned to you, branched
+  from the conversation, with "Taking this on in <link>" posted there. The scheduler still keeps two catch-up half hours
+  a day free (`CATCH_UP_TIMES` in `model.ts`, `catchUpTimes` in `scheduler.ts`) for conversations and messages.
 - Notifications (`activityFor` in `activity.ts`, the bell in the sidebar's top bar, `Notifications.tsx`) list, per
-  thread you're part of, the latest thing someone else did there in the past week: replies (marked when they answer your
-  question) and the status lines worth knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved).
-  Questions for you, the scheduler's moves and routine edits stay out. It's derived from entries, with nothing stored;
+  thread you're part of, the latest thing someone else did there in the past week: replies and the status lines worth
+  knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved, a conversation started). Conversations
+  (which have their own list), the scheduler's moves and routine edits stay out. It's derived from entries, with nothing stored;
   what's new counts against the same last-seen times as the unread dots, which live on this device ("Mark all read"
   moves them all to now).
 - `/blocked` (the `/` menu, `components/slashCommands.ts`, then `BlockedPalette`) makes a blocker: an ordinary

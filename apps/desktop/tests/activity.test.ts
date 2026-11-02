@@ -52,18 +52,13 @@ function thread(id: string, entries: Entry[], fields: Partial<Thread> = {}): Thr
 
 const never = (): number => 0;
 
-test("a new thread is opened, an answer to your question says so, and other messages are replies", () => {
+test("a new thread is opened, and other messages are replies", () => {
   const items = activityFor(
     [
       thread("new", [{ ...message(sam, "Review the PR", NOW - 40 * MINUTE), id: "new" }], {
         requester: sam,
         assignee: me,
       }),
-      thread("asked", [
-        message(me, "Pick an endpoint", NOW - 31 * MINUTE),
-        message(me, `${mention("sam")} which endpoint?`, NOW - 30 * MINUTE),
-        message(sam, "The v2 one", NOW - 20 * MINUTE),
-      ]),
       thread("chat", [
         message(me, "Fix the bug", NOW - 15 * MINUTE),
         message(sam, "Pushed a fix", NOW - 10 * MINUTE),
@@ -75,16 +70,18 @@ test("a new thread is opened, an answer to your question says so, and other mess
   );
   expect(items.map((item) => [item.thread.id, item.summary])).toEqual([
     ["chat", "replied"],
-    ["asked", "answered"],
     ["new", "opened"],
   ]);
 });
 
-test("your own doings, questions for you, routine edits and other people's threads stay out", () => {
+test("your own doings, conversations, routine edits and other people's threads stay out", () => {
   const items = activityFor(
     [
       thread("mine", [message(me, "Started", NOW - MINUTE)]),
-      thread("question", [message(sam, `${mention("me")} can you check?`, NOW - MINUTE)]),
+      thread("talk", [message(sam, `${mention("me")} can you check?`, NOW - MINUTE)], {
+        kind: "conversation",
+        attendees: [sam, me],
+      }),
       thread("routine", [
         event(sam, "set priority to High", NOW - MINUTE),
         event(sam, "scheduled this for Mon 9:00 AM", NOW - MINUTE),
