@@ -1874,9 +1874,13 @@ body * {
   margin-top: -6px;
 }
 
-.thread-header .thread-attendees,
 .thread-header .thread-properties {
   margin-top: 4px;
+}
+
+/* A meeting's or conversation's people sit inline in the who-and-when line. */
+.thread-byline .thread-attendees {
+  margin-top: 0;
 }
 
 .thread-header .chip[data-tone="assignee"] {
