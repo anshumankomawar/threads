@@ -91,9 +91,8 @@ export function createApp({ now = Date.now, me = { id: "you", name: "You" } }: A
   const apps = Object.fromEntries(
     WORKSPACES.map((name) => {
       const engine = new SyncEngine({ now });
-      seed(engine, name, me, undefined, now());
+      seed(engine, name, me, now());
       ensureOrganization(engine, name);
-      engine.replanAll();
       return [name, createWorkspaceApp(engine)];
     }),
   ) as Record<WorkspaceName, Hono>;

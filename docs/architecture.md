@@ -9,8 +9,8 @@ bundles in that repo (`code/*.js`); they are Linear's proprietary code.
 
 ## The product principle: the thread is the atomic unit
 
-Everything in the app is a thread: an ask, a meeting, a focus block, a side discussion, a conversation. Don't invent new kinds of
-objects or special thread types for a new use case; express it with what a thread already has (people, schedule,
+Everything in the app is a thread: an issue (an ask of someone), a side discussion, a conversation. Don't invent new
+kinds of objects or special thread types for a new use case; express it with what a thread already has (people,
 status, entries) or a small field on it, and keep the code and the UX consolidated around that one unit. Branching
 is the model: a side discussion is an ordinary thread with `branchedFromId`, linked from a message by
 `[[thread:<id>]]`, not a "sub-thread" type. When a change seems to need a new type, look for the thread-shaped way
@@ -45,9 +45,9 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 | `packages/model/src/sync.ts`                         | The sync protocol: records, `ModelRegistry`, `SCHEMA_HASH`, `SyncAction`, `TransactionInput`, records ↔ `Thread` conversion, `threadFromCreate`/`entryFromCreate` |
 | `packages/model/src/sample.ts`                       | Seed data: local people, the sample team and threads                                                                                                              |
 | `apps/api/src/engine.ts`                             | `SyncEngine`: transaction validation (zod), business rules and side effects, sync ids, the log, seeding                                                           |
-| `apps/api/src/scheduler.ts`                          | `planSchedule`: where one person's threads go                                                                                                                     |
-| `packages/model/src/score.ts`                        | `threadScore`, `SEEDED_LABELS`, effort options: how important a thread is, shared by the API and the desktop app                                                  |
-| `apps/api/src/worker.ts`                             | The `Workspace` Durable Object (SQLite storage, WebSocket, broadcast, morning alarm) and the Worker entry (token, routing)                                        |
+| `apps/api/src/triage.ts`                             | `Triager` and the Workers AI classifier: sorting each inbox into its owner's buckets                                                                              |
+| `packages/model/src/score.ts`                        | `threadScore`, `SEEDED_LABELS`, effort options: how important a thread is, which orders it within its bucket                                                      |
+| `apps/api/src/worker.ts`                             | The `Workspace` Durable Object (SQLite storage, WebSocket, broadcast, sorting, retry alarm) and the Worker entry (token, routing)                                 |
 | `apps/api/src/app.ts`                                | HTTP routes for one workspace; `createApp` runs all workspaces in memory for tests                                                                                |
 | `apps/desktop/src/renderer/src/sync/syncClient.ts`   | `SyncClient`: bootstrap, socket, applying deltas, rebasing, the change methods the UI calls                                                                       |
 | `apps/desktop/src/renderer/src/sync/transactions.ts` | `CreationTransaction`, `UpdateTransaction`, `TransactionQueue`                                                                                                    |
@@ -59,13 +59,14 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 
 Data is normalized into flat records linked by id, like database rows:
 
-- **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree), and `workday` (their own
-  working hours and catch-up times, set on their profile; `workdayOf` falls back to the org's `WORKING_HOURS` and
-  `CATCH_UP_TIMES`). Seeds refresh who people are but keep their `workday`.
-- **Thread**: one ask, meeting, focus block or conversation (`kind`). References people by id: `requesterId`,
-  `assigneeId`, `attendeeIds` (a meeting's attendees or a conversation's people). Has
+- **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree), and `buckets` (their inbox
+  buckets, each `{ id, name, description }`; `bucketsOf` falls back to `DEFAULT_BUCKETS`). Seeds refresh who people
+  are but keep their `buckets`.
+- **Thread**: an issue or a conversation (`kind`). References people by id: `requesterId`,
+  `assigneeId`, `attendeeIds` (a conversation's people). Has
   `status` (`open`, `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`,
-  `effortHours`, `labelIds`, `schedule`, `createdById`, `createdAtMs`, `updatedAtMs`.
+  `effortHours`, `labelIds`, `triage` (its bucket for whoever it's waiting on; see below), `createdById`,
+  `createdAtMs`, `updatedAtMs`.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
   `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
 - **A thread's description** is not a field: it's the message the thread was opened with, and it has the thread's
@@ -97,7 +98,7 @@ A **sync action** is `{ id, modelName, modelId, action: "I" | "U" | "D", data }`
 whole record.
 
 A **transaction** is a create of a `Thread` or `Entry`, an update of a `Thread` or of a `Person` (only your own:
-`PersonChanges`, today just `workday`; anyone else's is refused with 403), or a `move` of messages into another
+`PersonChanges`, today just `buckets`; anyone else's is refused with 403), or a `move` of messages into another
 thread (`MoveTransaction`; entries are otherwise append-only).
 Ids for new models are made on the client (`crypto.randomUUID()`), so later transactions in the same batch can refer to them.
 
@@ -142,9 +143,9 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 3. **Persist first.** `write` saves to storage before applying in memory or broadcasting. Keep that order.
 4. **Batches are atomic.** Validation errors throw `EngineError` before anything is written. Don't write in
    `#apply`; stage with `batch.put` and let `write` commit.
-5. **Side effects live on the server.** Activity lines, call links, closing a thread on resolution, bumping
+5. **Side effects live on the server.** Activity lines, closing a thread on resolution, bumping
    `updatedAtMs`: all in `SyncEngine.#apply`. Clients don't send them and don't need to predict them.
-6. **Side-effect ids are deterministic** (`${transaction.id}:${index}`, `${threadId}:call`), so a resent
+6. **Side-effect ids are deterministic** (`${transaction.id}:${index}`, `${threadId}:blocks`), so a resent
    transaction can't create duplicates.
 7. **IndexedDB `models` holds only server-confirmed data.** Local edits live in the pool and `__transactions`,
    never in `models`.
@@ -172,9 +173,9 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
 
-## Inbox, Tracking and slots
+## Inbox, Tracking and conversations
 
-- A response is waiting on one person (`waitingOn` in `model.ts`, `Batch.waitingOn` on the server): its assignee,
+- An issue is waiting on one person (`waitingOn` in `model.ts`, `Batch.waitingOn` on the server): its assignee,
   or whoever asked while nobody's assigned. That person has it in their inbox; whoever asked (the requester) tracks it. Messages never move it: a thread is a worklog. It leaves both when it's closed, and a closed thread takes
   no more replies. Closing one from your inbox opens the next.
 - Conversations: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Sending a reply
@@ -182,19 +183,16 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   `conversation`, branched off the thread it started in (`branchedFromId`), with whoever started it and everyone
   mentioned as its `attendees`, and the reply as its first message (`onSend` in `App.tsx`). The server posts "Started a
   conversation <link>" in the thread it's in, as a message from whoever started it. Mentioning someone inside a conversation brings them into it
-  ("added …"). A conversation has no assignee, schedule, due date or estimate; it takes no time on anyone's schedule
-  and isn't in the inbox or Tracking. It opens beside the thread it's in (the split view; `openThread` routes it there).
-  The sidebar's Conversations tab (Schedule, Conversations, Tracking) lists your open ones in two groups
+  ("added …"). A conversation has no assignee, due date or estimate, and isn't in the inbox or Tracking. It opens beside the thread it's in (the split view; `openThread` routes it there).
+  The sidebar's Conversations tab (Inbox, Conversations, Tracking) lists your open ones in two groups
   (`conversationsFor` in `conversations.ts`): Unread, when someone else has written since you last opened it or
   replied, and Read. Reading or replying never removes one; a new message from someone else moves it back to Unread.
   Read state is the synced `seenBy`, set quietly by the `seen` change once you click off an open conversation (it stays
   Unread while it's open, so it doesn't jump groups under you). A conversation closes by hand
   (Open/Closed are its only statuses) or when the thread it's in is closed, archived or resolved
   (`Batch.closeConversations`, which says "closed with <link>"). A message that mentions you also shows as a toast
-  (`MentionToasts`), which waits while you're in a meeting or focus block and shows when it ends; several at once share
-  one toast. When one needs real work, `/task` turns it into a task of your own: a new thread assigned to you, branched
-  from the conversation, with "Taking this on in <link>" posted there. The scheduler still keeps two catch-up half hours
-  a day free (`CATCH_UP_TIMES` in `model.ts`, `catchUpTimes` in `scheduler.ts`) for conversations and messages.
+  (`MentionToasts`); several at once share one toast. When one needs real work, `/task` turns it into a task of your own: a new thread assigned to you, branched
+  from the conversation, with "Taking this on in <link>" posted there.
 - On behalf of: making a thread with `onBehalfOfId` makes that person its requester, so they track it and it counts
   as their ask, in the byline and the score. `createdById` keeps who really made it, shown as "via" in the byline, and
   the server adds "created this on behalf of ..." (`#apply`). Anyone can pick anyone, since there are no real identities
@@ -204,16 +202,15 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - Notifications (`activityFor` in `activity.ts`, the bell in the sidebar's top bar, `Notifications.tsx`) list, per
   thread you're part of, the latest thing someone else did there in the past week: replies and the status lines worth
   knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved). Conversations
-  (which have their own list), the scheduler's moves and routine edits stay out. It's derived from entries, with nothing stored;
+  (which have their own list), sorting and routine edits stay out. It's derived from entries, with nothing stored;
   what's new counts against the same last-seen times as the unread dots, which live on this device ("Mark all read"
   moves them all to now).
 - `/blocked` (the `/` menu, `components/slashCommands.ts`, then `BlockedPalette`) makes a blocker: an ordinary
   response to the chosen person, with `blocksId` (and `branchedFromId`) set to the thread you're in. The server
-  marks that thread Blocked, which takes it off the schedule, and adds "is blocked on <link>". When its last open
-  blocker closes, the server sets it back to Open ("is unblocked, <link> is closed") and the scheduler slots
-  it again. A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their Tracking.
-- `buildDay` in `inbox.ts` lays this out: a response waiting on you is on the timeline on its slot's day and in your
-  inbox until then; responses you asked for that are with someone else, and your blocked threads, are Tracking. The schedule can step to other days (`dayMs`).
+  marks that thread Blocked and adds "is blocked on <link>". When its last open blocker closes, the server sets it
+  back to Open ("is unblocked, <link> is closed"). A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their Tracking.
+- `buildInbox` in `inbox.ts` lays this out: what's waiting on you, in your buckets; what you asked of others, and
+  your blocked threads, are Tracking.
 - Closing is a status change; nothing else closes a thread. Archiving is too: an archived thread is done like a closed
   one and also leaves every list and the notifications, but stays searchable. Right-clicking a thread in a list
   (`ThreadMenuContext` in `threadMenu.ts`) offers Open, Open beside, Close or Reopen, and Archive or Unarchive.
@@ -226,7 +223,7 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - **Labels** (`Label`): how threads are filed, on every kind but conversations. Names are unique across the
   organization; a label's id is `labelSlug(name)`, so "Back-end" and "back end" are one label, and making one that exists
   does nothing rather than refusing the batch (and any thread made in it). `SEEDED_LABELS` in `score.ts` are the only
-  ones with a priority, so making a label can't move anything up a schedule. Labels aren't deleted.
+  ones with a priority, so making a label can't move anything up an inbox. Labels aren't deleted.
 - **Groups** (`Group`): a project, program or team. Anyone can make one and add anyone. Making one makes its label
   (`Label.groupId`), and **a thread is in a group because it has that label**: there's no `groupId` on a thread, so a
   thread can be in several, and the group page is just the threads with its label (`threadsWithLabel` in `groups.ts`).
@@ -241,34 +238,37 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - **In the app**: the sidebar's Groups tab lists your groups, others', and plain labels; `LabelView` is the page for
   either. A thread made from one starts with its label. The new-thread palette's last step has the labels (⇧⇥), and a
   thread's label chip can find or make one.
-- **A wipe** (`#reset` in `worker.ts`) clears threads and schedules but keeps the organization, labels and groups.
+- **A wipe** (`#reset` in `worker.ts`) clears threads but keeps the organization, labels and groups.
 
-## Scoring and scheduling
+## Buckets, sorting and scoring
 
-Responses are scheduled automatically. Clients can't set a response's time; meetings and focus blocks keep theirs. A
-response holds `blocks`, any number of them, each as long as the free time allows; `schedule` is its next one.
+The inbox (the sidebar's Inbox tab) is every open issue waiting on you, grouped into your **buckets** and ordered
+within each by **score**. There's no schedule: the app helps you get through your work, not plan your hours.
 
+- **Buckets** are per person (`Person.buckets`, edited as a whole list with `PersonChanges`; `DEFAULT_BUCKETS` until
+  you make your own): a name, and a plain-language description of what goes in it, which is what the model reads. The
+  sidebar edits them (`BucketPalette`: name, then description; a bucket's menu moves or deletes it).
+- **Sorting** (`apps/api/src/triage.ts`): each issue's `triage` is `{ personId, bucketId, reason, manual, stale }`
+  for whoever it's waiting on. `SyncEngine.triageRequests` finds the threads that need it (`#needsTriage`: open, and
+  no triage for that person, a bucket they no longer have, or `stale`), grouped per person with their buckets, each
+  thread's title, requester and description, and the threads they placed by hand as examples. The `Triager` in the
+  `Workspace` Durable Object sends them to Workers AI (`TRIAGE_MODEL`, Llama 3.3 70B with a JSON schema) 20 at a time
+  and saves the answers with `SyncEngine.applyTriage`, as their own batch through `write`, so they reach clients like
+  any other change. It runs after every transaction batch and when the workspace loads; on a failure the threads wait
+  a minute (`RETRY_MS`) and an alarm retries them. The AI binding (`bindings.ai`) always runs on Cloudflare, local
+  dev included, within the account's free daily allocation; threads are only sorted when they arrive, change hands,
+  are retitled or their owner's buckets change, so a team stays well inside it.
+- **Placing by hand**: dragging a thread to another bucket, its Bucket chip, or "Move to …" in its menu sends a
+  `triage` change with `manual: true` (only whoever it's waiting on, only into their own bucket). It sticks through
+  retitles and bucket edits, and `null` ("Sort it for me") hands it back to the model.
+- **Staying put**: retitling, or changing your buckets (other than reordering them), marks the model's choices
+  `stale` instead of clearing them, so threads stay where they are until the model has looked again. Only a thread
+  whose bucket was deleted waits under "Sorting".
 - **The score** (`threadScore` in `packages/model/src/score.ts`) rates a thread from 1 to 100: its due date, priority,
-  estimated effort, most important seeded label (`SEEDED_LABELS`) and the level of the person waiting on the answer (`askerId`). It's
-  computed when needed and never stored, because it changes as due dates approach and saving it would fill the sync
-  log. Client and server share the function, so the inbox sorts by the same number the schedule uses.
-- **The plan** (`planSchedule` in `apps/api/src/scheduler.ts`) lays out one person's open responses around their
-  meetings and focus blocks, in their working hours (`workdayOf`), on the next five weekdays. It's pure and has no
-  randomness. In order, each thread takes free half hours until it has the time it needs, breaking only around fixed
-  time and the end of the day, and carrying over to the next working day. A thread only moves ahead of another by
-  outscoring it by 10. Time under way or starting within 30 minutes stays put, but only that stretch; the rest of a long
-  block can give way. What doesn't fit stays in the inbox and waits for a later run.
-- **How much time a thread needs** (`SyncEngine.#plan`): the assignee gets its `effortHours`, less `workedMinutes` and
-  blocks that have ended, which count as work done. Anyone else it's waiting on, a thread with no estimate, or one with
-  its estimate used up gets 30 minutes.
-- **When it runs** (`SyncEngine.#replanAfter`): after every batch, for whoever the touched threads are waiting on, every
-  attendee of a touched meeting, and anyone who changed their working day. A response handed to someone gives up its
-  blocks, adding the assignee's time so far to `workedMinutes`. Closing a thread reschedules nobody, so its time stays a
-  gap until the next change. Block moves are side effects in the same delta packet as the change that caused them, with
-  no activity lines; only threads whose blocks change are written.
-- **The morning run** (`SyncEngine.replanAll`, from the `Workspace` Durable Object's `alarm`) looks over every schedule
-  half an hour before the working day, for closer due dates and blocks that passed with the thread still open. It also
-  runs whenever a workspace loads.
+  estimated effort, most important seeded label (`SEEDED_LABELS`) and the level of the person waiting on the answer
+  (`askerId`). It's computed when needed and never stored, because it changes as due dates approach. Within a bucket,
+  threads needing an assignee come first, blocked ones last, and the rest by score. Closing a thread from your inbox
+  opens the next one (`inbox.order`).
 
 ## How to make common changes
 
@@ -331,20 +331,20 @@ bundles, their proprietary code.
 
 ### How our names map to LSE
 
-| LSE                                                                                                                          | Ours                                                                       | Notes                                                                                                                |
-| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `ModelRegistry`, `__schemaHash`                                                                                              | `ModelRegistry`, `SCHEMA_HASH` (`packages/model/src/sync.ts`)              | Plain records plus a registry instead of decorators (`@ClientModel`, `@Property`); same metadata, no build-tool risk |
-| Object pool (MobX-observable models)                                                                                         | `ObjectPool` (MobX maps of records)                                        | Records are replaced whole, so only the maps are observable                                                          |
-| `SyncClient`                                                                                                                 | `SyncClient`                                                               | Same role: bootstrap, socket, `applyDelta`, `lastSyncId`                                                             |
-| `TransactionQueue`: `createdTransactions`, `queuedTransactions`, `executingTransactions`, `completedButUnsyncedTransactions` | Same names in `transactions.ts`                                            | Batching by microtask (`batchIndex`), persisted in `__transactions`                                                  |
-| `CreationTransaction`, `UpdatingTransaction`                                                                                 | `CreationTransaction`, `UpdateTransaction`                                 | `rebase`, `rollback`, `serialize`, `fromSerializedData` as in the write-up                                           |
-| GraphQL mutations returning `lastSyncId`                                                                                     | `POST /sync/transactions` with JSON `TransactionInput`s                    | One endpoint, all or nothing per batch                                                                               |
-| Sync actions `I U A D C G S V`                                                                                               | `I U D`                                                                    | Archive (`A`), unarchive (`V`), covering (`C`) and sync-group changes (`G`, `S`) not used yet                        |
-| `lastSyncId` global across all of Linear                                                                                     | `lastSyncId` per workspace (one Durable Object each)                       | Gaps mean a missed packet, never another workspace's change                                                          |
-| Handshake with `lastSyncId`, `userSyncGroups`                                                                                | `{ type: "handshake", lastSyncId }`                                        | No sync groups yet                                                                                                   |
-| `firstSyncId`, `subscribedSyncGroups` in database meta                                                                       | `lastSyncId`, `schemaHash` in `meta`                                       | Add `firstSyncId` with sync groups                                                                                   |
-| Server side effects (e.g. `IssueHistory`) in delta packets                                                                   | Activity `Entry`s, call links, status changes added by `SyncEngine.#apply` | Same principle: the delta can carry more than the transaction                                                        |
-| Last-writer-wins rebase of `UpdateTransaction`s                                                                              | `UpdateTransaction.rebase` called from `applyDelta`                        | Same                                                                                                                 |
+| LSE                                                                                                                          | Ours                                                           | Notes                                                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ModelRegistry`, `__schemaHash`                                                                                              | `ModelRegistry`, `SCHEMA_HASH` (`packages/model/src/sync.ts`)  | Plain records plus a registry instead of decorators (`@ClientModel`, `@Property`); same metadata, no build-tool risk |
+| Object pool (MobX-observable models)                                                                                         | `ObjectPool` (MobX maps of records)                            | Records are replaced whole, so only the maps are observable                                                          |
+| `SyncClient`                                                                                                                 | `SyncClient`                                                   | Same role: bootstrap, socket, `applyDelta`, `lastSyncId`                                                             |
+| `TransactionQueue`: `createdTransactions`, `queuedTransactions`, `executingTransactions`, `completedButUnsyncedTransactions` | Same names in `transactions.ts`                                | Batching by microtask (`batchIndex`), persisted in `__transactions`                                                  |
+| `CreationTransaction`, `UpdatingTransaction`                                                                                 | `CreationTransaction`, `UpdateTransaction`                     | `rebase`, `rollback`, `serialize`, `fromSerializedData` as in the write-up                                           |
+| GraphQL mutations returning `lastSyncId`                                                                                     | `POST /sync/transactions` with JSON `TransactionInput`s        | One endpoint, all or nothing per batch                                                                               |
+| Sync actions `I U A D C G S V`                                                                                               | `I U D`                                                        | Archive (`A`), unarchive (`V`), covering (`C`) and sync-group changes (`G`, `S`) not used yet                        |
+| `lastSyncId` global across all of Linear                                                                                     | `lastSyncId` per workspace (one Durable Object each)           | Gaps mean a missed packet, never another workspace's change                                                          |
+| Handshake with `lastSyncId`, `userSyncGroups`                                                                                | `{ type: "handshake", lastSyncId }`                            | No sync groups yet                                                                                                   |
+| `firstSyncId`, `subscribedSyncGroups` in database meta                                                                       | `lastSyncId`, `schemaHash` in `meta`                           | Add `firstSyncId` with sync groups                                                                                   |
+| Server side effects (e.g. `IssueHistory`) in delta packets                                                                   | Activity `Entry`s, status changes added by `SyncEngine.#apply` | Same principle: the delta can carry more than the transaction                                                        |
+| Last-writer-wins rebase of `UpdateTransaction`s                                                                              | `UpdateTransaction.rebase` called from `applyDelta`            | Same                                                                                                                 |
 
 ## Not built yet
 
@@ -425,4 +425,5 @@ Here every model is `instant`. Add this when bootstraps get slow:
 - **Ephemeral properties** (LSE's `ephemeralProperty`, not persisted): useful for presence such as "who's viewing".
   Send those over the socket as their own messages; don't put them in the sync log.
 - **Schema migrations**: today a schema change makes clients rebuild their caches from the server, which is fine at
-  this size. LSE migrates IndexedDB in place; add that only if rebuilding gets slow.
+  this size. Records the server stored under an older shape are brought up to date as it loads them (`upgrade` in
+  `engine.ts`). LSE migrates IndexedDB in place; add that only if rebuilding gets slow.

@@ -10,7 +10,7 @@ export type ThreadLinks = {
   open: (threadId: string) => void;
   search: (query: string) => { id: string; title: string }[];
   people: Person[];
-  // Every thread, for working out when a question reaches someone (their meetings and focus blocks).
+  // Every thread, for telling which links are to conversations.
   threads: Thread[];
   labels: Label[];
   groups: Group[];

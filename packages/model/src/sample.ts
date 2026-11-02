@@ -1,15 +1,4 @@
-import {
-  DUMMY_ZOOM_LINK,
-  type Entry,
-  type Group,
-  type Label,
-  type Person,
-  type Priority,
-  type Schedule,
-  type Status,
-  type Thread,
-  type ThreadKind,
-} from "./model";
+import type { Entry, Group, Label, Person, Priority, Status, Thread } from "./model";
 
 // Fictional teammates for demo threads until real data exists.
 const priya: Person = {
@@ -45,7 +34,7 @@ const sam: Person = {
 };
 
 // Threads with activity you haven't seen yet when the app opens.
-export const UNREAD_THREAD_IDS = ["headcount-plan", "headcount-review"];
+export const UNREAD_THREAD_IDS = ["headcount-plan", "northwind-sso"];
 
 // The people the local workspace starts with, for trying the app as each of them. No threads yet. Anshu, Arjun
 // and KK are the real team; everyone above and beside them is made up, so the org view has a company to show.
@@ -85,50 +74,10 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-type Draft =
-  | ["message", Person, string, number]
-  | ["event", Person, string, number]
-  | ["resolution", Person, string, number]
-  | ["call", string, number]
-  | ["notes", Omit<Extract<Entry, { kind: "notes" }>, "kind" | "id" | "createdAtMs">, number];
-
-// Today at the given time.
-// "Now" in the viewer's time zone, so "10 AM today" means 10 AM where they are, even when a server in UTC seeds
-// the data.
-type Clock = { nowMs: number; offsetMs: number };
-
-function todayAt(clock: Clock, hour: number, minute = 0): number {
-  const date = new Date(clock.nowMs + clock.offsetMs);
-  date.setUTCHours(hour, minute, 0, 0);
-  return date.getTime() - clock.offsetMs;
-}
-
-// Next occurrence of a weekday (0 = Sunday) at the given hour, at least a day out.
-function nextWeekday(clock: Clock, weekday: number, hour: number): number {
-  const date = new Date(clock.nowMs + clock.offsetMs + DAY);
-  date.setUTCHours(hour, 0, 0, 0);
-  while (date.getUTCDay() !== weekday) date.setUTCDate(date.getUTCDate() + 1);
-  return date.getTime() - clock.offsetMs;
-}
-
-type Line = [Person, string] | ["event", Person, string];
-
-// A conversation as drafts, oldest first: starts `startAgoMs` ago and spaces entries `stepMs` apart.
-function conversation(startAgoMs: number, stepMs: number, lines: Line[]): Draft[] {
-  return lines.map((line, index) => {
-    const ago = startAgoMs - index * stepMs;
-    if (line[0] === "event") return ["event", line[1], line[2], ago];
-    const [author, text] = line;
-    return ["message", author, text, ago];
-  });
-}
-
-function block(startMs: number, minutes: number): Schedule {
-  return { startMs, endMs: startMs + minutes * MINUTE };
-}
+// One entry, `ago` before now: a message, an activity line or the resolution that closed it.
+type Draft = ["message" | "event" | "resolution", Person, string, number];
 
 type Fields = {
-  kind?: ThreadKind;
   requester: Person;
   assignee?: Person | null;
   status?: Status;
@@ -136,28 +85,21 @@ type Fields = {
   dueAtMs?: number | null;
   effortHours?: number;
   labelIds?: string[];
-  schedule?: Schedule | null;
-  attendees?: Person[];
+  blocksId?: string;
 };
 
 function thread(id: string, title: string, fields: Fields, nowMs: number, drafts: Draft[]): Thread {
-  const entries: Entry[] = drafts.map((draft, index) => {
+  const entries: Entry[] = drafts.map(([kind, person, text, ago], index) => {
     // The opening message is the thread's description (`descriptionOf`).
-    const entryId = index === 0 && draft[0] === "message" ? id : `${id}-${index}`;
-    const createdAtMs = nowMs - (draft[0] === "call" || draft[0] === "notes" ? draft[2] : draft[3]);
-    if (draft[0] === "message") {
-      const [, author, text] = draft;
-      return { kind: "message", id: entryId, author, text, createdAtMs };
-    }
-    if (draft[0] === "event")
-      return { kind: "event", id: entryId, actor: draft[1], text: draft[2], createdAtMs };
-    if (draft[0] === "call") return { kind: "call", id: entryId, link: draft[1], createdAtMs };
-    if (draft[0] === "notes") return { kind: "notes", id: entryId, ...draft[1], createdAtMs };
-    return { kind: "resolution", id: entryId, author: draft[1], text: draft[2], createdAtMs };
+    const entryId = index === 0 && kind === "message" ? id : `${id}-${index}`;
+    const createdAtMs = nowMs - ago;
+    return kind === "event"
+      ? { kind, id: entryId, actor: person, text, createdAtMs }
+      : { kind, id: entryId, author: person, text, createdAtMs };
   });
   return {
     id,
-    kind: fields.kind ?? "response",
+    kind: "issue",
     title,
     requester: fields.requester,
     createdBy: fields.requester,
@@ -167,29 +109,21 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     dueAtMs: fields.dueAtMs ?? null,
     effortHours: fields.effortHours ?? null,
     labelIds: fields.labelIds ?? [],
-    schedule: fields.schedule ?? null,
-    blocks: fields.schedule ? [fields.schedule] : [],
-    workedMinutes: 0,
-    attendees: fields.attendees ?? [],
-    branchedFromId: null,
-    blocksId: null,
+    // The server's model sorts them into buckets once the workspace loads.
+    triage: null,
+    attendees: [],
+    branchedFromId: fields.blocksId ?? null,
+    blocksId: fields.blocksId ?? null,
     seenBy: {},
     updatedAtMs: Math.max(...entries.map((entry) => entry.createdAtMs)),
     entries,
   };
 }
 
-// A day's worth of threads: responses to asks, meetings, and focus blocks, carried from start to completion.
-// `me` is whoever runs the app, so the sample asks, meetings and focus blocks are addressed to them.
-// `utcOffsetMinutes` is the viewer's time zone (minutes ahead of UTC); it defaults to this runtime's own.
-export function sampleThreads(
-  me: Person,
-  nowMs = Date.now(),
-  utcOffsetMinutes = -new Date(nowMs).getTimezoneOffset(),
-): Thread[] {
-  const clock: Clock = { nowMs, offsetMs: utcOffsetMinutes * 60_000 };
+// The demo team's work: a mix of customer asks, bugs, code, reviews and planning waiting on `me` (whoever runs the
+// app), a few things `me` asked of others, and some already done.
+export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
   return [
-    // Responses: someone's ask, worked through to a resolution.
     thread(
       "headcount-plan",
       "Approve Q4 headcount plan",
@@ -197,7 +131,7 @@ export function sampleThreads(
         requester: priya,
         assignee: me,
         priority: "high",
-        dueAtMs: todayAt(clock, 23),
+        dueAtMs: nowMs + 8 * HOUR,
         effortHours: 1,
         labelIds: ["planning", "q4-planning"],
       },
@@ -212,28 +146,50 @@ export function sampleThreads(
       ],
     ),
     thread(
-      "northwind-prep",
-      "Prep notes for Monday's Northwind call",
+      "northwind-sso",
+      "Northwind can't sign in with Okta since Tuesday",
       {
         requester: maya,
         assignee: me,
-        priority: "medium",
-        dueAtMs: nextWeekday(clock, 1, 10),
-        schedule: block(todayAt(clock, 11), 45),
+        priority: "urgent",
+        dueAtMs: nowMs + 4 * HOUR,
+        effortHours: 2,
+        labelIds: ["customer-escalation", "security"],
       },
       nowMs,
       [
         [
           "message",
           maya,
-          "Northwind's renewal call is Monday at 10. Can you pull together their usage from the last quarter and the two support escalations they raised?",
-          26 * HOUR,
+          "Northwind's IT admin says every SSO login has failed since Tuesday's deploy with \"invalid audience\". 140 seats are locked out and their renewal is in two weeks. Can you take a look today?",
+          2 * HOUR,
         ],
         [
           "message",
-          priya,
-          "Add the seat expansion they asked about in September too, they'll bring it up.",
-          24 * HOUR,
+          sam,
+          "Tuesday's deploy changed the SAML audience to the new domain. Their Okta app still has the old one.",
+          90 * MINUTE,
+        ],
+      ],
+    ),
+    thread(
+      "checkout-500s",
+      "Checkout returns 500s for EU cards",
+      {
+        requester: jordan,
+        assignee: me,
+        priority: "high",
+        dueAtMs: nowMs + DAY,
+        effortHours: 4,
+        labelIds: ["incident", "revenue"],
+      },
+      nowMs,
+      [
+        [
+          "message",
+          jordan,
+          "About 3% of checkouts from EU cards fail with a 500 since last night. Stack traces point at the 3DS callback timing out after the payment provider's SDK upgrade.",
+          5 * HOUR,
         ],
       ],
     ),
@@ -243,10 +199,9 @@ export function sampleThreads(
       {
         requester: jordan,
         assignee: me,
-        status: "open",
         priority: "medium",
-        dueAtMs: nowMs + DAY,
-        schedule: block(todayAt(clock, 14), 30),
+        dueAtMs: nowMs + 2 * DAY,
+        effortHours: 0.5,
       },
       nowMs,
       [
@@ -256,7 +211,89 @@ export function sampleThreads(
           "Support keeps getting asked what our API rate limits are. Can you pull the current per-plan numbers so they can answer customers directly?",
           6 * HOUR,
         ],
-        ["event", me, "changed status to In progress", 5 * HOUR],
+      ],
+    ),
+    thread(
+      "acme-export",
+      "Acme wants a CSV export of audit logs",
+      {
+        requester: maya,
+        assignee: me,
+        priority: "medium",
+        dueAtMs: nowMs + 5 * DAY,
+        effortHours: 8,
+      },
+      nowMs,
+      [
+        [
+          "message",
+          maya,
+          "Acme's security team asked for audit logs as CSV for their SOC 2 review. They need user, action, IP and timestamp for the last 90 days. Is this a quick export or a real feature?",
+          DAY,
+        ],
+      ],
+    ),
+    thread(
+      "search-pr",
+      "Review: move search indexing to a queue",
+      { requester: sam, assignee: me, priority: "medium", dueAtMs: nowMs + DAY, effortHours: 1 },
+      nowMs,
+      [
+        [
+          "message",
+          sam,
+          "PR is up: indexing moves off the request path into a queue consumer, with retries and a dead-letter queue. Mostly worried about ordering when the same doc is edited twice quickly.",
+          3 * HOUR,
+        ],
+      ],
+    ),
+    thread(
+      "billing-migration",
+      "Migrate invoices to the new billing tables",
+      {
+        requester: jordan,
+        assignee: me,
+        priority: "medium",
+        dueAtMs: nowMs + 9 * DAY,
+        effortHours: 16,
+        labelIds: ["launch"],
+      },
+      nowMs,
+      [
+        [
+          "message",
+          jordan,
+          "The new billing schema is live behind a flag. We need a backfill for the 1.2M existing invoices, dual writes during the cutover, and a way to roll back if totals don't match.",
+          2 * DAY,
+        ],
+      ],
+    ),
+    thread(
+      "flaky-e2e",
+      "Login e2e test fails one run in five",
+      { requester: sam, assignee: me, priority: "low", effortHours: 2, labelIds: ["bug"] },
+      nowMs,
+      [
+        [
+          "message",
+          sam,
+          "The login end-to-end test has been flaky all week, usually waiting on the redirect after the magic link. It's blocking merges when it hits.",
+          DAY + 3 * HOUR,
+        ],
+      ],
+    ),
+    thread(
+      "dark-mode",
+      "Add dark mode to the settings pages",
+      { requester: daniel, assignee: me, priority: "low", effortHours: 4 },
+      nowMs,
+      [
+        [
+          "message",
+          daniel,
+          "Settings is the last part of the app without dark mode. The tokens all exist now, so it should mostly be swapping hard-coded colors.",
+          3 * DAY,
+        ],
       ],
     ),
     thread(
@@ -267,7 +304,7 @@ export function sampleThreads(
         assignee: me,
         priority: "low",
         dueAtMs: nowMs + 6 * DAY,
-        effortHours: 2,
+        effortHours: 1,
         labelIds: ["launch"],
       },
       nowMs,
@@ -281,354 +318,34 @@ export function sampleThreads(
       ],
     ),
     thread(
-      "pricing-copy",
-      "Finalize Q4 pricing page copy",
+      "staging-access",
+      "Grant staging database access for the new contractor",
       {
-        requester: priya,
-        assignee: daniel,
-        status: "blocked",
-        priority: "high",
-        dueAtMs: nextWeekday(clock, 4, 17),
-      },
-      nowMs,
-      [
-        [
-          "message",
-          priya,
-          "Can we get the Q4 pricing page copy finalized before Thursday's launch review? Legal flagged the annual discount wording last time, so that line needs another pass.",
-          3 * HOUR,
-        ],
-        ["event", daniel, "changed status to In progress", 2 * HOUR + 50 * MINUTE],
-        [
-          "message",
-          daniel,
-          "On it. Two questions before I lock it: are we still showing the Team tier at $12, and does the annual discount stay at 20% or move to two months free?",
-          2 * HOUR + 20 * MINUTE,
-        ],
-        [
-          "message",
-          priya,
-          "Team stays at $12. Go with two months free, it tested better and it's easier for legal to approve.",
-          2 * HOUR,
-        ],
-        [
-          "message",
-          daniel,
-          "Updated draft is in the pricing doc. Sent the discount line to legal, waiting on their sign-off before I mark this done.",
-          25 * MINUTE,
-        ],
-        ["event", daniel, "changed status to Waiting", 24 * MINUTE],
-      ],
-    ),
-    thread(
-      "checkout-test",
-      "Fix flaky checkout test before release",
-      {
-        requester: jordan,
-        assignee: sam,
-        status: "closed",
-        priority: "urgent",
-        dueAtMs: nowMs + 18 * HOUR,
-      },
-      nowMs,
-      [
-        [
-          "message",
-          jordan,
-          "The checkout e2e test failed on 3 of the last 10 runs. It's blocking tomorrow's release, so please take it before the dashboard work.",
-          5 * HOUR,
-        ],
-        ["event", sam, "changed status to In progress", 4 * HOUR + 40 * MINUTE],
-        [
-          "message",
-          sam,
-          "Found it. The test clicks Pay before the Stripe iframe finishes loading. Swapping the fixed timeout for a wait on the iframe's ready event.",
-          4 * HOUR,
-        ],
-        [
-          "resolution",
-          sam,
-          "Fix merged. The test now waits for the Stripe iframe, and it passed 20 runs in a row.",
-          HOUR,
-        ],
-      ],
-    ),
-
-    // Meetings: scheduled threads whose document holds the agenda and notes.
-    thread(
-      "design-sync",
-      "Design sync",
-      {
-        kind: "meeting",
-        requester: daniel,
-        schedule: block(todayAt(clock, 10), 30),
-        attendees: [daniel, maya, me],
-      },
-      nowMs,
-      [
-        [
-          "message",
-          daniel,
-          "Agenda: walk through the new onboarding screens, then decide whether the empty states ship this sprint.",
-          20 * HOUR,
-        ],
-        ["call", DUMMY_ZOOM_LINK, 20 * HOUR],
-        [
-          "notes",
-          {
-            summary:
-              "Daniel walked through the new onboarding screens. The flow tested well, but the empty states still read as placeholders, so the team agreed to ship the screens now and polish empty states next sprint.",
-            decisions: [
-              "Onboarding screens ship this sprint without the new empty states.",
-              "Empty states move to next sprint with Maya owning the copy.",
-              "Skip the welcome video until we have usage data.",
-            ],
-            actionItems: [
-              { text: "Finalize onboarding screen copy", owner: daniel },
-              { text: "Draft empty-state copy for the three main views", owner: maya },
-              { text: "Add an onboarding completion event to analytics", owner: me },
-            ],
-          },
-          // Written up just after the 10:00 call.
-          Math.max(MINUTE, nowMs - todayAt(clock, 10, 35)),
-        ],
-      ],
-    ),
-    thread(
-      "headcount-review",
-      "Headcount review",
-      {
-        kind: "meeting",
-        requester: priya,
-        schedule: block(todayAt(clock, 16), 30),
-        attendees: [priya, me],
-      },
-      nowMs,
-      [
-        [
-          "message",
-          priya,
-          "Let's go over the Q4 plan before I send it to finance. Bring anything you want changed.",
-          35 * MINUTE,
-        ],
-        ["call", DUMMY_ZOOM_LINK, 35 * MINUTE],
-        [
-          "notes",
-          {
-            summary:
-              "Priya and you went through the Q4 headcount plan line by line. The two engineering roles are approved as drafted; the designer role is approved but moves to a mid-quarter start to fit the budget.",
-            decisions: [
-              "Approve both engineering hires for an October start.",
-              "Designer role starts mid-November instead of October.",
-              "Contractor budget stays flat for Q4.",
-            ],
-            actionItems: [
-              { text: "Send the updated plan to finance", owner: priya },
-              { text: "Write the job description for the designer role", owner: me },
-            ],
-          },
-          30 * MINUTE,
-        ],
-      ],
-    ),
-    thread(
-      "northwind-call",
-      "Northwind renewal call",
-      {
-        kind: "meeting",
-        requester: maya,
-        schedule: block(nextWeekday(clock, 1, 10), 45),
-        attendees: [maya, priya, me],
-      },
-      nowMs,
-      [
-        [
-          "message",
-          maya,
-          "Goal: renew for another year and scope the seat expansion. I'll lead, you cover usage and escalations.",
-          23 * HOUR,
-        ],
-        ["call", DUMMY_ZOOM_LINK, 23 * HOUR],
-      ],
-    ),
-
-    thread(
-      "pricing-launch-review",
-      "Pricing launch review",
-      {
-        kind: "meeting",
-        requester: priya,
-        schedule: block(todayAt(clock, 15) - DAY, 45),
-        attendees: [priya, daniel, jordan, me],
-      },
-      nowMs,
-      [
-        [
-          "message",
-          priya,
-          "Agenda: final check on the Q4 pricing page, the legal sign-off on the discount line, and the launch-day support plan.",
-          2 * DAY,
-        ],
-        ["call", DUMMY_ZOOM_LINK, 2 * DAY],
-        [
-          "notes",
-          {
-            summary:
-              "The team agreed the pricing page is ready apart from the discount wording, which legal expects to approve by Wednesday. Support will get an FAQ and a short walkthrough before launch.",
-            decisions: [
-              "Team tier stays at $12 per seat.",
-              "Annual plans get two months free instead of 20% off.",
-              "Launch moves only if legal hasn't approved by Wednesday.",
-            ],
-            actionItems: [
-              { text: "Send the final discount wording to legal", owner: daniel },
-              { text: "Write the support FAQ for the new pricing", owner: me },
-              { text: "Confirm the launch-day on-call rotation", owner: jordan },
-            ],
-          },
-          DAY - 50 * MINUTE,
-        ],
-        [
-          "message",
-          daniel,
-          "Discount wording is with legal now. I'll post here as soon as they reply.",
-          DAY - 2 * HOUR,
-        ],
-      ],
-    ),
-
-    // Longer threads, for scrolling and the minimap.
-    thread(
-      "usage-billing",
-      "Migrate billing to usage-based pricing",
-      {
-        requester: priya,
-        assignee: me,
-        status: "blocked",
-        priority: "high",
-        dueAtMs: nowMs + 3 * DAY,
-        schedule: block(todayAt(clock, 15), 60),
-      },
-      nowMs,
-      conversation(4 * DAY, 5 * HOUR, [
-        [
-          priya,
-          "We're moving billing to usage-based pricing next quarter. Can you own the migration plan end to end: metering, invoicing, and how we move existing customers over?",
-        ],
-        ["event", me, "changed status to In progress"],
-        [
-          me,
-          "Starting with the current billing flow. First question: do we keep seat pricing as a floor, or go fully usage-based?",
-        ],
-        [priya, "Keep a seat floor for the Team plan. Enterprise can be fully usage-based."],
-        [
-          daniel,
-          "That changes the pricing page a lot. I'll need the final unit and tiers before I can redo the plan comparison table.",
-        ],
-        [
-          me,
-          "Sam, what does metering look like today? Do we have per-account API call counts we can trust?",
-        ],
-        [
-          sam,
-          "The metering service already emits an api_call event per request with the account id. It's accurate, but it only keeps 30 days.",
-        ],
-        [
-          jordan,
-          "Watch the metering pipeline at month end. It falls behind under load, and we can't invoice on numbers that arrive late.",
-        ],
-        [
-          me,
-          "Proposal: bill on API calls and storage GB, invoice monthly in arrears, and keep 13 months of usage for disputes.",
-        ],
-        [priya, "Storage will confuse customers. API calls only for v1, we can add storage later."],
-        [
-          sam,
-          "Calls-only is about two weeks of work: extend retention, add a nightly rollup, and expose it to the invoicing job.",
-        ],
-        [
-          daniel,
-          "Draft copy for the usage tiers is in the pricing doc, with $0.40 per thousand calls.",
-        ],
-        [
-          me,
-          "Migration plan: dual-run the old and new billing for one cycle, compare invoices account by account, then cut over.",
-        ],
-        [
-          jordan,
-          "Dual-run is the right call. I'll get finance to sign off on the comparison report before cutover.",
-        ],
-        [priya, "Good. Let's target the March billing cycle for the cutover."],
-        [sam, "Backfill finished. The last 90 days of usage are in the warehouse."],
-        [
-          me,
-          "Draft usage invoices for our top 20 accounts are ready. Most are within 5% of today's bill, three go up more than 20%.",
-        ],
-        ["event", me, "changed status to Waiting"],
-        [
-          priya,
-          "I'll review the three big increases tomorrow morning and decide whether they get a grace period.",
-        ],
-      ]),
-    ),
-    thread(
-      "api-latency",
-      "Elevated API latency in us-east",
-      {
-        requester: jordan,
-        assignee: me,
-        status: "open",
-        priority: "urgent",
-        dueAtMs: todayAt(clock, 23),
-        effortHours: 2,
-        labelIds: ["incident"],
-      },
-      nowMs,
-      conversation(3 * HOUR, 12 * MINUTE, [
-        [
-          jordan,
-          "p95 latency in us-east jumped from 180ms to 1.4s about ten minutes ago. Can you take point?",
-        ],
-        [me, "On it. Opening the dashboards now."],
-        ["event", me, "changed status to In progress"],
-        [
-          sam,
-          "Database CPU is fine, but the connection pool is maxed out. Requests are queuing for a connection.",
-        ],
-        [
-          me,
-          "That lines up with deploy 4821 going out 15 minutes ago. It added a new query in the search path.",
-        ],
-        [
-          jordan,
-          "Support has tickets from two enterprise customers. How long until we know if it's the deploy?",
-        ],
-        [me, "Rolling back 4821 now. Rollback over fixing forward, we can investigate after."],
-        [jordan, "Agreed, roll back first."],
-        [sam, "Rollback is out. Pool usage is dropping and the queue is draining."],
-        [me, "p95 is back under 200ms. Watching it for another 20 minutes before calling it."],
-        [
-          sam,
-          "Found it: the new search query filters on account_id and created_at, and there's no index on that pair.",
-        ],
-        [
-          me,
-          "Root cause confirmed. We'll add the composite index and re-ship 4821 behind a flag tomorrow.",
-        ],
-        [sam, "Index is added in staging. Query time went from 900ms to 4ms."],
-        [jordan, "Nice work. Let's do the post-incident review Monday morning."],
-      ]),
-    ),
-
-    // Smaller asks further out, so the inbox has a real Later list.
-    thread(
-      "okr-draft",
-      "Review Q1 OKR draft",
-      {
-        requester: priya,
+        requester: elena,
         assignee: me,
         priority: "medium",
-        dueAtMs: nowMs + 4 * DAY,
+        dueAtMs: nowMs + DAY,
+        effortHours: 0.5,
+        labelIds: ["housekeeping"],
+      },
+      nowMs,
+      [
+        [
+          "message",
+          elena,
+          "Ravi starts Monday on the data team. Can you approve read-only access to the staging database for him?",
+          4 * HOUR,
+        ],
+      ],
+    ),
+    thread(
+      "offsite-agenda",
+      "Draft the offsite agenda",
+      {
+        requester: priya,
+        assignee: me,
+        priority: "low",
+        dueAtMs: nowMs + 12 * DAY,
         effortHours: 2,
         labelIds: ["planning", "q4-planning"],
       },
@@ -637,139 +354,88 @@ export function sampleThreads(
         [
           "message",
           priya,
-          "First draft of our Q1 OKRs is in the planning doc. Comments by Wednesday?",
+          "Can you sketch a two-day agenda for the January offsite? Half planning, half hack day, and leave room for the customer panel.",
           2 * DAY,
         ],
       ],
     ),
+    // Waiting on someone else for you.
     thread(
-      "interview-feedback",
-      "Interview feedback: senior backend candidate",
-      {
-        requester: jordan,
-        assignee: me,
-        priority: "medium",
-        dueAtMs: nowMs + 2 * DAY,
-        effortHours: 0.5,
-      },
+      "pricing-copy",
+      "Finalize Q4 pricing page copy",
+      { requester: me, assignee: daniel, priority: "high", dueAtMs: nowMs + 3 * DAY },
       nowMs,
       [
         [
           "message",
-          jordan,
-          "You did the system design round yesterday. Can you write up your feedback before the debrief?",
-          20 * HOUR,
+          me,
+          "Can we get the Q4 pricing page copy finalized before Thursday's launch review? Legal flagged the annual discount wording last time.",
+          3 * HOUR,
         ],
       ],
     ),
     thread(
-      "acme-residency",
-      "Reply to Acme's data residency question",
-      {
-        requester: maya,
-        assignee: me,
-        priority: "medium",
-        dueAtMs: nowMs + 3 * DAY,
-        effortHours: 1,
-        labelIds: ["compliance", "customer-escalation"],
-      },
+      "load-test",
+      "Load test the new sync endpoint",
+      { requester: me, assignee: sam, priority: "medium", dueAtMs: nowMs + 4 * DAY },
       nowMs,
       [
         [
           "message",
-          maya,
-          "Acme wants to know if we can keep their data in the EU. Can you draft an answer I can send?",
-          9 * HOUR,
-        ],
-      ],
-    ),
-    thread(
-      "dark-mode-contrast",
-      "Fix contrast on the dark-mode settings page",
-      {
-        requester: daniel,
-        assignee: me,
-        priority: "low",
-        dueAtMs: nowMs + 7 * DAY,
-        effortHours: 1,
-        labelIds: ["bug"],
-      },
-      nowMs,
-      [
-        [
-          "message",
-          daniel,
-          "The secondary labels on the settings page fail contrast in dark mode. Low priority, but worth fixing this sprint.",
+          me,
+          "Before we turn it on for everyone, can you load test the sync endpoint at 5x today's peak and share p99s?",
           DAY,
         ],
       ],
     ),
+    // Blocked on someone, until they answer.
     thread(
-      "soc2-vendors",
-      "Update vendor list for the SOC 2 audit",
+      "soc2-evidence",
+      "Collect SOC 2 evidence for access reviews",
       {
-        requester: sam,
+        requester: elena,
         assignee: me,
-        priority: "low",
-        dueAtMs: nowMs + 9 * DAY,
-        effortHours: 4,
+        status: "blocked",
+        priority: "high",
+        dueAtMs: nowMs + 7 * DAY,
         labelIds: ["compliance"],
       },
       nowMs,
       [
         [
           "message",
-          sam,
-          "Auditors want the vendor list updated with every service that touches customer data. Can you fill in the product side?",
+          elena,
+          "The auditors need quarterly access review evidence for every production system by next week.",
           2 * DAY,
         ],
+        ["event", me, "is blocked on [[thread:soc2-okta-export]]", DAY],
       ],
     ),
     thread(
-      "offsite-agenda",
-      "Plan the team offsite agenda",
-      {
-        requester: maya,
-        assignee: me,
-        priority: "low",
-        dueAtMs: nowMs + 12 * DAY,
-        effortHours: 8,
-        labelIds: ["housekeeping"],
-      },
-      nowMs,
-      [
-        [
-          "message",
-          maya,
-          "Offsite is in two weeks. Could you put together a draft agenda? Half planning, half something fun.",
-          3 * DAY,
-        ],
-      ],
-    ),
-
-    // Focus blocks: your own work, owned and scheduled by you.
-    thread(
-      "search-ranking",
-      "Implement thread search ranking",
-      { kind: "focus", requester: me, schedule: block(todayAt(clock, 12), 90) },
+      "soc2-okta-export",
+      "Export the Okta group membership report",
+      { requester: me, assignee: jordan, blocksId: "soc2-evidence", dueAtMs: nowMs + 3 * DAY },
       nowMs,
       [
         [
           "message",
           me,
-          "Rank search results by recent activity, then title match. Ship behind a flag.",
-          2 * HOUR,
+          "I need last quarter's Okta group membership export for the SOC 2 access review. Only admins can pull it.",
+          DAY,
         ],
       ],
     ),
-    thread("roadmap-draft", "Draft Q1 roadmap one-pager", { kind: "focus", requester: me }, nowMs, [
+    // Done.
+    thread(
+      "status-page",
+      "Update the status page after the outage",
+      { requester: jordan, assignee: me, status: "closed", priority: "high" },
+      nowMs,
       [
-        "message",
-        me,
-        "One page: three themes, what we're not doing, and the open questions for Priya.",
-        DAY,
+        ["message", jordan, "Can you post the incident summary on the status page?", 2 * DAY],
+        ["resolution", me, "Posted, with the timeline and what we changed.", 2 * DAY - 2 * HOUR],
       ],
-    ]),
+    ),
   ];
 }
 

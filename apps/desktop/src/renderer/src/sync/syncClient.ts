@@ -14,7 +14,6 @@ import {
   type Organization,
   type Person,
   type PersonChanges,
-  type Schedule,
   type SyncAction,
   type SyncMessage,
   type Thread,
@@ -39,7 +38,7 @@ export type Transport = {
   deltas(after: number): Promise<DeltasResponse>;
   // Throws RejectedError when the server refuses the batch, and any other error when it can't be reached.
   send(batch: TransactionBatch): Promise<TransactionBatchResponse>;
-  // Starts the workspace over: deletes every thread and schedule, keeping its people.
+  // Starts the workspace over: deletes every thread, keeping its people.
   reset(): Promise<unknown>;
   connect(handlers: {
     onOpen: () => void;
@@ -56,8 +55,8 @@ export type NewThread = {
   // Its description (`descriptionOf`), shown under the title; empty for none.
   description: string;
   assignee: Person | null;
+  // The people in a conversation, besides you.
   invitees: Person[];
-  schedule: Schedule | null;
   // The thread this one branches off from.
   branchedFromId?: string | null;
   // The thread this one blocks (`/blocked`).
@@ -199,7 +198,7 @@ export class SyncClient {
   }
 
   // Loads everything from the server, retrying until it answers.
-  // Wipes the workspace's threads and schedules (people and the org stay), drops anything still unsent, and loads
+  // Wipes the workspace's threads (people and the org stay), drops anything still unsent, and loads
   // the clean copy straight away rather than waiting for the socket to notice.
   async wipe(): Promise<void> {
     await this.#transport.reset();
@@ -400,7 +399,6 @@ export class SyncClient {
             title: draft.title.trim().slice(0, 200),
             assigneeId: draft.assignee?.id ?? null,
             attendeeIds: draft.invitees.map((person) => person.id),
-            schedule: draft.schedule,
             branchedFromId: draft.branchedFromId ?? null,
             blocksId: draft.blocksId ?? null,
             onBehalfOfId: draft.onBehalfOf?.id ?? null,

@@ -1,10 +1,8 @@
 import {
-  isDone,
   mentionsIn,
   plainThreadLinks,
   withoutLeadingMentions,
   type Person,
-  type Schedule,
   type Thread,
 } from "model";
 import { useEffect, useRef, useState } from "react";
@@ -16,24 +14,10 @@ const SHOW_MS = 6000;
 
 type Mention = { id: string; thread: Thread; author: Person; text: string; atMs: number };
 
-// Someone's meetings and focus blocks: when nothing should interrupt them.
-function quietTimes(threads: Thread[], personId: string): Schedule[] {
-  return threads.flatMap((thread) =>
-    !isDone(thread.status) &&
-    thread.schedule !== null &&
-    (thread.kind === "meeting"
-      ? thread.attendees.some((person) => person.id === personId)
-      : thread.kind === "focus" && (thread.assignee ?? thread.requester).id === personId)
-      ? [thread.schedule]
-      : [],
-  );
-}
-
 // Someone mentioning you, as a short toast in the top right: who, in which conversation, and what they said. Clicking
 // it opens the conversation; it goes away on its own after a few seconds. Mentions showing at the same time share
 // one toast. Only mentions that arrive while the app is
-// open show, never ones from before it loaded. While you're in a meeting or focus block they wait, and show when it
-// ends.
+// open show, never ones from before it loaded.
 export function MentionToasts({
   threads,
   me,
@@ -50,18 +34,14 @@ export function MentionToasts({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
 
-  // When a mention shows: as it arrives, or at the end of the meeting or focus block it arrived in.
-  const quiet = quietTimes(threads, me.id);
-  const releaseAt = (atMs: number): number =>
-    quiet.find((block) => block.startMs <= atMs && atMs < block.endMs)?.endMs ?? atMs;
   const toasts: Mention[] = threads
     .flatMap((thread) =>
       thread.entries.flatMap((entry) =>
         entry.kind === "message" &&
         entry.author.id !== me.id &&
         entry.createdAtMs >= sinceMs &&
-        releaseAt(entry.createdAtMs) <= nowMs &&
-        nowMs - releaseAt(entry.createdAtMs) < SHOW_MS &&
+        entry.createdAtMs <= nowMs &&
+        nowMs - entry.createdAtMs < SHOW_MS &&
         !dismissed.has(entry.id) &&
         mentionsIn(entry.text).includes(me.id)
           ? [

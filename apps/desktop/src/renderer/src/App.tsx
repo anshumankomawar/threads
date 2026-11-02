@@ -1,9 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import {
-  NewThreadPalette,
-  type NewThreadDraft,
-  type NewThreadKind,
-} from "./components/NewThreadPalette";
+import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
+import { BucketPalette } from "./components/BucketPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
 import {
@@ -11,15 +8,18 @@ import {
   SearchButton,
   Sidebar,
   SidebarToggle,
+  type BucketActions,
   type SidebarPage,
 } from "./components/Sidebar";
 import {
+  bucketsOf,
   isDone,
   labelSlug,
   plainThreadLinks,
   splitThreadLinks,
   UNREAD_THREAD_IDS,
   type Label,
+  type Bucket,
   type Person,
   type Thread,
   type ThreadChanges,
@@ -55,13 +55,12 @@ import { ArrowExpand01Icon, Cancel01Icon, Delete02Icon } from "@hugeicons/core-f
 import { Identicon } from "./components/Identicon";
 import { ProfileView } from "./components/ProfileView";
 import { LabelView } from "./components/LabelView";
-import { ListPage } from "./components/ListPage";
 import { NewGroupPalette } from "./components/NewGroupPalette";
 import { OrganizationPrompt } from "./components/OrganizationPrompt";
 import { groupNoticesFor, groupsFor, selectableLabels } from "./groups";
 import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
-import { buildDay, homeDayMs, upNext } from "./inbox";
+import { buildInbox } from "./inbox";
 import { conversationsFor, isUnread } from "./conversations";
 import { activityFor } from "./activity";
 
@@ -173,7 +172,7 @@ function useSyncClient(source: DataSource): SyncClient {
   return client;
 }
 
-// Wipes every thread and schedule in the current workspace, keeping people and the org: the first click asks, the
+// Wipes every thread in the current workspace, keeping people and the org: the first click asks, the
 // second (within a few seconds) wipes.
 function WipeButton({ onWipe }: { onWipe: () => Promise<void> }): React.JSX.Element {
   const [state, setState] = useState<"idle" | "confirm" | "wiping">("idle");
@@ -187,8 +186,8 @@ function WipeButton({ onWipe }: { onWipe: () => Promise<void> }): React.JSX.Elem
       type="button"
       className="topbar-button wipe-button"
       data-state={state}
-      aria-label="Wipe all threads and schedules"
-      title="Wipe all threads and schedules (people and the org stay)"
+      aria-label="Wipe all threads"
+      title="Wipe all threads (people and the org stay)"
       disabled={state === "wiping"}
       onClick={() => {
         if (state === "idle") return setState("confirm");
@@ -233,11 +232,7 @@ const App = observer(function App(): React.JSX.Element {
   const [lastSeen, setLastSeen] = useState<Record<string, number>>({});
   const nowMs = useNow(60_000);
   const activeThread = threads.find((thread) => thread.id === activeThreadId);
-  // The day the schedule shows, as days from today, or on a weekend from Monday (the next day anything is scheduled).
-  const [dayOffset, setDayOffset] = useState(0);
-  const shownDay = new Date(homeDayMs(nowMs));
-  shownDay.setDate(shownDay.getDate() + dayOffset);
-  const day = buildDay(threads, me, people, nowMs, shownDay.getTime());
+  const inbox = buildInbox(threads, me, people, nowMs);
   const seenAt = (thread: Thread): number =>
     lastSeen[thread.id] ?? (UNREAD_THREAD_IDS.includes(thread.id) ? 0 : client.readyAtMs);
   const unreadIds = new Set(
@@ -298,7 +293,7 @@ const App = observer(function App(): React.JSX.Element {
     openThread(null);
     setProfileOpen(true);
   };
-  // The lists behind the sidebar's counts (inbox, waiting, questions for you), likewise.
+  // Settings, likewise.
   const [page, setPage] = useState<SidebarPage | null>(null);
   const openPage = (next: SidebarPage): void => {
     openThread(null);
@@ -329,17 +324,58 @@ const App = observer(function App(): React.JSX.Element {
           createdAtMs: shownGroup.createdAtMs,
         });
 
-  // Starting a thread opens the new-thread panel on the chosen kind.
-  const [newThreadKind, setNewThreadKind] = useState<NewThreadKind | null>(null);
-  const openNew = (kind: NewThreadKind = "response"): void => {
+  // Starting a thread opens the new-thread panel.
+  const [newThreadOpen, setNewThreadOpen] = useState(false);
+  const openNew = (): void => {
     setSearchOpen(false);
-    setNewThreadKind(kind);
+    setNewThreadOpen(true);
   };
 
   // The panel's title and description make the thread. It appears at once and syncs in the background.
   const createThread = (draft: NewThreadDraft): void => {
-    setNewThreadKind(null);
-    openThread(client.createThread(draft, me));
+    setNewThreadOpen(false);
+    openThread(client.createThread({ kind: "issue", ...draft, invitees: [] }, me));
+  };
+
+  // Your buckets, edited from the inbox and saved to your profile as a whole list. A thread placed by hand stays put.
+  const buckets = bucketsOf(me);
+  const [editingBucket, setEditingBucket] = useState<Bucket | "new" | null>(null);
+  const saveBuckets = (next: Bucket[]): void => client.updatePerson({ buckets: next }, me);
+  const placeIn = (threadId: string, bucketId: string | null): void =>
+    client.updateThread(
+      threadId,
+      {
+        triage:
+          bucketId === null
+            ? null
+            : { personId: me.id, bucketId, reason: "", manual: true, stale: false },
+      },
+      me,
+    );
+  const bucketActions: BucketActions = {
+    onNew: () => setEditingBucket("new"),
+    onEdit: (bucket) => setEditingBucket(bucket),
+    onMove: (bucketId, by) => {
+      const from = buckets.findIndex((bucket) => bucket.id === bucketId);
+      const next = [...buckets];
+      const [moved] = next.splice(from, 1);
+      next.splice(Math.max(0, Math.min(next.length, from + by)), 0, moved);
+      saveBuckets(next);
+    },
+    onDelete: (bucketId) => saveBuckets(buckets.filter((bucket) => bucket.id !== bucketId)),
+    onPlace: (threadId, bucketId) => placeIn(threadId, bucketId),
+  };
+  const saveBucket = (name: string, description: string): void => {
+    const editing = editingBucket;
+    setEditingBucket(null);
+    if (editing === null) return;
+    saveBuckets(
+      editing === "new"
+        ? [...buckets, { id: crypto.randomUUID(), name, description }]
+        : buckets.map((bucket) =>
+            bucket.id === editing.id ? { ...bucket, name, description } : bucket,
+          ),
+    );
   };
 
   // ⌘K (or ⌘⇧F) opens search; ⌘N starts a thread, matching the shortcut search shows for it; ⌘U picks who to view as;
@@ -370,7 +406,7 @@ const App = observer(function App(): React.JSX.Element {
       } else if (key === "u") {
         event.preventDefault();
         setSearchOpen(false);
-        setNewThreadKind(null);
+        setNewThreadOpen(false);
         setViewAsOpen(true);
       }
     };
@@ -429,12 +465,11 @@ const App = observer(function App(): React.JSX.Element {
     );
     return client.createThread(
       {
-        kind: "response",
+        kind: "issue",
         title,
         description: "",
         assignee: others[0] ?? null,
         invitees: [],
-        schedule: null,
         branchedFromId: from.id,
         movedEntryIds,
       },
@@ -468,12 +503,11 @@ const App = observer(function App(): React.JSX.Element {
   ): void => {
     client.createThread(
       {
-        kind: "response",
+        kind: "issue",
         title,
         description,
         assignee: person,
         invitees: [],
-        schedule: null,
         branchedFromId: from.id,
         blocksId: from.id,
       },
@@ -502,25 +536,24 @@ const App = observer(function App(): React.JSX.Element {
     setSplitThreadId(threadId === activeThreadId ? null : threadId);
   };
 
-  // After you close a thread of yours, the next thing on your agenda opens, or, with nothing left, the start view says
-  // so. In the split view, just the split closes.
+  // After you close a thread of yours, the next one in your inbox opens: the one after it, else the first. In the
+  // split view, just the split closes.
   const moveOn = (thread: Thread): void => {
     if (thread.id === splitThreadId) {
       setSplitThreadId(null);
       return;
     }
-    // The next thing on your agenda, else anything of yours without time yet.
-    const next = [
-      ...upNext(threads, me, people, nowMs, 8).map((item) => item.thread),
-      ...day.unplaced.map((item) => item.thread),
-    ].find((candidate) => candidate.id !== thread.id && candidate.id !== splitThreadId);
+    const at = inbox.order.findIndex((candidate) => candidate.id === thread.id);
+    const next = [...inbox.order.slice(at + 1), ...inbox.order.slice(0, Math.max(0, at))].find(
+      (candidate) => candidate.id !== thread.id && candidate.id !== splitThreadId,
+    );
     openThread(next?.id ?? null);
   };
 
   // Every change is a transaction: applied here at once, then sent to the server, which records property changes
   // as activity lines that sync back. Each open thread (main or split) gets its own actions.
-  // The menu for a thread right-clicked in a list: open it here or beside the one you're in, close or reopen it,
-  // archive or unarchive it.
+  // The menu for a thread right-clicked in a list: open it here or beside the one you're in, move it to another of
+  // your buckets, close or reopen it, archive or unarchive it.
   const [threadMenu, setThreadMenu] = useState<{ x: number; y: number; thread: Thread } | null>(
     null,
   );
@@ -534,13 +567,20 @@ const App = observer(function App(): React.JSX.Element {
     if (activeThreadId !== null && activeThreadId !== thread.id)
       items.push({ label: "Open beside", run: () => setSplitThreadId(thread.id) });
     items.push("separator");
-    // Meetings have no status of their own to close; they can still be put away.
-    if (thread.kind !== "meeting")
-      items.push(
-        isDone(thread.status)
-          ? { label: "Reopen", run: () => setStatus("open") }
-          : { label: "Close", run: () => setStatus("closed") },
-      );
+    if (waitingOn(thread) === me.id && !isDone(thread.status)) {
+      const current = thread.triage?.personId === me.id ? thread.triage : null;
+      for (const bucket of buckets)
+        if (bucket.id !== current?.bucketId)
+          items.push({ label: `Move to ${bucket.name}`, run: () => placeIn(thread.id, bucket.id) });
+      if (current?.manual)
+        items.push({ label: "Sort it for me", run: () => placeIn(thread.id, null) });
+      items.push("separator");
+    }
+    items.push(
+      isDone(thread.status)
+        ? { label: "Reopen", run: () => setStatus("open") }
+        : { label: "Close", run: () => setStatus("closed") },
+    );
     items.push(
       thread.status === "archived"
         ? { label: "Unarchive", run: () => setStatus("open") }
@@ -587,7 +627,6 @@ const App = observer(function App(): React.JSX.Element {
             description: "",
             assignee: null,
             invitees: mentioned,
-            schedule: null,
             branchedFromId: thread.id,
           },
           me,
@@ -614,12 +653,11 @@ const App = observer(function App(): React.JSX.Element {
         const title = (asked.split("\n")[0] || `Follow up: ${thread.title}`).slice(0, 80);
         const taskId = client.createThread(
           {
-            kind: "response",
+            kind: "issue",
             title,
             description: question ? `${question.author.name}: “${asked}”` : "",
             assignee: me,
             invitees: [],
-            schedule: null,
             branchedFromId: thread.id,
           },
           me,
@@ -644,9 +682,9 @@ const App = observer(function App(): React.JSX.Element {
             : [...thread.labelIds, labelId],
         });
       },
+      onSetBucket: (bucketId) => placeIn(thread.id, bucketId),
       onSetAssignee: (person) => edit({ assigneeId: person.id }),
       onSetRequester: (person) => edit({ requesterId: person.id }),
-      onSetSchedule: (schedule) => edit({ schedule }),
       onBranch: (title) => createBranch(thread, title),
       onMoveMessages: (messages) => setMoving({ from: thread, messages }),
     };
@@ -698,7 +736,8 @@ const App = observer(function App(): React.JSX.Element {
           <DragRegionResync />
           {sidebarOpen && (
             <Sidebar
-              day={day}
+              inbox={inbox}
+              bucketActions={bucketActions}
               conversations={conversationsFor(threads, me)}
               openConversationId={openConversation ?? null}
               activity={activityFor(threads, me, seenAt, nowMs)}
@@ -731,7 +770,6 @@ const App = observer(function App(): React.JSX.Element {
               onToggleProfile={() => (profileOpen ? setProfileOpen(false) : openProfile())}
               onToggle={toggleSidebar}
               onSearch={() => setSearchOpen(true)}
-              onShiftDay={(days) => setDayOffset((offset) => (days === null ? 0 : offset + days))}
               page={page}
               onOpenPage={openPage}
             />
@@ -747,11 +785,9 @@ const App = observer(function App(): React.JSX.Element {
               <span className="topbar-title">
                 {profileOpen
                   ? me.name
-                  : page === "unplaced"
-                    ? "Not scheduled yet"
-                    : page === "settings"
-                      ? "Settings"
-                      : (shownLabel?.name ?? activeThread?.title)}
+                  : page === "settings"
+                    ? "Settings"
+                    : (shownLabel?.name ?? activeThread?.title)}
               </span>
               <span className="topbar-end">
                 <button
@@ -798,17 +834,9 @@ const App = observer(function App(): React.JSX.Element {
                 threads={threads}
                 nowMs={nowMs}
                 organizationName={organization?.name ?? ""}
-                onWorkday={(workday) => client.updatePerson({ workday }, me)}
                 onRenameOrganization={
                   organization === undefined ? null : () => setRenamingOrganization(true)
                 }
-              />
-            ) : page === "unplaced" ? (
-              <ListPage
-                title="Not scheduled yet"
-                items={day.unplaced}
-                unreadIds={unreadIds}
-                onOpenThread={openThread}
               />
             ) : page === "settings" ? (
               <SettingsView me={me} people={people} />
@@ -879,17 +907,22 @@ const App = observer(function App(): React.JSX.Element {
               onOpenLabel={openLabel}
             />
           )}
-          {newThreadKind !== null && (
+          {newThreadOpen && (
             <NewThreadPalette
-              initialKind={newThreadKind}
               people={people}
               me={me}
-              nowMs={nowMs}
               labels={selectableLabels(labels, groups)}
               // Made from a group or label's page, a thread starts with that label.
               initialLabels={shownLabel === undefined ? [] : [shownLabel]}
               onCreate={createThread}
-              onClose={() => setNewThreadKind(null)}
+              onClose={() => setNewThreadOpen(false)}
+            />
+          )}
+          {editingBucket !== null && (
+            <BucketPalette
+              bucket={editingBucket === "new" ? null : editingBucket}
+              onSave={saveBucket}
+              onClose={() => setEditingBucket(null)}
             />
           )}
           {newGroupOpen && (

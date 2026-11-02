@@ -6,15 +6,65 @@ export type Person = {
   role?: "sde" | "pm";
   // Who they report to, which places them in the org tree. Nobody's at the top.
   managerId?: string;
-  // Their own working day, set on their profile; without one, the org's (`workdayOf`).
-  workday?: Workday;
+  // How they sort their inbox, set by them; without any, `DEFAULT_BUCKETS` (`bucketsOf`).
+  buckets?: Bucket[];
 };
 
-// The hours someone's schedule is laid out in, and the half hours in them kept free for answering questions.
-export type Workday = {
-  startHour: number;
-  endHour: number;
-  catchUp: { hour: number; minute: number }[];
+// A group in someone's inbox: a name, and in plain words what belongs in it. The server's model reads the
+// description to sort each thread waiting on them into one bucket (`Thread.triage`).
+export type Bucket = { id: string; name: string; description: string };
+
+// Everyone's buckets until they make their own. The last one catches whatever fits nowhere else.
+export const DEFAULT_BUCKETS: Bucket[] = [
+  {
+    id: "customers",
+    name: "Customer requests",
+    description:
+      "Anything a customer or account asked for or reported: support questions, escalations, renewals, feature requests from a named customer.",
+  },
+  {
+    id: "bugs",
+    name: "Bugs & incidents",
+    description:
+      "Something is broken or degraded: production errors, outages, regressions, flaky tests, security issues.",
+  },
+  {
+    id: "coding",
+    name: "Coding",
+    description:
+      "Building or changing code that isn't a bug fix: features, refactors, migrations, performance work, tooling.",
+  },
+  {
+    id: "reviews",
+    name: "Reviews & approvals",
+    description:
+      "Someone is waiting on your sign-off or feedback: code reviews, design or doc reviews, plans, budgets, access requests.",
+  },
+  {
+    id: "other",
+    name: "Everything else",
+    description: "Planning, writing, admin and anything that doesn't clearly fit another bucket.",
+  },
+];
+
+export const MAX_BUCKETS = 12;
+
+export function bucketsOf(person: Person | undefined): Bucket[] {
+  return person?.buckets !== undefined && person.buckets.length > 0
+    ? person.buckets
+    : DEFAULT_BUCKETS;
+}
+
+// Which of their buckets a thread is in for whoever it's waiting on: chosen by the model with a short reason, or
+// placed by them by hand (`manual`), which sticks. It's for one person; once the thread is waiting on someone else, or
+// the bucket is gone, it's sorted again. When their buckets change or the thread is retitled, the model's choice goes
+// `stale`: the thread stays where it is until the model has looked again, so nothing jumps around in the meantime.
+export type Triage = {
+  personId: string;
+  bucketId: string;
+  reason: string;
+  manual: boolean;
+  stale: boolean;
 };
 
 // Archived is closed and put away: off every list, still there to search and open.
@@ -49,32 +99,17 @@ export type Entry =
       createdAtMs: number;
     }
   | { kind: "event"; id: string; actor: Person; text: string; createdAtMs: number }
-  | { kind: "resolution"; id: string; author: Person; text: string; createdAtMs: number }
-  // A meeting's video call; who's on it and when come from the thread.
-  | { kind: "call"; id: string; link: string; createdAtMs: number }
-  // Notes summarizing a meeting after the call.
-  | {
-      kind: "notes";
-      id: string;
-      summary: string;
-      decisions: string[];
-      actionItems: { text: string; owner: Person }[];
-      createdAtMs: number;
-    };
+  | { kind: "resolution"; id: string; author: Person; text: string; createdAtMs: number };
 
-// Everything is a thread. A response is someone's ask of you; a meeting is a scheduled thread with attendees; a focus
-// block is your own work; a conversation is a talk with the people you @mention, branched off the thread it started in,
-// taking no time on anyone's schedule. They share the same document, replies and resolution.
-export type ThreadKind = "response" | "meeting" | "focus" | "conversation";
+// Everything is a thread. An issue is an ask of someone, in their inbox until it's closed; a conversation is a talk
+// with the people you @mention, branched off the thread it started in, and in nobody's inbox. They share the same
+// document, replies and resolution.
+export type ThreadKind = "issue" | "conversation";
 
 export const KIND_LABELS: Record<ThreadKind, string> = {
-  response: "Response",
-  meeting: "Meeting",
-  focus: "Focus block",
+  issue: "Thread",
   conversation: "Conversation",
 };
-
-export type Schedule = { startMs: number; endMs: number };
 
 export type Thread = {
   id: string;
@@ -88,19 +123,13 @@ export type Thread = {
   status: Status;
   priority: Priority;
   dueAtMs: number | null;
-  // How much work it is, in hours; sets the length of its slot and feeds its score. Null until someone estimates it.
+  // How much work it is, in hours; quick work gets a little ahead in its bucket. Null until someone estimates it.
   effortHours: number | null;
   // Ids of its labels. A group's label puts it in that group; the most important of `SEEDED_LABELS` feeds its score.
   labelIds: string[];
-  // When it happens or when you've planned to work on it; for a response, its next block.
-  schedule: Schedule | null;
-  // Every block of time it holds on the schedule of whoever it's waiting on, including ones already over. A response
-  // can have any number, each as long as the free time allows. Meetings and focus blocks have just their `schedule`.
-  blocks: Schedule[];
-  // Time the assignee already spent in blocks before the thread last changed hands.
-  workedMinutes: number;
-  // Who's in it: a meeting's attendees, or the people in a conversation (whoever started it and everyone mentioned);
-  // empty for other kinds.
+  // Which inbox bucket it's in for whoever it's waiting on; null until it's sorted.
+  triage: Triage | null;
+  // The people in a conversation (whoever started it and everyone mentioned); empty for issues.
   attendees: Person[];
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
@@ -111,29 +140,6 @@ export type Thread = {
   updatedAtMs: number;
   entries: Entry[];
 };
-
-// The organization's working hours. Every schedule is laid out in them, on weekdays.
-export const WORKING_HOURS = { timeZone: "America/Los_Angeles", startHour: 9, endHour: 17 };
-
-// The two half hours a working day keeps free for answering questions; the scheduler never fills them.
-export const CATCH_UP_TIMES = [
-  { hour: 12, minute: 0 },
-  { hour: 16, minute: 30 },
-];
-
-// Someone's working day: their own, or the org's.
-export function workdayOf(person: Person | undefined): Workday {
-  return (
-    person?.workday ?? {
-      startHour: WORKING_HOURS.startHour,
-      endHour: WORKING_HOURS.endHour,
-      catchUp: CATCH_UP_TIMES,
-    }
-  );
-}
-
-// Every meeting's video call link, until meetings get real ones.
-export const DUMMY_ZOOM_LINK = "zoom.us/j/0000000000";
 
 type Message = Extract<Entry, { kind: "message" }>;
 
@@ -151,16 +157,16 @@ export function lastMessage(thread: Thread): Message | undefined {
 }
 
 // Whose turn it is, which decides whose inbox the thread is in: the assignee's, or whoever asked while nobody is
-// assigned. Messages never move it, so a thread is a worklog; it leaves the inbox when it's closed. Meetings aren't
-// turns.
+// assigned. Messages never move it, so a thread is a worklog; it leaves the inbox when it's closed. Conversations
+// aren't in anyone's inbox.
 export function waitingOn(thread: Thread): string | null {
-  if (thread.kind === "meeting") return null;
+  if (thread.kind === "conversation") return null;
   return thread.assignee?.id ?? thread.requester.id;
 }
 
-// The other side of a response from someone: whoever asked if it's the assignee, and the assignee otherwise.
+// The other side of an issue from someone: whoever asked if it's the assignee, and the assignee otherwise.
 export function otherSide(thread: Thread, personId: string): Person | null {
-  if (thread.kind !== "response" || thread.assignee === null) return null;
+  if (thread.kind !== "issue" || thread.assignee === null) return null;
   const other = personId === thread.assignee.id ? thread.requester : thread.assignee;
   return other.id === personId ? null : other;
 }

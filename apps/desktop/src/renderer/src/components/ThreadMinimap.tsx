@@ -50,15 +50,6 @@ function toMarker(
         text: plainThreadLinks(entry.text, titleOf, nameOf),
         person: entry.author,
       };
-    case "call":
-      return {
-        ...base,
-        label: "Video call",
-        text: `Video call · ${entry.link}`,
-        person: null,
-      };
-    case "notes":
-      return { ...base, label: "Meeting notes", text: entry.summary, person: null };
   }
 }
 

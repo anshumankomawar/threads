@@ -293,7 +293,7 @@ export function LabelView({
         <ul className="list-page-items">
           {shown.map((thread) => {
             const meta = [
-              thread.assignee?.name ?? (thread.kind === "response" ? "Unassigned" : null),
+              thread.assignee?.name ?? (thread.kind === "issue" ? "Unassigned" : null),
               thread.status === "open" ? null : STATUS_LABELS[thread.status],
             ]
               .filter((part) => part !== null)

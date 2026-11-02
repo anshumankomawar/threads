@@ -180,14 +180,6 @@ body * {
   cursor: pointer;
 }
 
-.sidebar-empty {
-  display: flex;
-  align-items: center;
-  height: 28px;
-  padding-left: 30px;
-  color: var(--text-tertiary);
-}
-
 .thread-list {
   display: flex;
   flex-direction: column;
@@ -470,7 +462,6 @@ body * {
   margin-top: 10.5px;
 }
 
-.thread-kind-marker,
 .thread-resolution-marker {
   width: 20px;
   margin-inline: 1px;
@@ -598,10 +589,6 @@ body * {
   font-weight: 500;
 }
 
-.chip-action {
-  margin-left: 4px;
-}
-
 .chip-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -687,16 +674,6 @@ body * {
   color: var(--status-closed);
 }
 
-/* Inbox: Now / Today / Later groups, labels aligned with the row text. */
-.inbox-group-label {
-  display: flex;
-  align-items: center;
-  height: 24px;
-  padding-left: 31px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
 /* Unread: a dot after the title (the indent shows the kind), plus a medium-weight title. */
 .unread-dot {
   flex-shrink: 0;
@@ -709,35 +686,6 @@ body * {
 
 .sidebar-row:has(.unread-dot) .sidebar-row-label {
   font-weight: 500;
-}
-
-/* Today's date on its own line under the Schedule header, clear of the header's hover fill. */
-.schedule-date {
-  display: flex;
-  align-items: center;
-  height: 18px;
-  margin: 2px 0 4px;
-  /* The day arrows' icons sit 2px inside their buttons. */
-  padding: 0 calc(var(--sidebar-inset) - 2px) 0 var(--sidebar-inset);
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.schedule-date-label {
-  padding: 0;
-  border: none;
-  color: inherit;
-  font: inherit;
-  background: none;
-  cursor: pointer;
-}
-
-.schedule-date-label:disabled {
-  cursor: default;
-}
-
-.schedule-date-label:not(:disabled):hover {
-  color: var(--text-primary);
 }
 
 /* The sidebar's tabs, under the top bar, as in Notion: the chosen one opens out to show its name in a soft pill, the
@@ -815,37 +763,6 @@ body * {
   margin-left: auto;
 }
 
-/* Day arrows: quiet until the schedule is hovered. */
-.schedule-date-nav {
-  display: flex;
-  margin-left: auto;
-  opacity: 0;
-}
-
-.sidebar-content:hover .schedule-date-nav,
-.schedule-date-nav:focus-within {
-  opacity: 1;
-}
-
-.schedule-date-nav .icon-button {
-  width: 18px;
-  height: 18px;
-  color: var(--text-tertiary);
-}
-
-.schedule-date-nav .icon-button:hover {
-  color: var(--text-primary);
-}
-
-/* Meeting header: a calendar marker in place of an avatar, attendees under the title. */
-.thread-kind-marker {
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  color: var(--text-secondary);
-  background-color: var(--bg-tertiary);
-}
-
 .thread-attendees {
   display: flex;
   flex-wrap: wrap;
@@ -858,175 +775,6 @@ body * {
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 12px;
-}
-
-/* Pretend video call: participant tiles and a join bar, in the palette's surfaces. */
-/* Sized to its tiles rather than the text column. */
-.call-card {
-  width: fit-content;
-  max-width: 100%;
-  margin-top: 8px;
-  overflow: hidden;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
-  background-color: var(--panel);
-}
-
-.call-tiles {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
-}
-
-.call-tile {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 112px;
-  height: 63px;
-  border-radius: 5px;
-  background-color: color-mix(in srgb, var(--base) 4%, #0e0e0e);
-}
-
-.call-tile .identicon {
-  border-radius: 50%;
-}
-
-.call-tile-name {
-  position: absolute;
-  right: 4px;
-  bottom: 4px;
-  left: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  width: fit-content;
-  max-width: calc(100% - 8px);
-  padding: 0 4px;
-  overflow: hidden;
-  border-radius: 3px;
-  color: var(--text-primary);
-  font-size: 10px;
-  line-height: 15px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  background-color: rgb(0 0 0 / 55%);
-}
-
-.call-tile-name > svg {
-  color: var(--urgent);
-}
-
-.call-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 4px 4px 4px 8px;
-  border-top: 1px solid var(--panel-border);
-}
-
-.call-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.call-join {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 6px;
-  height: 22px;
-  padding: 0 8px;
-  border: none;
-  border-radius: 4px;
-  color: #0f141a;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  background-color: var(--accent);
-  cursor: pointer;
-}
-
-.call-join:disabled {
-  color: var(--text-tertiary);
-  background-color: var(--bg-tertiary);
-  cursor: default;
-}
-
-.call-card[data-ended="true"] .call-tiles {
-  opacity: 0.55;
-}
-
-/* Meeting notes: summary, decisions and action items. */
-.thread-notes-marker {
-  color: var(--accent);
-  background-color: var(--accent-fill);
-}
-
-.notes-section {
-  margin-top: 10px;
-}
-
-.notes-label {
-  margin-bottom: 2px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  line-height: 18px;
-}
-
-.notes-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 20px;
-  user-select: text;
-}
-
-.notes-actions {
-  padding-left: 0;
-  list-style: none;
-}
-
-.notes-actions > li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.notes-check {
-  flex-shrink: 0;
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid var(--icon-tertiary);
-  border-radius: 50%;
-}
-
-.notes-action-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.notes-owner {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-tertiary);
   font-size: 12px;
 }
 
@@ -1106,27 +854,6 @@ body * {
 
 .details-value [data-overdue="true"] {
   color: var(--urgent);
-}
-
-.details-person {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--text-primary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.details-people {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-}
-
-.details-time,
-.details-stats {
-  color: var(--text-tertiary);
-  font-size: 12px;
 }
 
 /* The branch graph: threads as status dots joined by lines, like git log --graph; the last child turns the corner. */
@@ -1212,7 +939,7 @@ body * {
 }
 
 /* Latest update and list items jump to their place in the thread. */
-.details-latest,
+
 .details-item {
   display: flex;
   flex-direction: column;
@@ -1232,23 +959,8 @@ body * {
   box-sizing: content-box;
 }
 
-.details-latest:hover,
 .details-item:hover {
   background-color: var(--bg-quaternary);
-}
-
-.details-latest-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.details-latest-text {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--text-secondary);
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
 }
 
 .details-list {
@@ -1257,32 +969,6 @@ body * {
   margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.details-actions > li {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 4px 0;
-  font-size: 12px;
-  line-height: 17px;
-}
-
-.details-actions .notes-check {
-  margin-top: 2.5px;
-}
-
-.details-action-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  color: var(--text-primary);
-}
-
-.details-action-text .details-person {
-  color: var(--text-tertiary);
-  font-size: 11px;
 }
 
 /* Thread minimap: one tick per entry, right-aligned and centered on the thread. */
@@ -1427,29 +1113,6 @@ body * {
   font-size: 12px;
 }
 
-/* Invite step: a checkbox per person, the running count, and a continue row under the list. */
-.palette-check {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border: 1.5px solid var(--icon-tertiary);
-  border-radius: 4px;
-}
-
-.palette-check[data-checked="true"] {
-  border-color: var(--accent);
-  color: #0f141a;
-  background-color: var(--accent);
-}
-
-.palette-summary-count {
-  margin-left: auto;
-  color: var(--text-tertiary);
-}
-
 /* Who's asking, beside the assign step's summary: you, unless you're making it on someone's behalf. */
 .palette-asker {
   display: inline-flex;
@@ -1467,11 +1130,6 @@ body * {
 
 .palette-asker:hover {
   color: var(--text-primary);
-}
-
-.palette-continue {
-  margin-top: 4px;
-  color: var(--text-secondary);
 }
 
 /* Shown in place of the app while it loads, or if the API isn't running. */
@@ -1576,80 +1234,6 @@ body * {
   gap: 6px;
   align-items: center;
   color: var(--text-primary);
-}
-
-.profile-hint {
-  max-width: 520px;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  margin: 6px 0 0 140px;
-  line-height: 18px;
-}
-
-.profile-select {
-  height: 26px;
-  padding: 0 6px;
-  border: 1px solid var(--stroke-tertiary);
-  border-radius: 5px;
-  color: var(--text-primary);
-  font: inherit;
-  /* After the shorthand, which would reset it: digits the same width, so times line up. */
-  font-variant-numeric: tabular-nums;
-  background-color: var(--bg-quaternary);
-  outline: none;
-  cursor: pointer;
-}
-
-.profile-select:hover,
-.profile-select:focus-visible {
-  border-color: var(--stroke-focused);
-}
-
-.profile-select-add {
-  color: var(--text-secondary);
-}
-
-.profile-chip {
-  display: inline-flex;
-  gap: 2px;
-  align-items: center;
-  height: 26px;
-  padding: 0 4px 0 9px;
-  border-radius: 13px;
-  background-color: var(--bg-tertiary);
-}
-
-.profile-chip-remove {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  color: var(--text-tertiary);
-  font-size: 13px;
-  background: none;
-  cursor: pointer;
-}
-
-.profile-chip-remove:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-tertiary);
-}
-
-.profile-link {
-  padding: 0;
-  border: none;
-  color: var(--accent);
-  font: inherit;
-  background: none;
-  cursor: pointer;
-}
-
-.profile-link:hover {
-  text-decoration: underline;
 }
 
 .profile-heading {
@@ -1812,7 +1396,6 @@ body * {
 
 /* The main content zooms on its own (⌘+, ⌘-, ⌘0); the sidebar, top bar and palettes keep their size. */
 .thread-doc,
-.list-page,
 .org {
   zoom: var(--content-zoom, 1);
 }
@@ -1876,13 +1459,6 @@ body * {
   color: var(--icon-tertiary);
 }
 
-.thread-byline-person {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--text-primary);
-}
-
 .thread-byline-dot {
   color: var(--text-tertiary);
 }
@@ -1897,7 +1473,7 @@ body * {
   margin-top: 4px;
 }
 
-/* A meeting's or conversation's people sit inline in the who-and-when line. */
+/* A conversation's people sit inline in the who-and-when line. */
 .thread-byline .thread-attendees {
   margin-top: 0;
 }
@@ -2282,18 +1858,6 @@ body * {
   background-color: var(--panel-border);
 }
 
-.menu-input {
-  height: 27.5px;
-  margin: 0 4px 4px;
-  padding: 0 8px 1px 6px;
-  border: none;
-  border-bottom: 1px solid var(--panel-border);
-  color: var(--text-primary);
-  font: inherit;
-  background: none;
-  outline: none;
-}
-
 /* A link to the thread you're in: plain text, nowhere to go. */
 .thread-link-self {
   color: var(--text-secondary);
@@ -2408,202 +1972,6 @@ body * {
   color: var(--text-primary);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-
-/* The agenda: each block as a row with its start time, free time between blocks as a quiet line, finished blocks
-   folded into "N done". */
-.agenda {
-  margin-top: 2px;
-}
-
-.agenda-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  height: 28px;
-  margin: 0 var(--row-gutter);
-  padding: 0 calc(var(--sidebar-inset) - var(--row-gutter)) 0 calc(10px - var(--row-gutter));
-  border-radius: var(--row-radius);
-  color: var(--text-primary);
-  cursor: pointer;
-  outline: none;
-}
-
-.agenda-row:hover:not([data-active="true"]) {
-  background-color: var(--bg-quaternary);
-}
-
-.agenda-row[data-active="true"] {
-  background-color: var(--bg-tertiary);
-}
-
-/* What's over is dimmed, unless it's the one you have open. */
-.agenda-row[data-past="true"]:not([data-active="true"]) {
-  opacity: 0.5;
-}
-
-.agenda-time {
-  flex-shrink: 0;
-  width: 56px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-/* The icon sits a little closer to the title than to the time: 10px after the time, 6px before the title. */
-.agenda-icon {
-  display: flex;
-  flex-shrink: 0;
-  margin: 0 -2px 0 2px;
-  color: var(--icon-tertiary);
-}
-
-/* Now: a narrow gap between rows with the time and a 1px blue line from the icon column to the edge. */
-.agenda-now {
-  display: flex;
-  /* The rows' gap plus the icon's 2px margin, so the line starts where the icons do. */
-  gap: 10px;
-  align-items: center;
-  height: 14px;
-  /* Lined up with the rows: the time in their time column, the rule from their icon column to the edge. */
-  padding: 0 var(--sidebar-inset) 0 10px;
-  list-style: none;
-}
-
-.agenda-now-time {
-  flex-shrink: 0;
-  width: 56px;
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.agenda-now-rule {
-  flex: 1;
-  height: 1px;
-  background-color: var(--accent);
-}
-
-.agenda-free {
-  display: flex;
-  align-items: center;
-  height: 22px;
-  padding-left: 74px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  list-style: none;
-}
-
-/* Tracking and Not scheduled pages, laid out like Organization. */
-.list-page {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
-  padding: 52px 15px 48px 52px;
-  overflow-y: auto;
-  zoom: var(--content-zoom, 1);
-}
-
-.list-page-title {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 28px;
-  letter-spacing: -0.2px;
-}
-
-.list-page-summary {
-  margin: 2px 0 0;
-  color: var(--text-tertiary);
-}
-
-.list-page-items {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: 640px;
-  margin: 20px 0 0 -8px;
-  padding: 0;
-  list-style: none;
-}
-
-.list-page-item {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  width: 100%;
-  padding: 8px;
-  border: none;
-  border-radius: 6px;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  background: none;
-  cursor: pointer;
-}
-
-.list-page-item:hover {
-  background-color: var(--bg-quaternary);
-}
-
-.list-page-icon {
-  display: flex;
-  margin-top: 3px;
-  color: var(--icon-tertiary);
-}
-
-.list-page-body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.list-page-name {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--text-primary);
-}
-
-.list-page-reason {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.list-page-meta {
-  flex-shrink: 0;
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.list-page-meta[data-overdue="true"] {
-  color: var(--urgent);
-}
-
-/* Yours without time yet: one quiet line under the agenda. */
-.agenda-unplaced {
-  display: block;
-  margin: 4px 0 0;
-  padding: 0 0 0 84px;
-  border: none;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: 11px;
-  text-align: left;
-  background: none;
-  cursor: pointer;
-}
-
-.agenda-unplaced:hover,
-.agenda-unplaced[data-active="true"] {
-  color: var(--text-primary);
 }
 
 /* The sidebar's bottom row, as in Delta: a divider above, as tall as the top bar, your avatar and name, then a thin
@@ -3208,4 +2576,344 @@ body * {
   color: inherit;
   background: transparent;
   cursor: pointer;
+}
+/* The inbox: your buckets in order, each a quiet header (name and count, which folds it) over its threads. A bucket
+   lights up while a thread is dragged over it. */
+.inbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 12px;
+}
+
+.bucket {
+  margin: 0 var(--row-gutter);
+  border-radius: var(--row-radius);
+  transition: background-color 120ms ease;
+}
+
+.bucket[data-dropping="true"] {
+  background-color: var(--bg-quaternary);
+}
+
+.bucket-header {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 calc(var(--sidebar-inset) - var(--row-gutter) - 4px) 0 0;
+}
+
+.bucket-toggle {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  padding: 0 0 0 calc(var(--sidebar-inset) - var(--row-gutter) + 3px);
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.bucket-toggle:hover {
+  color: var(--text-secondary);
+}
+
+.bucket-chevron {
+  flex-shrink: 0;
+  transition: transform 120ms ease;
+}
+
+.bucket-toggle[aria-expanded="true"] .bucket-chevron {
+  transform: rotate(90deg);
+}
+
+/* Sorting isn't a bucket you fold: no chevron, its name where the others' are. */
+.bucket-sorting {
+  padding-left: calc(var(--sidebar-inset) - var(--row-gutter) + 19px);
+  cursor: default;
+}
+
+.bucket-sorting:hover {
+  color: var(--text-tertiary);
+}
+
+.bucket-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bucket-count {
+  color: var(--text-tertiary);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.bucket[data-empty="true"] .bucket-toggle {
+  opacity: 0.6;
+}
+
+/* Bucket options: quiet until its header is hovered. */
+.bucket-more {
+  width: 20px;
+  height: 20px;
+  color: var(--text-tertiary);
+  opacity: 0;
+}
+
+.bucket-header:hover .bucket-more,
+.bucket-more:focus-visible {
+  opacity: 1;
+}
+
+.bucket-more:hover {
+  color: var(--text-primary);
+}
+
+/* One thread: who it's from beside its title and due date, and under them why it's here. */
+.inbox-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 5px calc(var(--sidebar-inset) - var(--row-gutter));
+  border-radius: var(--row-radius);
+  cursor: pointer;
+  outline: none;
+}
+
+.inbox-row:hover:not([data-active="true"]) {
+  background-color: var(--bg-quaternary);
+}
+
+.inbox-row[data-active="true"] {
+  background-color: var(--bg-tertiary);
+}
+
+.inbox-row > .identicon {
+  flex-shrink: 0;
+}
+
+.inbox-row-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.inbox-row-top {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.inbox-row-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.inbox-row-title[data-overflowing] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+.inbox-row[data-unread="true"] .inbox-row-title {
+  font-weight: 500;
+}
+
+.inbox-row-due {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.inbox-row-due[data-overdue="true"] {
+  color: var(--urgent);
+}
+
+.inbox-row-why {
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Blocked threads wait at the bottom of their bucket, dimmed: nothing to do on them yet. */
+.inbox-row[data-blocked="true"]:not([data-active="true"]) {
+  opacity: 0.6;
+}
+
+/* A new bucket, as one quiet line under the last. */
+.bucket-new {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  align-self: flex-start;
+  margin: 2px 0 0;
+  padding: 2px var(--sidebar-inset);
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 11px;
+  background: none;
+  cursor: pointer;
+}
+
+.bucket-new:hover {
+  color: var(--text-primary);
+}
+
+.details-note {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+/* Invite step: a checkbox per person, the running count, and a continue row under the list. */
+.palette-check {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--icon-tertiary);
+  border-radius: 4px;
+}
+
+.palette-check[data-checked="true"] {
+  border-color: var(--accent);
+  color: #0f141a;
+  background-color: var(--accent);
+}
+
+.palette-summary-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+.palette-continue {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+/* The main content zooms on its own (⌘+, ⌘-, ⌘0); the sidebar, top bar and palettes keep their size. */
+.thread-doc,
+.list-page,
+.org {
+  zoom: var(--content-zoom, 1);
+}
+
+.menu-input {
+  height: 27.5px;
+  margin: 0 4px 4px;
+  padding: 0 8px 1px 6px;
+  border: none;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  font: inherit;
+  background: none;
+  outline: none;
+}
+
+/* Tracking and Not scheduled pages, laid out like Organization. */
+.list-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 52px 15px 48px 52px;
+  overflow-y: auto;
+  zoom: var(--content-zoom, 1);
+}
+
+.list-page-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.2px;
+}
+
+.list-page-summary {
+  margin: 2px 0 0;
+  color: var(--text-tertiary);
+}
+
+.list-page-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 640px;
+  margin: 20px 0 0 -8px;
+  padding: 0;
+  list-style: none;
+}
+
+.list-page-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+}
+
+.list-page-item:hover {
+  background-color: var(--bg-quaternary);
+}
+
+.list-page-icon {
+  display: flex;
+  margin-top: 3px;
+  color: var(--icon-tertiary);
+}
+
+.list-page-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.list-page-name {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-primary);
+}
+
+.list-page-reason {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.list-page-meta {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.list-page-meta[data-overdue="true"] {
+  color: var(--urgent);
 }

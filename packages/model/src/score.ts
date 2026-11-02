@@ -15,7 +15,7 @@ export const SEEDED_LABELS = [
   { id: "housekeeping", name: "Housekeeping", priority: 10 },
 ] as const;
 
-// How much work a thread is, in hours, in half-hour steps. It can run as long as it needs to.
+// How much work a thread is, in hours, in half-hour steps.
 export const EFFORT_OPTIONS = [0.5, 1, 2, 4, 8, 16, 24, 40];
 export const MIN_EFFORT_HOURS = 0.5;
 // At this much work and beyond, a thread gets no credit for being quick.
@@ -66,8 +66,9 @@ export type ScoreFields = {
   labelIds?: string[];
 };
 
-// How important a thread is, from 1 to 100. `askerLevel` is `levelPositions` of whoever is waiting on the answer.
-// Only the most important label counts, so piling labels on doesn't raise it. Urgent threads never fall below the floor.
+// How important a thread is, from 1 to 100, which orders it within its inbox bucket. `askerLevel` is
+// `levelPositions` of whoever is waiting on the answer. Only the most important label counts, so piling labels on
+// doesn't raise it. Urgent threads never fall below the floor.
 export function threadScore(fields: ScoreFields, askerLevel: number, nowMs: number): number {
   const effortHours = fields.effortHours ?? null;
   const urgency = dueUrgency(fields.dueAtMs, effortHours, nowMs);

@@ -10,14 +10,13 @@ import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 
 // What one notification says happened: the reply itself ("Arjun: Pushed a fix"), marked when it answers your
-// question; the status line ("Arjun changed status to Closed"); or, for a new thread, who started it or invited you
-// (its title is underneath).
+// question; the status line ("Arjun changed status to Closed"); or, for a new thread, who started it (its title is
+// underneath).
 function notificationText(item: ActivityItem, me: Person, plain: (text: string) => string): string {
   const name = item.actor.name.split(" ")[0];
   const { entry } = item;
   if (entry.kind === "event") return `${name} ${plain(entry.text)}`;
   if (item.summary === "opened") {
-    if (item.thread.kind === "meeting") return `${name} invited you`;
     return item.thread.assignee?.id === me.id ? `${name} asked you` : `${name} started this`;
   }
   const text = entry.kind === "message" || entry.kind === "resolution" ? plain(entry.text) : "";

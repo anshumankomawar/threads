@@ -1,17 +1,8 @@
-import { formatClock, formatDue, formatRelativeTime } from "../format";
-import { plainThreadLinks, STATUS_LABELS, type Person, type Thread } from "model";
+import { formatDue, formatRelativeTime } from "../format";
+import { bucketsOf, plainThreadLinks, STATUS_LABELS, type Person, type Thread } from "model";
+import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
-import { Identicon } from "./Identicon";
 import { useResizablePanel } from "./useResizablePanel";
-
-function PersonChip({ person }: { person: Person }): React.JSX.Element {
-  return (
-    <span className="details-person">
-      <Identicon seed={person.id} size={14} />
-      {person.name}
-    </span>
-  );
-}
 
 function Row({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
   return (
@@ -57,6 +48,7 @@ export function DetailsPanel({
   onOpenLabel: (id: string) => void;
 }): React.JSX.Element {
   const { threads, titleOf, people, labels } = useThreadLinks();
+  const me = useMe();
   const { panelRef, width, handle } = useResizablePanel({
     storageKey: "details-width",
     defaultWidth: 280,
@@ -74,23 +66,14 @@ export function DetailsPanel({
     );
   }
 
-  const notes = thread.entries.flatMap((entry) => (entry.kind === "notes" ? [entry] : []));
-  const noteDecisions = notes.flatMap((entry) =>
-    entry.decisions.map((text) => ({ text, entryId: entry.id })),
-  );
-  const actionItems = notes.flatMap((entry) =>
-    entry.actionItems.map((item) => ({ ...item, entryId: entry.id })),
-  );
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
   const onLabels = labels.filter((label) => thread.labelIds.includes(label.id));
   const history = thread.entries.flatMap((entry) => (entry.kind === "event" ? [entry] : []));
   const nameOf = (personId: string): string | undefined =>
     people.find((person) => person.id === personId)?.name;
-  // A meeting keeps its time once it's over; a response only lists what's still to come.
-  const upcoming =
-    thread.kind === "response"
-      ? thread.blocks.filter((block) => block.endMs > nowMs)
-      : thread.blocks;
+  // Which of your buckets it's in, and why, while it's waiting on you.
+  const triage = thread.triage?.personId === me.id ? thread.triage : null;
+  const bucket = bucketsOf(me).find((candidate) => candidate.id === triage?.bucketId);
 
   return (
     <aside ref={panelRef} className="details" style={{ width }}>
@@ -98,27 +81,23 @@ export function DetailsPanel({
       <div className="details-content">
         {/* Who and what are in the thread's header; this is when and how far along. */}
         <Section title="Overview">
-          {thread.kind !== "meeting" && (
-            <Row label="Status">
-              <span className="status-dot" data-status={thread.status} aria-hidden />
-              {STATUS_LABELS[thread.status]}
-            </Row>
-          )}
-          {thread.kind === "response" && due !== null && (
+          <Row label="Status">
+            <span className="status-dot" data-status={thread.status} aria-hidden />
+            {STATUS_LABELS[thread.status]}
+          </Row>
+          {due !== null && (
             <Row label="Due">
               <span data-overdue={due.overdue}>{due.label}</span>
             </Row>
           )}
-          <Row label={thread.kind === "response" ? "Scheduled" : "When"}>
-            {upcoming.length === 0
-              ? "Not scheduled"
-              : upcoming.map((block) => (
-                  <div key={block.startMs}>
-                    {new Date(block.startMs).toLocaleDateString(undefined, { weekday: "short" })}{" "}
-                    {formatClock(block.startMs)}–{formatClock(block.endMs)}
-                  </div>
-                ))}
-          </Row>
+          {bucket !== undefined && triage !== null && (
+            <Row label="Bucket">
+              <div>{bucket.name}</div>
+              <div className="details-note">
+                {triage.manual ? "Placed by you" : triage.reason || "Sorted by the model"}
+              </div>
+            </Row>
+          )}
           {onLabels.length > 0 && (
             <Row label="Labels">
               {onLabels.map((label) => (
@@ -137,40 +116,6 @@ export function DetailsPanel({
         </Section>
 
         <ThreadGraph current={thread} threads={threads} onOpenThread={onOpenThread} />
-
-        {noteDecisions.length > 0 && (
-          <Section title={`Decisions · ${noteDecisions.length}`}>
-            <ul className="details-list">
-              {noteDecisions.map((decision) => (
-                <li key={decision.text}>
-                  <button
-                    type="button"
-                    className="details-item"
-                    onClick={() => reveal(decision.entryId)}
-                  >
-                    {decision.text}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
-        {actionItems.length > 0 && (
-          <Section title={`Action items · ${actionItems.length}`}>
-            <ul className="details-list details-actions">
-              {actionItems.map((item) => (
-                <li key={item.text}>
-                  <span className="notes-check" aria-hidden />
-                  <span className="details-action-text">
-                    {item.text}
-                    <PersonChip person={item.owner} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
 
         {/* The record of what's been done to the thread, including who made it on whose behalf. */}
         {history.length > 0 && (

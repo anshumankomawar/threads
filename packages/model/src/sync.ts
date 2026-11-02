@@ -4,16 +4,17 @@
 
 import { labelSlug } from "./model";
 import type {
+  Bucket,
   Entry,
   Group,
   Label,
   Organization,
   Person,
   Priority,
-  Schedule,
   Status,
   Thread,
   ThreadKind,
+  Triage,
 } from "./model";
 
 // --- Models -----------------------------------------------------------------------------------------------
@@ -32,9 +33,8 @@ export type ThreadRecord = {
   dueAtMs: number | null;
   effortHours: number | null;
   labelIds: string[];
-  schedule: Schedule | null;
-  blocks: Schedule[];
-  workedMinutes: number;
+  // Its inbox bucket for whoever it's waiting on (`Triage`): set by the server's model, or by that person by hand.
+  triage: Triage | null;
   attendeeIds: string[];
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
@@ -49,14 +49,7 @@ export type ThreadRecord = {
 type EntryFields =
   | { kind: "message"; authorId: string; text: string }
   | { kind: "event"; actorId: string; text: string }
-  | { kind: "resolution"; authorId: string; text: string }
-  | { kind: "call"; link: string }
-  | {
-      kind: "notes";
-      summary: string;
-      decisions: string[];
-      actionItems: { text: string; ownerId: string }[];
-    };
+  | { kind: "resolution"; authorId: string; text: string };
 
 // One entry in a thread's log, referencing its thread (Linear's Comment / IssueHistory to an Issue).
 export type EntryRecord = EntryFields & { id: string; threadId: string; createdAtMs: number };
@@ -105,7 +98,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v16");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v17");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -145,7 +138,7 @@ export type SyncMessage =
 // --- Transactions -----------------------------------------------------------------------------------------
 
 // What clients send: creations and updates of the models they may write, and moves of messages between threads.
-// The server validates each, runs its side effects (activity lines, call links, closing a thread on resolution)
+// The server validates each, runs its side effects (activity lines, closing a thread on resolution)
 // and answers with the new lastSyncId.
 export type TransactionInput =
   | { id: string; type: "create"; modelName: "Thread"; data: ThreadCreate }
@@ -172,7 +165,6 @@ export type ThreadCreate = {
   title: string;
   assigneeId: string | null;
   attendeeIds: string[];
-  schedule: Schedule | null;
   // Set when a discussion is branched off another thread (`#` in a message).
   branchedFromId?: string | null;
   // Set when the thread is what another one is blocked on (`/blocked`).
@@ -192,7 +184,8 @@ export type GroupChanges = Partial<Pick<Group, "name" | "memberIds" | "archived"
 
 export type OrganizationChanges = Pick<Organization, "name">;
 
-export type PersonChanges = Partial<Pick<Person, "workday">>;
+// Someone's own inbox buckets, the whole list at once.
+export type PersonChanges = { buckets?: Bucket[] };
 
 export type ThreadChanges = Partial<
   Pick<
@@ -205,7 +198,8 @@ export type ThreadChanges = Partial<
     | "dueAtMs"
     | "effortHours"
     | "labelIds"
-    | "schedule"
+    // Placing it in one of your buckets by hand: `{ personId: you, manual: true }`, only while it's waiting on you.
+    | "triage"
   >
 > & {
   // Marks the thread seen by whoever sends it, now. Records nothing in the activity.
@@ -219,7 +213,7 @@ export type EntryCreate = {
   text: string;
 };
 
-// `utcOffsetMinutes` is the actor's time zone, so activity lines such as "scheduled this for 5:00 PM" read in their
+// `utcOffsetMinutes` is the actor's time zone, so activity lines such as "set the due date to Fri, Nov 7" read in their
 // local time rather than the server's UTC.
 export type TransactionBatch = {
   actorId: string;
@@ -240,18 +234,15 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     title: data.title,
     requesterId: data.onBehalfOfId ?? actorId,
     createdById: actorId,
-    // A focus block is your own work, so it's yours unless said otherwise.
-    assigneeId: data.assigneeId ?? (data.kind === "focus" ? actorId : null),
+    assigneeId: data.assigneeId,
     status: "open",
     priority: "none",
     dueAtMs: null,
     effortHours: null,
     labelIds: data.labelIds ?? [],
-    schedule: data.schedule,
-    blocks: [],
-    workedMinutes: 0,
+    triage: null,
     attendeeIds:
-      data.kind === "meeting" || data.kind === "conversation"
+      data.kind === "conversation"
         ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)]
         : [],
     branchedFromId: data.branchedFromId ?? null,
@@ -311,26 +302,7 @@ export function toEntry(record: EntryRecord, person: (id: string) => Person): En
       return { ...base, kind: "event", actor: person(record.actorId), text: record.text };
     case "resolution":
       return { ...base, kind: "resolution", author: person(record.authorId), text: record.text };
-    case "call":
-      return { ...base, kind: "call", link: record.link };
-    case "notes":
-      return {
-        ...base,
-        kind: "notes",
-        summary: record.summary,
-        decisions: record.decisions,
-        actionItems: record.actionItems.map((item) => ({
-          text: item.text,
-          owner: person(item.ownerId),
-        })),
-      };
   }
-}
-
-// A thread's blocks of time. A meeting or focus block has only its `schedule`, as does a response stored before blocks.
-export function recordBlocks(record: ThreadRecord): Schedule[] {
-  if (record.kind === "response" && record.blocks !== undefined) return record.blocks;
-  return record.schedule === null ? [] : [record.schedule];
 }
 
 // Resolves a thread's references into the shape the app renders.
@@ -345,25 +317,20 @@ export function toThread(
     kind: record.kind,
     title: record.title,
     requester: person(record.requesterId),
-    // Threads stored before on-behalf-of were made by whoever asked.
-    createdBy: person(record.createdById ?? record.requesterId),
+    createdBy: person(record.createdById),
     assignee: record.assigneeId === null ? null : person(record.assigneeId),
     status: record.status,
     priority: record.priority,
     dueAtMs: record.dueAtMs,
-    // Threads stored before estimates and tags existed have no fields.
-    effortHours: record.effortHours ?? null,
-    labelIds: record.labelIds ?? [],
-    schedule: record.schedule,
-    blocks: recordBlocks(record),
-    workedMinutes: record.workedMinutes ?? 0,
+    effortHours: record.effortHours,
+    labelIds: record.labelIds,
+    triage: record.triage,
     attendees: record.attendeeIds.map(person),
-    // Threads stored before branching existed have no field.
-    branchedFromId: record.branchedFromId ?? null,
-    blocksId: record.blocksId ?? null,
-    seenBy: record.seenBy ?? {},
+    branchedFromId: record.branchedFromId,
+    blocksId: record.blocksId,
+    seenBy: record.seenBy,
     updatedAtMs: record.updatedAtMs,
-    // Oldest first. Within the same instant messages lead, so a meeting's agenda comes before its call link.
+    // Oldest first. Within the same instant messages lead, so a description comes before the lines it causes.
     entries: [...entries]
       .sort(
         (a, b) =>
@@ -389,7 +356,7 @@ export function toThreads(
   return [...threads].map((thread) => toThread(thread, byThread.get(thread.id) ?? [], people));
 }
 
-// The reverse, for seeding from sample threads and migrating stored ones.
+// The reverse, for seeding from sample threads.
 export function fromThread(thread: Thread): { thread: ThreadRecord; entries: EntryRecord[] } {
   const createdAtMs = thread.entries[0]?.createdAtMs ?? thread.updatedAtMs;
   const entries = thread.entries.map((entry): EntryRecord => {
@@ -406,19 +373,6 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
         return { ...base, kind: "event", actorId: entry.actor.id, text: entry.text };
       case "resolution":
         return { ...base, kind: "resolution", authorId: entry.author.id, text: entry.text };
-      case "call":
-        return { ...base, kind: "call", link: entry.link };
-      case "notes":
-        return {
-          ...base,
-          kind: "notes",
-          summary: entry.summary,
-          decisions: entry.decisions,
-          actionItems: entry.actionItems.map((item) => ({
-            text: item.text,
-            ownerId: item.owner.id,
-          })),
-        };
     }
   });
   return {
@@ -434,9 +388,7 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       dueAtMs: thread.dueAtMs,
       effortHours: thread.effortHours,
       labelIds: thread.labelIds,
-      schedule: thread.schedule,
-      blocks: thread.blocks,
-      workedMinutes: thread.workedMinutes,
+      triage: thread.triage,
       attendeeIds: thread.attendees.map((person) => person.id),
       branchedFromId: thread.branchedFromId,
       blocksId: thread.blocksId,

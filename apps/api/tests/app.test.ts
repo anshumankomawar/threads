@@ -5,7 +5,6 @@ import { createApp } from "../src/app.ts";
 
 // A fixed clock: Monday 2026-11-02, 08:00 UTC.
 const NOW = Date.UTC(2026, 10, 2, 8);
-const at = (hour: number, minute = 0): number => Date.UTC(2026, 10, 2, hour, minute);
 
 let app: ReturnType<typeof createApp>;
 let clock: number;
@@ -74,11 +73,10 @@ const createThread = (
     modelName: "Thread",
     data: {
       id,
-      kind: "response",
+      kind: "issue",
       title: "Plan the offsite",
       assigneeId: "arjun",
       attendeeIds: [],
-      schedule: null,
       ...fields,
     },
   }) as TransactionInput;
@@ -132,7 +130,7 @@ test("a new thread and its opening message become one ordered batch of sync acti
     [lastSyncId + 2, "Entry", "I"],
   ]);
   expect(await thread("t1")).toMatchObject({
-    kind: "response",
+    kind: "issue",
     title: "Plan the offsite",
     requester: { id: "anshu" },
     assignee: { id: "arjun" },
@@ -243,26 +241,6 @@ test("closing or resolving a thread closes the conversations in it", async () =>
   expect((await thread("c3"))?.status).toBe("closed");
 });
 
-test("a meeting includes its creator and invitees and gets a call link after its agenda", async () => {
-  await transact("anshu", [
-    createThread("t1", { kind: "meeting", assigneeId: null, attendeeIds: ["arjun", "kk"] }),
-    message("m1", "t1", "Pricing sync"),
-  ]);
-  expect(await thread("t1")).toMatchObject({
-    attendees: [{ id: "anshu" }, { id: "arjun" }, { id: "kk" }],
-    assignee: null,
-    entries: [
-      { kind: "message", text: "Pricing sync" },
-      { kind: "call", link: expect.any(String) },
-    ],
-  });
-});
-
-test("a focus block is the creator's own work", async () => {
-  await transact("anshu", [createThread("t1", { kind: "focus", assigneeId: null })]);
-  expect((await thread("t1"))?.assignee?.id).toBe("anshu");
-});
-
 test("updates record an activity line for each real change, in the actor's words", async () => {
   await transact("anshu", [createThread("t1"), message("m1", "t1")]);
   clock = NOW + 1000;
@@ -300,15 +278,11 @@ test("a resolution closes the thread, and reopening says so", async () => {
 });
 
 test("activity lines read in the actor's time zone", async () => {
-  await transact("anshu", [createThread("t1", { kind: "focus", assigneeId: null })]);
-  await transact(
-    "anshu",
-    [update("t1", { schedule: { startMs: at(17), endMs: at(17, 30) } })],
-    -420,
-  );
-  // 17:00 UTC is 10:00 AM at UTC−7.
+  await transact("anshu", [createThread("t1")]);
+  // 03:00 UTC on Tuesday is still Monday at UTC−7.
+  await transact("anshu", [update("t1", { dueAtMs: Date.UTC(2026, 10, 3, 3) })], -420);
   expect((await thread("t1"))?.entries.at(-1)).toMatchObject({
-    text: "scheduled this for Mon 10:00 AM",
+    text: "set the due date to Mon, Nov 2",
   });
 });
 
@@ -336,15 +310,22 @@ test.each([
   ["an unknown actor", "nobody", [createThread("t2")], 404],
   ["an unknown assignee", "anshu", [createThread("t2", { assigneeId: "nobody" })], 404],
   [
-    "an unknown invitee",
+    "an unknown person in a conversation",
     "anshu",
-    [createThread("t2", { kind: "meeting", attendeeIds: ["nobody"] })],
+    [
+      createThread("t2", {
+        kind: "conversation",
+        assigneeId: null,
+        attendeeIds: ["nobody"],
+        branchedFromId: "t1",
+      }),
+    ],
     404,
   ],
   ["a duplicate thread id", "anshu", [createThread("t1")], 409],
   ["a misspelled field", "anshu", [update("t1", { statuss: "closed" })], 400],
   ["a bad status", "anshu", [update("t1", { status: "finished" })], 400],
-  ["a backwards schedule", "anshu", [update("t1", { schedule: { startMs: 2, endMs: 1 } })], 400],
+  ["a removed field", "anshu", [update("t1", { schedule: null })], 400],
 ])("rejects %s", async (_, actorId, transactions, status) => {
   await transact("anshu", [createThread("t1")]);
   expect((await transact(actorId as string, transactions as TransactionInput[])).status).toBe(

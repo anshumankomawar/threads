@@ -1,9 +1,10 @@
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
-  ArrowLeft01Icon,
+  Add01Icon,
   ArrowRight01Icon,
   BubbleChatIcon,
-  Calendar03Icon,
+  InboxIcon,
+  MoreHorizontalIcon,
   PanelLeftIcon,
   PanelRightIcon,
   PencilEdit02Icon,
@@ -13,7 +14,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { homeDayMs, startOfDay, type Day, type InboxItem, type TimelineItem } from "../inbox";
+import type { BucketGroup, Inbox, InboxItem } from "../inbox";
 import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
 import { useThreadMenu } from "../threadMenu";
@@ -21,6 +22,7 @@ import { Identicon } from "./Identicon";
 import {
   plainThreadLinks,
   withoutLeadingMentions,
+  type Bucket,
   type Group,
   type Label,
   type Thread,
@@ -28,7 +30,7 @@ import {
 import { filterLabels, threadsWithLabel, type GroupLists, type GroupNotice } from "../groups";
 import { latestFromOthers, type Conversations } from "../conversations";
 import { KIND_ICONS } from "../kindIcons";
-import { formatRange } from "../format";
+import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import type { ActivityItem } from "../activity";
 import { NotificationsButton } from "./Notifications";
 
@@ -119,184 +121,269 @@ function activateOnKey(event: React.KeyboardEvent, activate: () => void): void {
   activate();
 }
 
-const MIN_GAP_MS = 30 * 60_000;
+// Which buckets you've folded, remembered on this device.
+const COLLAPSED_KEY = "collapsed-buckets";
 
-function formatTime(ms: number): string {
-  return new Date(ms).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+function savedCollapsed(): string[] {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+    return Array.isArray(saved) ? saved.filter((id) => typeof id === "string") : [];
+  } catch {
+    return [];
+  }
 }
 
-// One agenda row: the start time, then the block. The one under way is marked "now".
-function AgendaRow({
+// The dragged thread travels as this type, so only inbox rows drop on buckets.
+const DRAG_TYPE = "application/x-thread-id";
+
+// One thread in the inbox: who it's from, its title and when it's due, and under them why it matters (who asked, how
+// soon, how urgent). Hovering shows why it's in its bucket, in the model's words. Drag it to another bucket to move it.
+function InboxRow({
   item,
-  nowMs,
   active,
   unread,
   onOpen,
 }: {
-  item: TimelineItem;
-  nowMs: number;
+  item: InboxItem;
   active: boolean;
   unread: boolean;
   onOpen: () => void;
 }): React.JSX.Element {
-  const titleRef = useOverflowFade<HTMLSpanElement>();
   const openMenu = useThreadMenu();
-  const { block, thread } = item;
-  const icon = KIND_ICONS[thread.kind];
+  const me = useMe();
+  const { thread } = item;
+  const titleRef = useOverflowFade<HTMLSpanElement>();
+  const sorted = thread.triage?.personId === me.id ? thread.triage : null;
+  const why = sorted?.manual ? "Placed here by you" : (sorted?.reason ?? "");
+  const person = item.from ?? thread.requester;
   return (
     <li className="thread-item">
       <div
-        className="agenda-row"
+        className="inbox-row"
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(DRAG_TYPE, thread.id);
+          event.dataTransfer.effectAllowed = "move";
+        }}
         onContextMenu={(event) => openMenu(event, thread)}
         data-active={active}
-        data-past={block.endMs <= nowMs}
-        title={`${formatRange(block.startMs, block.endMs)} · ${item.reason}`}
+        data-unread={unread}
+        data-blocked={thread.status === "blocked"}
+        title={why}
         role="button"
         tabIndex={0}
         onClick={onOpen}
         onKeyDown={(event) => activateOnKey(event, onOpen)}
       >
-        <span className="agenda-time">{formatTime(block.startMs)}</span>
-        <span className="agenda-icon" aria-hidden>
-          <HugeiconsIcon icon={icon} size={12} />
+        <Identicon seed={person.id} size={16} />
+        <span className="inbox-row-body">
+          <span className="inbox-row-top">
+            <span ref={titleRef} className="inbox-row-title">
+              {thread.title}
+            </span>
+            {unread && <span className="unread-dot" aria-label="Unread" />}
+            {item.dueLabel !== null && (
+              <span className="inbox-row-due" data-overdue={item.overdue}>
+                {item.dueLabel}
+              </span>
+            )}
+          </span>
+          <span className="inbox-row-why">{item.reason}</span>
         </span>
-        <span ref={titleRef} className="sidebar-row-label">
-          {thread.title}
-        </span>
-        {unread && <span className="unread-dot" aria-label="Unread" />}
       </div>
     </li>
   );
 }
 
-// Now, as a thin blue line in a narrow gap between two rows, so it never touches a block: the time in the time column,
-// then the line from the icon column to the edge. It moves when a block starts or ends; the time ticks every minute.
-function NowLine({ nowMs }: { nowMs: number }): React.JSX.Element {
-  return (
-    <li className="agenda-now" aria-label={`Now, ${formatTime(nowMs)}`}>
-      <span className="agenda-now-time" aria-hidden>
-        {formatTime(nowMs)}
-      </span>
-      <span className="agenda-now-rule" aria-hidden />
-    </li>
-  );
-}
+// Bucket edits, made from the inbox and saved to your profile.
+export type BucketActions = {
+  onNew: () => void;
+  onEdit: (bucket: Bucket) => void;
+  onMove: (bucketId: string, by: -1 | 1) => void;
+  onDelete: (bucketId: string) => void;
+  // Puts a thread in one of your buckets by hand.
+  onPlace: (threadId: string, bucketId: string) => void;
+};
 
-// A day as an agenda: just its blocks in order, the free time between them as one quiet line, and what's already
-// done dimmed. The arrows step a day back or forward; the date goes back to today.
-function AgendaView({
-  day,
-  nowMs: realNowMs,
+// One bucket: its name and count, which folds it, and its threads. Threads dragged onto it move into it.
+function BucketSection({
+  group,
+  collapsed,
+  canDelete,
+  first,
+  last,
   activeThreadId,
   unreadIds,
+  actions,
+  onToggle,
   onOpenThread,
-  onShiftDay,
 }: {
-  day: Day;
-  nowMs: number;
+  group: BucketGroup;
+  collapsed: boolean;
+  canDelete: boolean;
+  first: boolean;
+  last: boolean;
   activeThreadId: string | null;
   unreadIds: Set<string>;
+  actions: BucketActions;
+  onToggle: () => void;
   onOpenThread: (id: string) => void;
-  onShiftDay: (days: number | null) => void;
 }): React.JSX.Element {
-  // The day treated as today (Monday at the weekend), with now as this time of day on it.
-  const home = homeDayMs(realNowMs);
-  const isToday = day.dayMs === home;
-  const nowMs = isToday ? home + (realNowMs - startOfDay(realNowMs)) : realNowMs;
-  const done = day.timeline.filter((item) => item.block.endMs <= nowMs);
-  const upcoming = day.timeline.filter((item) => item.block.endMs > nowMs);
-
-  // The day in order: what's done, then free time and what's to come. Free time is from the end of the block before
-  // it (or from now, today) until the next block starts.
-  type Entry =
-    | { kind: "item"; item: TimelineItem }
-    | { kind: "free"; fromMs: number; untilMs: number };
-  const entries: Entry[] = done.map((item) => ({ kind: "item", item }));
-  let freeFrom = isToday ? Math.max(nowMs, done.at(-1)?.block.endMs ?? 0) : null;
-  for (const item of upcoming) {
-    if (freeFrom !== null && item.block.startMs - freeFrom >= MIN_GAP_MS)
-      entries.push({ kind: "free", fromMs: freeFrom, untilMs: item.block.startMs });
-    entries.push({ kind: "item", item });
-    freeFrom = Math.max(freeFrom ?? 0, item.block.endMs);
-  }
-
-  // Today, where now falls: after the block under way (or the last thing in the day), else before whatever starts
-  // next.
-  let nowBefore = -1;
-  if (isToday && entries.length > 0) {
-    const next = entries.findIndex((entry) =>
-      entry.kind === "free" ? entry.fromMs >= nowMs : entry.item.block.endMs > nowMs,
-    );
-    const entry = entries[next];
-    nowBefore =
-      next === -1
-        ? entries.length
-        : entry.kind === "item" && entry.item.block.startMs < nowMs
-          ? next + 1
-          : next;
-  }
-
-  const rows = entries.map((entry) => {
-    if (entry.kind === "free")
-      return (
-        <li key={`free:${entry.untilMs}`} className="agenda-free">
-          Free until {formatTime(entry.untilMs)}
-        </li>
-      );
-    const { item } = entry;
-    return (
-      <AgendaRow
-        key={`${item.thread.id}:${item.block.startMs}`}
-        item={item}
-        nowMs={nowMs}
-        active={item.thread.id === activeThreadId}
-        unread={unreadIds.has(item.thread.id)}
-        onOpen={() => onOpenThread(item.thread.id)}
-      />
-    );
-  });
-  if (nowBefore !== -1) rows.splice(nowBefore, 0, <NowLine key="now" nowMs={nowMs} />);
-
+  const { bucket, items } = group;
+  const [dropping, setDropping] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuItems: ContextMenuItem[] = [
+    { label: "Edit bucket…", run: () => actions.onEdit(bucket) },
+    { label: "New bucket…", run: actions.onNew },
+    "separator",
+    ...(first ? [] : [{ label: "Move up", run: () => actions.onMove(bucket.id, -1) }]),
+    ...(last ? [] : [{ label: "Move down", run: () => actions.onMove(bucket.id, 1) }]),
+    ...(canDelete
+      ? (["separator", { label: "Delete bucket", run: () => actions.onDelete(bucket.id) }] as const)
+      : []),
+  ];
+  const openMenu = (event: React.MouseEvent): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    setMenu({ x: event.clientX, y: event.clientY });
+  };
   return (
-    <>
-      <div className="schedule-date">
+    <section
+      className="bucket"
+      data-dropping={dropping}
+      data-empty={items.length === 0}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDropping(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(event) => {
+        setDropping(false);
+        const threadId = event.dataTransfer.getData(DRAG_TYPE);
+        if (threadId === "") return;
+        event.preventDefault();
+        if (!items.some((item) => item.thread.id === threadId))
+          actions.onPlace(threadId, bucket.id);
+      }}
+    >
+      <div className="bucket-header" onContextMenu={openMenu}>
         <button
           type="button"
-          className="schedule-date-label"
-          title={isToday ? undefined : "Back to today"}
-          disabled={isToday}
-          onClick={() => onShiftDay(null)}
+          className="bucket-toggle"
+          aria-expanded={!collapsed}
+          title={bucket.description}
+          onClick={onToggle}
         >
-          {new Date(day.dayMs).toLocaleDateString(undefined, {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-          })}
+          <HugeiconsIcon icon={ArrowRight01Icon} size={10} className="bucket-chevron" aria-hidden />
+          <span className="bucket-name">{bucket.name}</span>
+          {items.length > 0 && <span className="bucket-count">{items.length}</span>}
         </button>
-        <span className="schedule-date-nav">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Previous day"
-            onClick={() => onShiftDay(-1)}
-          >
-            <HugeiconsIcon icon={ArrowLeft01Icon} {...ICON_PROPS} />
-          </button>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Next day"
-            onClick={() => onShiftDay(1)}
-          >
-            <HugeiconsIcon icon={ArrowRight01Icon} {...ICON_PROPS} />
-          </button>
-        </span>
+        <button
+          type="button"
+          className="icon-button bucket-more"
+          aria-label={`${bucket.name} options`}
+          onClick={openMenu}
+        >
+          <HugeiconsIcon icon={MoreHorizontalIcon} {...ICON_PROPS} />
+        </button>
       </div>
-      <ul className="thread-list agenda" aria-label="Day">
-        {rows}
-        {day.timeline.length === 0 && <li className="sidebar-empty">Nothing scheduled</li>}
-      </ul>
-    </>
+      {!collapsed && items.length > 0 && (
+        <ul className="thread-list" aria-label={bucket.name}>
+          {items.map((item) => (
+            <InboxRow
+              key={item.thread.id}
+              item={item}
+              active={item.thread.id === activeThreadId}
+              unread={unreadIds.has(item.thread.id)}
+              onOpen={() => onOpenThread(item.thread.id)}
+            />
+          ))}
+        </ul>
+      )}
+      {menu !== null && (
+        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
+      )}
+    </section>
+  );
+}
+
+// Your inbox: every thread waiting on you, in your buckets, each sorted most important first. Threads the model
+// hasn't got to yet wait at the top under "Sorting".
+function InboxView({
+  inbox,
+  activeThreadId,
+  unreadIds,
+  actions,
+  onOpenThread,
+}: {
+  inbox: Inbox;
+  activeThreadId: string | null;
+  unreadIds: Set<string>;
+  actions: BucketActions;
+  onOpenThread: (id: string) => void;
+}): React.JSX.Element {
+  const [collapsed, setCollapsed] = useState(savedCollapsed);
+  const toggle = (bucketId: string): void =>
+    setCollapsed((current) => {
+      const next = current.includes(bucketId)
+        ? current.filter((id) => id !== bucketId)
+        : [...current, bucketId];
+      try {
+        localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+      } catch {
+        // Not remembered; it still folds.
+      }
+      return next;
+    });
+  const nothing = inbox.order.length === 0;
+  return (
+    <div className="inbox">
+      {inbox.unsorted.length > 0 && (
+        <section className="bucket">
+          <div className="bucket-header">
+            <span className="bucket-toggle bucket-sorting">
+              <span className="bucket-name">Sorting</span>
+              <span className="bucket-count">{inbox.unsorted.length}</span>
+            </span>
+          </div>
+          <ul className="thread-list" aria-label="Sorting">
+            {inbox.unsorted.map((item) => (
+              <InboxRow
+                key={item.thread.id}
+                item={item}
+                active={item.thread.id === activeThreadId}
+                unread={unreadIds.has(item.thread.id)}
+                onOpen={() => onOpenThread(item.thread.id)}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
+      {nothing && <p className="conversation-empty">Nothing waiting on you</p>}
+      {inbox.buckets.map((group, index) => (
+        <BucketSection
+          key={group.bucket.id}
+          group={group}
+          collapsed={collapsed.includes(group.bucket.id)}
+          canDelete={inbox.buckets.length > 1}
+          first={index === 0}
+          last={index === inbox.buckets.length - 1}
+          activeThreadId={activeThreadId}
+          unreadIds={unreadIds}
+          actions={actions}
+          onToggle={() => toggle(group.bucket.id)}
+          onOpenThread={onOpenThread}
+        />
+      ))}
+      <button type="button" className="bucket-new" onClick={actions.onNew}>
+        <HugeiconsIcon icon={Add01Icon} size={12} aria-hidden />
+        New bucket
+      </button>
+    </div>
   );
 }
 
@@ -500,12 +587,12 @@ function GroupList({
 }
 
 // The sidebar shows one list at a time, picked by the icon tabs under its top bar, like Obsidian's side panes.
-type SidebarTab = "schedule" | "conversations" | "tracking" | "groups";
+type SidebarTab = "inbox" | "conversations" | "tracking" | "groups";
 
 const TAB_KEY = "sidebar-tab";
 
 const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
-  { tab: "schedule", label: "Schedule", icon: Calendar03Icon },
+  { tab: "inbox", label: "Inbox", icon: InboxIcon },
   { tab: "conversations", label: "Conversations", icon: BubbleChatIcon },
   { tab: "tracking", label: "Tracking", icon: ViewIcon },
   { tab: "groups", label: "Groups", icon: UserGroupIcon },
@@ -514,17 +601,18 @@ const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
 function savedTab(): SidebarTab {
   try {
     const saved = localStorage.getItem(TAB_KEY);
-    return TABS.some(({ tab }) => tab === saved) ? (saved as SidebarTab) : "schedule";
+    return TABS.some(({ tab }) => tab === saved) ? (saved as SidebarTab) : "inbox";
   } catch {
-    return "schedule";
+    return "inbox";
   }
 }
 
 // The tab strip, as in Notion: the chosen tab opens out to show its name, the others fold back to their icon, with a
-// count beside Conversations (the unread ones) and Tracking while they have anything. Your avatar at the far end opens your profile and
+// count beside the Inbox, Conversations (the unread ones) and Tracking while they have anything. Your avatar at the far end opens your profile and
 // the org (in the main area, like a thread).
 function SidebarTabs({
   tab,
+  inboxCount,
   conversationCount,
   trackingCount,
   profileOpen,
@@ -532,6 +620,7 @@ function SidebarTabs({
   onToggleProfile,
 }: {
   tab: SidebarTab;
+  inboxCount: number;
   conversationCount: number;
   trackingCount: number;
   profileOpen: boolean;
@@ -540,7 +629,7 @@ function SidebarTabs({
 }): React.JSX.Element {
   const me = useMe();
   const counts: Record<SidebarTab, number> = {
-    schedule: 0,
+    inbox: inboxCount,
     conversations: conversationCount,
     tracking: trackingCount,
     groups: 0,
@@ -589,12 +678,12 @@ function SidebarTabs({
   );
 }
 
-// What opens in the main area from the sidebar: what's yours with no time yet, settings, or a label's threads (a group's,
-// when it's a group's label).
-export type SidebarPage = "unplaced" | "settings" | { label: string };
+// What opens in the main area from the sidebar: settings, or a label's threads (a group's, when it's a group's label).
+export type SidebarPage = "settings" | { label: string };
 
 export function Sidebar({
-  day,
+  inbox,
+  bucketActions,
   conversations,
   openConversationId,
   activity,
@@ -616,9 +705,9 @@ export function Sidebar({
   onOpenPage,
   onToggle,
   onSearch,
-  onShiftDay,
 }: {
-  day: Day;
+  inbox: Inbox;
+  bucketActions: BucketActions;
   conversations: Conversations;
   // The conversation open now, in place or beside its thread.
   openConversationId: string | null;
@@ -643,7 +732,6 @@ export function Sidebar({
   onOpenPage: (page: SidebarPage) => void;
   onToggle: () => void;
   onSearch: () => void;
-  onShiftDay: (days: number | null) => void;
 }): React.JSX.Element {
   const me = useMe();
   const { panelRef, width, handle } = useResizablePanel({
@@ -695,8 +783,9 @@ export function Sidebar({
       </div>
       <SidebarTabs
         tab={tab}
+        inboxCount={inbox.order.length}
         conversationCount={conversations.unread.length}
-        trackingCount={day.tracking.length}
+        trackingCount={inbox.tracking.length}
         profileOpen={profileOpen}
         onTab={chooseTab}
         onToggleProfile={onToggleProfile}
@@ -709,28 +798,14 @@ export function Sidebar({
             onOpenThread={onOpenThread}
           />
         )}
-        {tab === "schedule" && (
-          <>
-            <AgendaView
-              day={day}
-              nowMs={nowMs}
-              activeThreadId={activeThreadId}
-              unreadIds={unreadIds}
-              onOpenThread={onOpenThread}
-              onShiftDay={onShiftDay}
-            />
-            {/* The schedule is your inbox; what's yours without time yet is one line under it. */}
-            {day.unplaced.length > 0 && (
-              <button
-                type="button"
-                className="agenda-unplaced"
-                data-active={page === "unplaced"}
-                onClick={() => onOpenPage("unplaced")}
-              >
-                {day.unplaced.length} not scheduled yet
-              </button>
-            )}
-          </>
+        {tab === "inbox" && (
+          <InboxView
+            inbox={inbox}
+            activeThreadId={activeThreadId}
+            unreadIds={unreadIds}
+            actions={bucketActions}
+            onOpenThread={onOpenThread}
+          />
         )}
         {tab === "groups" && (
           <GroupList
@@ -744,7 +819,7 @@ export function Sidebar({
         )}
         {tab === "tracking" && (
           <Tracking
-            items={day.tracking}
+            items={inbox.tracking}
             activeThreadId={activeThreadId}
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}

@@ -2,7 +2,7 @@ import type { Entry, Person, Thread } from "model";
 
 // What changed on your threads that doesn't need you to act: replies and the status lines worth knowing about (closed,
 // reopened, renamed, handed over, blocked, unblocked, messages moved). Conversations aren't
-// here (they have their own list), nor are the scheduler's moves or edits to priority, due dates, estimates and tags.
+// here (they have their own list), nor are routine edits to priority, due dates and estimates.
 // Read straight from the threads, like everything else; nothing is stored.
 
 // Activity lines worth a mention, by how the server words them.

@@ -10,7 +10,6 @@ import { createApp } from "../src/app.ts";
 
 // A fixed clock: Monday 2026-11-02, midnight in the organization's time zone (UTC−8).
 const NOW = Date.UTC(2026, 10, 2, 8);
-const NINE = NOW + 9 * 60 * 60_000;
 
 let app: ReturnType<typeof createApp>;
 
@@ -52,11 +51,10 @@ const create = (id: string, fields: object = {}): TransactionInput =>
     modelName: "Thread",
     data: {
       id,
-      kind: "response",
+      kind: "issue",
       title: "Set up the on-call rotation",
       assigneeId: "arjun",
       attendeeIds: [],
-      schedule: null,
       ...fields,
     },
   }) as TransactionInput;
@@ -108,22 +106,17 @@ test("whoever made the thread writes its description, even when someone else is 
 test("on behalf of needs a real person, and only threads can use it", async () => {
   const nobody = await transact("anshu", [create("t1", { onBehalfOfId: "nobody" })]);
   expect(nobody.status).toBe(404);
-  const focus = await transact("anshu", [
-    create("t2", { kind: "focus", assigneeId: null, onBehalfOfId: "kk" }),
+  await transact("anshu", [create("t1", { assigneeId: null })]);
+  const conversation = await transact("anshu", [
+    create("t2", {
+      kind: "conversation",
+      assigneeId: null,
+      attendeeIds: ["arjun"],
+      branchedFromId: "t1",
+      onBehalfOfId: "kk",
+    }),
   ]);
-  expect(focus.status).toBe(400);
-});
-
-test("with nobody assigned, a thread made on someone's behalf lands with them to assign", async () => {
-  await transact("anshu", [create("t1", { onBehalfOfId: "kk", assigneeId: null })]);
-  expect((await thread("t1")).blocks).toEqual([{ startMs: NINE, endMs: NINE + 30 * 60_000 }]);
-});
-
-test("asking on behalf of someone senior moves the thread up the assignee's schedule", async () => {
-  await transact("anshu", [create("peer")]);
-  await transact("anshu", [create("senior", { onBehalfOfId: "nora" })]);
-  expect((await thread("senior")).schedule?.startMs).toBe(NINE);
-  expect((await thread("peer")).schedule?.startMs).toBe(NINE + 30 * 60_000);
+  expect(conversation.status).toBe(400);
 });
 
 test("the requester can change later, with an activity line, keeping who made it", async () => {
@@ -139,15 +132,15 @@ test("the requester can change later, with an activity line, keeping who made it
 });
 
 test("changing the requester needs a real person, and only threads have one to change", async () => {
-  await transact("anshu", [create("t1"), create("focus", { kind: "focus", assigneeId: null })]);
+  await transact("anshu", [
+    create("t1"),
+    create("chat", {
+      kind: "conversation",
+      assigneeId: null,
+      attendeeIds: ["arjun"],
+      branchedFromId: "t1",
+    }),
+  ]);
   expect((await transact("anshu", [update("t1", { requesterId: "nobody" })])).status).toBe(404);
-  expect((await transact("anshu", [update("focus", { requesterId: "kk" })])).status).toBe(400);
-});
-
-test("changing the requester of an unassigned thread moves it to their schedule", async () => {
-  await transact("anshu", [create("t1", { assigneeId: null })]);
-  await transact("anshu", [update("t1", { requesterId: "kk" })]);
-  const found = await thread("t1");
-  expect(found.requester.id).toBe("kk");
-  expect(found.blocks).toHaveLength(1);
+  expect((await transact("anshu", [update("chat", { requesterId: "kk" })])).status).toBe(400);
 });

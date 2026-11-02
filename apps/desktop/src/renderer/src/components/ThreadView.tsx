@@ -4,25 +4,19 @@ import StarterKit from "@tiptap/starter-kit";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Add01Icon,
+  InboxIcon,
   BubbleChatIcon,
   ArrowDown02Icon,
   Calendar01Icon,
-  Calendar03Icon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
-  Clock01Icon,
   GitBranchIcon,
   HourglassIcon,
-  Link01Icon,
   PanelRightIcon,
-  MicOff01Icon,
-  SparklesIcon,
-  Tag01Icon,
-  Target02Icon,
   TaskAdd01Icon,
+  Tag01Icon,
   Tick02Icon,
   UnavailableIcon,
-  Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { Fragment, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -52,7 +46,6 @@ import {
   type MentionMenuState,
 } from "./mentionNode";
 import { selectableLabels } from "../groups";
-import { slotMissesDue } from "../inbox";
 import {
   isDone,
   EFFORT_OPTIONS,
@@ -66,22 +59,15 @@ import {
   type Entry,
   type Person,
   type Priority,
-  type Schedule,
   type Status,
   type Thread,
   mention,
   descriptionOf,
   conversationStartedId,
+  bucketsOf,
+  waitingOn,
 } from "model";
-import {
-  DAY,
-  formatClock,
-  formatDue,
-  formatRelativeTime,
-  formatWhen,
-  parseWhen,
-  startOfDay,
-} from "../format";
+import { DAY, formatDue, formatRelativeTime, startOfDay } from "../format";
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -100,8 +86,6 @@ type EventEntry = Extract<Entry, { kind: "event" }>;
 // How a click changes the selection: toggle one message, or extend from the last one clicked.
 type SelectMode = "toggle" | "range";
 type ResolutionEntry = Extract<Entry, { kind: "resolution" }>;
-type CallEntry = Extract<Entry, { kind: "call" }>;
-type NotesEntry = Extract<Entry, { kind: "notes" }>;
 
 // Conversations opened in place, under the message in their thread that started them. One is open at a time.
 export type InlineConversations = {
@@ -124,9 +108,10 @@ export type ThreadActions = {
   onSetEffort: (effortHours: number | null) => void;
   // Adds or removes a label, making it first if it's new.
   onToggleLabel: (label: { id: string; name: string }) => void;
+  // Puts it in one of your buckets by hand, or (null) hands it back to the model to sort.
+  onSetBucket: (bucketId: string | null) => void;
   onSetAssignee: (person: Person) => void;
   onSetRequester: (person: Person) => void;
-  onSetSchedule: (schedule: Schedule | null) => void;
   // Starts a thread branching off this one, with the same people, and returns its id: from "New thread" in the
   // `#` menu, titled by what you typed.
   onBranch: (title: string) => string;
@@ -211,45 +196,6 @@ function dueOptions(nowMs: number): { label: string; value: number | null }[] {
   ];
 }
 
-// "2:00 PM–2:30 PM" today, with the weekday on another day.
-function formatSchedule(schedule: Schedule, nowMs: number): string {
-  const times = `${formatClock(schedule.startMs)}–${formatClock(schedule.endMs)}`;
-  if (startOfDay(schedule.startMs) === startOfDay(nowMs)) return times;
-  const day = new Date(schedule.startMs).toLocaleDateString(undefined, { weekday: "short" });
-  return `${day} ${times}`;
-}
-
-// A response's next block, and how many more follow it.
-function formatBlocks(thread: Thread, nowMs: number): string {
-  const [next, ...more] = thread.blocks.filter((block) => block.endMs > nowMs);
-  if (next === undefined) return "No slot yet";
-  return `${formatSchedule(next, nowMs)}${more.length > 0 ? ` +${more.length}` : ""}`;
-}
-
-// Scheduling shortcuts: each remaining hour today (9 to 6), tomorrow morning, or off the timeline.
-// The block keeps its current length, 30 minutes by default.
-function scheduleOptions(
-  current: Schedule | null,
-  nowMs: number,
-): { label: string; value: Schedule | null }[] {
-  const lengthMs = current === null ? 30 * 60_000 : current.endMs - current.startMs;
-  const at = (dayOffset: number, hour: number): Schedule => {
-    const date = new Date(startOfDay(nowMs) + dayOffset * DAY);
-    date.setHours(hour, 0, 0, 0);
-    return { startMs: date.getTime(), endMs: date.getTime() + lengthMs };
-  };
-  const firstHour = Math.max(9, new Date(nowMs).getHours() + 1);
-  const today = Array.from({ length: Math.max(0, 19 - firstHour) }, (_, i) => at(0, firstHour + i));
-  return [
-    ...today.map((schedule) => ({
-      label: `Today, ${formatClock(schedule.startMs)}`,
-      value: schedule,
-    })),
-    { label: "Tomorrow, 10:00 AM", value: at(1, 10) },
-    { label: "Not scheduled", value: null },
-  ];
-}
-
 function useNow(intervalMs: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -274,6 +220,7 @@ export function MenuChip<T>({
   tone,
   options,
   onSelect,
+  title,
   typed,
 }: {
   label: string;
@@ -281,6 +228,8 @@ export function MenuChip<T>({
   tone?: string;
   options: { label: string; value: T; icon?: React.ReactNode }[];
   onSelect: (value: T) => void;
+  // Shown on hover.
+  title?: string;
   // A field at the top of the menu for typing a value in words, with what it reads as.
   typed?: { placeholder: string; parse: (text: string) => { label: string; value: T } | null };
 }): React.JSX.Element {
@@ -316,6 +265,7 @@ export function MenuChip<T>({
         type="button"
         className="chip"
         data-tone={tone}
+        title={title}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
@@ -417,9 +367,8 @@ function StatusDot({ status }: { status: Status }): React.JSX.Element {
   return <span className="status-dot" data-status={status} aria-hidden />;
 }
 
-// The first message, shown as the ask: who wants what from whom, plus the task's properties.
-// The top of every thread. A response shows the ask (who wants what from whom); a meeting shows its title,
-// organizer and attendees; a focus block shows the work you set out to do. All share the property chips.
+// The top of every thread. An issue shows the ask (who wants what from whom), its title and description, and its
+// properties, including which of your buckets it's in while it waits on you; a conversation shows who's in it.
 function ThreadHeader({
   thread,
   ask,
@@ -443,37 +392,20 @@ function ThreadHeader({
   const priorityTone =
     thread.priority === "urgent" ? "urgent" : thread.priority === "none" ? "muted" : undefined;
   const dueTone = due === null ? "muted" : due.overdue ? "urgent" : undefined;
-  const isResponse = thread.kind === "response";
+  const isIssue = thread.kind === "issue";
+  const me = useMe();
+  // Its bucket shows only to whoever it's waiting on, since buckets are theirs.
+  const inMyInbox = isIssue && !isDone(thread.status) && waitingOn(thread) === me.id;
+  const buckets = bucketsOf(me);
+  const triage = thread.triage?.personId === me.id ? thread.triage : null;
+  const bucket = buckets.find((candidate) => candidate.id === triage?.bucketId);
 
   const description = ask?.text.trim() ?? "";
 
   return (
     <header className="thread-header" id={ask === undefined ? undefined : `entry-${ask.id}`}>
       <div className="thread-byline">
-        {thread.kind === "meeting" ? (
-          <>
-            <HugeiconsIcon icon={Calendar03Icon} {...ICON_PROPS} />
-            <span>Meeting</span>
-            <span className="thread-byline-dot">·</span>
-            <span>organized by {thread.requester.name}</span>
-            <span className="thread-byline-dot">·</span>
-            <span className="thread-attendees">
-              {thread.attendees.map((person) => (
-                <span key={person.id} className="thread-attendee">
-                  <Identicon seed={person.id} size={14} />
-                  {person.name}
-                </span>
-              ))}
-            </span>
-          </>
-        ) : thread.kind === "focus" ? (
-          <>
-            <HugeiconsIcon icon={Target02Icon} {...ICON_PROPS} />
-            <span>Focus block</span>
-            <span className="thread-byline-dot">·</span>
-            <span>{thread.requester.name}</span>
-          </>
-        ) : thread.kind === "conversation" ? (
+        {thread.kind === "conversation" ? (
           <>
             <HugeiconsIcon icon={BubbleChatIcon} {...ICON_PROPS} />
             <span className="thread-attendees">
@@ -532,60 +464,43 @@ function ThreadHeader({
         <MessageText text={description} className="thread-text thread-description" />
       )}
       <div className="thread-properties">
-        {thread.kind !== "meeting" && (
+        <MenuChip
+          label={STATUS_LABELS[thread.status]}
+          icon={<StatusDot status={thread.status} />}
+          options={statuses.map((status) => ({
+            label: STATUS_LABELS[status],
+            value: status,
+            icon: <StatusDot status={status} />,
+          }))}
+          onSelect={actions.onSetStatus}
+        />
+        {inMyInbox && (
           <MenuChip
-            label={STATUS_LABELS[thread.status]}
-            icon={<StatusDot status={thread.status} />}
-            options={statuses.map((status) => ({
-              label: STATUS_LABELS[status],
-              value: status,
-              icon: <StatusDot status={status} />,
-            }))}
-            onSelect={actions.onSetStatus}
-          />
-        )}
-        {isResponse ? (
-          // A response's blocks come from the scheduler, so they only show here.
-          <span
-            className="chip"
-            data-tone={slotMissesDue(thread) ? "urgent" : "static"}
-            title={[
-              slotMissesDue(thread)
-                ? "The schedule couldn't fit this before its due date"
-                : "Scheduled automatically by importance",
-              ...thread.blocks
-                .filter((block) => block.endMs > nowMs)
-                .map((block) => formatSchedule(block, nowMs)),
-            ].join("\n")}
-          >
-            <HugeiconsIcon icon={Clock01Icon} {...ICON_PROPS} />
-            {formatBlocks(thread, nowMs)}
-          </span>
-        ) : thread.kind === "conversation" ? null : (
-          <MenuChip
-            label={
-              thread.schedule === null ? "Not scheduled" : formatSchedule(thread.schedule, nowMs)
+            label={bucket?.name ?? "Sorting…"}
+            icon={<HugeiconsIcon icon={InboxIcon} {...ICON_PROPS} />}
+            tone={bucket === undefined ? "muted" : undefined}
+            title={
+              triage === null
+                ? "Being sorted into one of your buckets"
+                : triage.manual
+                  ? "Placed by you"
+                  : triage.reason
             }
-            icon={<HugeiconsIcon icon={Clock01Icon} {...ICON_PROPS} />}
-            tone={thread.schedule === null ? "muted" : undefined}
-            options={scheduleOptions(thread.schedule, nowMs)}
-            onSelect={actions.onSetSchedule}
-            typed={{
-              placeholder: "Type a time…",
-              parse: (text) => {
-                const lengthMs =
-                  thread.schedule === null
-                    ? 30 * 60_000
-                    : thread.schedule.endMs - thread.schedule.startMs;
-                const when = parseWhen(text, nowMs, lengthMs);
-                return when === null
-                  ? null
-                  : { label: formatWhen(when.startMs, nowMs), value: when };
-              },
-            }}
+            options={[
+              ...buckets.map((option) => ({
+                label: option.name,
+                value: option.id as string | null,
+                icon:
+                  option.id === bucket?.id ? (
+                    <HugeiconsIcon icon={Tick02Icon} {...ICON_PROPS} />
+                  ) : undefined,
+              })),
+              ...(triage?.manual ? [{ label: "Sort it for me", value: null }] : []),
+            ]}
+            onSelect={actions.onSetBucket}
           />
         )}
-        {isResponse && (
+        {isIssue && (
           <>
             <MenuChip
               label={PRIORITY_LABELS[thread.priority]}
@@ -838,109 +753,6 @@ function ResolutionBlock({
           </span>
         </div>
         <MessageText text={resolution.text} />
-      </div>
-    </div>
-  );
-}
-
-// Where a meeting's call stands relative to now: about to start, live, or over.
-function callState(thread: Thread, nowMs: number): string {
-  const schedule = thread.schedule;
-  if (schedule === null) return "Not scheduled";
-  if (nowMs < schedule.startMs - 5 * 60_000) return `Starts at ${formatClock(schedule.startMs)}`;
-  if (nowMs < schedule.endMs) return "In progress";
-  return `Ended · ${Math.round((schedule.endMs - schedule.startMs) / 60_000)} min`;
-}
-
-// A stand-in for an embedded video call: participant tiles and a join bar. Not wired to anything yet.
-function CallBlock({
-  call,
-  thread,
-  nowMs,
-}: {
-  call: CallEntry;
-  thread: Thread;
-  nowMs: number;
-}): React.JSX.Element {
-  const state = callState(thread, nowMs);
-  const ended = state.startsWith("Ended");
-
-  return (
-    <div className="thread-block" id={`entry-${call.id}`}>
-      <span className="thread-avatar thread-kind-marker" aria-hidden>
-        <HugeiconsIcon icon={Video01Icon} size={12} />
-      </span>
-      <div className="thread-body">
-        <div className="thread-meta">
-          <span className="thread-author">Video call</span>
-          <span className="thread-time">{state}</span>
-        </div>
-        <div className="call-card" data-ended={ended}>
-          <div className="call-tiles">
-            {thread.attendees.map((person) => (
-              <div key={person.id} className="call-tile">
-                <Identicon seed={person.id} size={26} />
-                <span className="call-tile-name">
-                  <HugeiconsIcon icon={MicOff01Icon} size={10} aria-hidden />
-                  {person.name}
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="call-bar">
-            <span className="call-link">
-              <HugeiconsIcon icon={Link01Icon} {...ICON_PROPS} />
-              {call.link}
-            </span>
-            <button type="button" className="call-join" disabled={ended}>
-              <HugeiconsIcon icon={Video01Icon} {...ICON_PROPS} />
-              {ended ? "Call ended" : "Join"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Notes written up after a meeting: summary, decisions, and action items with owners. Placeholder content for now.
-function NotesBlock({ notes, nowMs }: { notes: NotesEntry; nowMs: number }): React.JSX.Element {
-  return (
-    <div className="thread-block" id={`entry-${notes.id}`}>
-      <span className="thread-avatar thread-kind-marker thread-notes-marker" aria-hidden>
-        <HugeiconsIcon icon={SparklesIcon} size={12} />
-      </span>
-      <div className="thread-body">
-        <div className="thread-meta">
-          <span className="thread-author">Meeting notes</span>
-          <span className="thread-time">
-            AI summary · {formatRelativeTime(notes.createdAtMs, nowMs)}
-          </span>
-        </div>
-        <div className="thread-text">{notes.summary}</div>
-        <div className="notes-section">
-          <div className="notes-label">Decisions</div>
-          <ul className="notes-list">
-            {notes.decisions.map((decision) => (
-              <li key={decision}>{decision}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="notes-section">
-          <div className="notes-label">Action items</div>
-          <ul className="notes-list notes-actions">
-            {notes.actionItems.map((action) => (
-              <li key={action.text}>
-                <span className="notes-check" aria-hidden />
-                <span className="notes-action-text">{action.text}</span>
-                <span className="notes-owner">
-                  <Identicon seed={action.owner.id} size={14} />
-                  {action.owner.name}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
       </div>
     </div>
   );
@@ -1258,7 +1070,7 @@ export function ThreadView({
   const nowMs = useNow(60_000);
   const me = useMe();
   const entries = thread.entries;
-  // The description moves into the header: a response's ask, a meeting's agenda, a focus block's note.
+  // The description moves into the header, under the title.
   const ask = descriptionOf(thread);
   const rest = ask === undefined ? entries : entries.filter((entry) => entry !== ask);
 
@@ -1388,14 +1200,7 @@ export function ThreadView({
   // In a conversation, you're replying to whoever wrote last.
   const asker =
     thread.kind === "conversation" ? latestFromOthers(thread, me.id)?.author : undefined;
-  const placeholder =
-    asker !== undefined
-      ? `Reply to ${asker.name.split(" ")[0]}…`
-      : thread.kind === "meeting"
-        ? "Add notes…"
-        : thread.kind === "focus"
-          ? "Add a note…"
-          : "Reply…";
+  const placeholder = asker !== undefined ? `Reply to ${asker.name.split(" ")[0]}…` : "Reply…";
 
   // Clicking empty space in the thread, including below the last block, puts the cursor in the reply.
   const onBackgroundMouseDown = (event: React.MouseEvent): void => {
@@ -1469,10 +1274,6 @@ export function ThreadView({
                 );
               if (entry.kind === "event")
                 return <EventLine key={entry.id} event={entry} nowMs={nowMs} />;
-              if (entry.kind === "call")
-                return <CallBlock key={entry.id} call={entry} thread={thread} nowMs={nowMs} />;
-              if (entry.kind === "notes")
-                return <NotesBlock key={entry.id} notes={entry} nowMs={nowMs} />;
               return <ResolutionBlock key={entry.id} resolution={entry} nowMs={nowMs} />;
             })}
             {isDone(thread.status) ? null : (

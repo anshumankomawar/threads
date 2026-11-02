@@ -26,7 +26,7 @@ export function closeMentionMenu(view: EditorView): void {
 }
 
 // A mention inside a message being written: a chip with the person's name, sent as `[[person:<id>]]`. Mentioning
-// someone asks them a question: it puts time to answer on their schedule until they write in the thread.
+// someone in a thread starts a conversation with them; in a conversation it brings them in.
 export const MentionNode = Node.create({
   name: "mention",
   group: "inline",

@@ -13,18 +13,12 @@ import {
   type EngineStorage,
   type WorkspaceName,
 } from "./engine.ts";
-import { nextPlanningMs } from "./scheduler.ts";
+import { Triager, workersAiClassifier } from "./triage.ts";
 
 // Request details a Workspace object needs. The desktop app sends them as headers; a browser WebSocket can't set
 // headers, so the sync socket passes them as query parameters instead.
 function param(request: Request, header: string, query: string): string | null {
   return request.headers.get(header) ?? new URL(request.url).searchParams.get(query);
-}
-
-function utcOffset(request: Request): number | undefined {
-  const value = param(request, "X-UTC-Offset", "utcOffset");
-  const offset = Number(value);
-  return value !== null && Number.isFinite(offset) ? offset : undefined;
 }
 
 // One workspace: its sync engine, with models, the sync log and executed transaction ids in this object's SQLite
@@ -34,6 +28,8 @@ export class Workspace extends DurableObject<Env> {
   #engine: SyncEngine | undefined;
   #app: Hono | undefined;
   #kept: { modelName: ModelName; data: AnyRecord }[] = [];
+  // Sorts inboxes with Workers AI after each change.
+  #triager: Triager | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -68,6 +64,7 @@ export class Workspace extends DurableObject<Env> {
     await this.ctx.storage.deleteAll();
     this.#engine = undefined;
     this.#app = undefined;
+    this.#triager = undefined;
     this.#createTables();
   }
 
@@ -125,9 +122,8 @@ export class Workspace extends DurableObject<Env> {
     };
   }
 
-  // The workspace's engine, loaded from storage on first use. A new workspace is seeded, laying out sample times
-  // in the first requester's time zone.
-  #load(name: WorkspaceName, utcOffsetMinutes: number | undefined): SyncEngine {
+  // The workspace's engine, loaded from storage on first use. A new workspace is seeded.
+  #load(name: WorkspaceName): SyncEngine {
     if (this.#engine !== undefined) return this.#engine;
     const { sql } = this.ctx.storage;
     sql.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('workspace', ?)", name);
@@ -142,26 +138,32 @@ export class Workspace extends DurableObject<Env> {
     const lastSyncId =
       sql.exec<{ id: number | null }>("SELECT MAX(id) AS id FROM sync_actions").one().id ?? 0;
     engine.load(rows, lastSyncId);
-    if (engine.isEmpty) seed(engine, name, SAMPLE_ME, utcOffsetMinutes);
+    if (engine.isEmpty) seed(engine, name, SAMPLE_ME);
     refreshSeedPeople(engine, name, SAMPLE_ME);
     ensureOrganization(engine, name);
-    engine.replanAll();
-    void this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
     this.#engine = engine;
+    this.#triager = new Triager(engine, workersAiClassifier(this.env.AI), {
+      // Try again in a minute, even if nothing else changes.
+      onFailure: (retryAtMs) => void this.ctx.storage.setAlarm(retryAtMs),
+    });
+    // Anything left unsorted, such as a fresh seed or threads the model failed on before a restart.
+    this.#sort();
     return engine;
   }
 
-  // Each morning, reschedule everyone for what time has changed: closer due dates and slots that passed.
+  #sort(): void {
+    if (this.#triager !== undefined) this.ctx.waitUntil(this.#triager.kick());
+  }
+
+  // Retries sorting after the model failed.
   async alarm(): Promise<void> {
     const [row] = this.ctx.storage.sql
       .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'workspace'")
       .toArray();
     if (row === undefined || !isWorkspaceName(row.value)) return;
-    const loaded = this.#engine;
-    const engine = this.#load(row.value, undefined);
-    // Loading already looked over the schedules.
-    if (loaded !== undefined) engine.replanAll();
-    await this.ctx.storage.setAlarm(nextPlanningMs(Date.now()));
+    const loaded = this.#engine !== undefined;
+    this.#load(row.value);
+    if (loaded) this.#sort();
   }
 
   #broadcast(actions: SyncAction[]): void {
@@ -182,7 +184,7 @@ export class Workspace extends DurableObject<Env> {
       return Response.json({ error: `Unknown workspace: ${name}` }, { status: 400 });
     const { pathname } = new URL(request.url);
     if (pathname === "/sync/reset" && request.method === "POST") await this.#reset();
-    const engine = this.#load(name, utcOffset(request));
+    const engine = this.#load(name);
     if (pathname === "/sync/reset") {
       if (this.#kept.length > 0) engine.restore(this.#kept);
       this.#kept = [];
@@ -202,7 +204,10 @@ export class Workspace extends DurableObject<Env> {
     }
 
     this.#app ??= createWorkspaceApp(engine);
-    return this.#app.fetch(request);
+    const response = await this.#app.fetch(request);
+    // New or changed threads may need sorting into someone's buckets.
+    if (pathname === "/sync/transactions" && response.ok) this.#sort();
+    return response;
   }
 
   // Clients ping to keep the connection alive through proxies.

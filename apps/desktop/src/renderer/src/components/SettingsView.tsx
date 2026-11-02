@@ -11,7 +11,6 @@ export function SettingsView({ me, people }: { me: Person; people: Person[] }): 
     questionToasts: true,
     sounds: false,
     dailySummary: true,
-    quietInFocus: true,
   });
   const [connected, setConnected] = useState<Record<string, boolean>>({});
   const flip = (key: keyof typeof toggles): void =>
@@ -96,17 +95,12 @@ export function SettingsView({ me, people }: { me: Person; people: Person[] }): 
           ))}
         </span>
       </div>
-      {toggle("compactSidebar", "Compact sidebar", "Tighter rows in the schedule and lists")}
+      {toggle("compactSidebar", "Compact sidebar", "Tighter rows in the inbox and lists")}
 
       <h2 className="profile-heading">Notifications</h2>
-      {toggle("questionToasts", "Question toasts", "Held while you're in a meeting or focus block")}
+      {toggle("questionToasts", "Mention toasts", "A toast when someone mentions you")}
       {toggle("sounds", "Sounds", "A soft chime when a question reaches you")}
-      {toggle("dailySummary", "Daily summary", "An email each morning with your day")}
-      {toggle(
-        "quietInFocus",
-        "Quiet in focus",
-        "Hold everything, not just questions, during focus",
-      )}
+      {toggle("dailySummary", "Daily summary", "An email each morning with your inbox")}
 
       <h2 className="profile-heading">Integrations</h2>
       {["Google Calendar", "Slack", "GitHub"].map((name) => (

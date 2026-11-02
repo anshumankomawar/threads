@@ -19,6 +19,9 @@ export default defineConfig(({ mode }) => ({
       // Bearer token the hosted API requires; leave it unset locally to keep the API open.
       API_TOKEN: bindings.secret(),
       SAMPLE_WORKSPACE: bindings.text(mode === "development" ? "on" : "off"),
+      // Workers AI sorts inboxes into buckets. It always runs on Cloudflare, in local dev too, within the account's
+      // free daily allocation.
+      AI: bindings.ai({ dev: { remote: true } }),
     },
   },
 }));

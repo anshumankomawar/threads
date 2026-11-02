@@ -1,20 +1,19 @@
 import {
-  askerId,
-  DUMMY_ZOOM_LINK,
+  bucketsOf,
   entryFromCreate,
   groupFromCreate,
   labelFromCreate,
   formatEffort,
   fromThread,
   labelSlug,
-  levelPositions,
   localPeople,
   conversationStartedId,
+  MAX_BUCKETS,
   mentionsIn,
   MIN_EFFORT_HOURS,
   MODEL_NAMES,
+  plainThreadLinks,
   PRIORITY_LABELS,
-  recordBlocks,
   ORGANIZATION_ID,
   sampleGroup,
   samplePeople,
@@ -23,17 +22,15 @@ import {
   STATUS_LABELS,
   threadFromCreate,
   threadLink,
-  threadScore,
   isDone,
   toThread,
   toThreads,
-  workdayOf,
   type AnyRecord,
+  type Bucket,
   type Label,
   type ModelName,
   type ModelRecords,
   type Person,
-  type Schedule,
   type SyncAction,
   type Thread,
   type ThreadChanges,
@@ -41,13 +38,6 @@ import {
   type TransactionInput,
 } from "model";
 import { z } from "zod";
-import {
-  catchUpTimes,
-  MIN_BLOCK_MINUTES,
-  minutesSpent,
-  planSchedule,
-  workingSlots,
-} from "./scheduler.ts";
 
 // Each workspace is its own sync group: its own people, threads and sync ids. "local" starts with a few people
 // and no threads, for trying the app as each of them; "sample" is the demo team with their threads.
@@ -159,10 +149,10 @@ class Batch {
       }
   }
 
-  // Whose inbox a response is in, the same rule as `waitingOn` in the model.
+  // Whose inbox an issue is in, the same rule as `waitingOn` in the model.
   waitingOn(threadId: string): string | null {
     const thread = this.get("Thread", threadId);
-    if (thread === undefined || thread.kind !== "response") return null;
+    if (thread === undefined || thread.kind !== "issue") return null;
     return thread.assigneeId ?? thread.requesterId;
   }
 
@@ -177,17 +167,13 @@ class Batch {
 // --- Validation -------------------------------------------------------------------------------------------
 
 const id = z.string().min(1).max(100);
-const schedule = z
-  .object({ startMs: z.number().int(), endMs: z.number().int() })
-  .refine(({ startMs, endMs }) => endMs > startMs, "endMs must be after startMs");
 
 const threadCreate = z.object({
   id,
-  kind: z.enum(["response", "meeting", "focus", "conversation"]),
+  kind: z.enum(["issue", "conversation"]),
   title: z.string().trim().min(1).max(200),
   assigneeId: id.nullable(),
   attendeeIds: z.array(id),
-  schedule: schedule.nullable(),
   branchedFromId: id.nullable().optional(),
   blocksId: id.nullable().optional(),
   onBehalfOfId: id.nullable().optional(),
@@ -206,30 +192,39 @@ const threadChanges = z
     labelIds: z
       .array(id)
       .refine((labels) => new Set(labels).size === labels.length, "Labels must be unique"),
-    schedule: schedule.nullable(),
+    // Only ever placed by hand from the client; the model's choices are the server's own writes.
+    triage: z
+      .strictObject({
+        personId: id,
+        bucketId: id,
+        reason: z.string().max(200),
+        manual: z.literal(true),
+        stale: z.literal(false),
+      })
+      .nullable(),
     seen: z.literal(true),
   })
   .partial();
 
-const halfHour = z.strictObject({
-  hour: z.number().int().min(0).max(23),
-  minute: z.union([z.literal(0), z.literal(30)]),
+// Someone's inbox buckets: named, described in plain words for the model, each id once.
+const bucket = z.strictObject({
+  id,
+  name: z.string().trim().min(1).max(40),
+  description: z.string().trim().max(500),
 });
 
-// Someone's working day: whole hours, at least one long, with catch-up half hours inside it.
-const workday = z
+const personChanges = z
   .strictObject({
-    startHour: z.number().int().min(0).max(23),
-    endHour: z.number().int().min(1).max(24),
-    catchUp: z.array(halfHour).max(4),
+    buckets: z
+      .array(bucket)
+      .min(1)
+      .max(MAX_BUCKETS)
+      .refine(
+        (buckets) => new Set(buckets.map((bucket) => bucket.id)).size === buckets.length,
+        "Bucket ids must be unique",
+      ),
   })
-  .refine((day) => day.startHour < day.endHour, "The working day must end after it starts")
-  .refine(
-    (day) => day.catchUp.every(({ hour }) => hour >= day.startHour && hour < day.endHour),
-    "Catch-up times must be in working hours",
-  );
-
-const personChanges = z.strictObject({ workday }).partial();
+  .partial();
 
 const labelName = z.string().trim().min(1).max(80);
 
@@ -354,7 +349,7 @@ function describeChanges(
     );
   if (changes.requesterId !== undefined && changes.requesterId !== thread.requesterId)
     lines.push(`made ${people(changes.requesterId)?.name ?? changes.requesterId} the requester`);
-  if (changes.effortHours !== undefined && changes.effortHours !== (thread.effortHours ?? null))
+  if (changes.effortHours !== undefined && changes.effortHours !== thread.effortHours)
     lines.push(
       changes.effortHours === null
         ? "removed the estimate"
@@ -373,34 +368,39 @@ function describeChanges(
         lines.push(inGroup ? `removed this from ${label.name}` : `removed the ${label.name} label`);
     }
   }
-  if (changes.schedule !== undefined && changes.schedule?.startMs !== thread.schedule?.startMs)
-    lines.push(
-      changes.schedule === null
-        ? "removed it from the schedule"
-        : `scheduled this for ${localTime(changes.schedule.startMs, offsetMinutes, { weekday: "short", hour: "numeric", minute: "2-digit" })}`,
-    );
   return lines;
 }
 
 // --- Engine -----------------------------------------------------------------------------------------------
 
-// The threads a transaction changes, which a schedule might have to answer to.
-function touchedThreads(batch: Batch, transaction: TransactionInput): string[] {
-  // A blocker reaches the thread it blocks: making one blocks it, and closing it can unblock it.
-  if (transaction.type === "create" && transaction.modelName === "Thread")
-    return [transaction.data.id, ...(transaction.data.blocksId ? [transaction.data.blocksId] : [])];
-  if (transaction.type === "create")
-    return transaction.modelName === "Entry" ? [transaction.data.threadId] : [];
-  if (transaction.type === "update" && transaction.modelName !== "Thread") return [];
-  if (transaction.type === "update") {
-    const blocksId = batch.get("Thread", transaction.modelId)?.blocksId;
-    return [transaction.modelId, ...(blocksId ? [blocksId] : [])];
+// A record stored by an older version, in today's shape, or null when it no longer has one. Labels were tags; threads
+// had schedules, and meetings and focus blocks were kinds of their own (they're issues now) with call links and notes.
+function upgrade(modelName: ModelName, data: AnyRecord): AnyRecord | null {
+  if (modelName === "Entry") {
+    const { kind } = data as { kind: string };
+    return kind === "call" || kind === "notes" ? null : data;
   }
-  const sources = transaction.entryIds.flatMap((entryId) => {
-    const entry = batch.get("Entry", entryId);
-    return entry === undefined ? [] : [entry.threadId];
-  });
-  return [transaction.threadId, ...sources];
+  if (modelName !== "Thread") return data;
+  const {
+    tagIds,
+    schedule: _schedule,
+    blocks: _blocks,
+    workedMinutes: _workedMinutes,
+    ...thread
+  } = data as ThreadRecord & {
+    tagIds?: string[];
+    schedule?: unknown;
+    blocks?: unknown;
+    workedMinutes?: unknown;
+  };
+  const kind = thread.kind === "conversation" ? "conversation" : "issue";
+  return {
+    ...thread,
+    kind,
+    labelIds: thread.labelIds ?? tagIds ?? [],
+    triage: thread.triage ?? null,
+    attendeeIds: kind === "conversation" ? thread.attendeeIds : [],
+  };
 }
 
 export type EngineOptions = {
@@ -409,6 +409,17 @@ export type EngineOptions = {
   // Called after each committed batch with its sync actions, to broadcast them as a delta packet.
   onActions?: (actions: SyncAction[]) => void;
 };
+
+// What the model needs to sort one person's inbox: their buckets, the threads waiting on them that aren't sorted
+// for them yet, and the ones they placed by hand, as examples of what they mean.
+export type TriageRequest = {
+  person: Person;
+  buckets: Bucket[];
+  threads: { id: string; title: string; from: string; text: string }[];
+  examples: { title: string; bucketId: string }[];
+};
+
+export type TriageResult = { threadId: string; bucketId: string; reason: string };
 
 // One workspace's models and sync log. Every change, whether a client transaction, a REST call or a seed, runs as
 // a batch: it's validated and staged, its side effects added, then each write is numbered with the next sync id,
@@ -426,17 +437,12 @@ export class SyncEngine {
     this.onActions = onActions;
   }
 
-  // Restores models and the sync position from storage.
+  // Restores models and the sync position from storage, bringing older records up to date.
   load(records: { modelName: ModelName; data: AnyRecord }[], lastSyncId: number): void {
     for (const { modelName, data } of records) {
-      // Threads stored when labels were called tags.
-      const record =
-        modelName === "Thread" && "tagIds" in data
-          ? (({ tagIds, ...thread }) => ({ ...thread, labelIds: tagIds }))(
-              data as ThreadRecord & { tagIds: string[] },
-            )
-          : data;
-      (this.models[modelName] as Map<string, AnyRecord>).set(record.id, record);
+      const record = upgrade(modelName, data);
+      if (record !== null)
+        (this.models[modelName] as Map<string, AnyRecord>).set(record.id, record);
     }
     this.lastSyncId = lastSyncId;
   }
@@ -489,113 +495,97 @@ export class SyncEngine {
     const nowMs = this.#now();
     return this.write(
       (batch) => {
-        const turnBefore = new Map<string, string | null>();
-        // People whose working day changed, whose schedules follow it.
-        const replanned = new Set<string>();
-        for (const transaction of fresh) {
-          if (transaction.type === "update" && transaction.modelName === "Person")
-            replanned.add(transaction.modelId);
-          for (const threadId of touchedThreads(batch, transaction))
-            if (!turnBefore.has(threadId)) turnBefore.set(threadId, batch.waitingOn(threadId));
+        for (const transaction of fresh)
           this.#apply(batch, actor, transaction, nowMs, utcOffsetMinutes);
-        }
-        this.#replanAfter(batch, turnBefore, replanned, nowMs);
       },
       fresh.map((transaction) => transaction.id),
     );
   }
 
-  // Reschedules everyone these changes affect. A response handed to someone gives up the slot it had on the other
-  // person's schedule. Closing a thread reschedules nobody: its slot stays a gap until the next change.
-  #replanAfter(
-    batch: Batch,
-    turnBefore: Map<string, string | null>,
-    replanned: Set<string>,
-    nowMs: number,
-  ): void {
-    const affected = new Set(replanned);
-    for (const [threadId, before] of turnBefore) {
-      const thread = batch.get("Thread", threadId);
-      if (thread === undefined || isDone(thread.status)) continue;
-      if (thread.kind !== "response") {
-        for (const person of [...thread.attendeeIds, thread.assigneeId ?? thread.requesterId])
-          affected.add(person);
-        continue;
-      }
-      const turn = batch.waitingOn(threadId);
-      if (turn === null) continue;
-      if (turn !== before && recordBlocks(thread).length > 0) {
-        // Time the assignee has put in so far still counts when the thread comes back to them.
-        const worked = before === thread.assigneeId ? minutesSpent(recordBlocks(thread), nowMs) : 0;
-        batch.put("Thread", {
-          ...thread,
-          schedule: null,
-          blocks: [],
-          workedMinutes: (thread.workedMinutes ?? 0) + worked,
-        });
-      }
-      affected.add(turn);
-    }
-    for (const person of affected) this.#plan(batch, person, nowMs);
+  // Whether an issue needs sorting for whoever it's waiting on: it's open (or blocked) and has no bucket of theirs, or
+  // the model's choice is stale. Handing it to someone else, or deleting its bucket, leaves it unsorted again.
+  #needsTriage(thread: ThreadRecord): string | null {
+    if (thread.kind !== "issue" || isDone(thread.status)) return null;
+    const personId = thread.assigneeId ?? thread.requesterId;
+    const { triage } = thread;
+    const buckets = bucketsOf(this.models.Person.get(personId));
+    const sorted =
+      triage !== null &&
+      !triage.stale &&
+      triage.personId === personId &&
+      buckets.some((bucket) => bucket.id === triage.bucketId);
+    return sorted ? null : personId;
   }
 
-  // Lays out one person's schedule: the open responses waiting on them, around their meetings and focus blocks. Only
-  // threads whose blocks actually change are written. Blocked threads give up what's left of their blocks until
-  // they're unblocked.
-  //
-  // Blocks that have ended count as work done. An estimate is the assignee's work, so it sets their time only; anyone
-  // else the thread is waiting on, or a thread with no estimate or with its estimate used up, gets the shortest block.
-  #plan(batch: Batch, personId: string, nowMs: number): void {
-    const workday = workdayOf(batch.get("Person", personId));
-    const slots = workingSlots(nowMs, workday);
-    const threads = batch.all("Thread").filter((thread) => !isDone(thread.status));
-    const levelOf = levelPositions(batch.all("Person"));
-    const waiting = threads.filter(
-      (thread) => batch.waitingOn(thread.id) === personId && thread.kind === "response",
-    );
-    const open = waiting.filter((thread) => thread.status === "open");
-    const fixed = threads.flatMap((thread) => {
-      if (thread.schedule === null || thread.kind === "response") return [];
-      const mine =
-        thread.kind === "meeting"
-          ? thread.attendeeIds.includes(personId)
-          : (thread.assigneeId ?? thread.requesterId) === personId;
-      return mine ? [thread.schedule] : [];
-    });
-    const over = (thread: ThreadRecord): Schedule[] =>
-      recordBlocks(thread).filter((block) => block.endMs <= nowMs);
-    const plan = planSchedule(
-      open.map((thread) => {
-        const estimate = thread.assigneeId === personId ? (thread.effortHours ?? null) : null;
-        const worked = (thread.workedMinutes ?? 0) + minutesSpent(over(thread), nowMs);
-        return {
-          id: thread.id,
-          score: threadScore(
-            thread,
-            levelOf(askerId(thread.requesterId, thread.assigneeId, personId)),
-            nowMs,
-          ),
-          minutes:
-            estimate === null
-              ? MIN_BLOCK_MINUTES
-              : Math.max(estimate * 60 - worked, MIN_BLOCK_MINUTES),
-          blocks: recordBlocks(thread).filter((block) => block.endMs > nowMs),
-        };
-      }),
-      [...fixed, ...catchUpTimes(slots, workday.catchUp)],
-      nowMs,
-      slots,
-    );
-    for (const thread of waiting) {
-      const upcoming = plan.get(thread.id) ?? [];
-      const blocks = [...over(thread), ...upcoming];
-      const schedule = upcoming[0] ?? null;
-      if (
-        JSON.stringify(blocks) !== JSON.stringify(thread.blocks) ||
-        JSON.stringify(schedule) !== JSON.stringify(thread.schedule)
-      )
-        batch.put("Thread", { ...thread, schedule, blocks });
+  // Everyone with unsorted threads, each with what the model needs. `skip` holds threads to leave for now, such as
+  // ones the model just failed on.
+  triageRequests(skip: ReadonlySet<string> = new Set()): TriageRequest[] {
+    const byPerson = new Map<string, ThreadRecord[]>();
+    for (const thread of this.models.Thread.values()) {
+      const personId = this.#needsTriage(thread);
+      if (personId === null || skip.has(thread.id)) continue;
+      byPerson.set(personId, [...(byPerson.get(personId) ?? []), thread]);
     }
+    const name = (personId: string): string | undefined => this.models.Person.get(personId)?.name;
+    const title = (threadId: string): string | undefined => this.models.Thread.get(threadId)?.title;
+    return [...byPerson].flatMap(([personId, threads]) => {
+      const person = this.models.Person.get(personId);
+      if (person === undefined) return [];
+      const examples = [...this.models.Thread.values()].flatMap((thread) =>
+        thread.triage?.manual && thread.triage.personId === personId
+          ? [{ title: thread.title, bucketId: thread.triage.bucketId }]
+          : [],
+      );
+      return [
+        {
+          person,
+          buckets: bucketsOf(person),
+          examples: examples.slice(-20),
+          threads: threads.map((thread) => {
+            // What it's about: its description, or its first message.
+            const opening = [...this.models.Entry.values()]
+              .filter((entry) => entry.threadId === thread.id && entry.kind === "message")
+              .sort(
+                (a, b) =>
+                  Number(b.id === thread.id) - Number(a.id === thread.id) ||
+                  a.createdAtMs - b.createdAtMs,
+              )[0];
+            return {
+              id: thread.id,
+              title: thread.title,
+              from: name(thread.requesterId) ?? thread.requesterId,
+              text:
+                opening?.kind === "message"
+                  ? plainThreadLinks(opening.text, title, name).slice(0, 600)
+                  : "",
+            };
+          }),
+        },
+      ];
+    });
+  }
+
+  // Saves the model's choices for one person's threads. Any thread that changed hands, was closed, or was placed by
+  // hand while the model was thinking keeps what it has; a bucket that's gone is ignored.
+  applyTriage(personId: string, results: TriageResult[]): SyncAction[] {
+    return this.write((batch) => {
+      const buckets = bucketsOf(batch.get("Person", personId));
+      for (const { threadId, bucketId, reason } of results) {
+        const thread = batch.get("Thread", threadId);
+        if (thread === undefined || this.#needsTriage(thread) !== personId) continue;
+        if (!buckets.some((bucket) => bucket.id === bucketId)) continue;
+        batch.put("Thread", {
+          ...thread,
+          triage: {
+            personId,
+            bucketId,
+            reason: reason.trim().slice(0, 120),
+            manual: false,
+            stale: false,
+          },
+        });
+      }
+    });
   }
 
   // Puts back what a wipe keeps: the organization, its labels and its groups.
@@ -603,20 +593,6 @@ export class SyncEngine {
     this.write((batch) => {
       for (const { modelName, data } of records)
         batch.put(modelName, data as ModelRecords[typeof modelName]);
-    });
-  }
-
-  // Looks over every schedule: on load, and each morning, when due dates have drawn closer and slots have passed.
-  replanAll(): void {
-    const nowMs = this.#now();
-    this.write((batch) => {
-      const people = new Set(
-        batch
-          .all("Thread")
-          .filter((thread) => thread.kind === "response" && !isDone(thread.status))
-          .flatMap((thread) => batch.waitingOn(thread.id) ?? []),
-      );
-      for (const person of people) this.#plan(batch, person, nowMs);
     });
   }
 
@@ -774,8 +750,7 @@ export class SyncEngine {
           throw new EngineError(400, "A conversation starts in an open thread");
         if (data.attendeeIds.every((id) => id === actor.id))
           throw new EngineError(400, "A conversation needs someone to talk to");
-        if (data.assigneeId !== null || data.schedule !== null)
-          throw new EngineError(400, "A conversation has no assignee or time");
+        if (data.assigneeId !== null) throw new EngineError(400, "A conversation has no assignee");
       }
       const blocked = data.blocksId ? batch.get("Thread", data.blocksId) : undefined;
       if (data.blocksId && (blocked === undefined || isDone(blocked.status)))
@@ -783,7 +758,7 @@ export class SyncEngine {
       // Asking on someone's behalf makes them the requester; who really made it stays on record.
       const onBehalfOf = data.onBehalfOfId === actor.id ? null : (data.onBehalfOfId ?? null);
       if (onBehalfOf !== null) {
-        if (data.kind !== "response")
+        if (data.kind !== "issue")
           throw new EngineError(400, "Only a thread can be made on someone's behalf");
         requirePerson(onBehalfOf);
       }
@@ -811,7 +786,7 @@ export class SyncEngine {
           text: `created this on behalf of ${person(onBehalfOf)?.name ?? onBehalfOf}`,
           createdAtMs: nowMs,
         });
-      // A blocker blocks the thread it's for, which comes off the schedule until the blocker closes.
+      // A blocker blocks the thread it's for until the blocker closes.
       if (blocked !== undefined) {
         batch.put("Thread", { ...blocked, status: "blocked", updatedAtMs: nowMs });
         batch.put("Entry", {
@@ -835,15 +810,6 @@ export class SyncEngine {
         });
         batch.put("Thread", { ...parent, updatedAtMs: nowMs });
       }
-      // Every meeting gets a video call.
-      if (data.kind === "meeting")
-        batch.put("Entry", {
-          id: `${data.id}:call`,
-          threadId: data.id,
-          kind: "call",
-          link: DUMMY_ZOOM_LINK,
-          createdAtMs: nowMs,
-        });
       return;
     }
 
@@ -896,7 +862,6 @@ export class SyncEngine {
           throw new EngineError(403, "Only whoever opened a thread writes its description");
       } else if (batch.get("Thread", data.id) !== undefined)
         throw new EngineError(400, "An entry can't take another thread's id");
-      // Entries sort by time, so one made in the same batch as its thread still comes after the call link.
       batch.put("Entry", entryFromCreate(data, actor.id, nowMs));
       // Mentioning someone in a conversation brings them into it.
       const joining =
@@ -930,19 +895,31 @@ export class SyncEngine {
       if (target === undefined) throw missingUser(transaction.modelId);
       if (target.id !== actor.id)
         throw new EngineError(403, "People change only their own profile");
-      // No activity line: a profile isn't a thread. Their schedule follows in the same batch (`#replanAfter`).
+      // No activity line: a profile isn't a thread.
       batch.put("Person", { ...target, ...transaction.changes });
+      // New buckets mean sorting their inbox again, keeping what they placed by hand in buckets that are still there.
+      // Threads stay where they are until the model has looked again. Only reordering them changes nothing.
+      const { buckets } = transaction.changes;
+      const key = (list: Bucket[]): string =>
+        JSON.stringify(list.toSorted((a, b) => a.id.localeCompare(b.id)));
+      if (buckets !== undefined && key(buckets) !== key(bucketsOf(target)))
+        for (const thread of batch.all("Thread")) {
+          const { triage } = thread;
+          if (triage?.personId !== actor.id) continue;
+          const kept = buckets.some((bucket) => bucket.id === triage.bucketId);
+          if (!kept) batch.put("Thread", { ...thread, triage: null });
+          else if (!triage.manual)
+            batch.put("Thread", { ...thread, triage: { ...triage, stale: true } });
+        }
       return;
     }
     const thread = batch.get("Thread", transaction.modelId);
     if (thread === undefined) throw new EngineError(404, "Thread not found");
     const { changes } = transaction;
-    if (thread.kind === "response" && changes.schedule !== undefined)
-      throw new EngineError(400, "A response's slot comes from the schedule it lands on");
     if (changes.assigneeId !== undefined && changes.assigneeId !== null)
       requirePerson(changes.assigneeId);
     if (changes.requesterId !== undefined) {
-      if (thread.kind !== "response")
+      if (thread.kind !== "issue")
         throw new EngineError(400, "Only a thread has a requester to change");
       requirePerson(changes.requesterId);
     }
@@ -951,9 +928,22 @@ export class SyncEngine {
         throw new EngineError(400, "A conversation has no labels");
       requireLabels(changes.labelIds);
     }
-    // Opening a thread marks it seen, quietly: no activity line, and it doesn't count as an update.
-    const { seen, ...edits } = changes;
+    // Opening a thread marks it seen, and placing it in a bucket is yours alone: both are quiet, with no activity
+    // line, and don't count as an update.
+    const { seen, triage, ...edits } = changes;
     if (seen) batch.put("Thread", { ...thread, seenBy: { ...thread.seenBy, [actor.id]: nowMs } });
+    if (triage !== undefined) {
+      if (batch.waitingOn(thread.id) !== actor.id || isDone(thread.status))
+        throw new EngineError(400, "Only an open thread in your inbox goes in your buckets");
+      if (triage !== null) {
+        if (triage.personId !== actor.id)
+          throw new EngineError(403, "People sort only their own inbox");
+        if (!bucketsOf(actor).some((bucket) => bucket.id === triage.bucketId))
+          throw new EngineError(404, "Bucket not found");
+      }
+      // Null hands it back to the model to sort.
+      batch.put("Thread", { ...(batch.get("Thread", thread.id) ?? thread), triage });
+    }
     const current = batch.get("Thread", thread.id) ?? thread;
     const lines = describeChanges(
       current,
@@ -964,7 +954,16 @@ export class SyncEngine {
       offsetMinutes,
     );
     if (lines.length === 0) return;
-    batch.put("Thread", { ...current, ...edits, updatedAtMs: nowMs });
+    // A new title can mean a different bucket, unless it was placed by hand.
+    const retitled = edits.title !== undefined && current.triage?.manual === false;
+    batch.put("Thread", {
+      ...current,
+      ...edits,
+      ...(retitled && current.triage !== null
+        ? { triage: { ...current.triage, stale: true } }
+        : {}),
+      updatedAtMs: nowMs,
+    });
     lines.forEach((text, index) =>
       batch.put("Entry", {
         id: `${transaction.id}:${index}`,
@@ -979,7 +978,7 @@ export class SyncEngine {
     if (changes.status !== undefined && isDone(changes.status))
       batch.closeConversations(thread.id, actor.id, nowMs, transaction.id);
 
-    // Closing (or archiving) the last open blocker unblocks the thread it was for, which goes back on the schedule.
+    // Closing (or archiving) the last open blocker unblocks the thread it was for.
     const blocked = thread.blocksId ? batch.get("Thread", thread.blocksId) : undefined;
     if (
       changes.status !== undefined &&
@@ -1028,12 +1027,11 @@ export function seedPeople(workspace: WorkspaceName, me: Person): Person[] {
   return workspace === "local" ? localPeople() : samplePeople(me);
 }
 
-// Fills an empty workspace with its starting data, laying out sample times in `utcOffsetMinutes`.
+// Fills an empty workspace with its starting data.
 export function seed(
   engine: SyncEngine,
   workspace: WorkspaceName,
   me: Person,
-  utcOffsetMinutes?: number,
   nowMs = Date.now(),
 ): void {
   engine.write((batch) => {
@@ -1042,7 +1040,7 @@ export function seed(
     const { group, label } = sampleGroup(me, nowMs);
     batch.put("Group", group);
     batch.put("Label", label);
-    for (const sample of sampleThreads(me, nowMs, utcOffsetMinutes)) {
+    for (const sample of sampleThreads(me, nowMs)) {
       const { thread, entries } = fromThread(sample);
       batch.put("Thread", thread);
       for (const entry of entries) batch.put("Entry", entry);
@@ -1071,8 +1069,8 @@ export function ensureOrganization(engine: SyncEngine, workspace: WorkspaceName)
 export function refreshSeedPeople(engine: SyncEngine, workspace: WorkspaceName, me: Person): void {
   // Seeds set who people are; what they've set on their profile stays.
   const refreshed = seedPeople(workspace, me).map((person) => {
-    const workday = engine.models.Person.get(person.id)?.workday;
-    return workday === undefined ? person : { ...person, workday };
+    const buckets = engine.models.Person.get(person.id)?.buckets;
+    return buckets === undefined ? person : { ...person, buckets };
   });
   const changed = refreshed.filter(
     (person) => JSON.stringify(engine.models.Person.get(person.id)) !== JSON.stringify(person),

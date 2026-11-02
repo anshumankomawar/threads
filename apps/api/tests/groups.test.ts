@@ -1,4 +1,5 @@
 import {
+  threadScore,
   labelSlug,
   ORGANIZATION_ID,
   SEEDED_LABELS,
@@ -84,11 +85,10 @@ const createThread = (id: string, fields: object = {}): TransactionInput =>
     modelName: "Thread",
     data: {
       id,
-      kind: "response",
+      kind: "issue",
       title: "A thread",
       assigneeId: "arjun",
       attendeeIds: [],
-      schedule: null,
       ...fields,
     },
   }) as TransactionInput;
@@ -183,11 +183,9 @@ test("a thread's label changes are logged, in words that fit a label or a group"
   ]);
 });
 
-test("labels work on meetings and focus blocks, but not conversations", async () => {
-  const focus = createThread("f1", { kind: "focus", assigneeId: null, labelIds: ["bug"] });
-  await transact("anshu", [focus]);
-  expect((await threadOf("f1")).labelIds).toEqual(["bug"]);
-  await transact("anshu", [createThread("t1")]);
+test("labels work on threads, but not conversations", async () => {
+  await transact("anshu", [createThread("t1", { labelIds: ["bug"] })]);
+  expect((await threadOf("t1")).labelIds).toEqual(["bug"]);
   await transact("anshu", [
     createThread("c1", {
       kind: "conversation",
@@ -316,12 +314,16 @@ test("a conversation doesn't inherit its thread's groups", async () => {
   expect((await threadOf("c1")).labelIds).toEqual([]);
 });
 
-test("only seeded labels affect the schedule: a made-up one can't jump the queue", async () => {
-  await transact("anshu", [createThread("first")]);
-  await transact("anshu", [createThread("second"), createLabel("Very Important")]);
-  await transact("anshu", [updateThread("second", { labelIds: ["very-important"] })]);
-  const [first, second] = [await threadOf("first"), await threadOf("second")];
-  expect(first.schedule?.startMs).toBeLessThan(second.schedule?.startMs ?? 0);
+test("only seeded labels affect the score: a made-up one can't jump the queue", async () => {
+  await transact("anshu", [createThread("plain"), createThread("bug"), createThread("made-up")]);
+  await transact("anshu", [createLabel("Very Important")]);
+  await transact("anshu", [
+    updateThread("bug", { labelIds: ["bug"] }),
+    updateThread("made-up", { labelIds: ["very-important"] }),
+  ]);
+  const score = async (id: string): Promise<number> => threadScore(await threadOf(id), 0, NOW);
+  expect(await score("made-up")).toBe(await score("plain"));
+  expect(await score("bug")).toBeGreaterThan(await score("plain"));
 });
 
 test("the sample workspace has a group with threads in it", async () => {
@@ -332,11 +334,15 @@ test("the sample workspace has a group with threads in it", async () => {
   ).toBeGreaterThan(0);
 });
 
-test("threads stored with tags load with them as labels", () => {
+test("records stored by older versions load in today's shape", () => {
   const engine = new SyncEngine({ now: () => NOW });
-  const { labelIds: _labels, ...rest } = {
+  const {
+    labelIds: _labels,
+    triage: _triage,
+    ...rest
+  } = {
     id: "t1",
-    kind: "response",
+    kind: "issue",
     title: "Old",
     requesterId: "anshu",
     createdById: "anshu",
@@ -346,9 +352,7 @@ test("threads stored with tags load with them as labels", () => {
     dueAtMs: null,
     effortHours: null,
     labelIds: [],
-    schedule: null,
-    blocks: [],
-    workedMinutes: 0,
+    triage: null,
     attendeeIds: [],
     branchedFromId: null,
     blocksId: null,
@@ -356,10 +360,37 @@ test("threads stored with tags load with them as labels", () => {
     createdAtMs: NOW,
     updatedAtMs: NOW,
   } satisfies ThreadRecord;
-  engine.load([{ modelName: "Thread", data: { ...rest, tagIds: ["bug"] } as never }], 1);
+  // Labels were tags, threads had schedules, and meetings were their own kind with a call link.
+  const old = { schedule: null, blocks: [], workedMinutes: 0 };
+  engine.load(
+    [
+      {
+        modelName: "Thread",
+        data: { ...rest, ...old, kind: "response", tagIds: ["bug"] } as never,
+      },
+      {
+        modelName: "Thread",
+        data: { ...rest, ...old, id: "m1", kind: "meeting", attendeeIds: ["anshu", "kk"] } as never,
+      },
+      {
+        modelName: "Entry",
+        data: {
+          id: "m1:call",
+          threadId: "m1",
+          kind: "call",
+          link: "zoom",
+          createdAtMs: NOW,
+        } as never,
+      },
+    ],
+    1,
+  );
   const stored = engine.models.Thread.get("t1");
-  expect(stored?.labelIds).toEqual(["bug"]);
-  expect(stored).not.toHaveProperty("tagIds");
+  expect(stored).toMatchObject({ kind: "issue", labelIds: ["bug"], triage: null });
+  for (const gone of ["tagIds", "schedule", "blocks", "workedMinutes"])
+    expect(stored).not.toHaveProperty(gone);
+  expect(engine.models.Thread.get("m1")).toMatchObject({ kind: "issue", attendeeIds: [] });
+  expect(engine.models.Entry.size).toBe(0);
 });
 
 test("restoring puts back what a wipe keeps", () => {

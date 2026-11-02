@@ -25,9 +25,6 @@ function conversation(id: string, fields: Partial<Thread>): Thread {
     status: "open",
     priority: "none",
     dueAtMs: null,
-    schedule: null,
-    blocks: [],
-    workedMinutes: 0,
     attendees: [sam, me],
     branchedFromId: "parent",
     blocksId: null,
@@ -35,6 +32,7 @@ function conversation(id: string, fields: Partial<Thread>): Thread {
     seenBy: {},
     effortHours: null,
     labelIds: [],
+    triage: null,
     updatedAtMs: NOW,
     entries: [message(`${id}-0`, sam, "[[person:me]] can you look?", NOW - 60_000)],
     ...fields,
@@ -65,8 +63,8 @@ test("only open conversations you're in are listed, newest activity first", () =
   const newer = conversation("newer", { updatedAtMs: NOW });
   const closed = conversation("closed", { status: "closed" });
   const others = conversation("others", { requester: kim, attendees: [kim, sam] });
-  const response = { ...conversation("response", {}), kind: "response" as const };
-  expect(ids(conversationsFor([older, newer, closed, others, response], me).unread)).toEqual([
+  const issue = { ...conversation("issue", {}), kind: "issue" as const };
+  expect(ids(conversationsFor([older, newer, closed, others, issue], me).unread)).toEqual([
     "newer",
     "older",
   ]);

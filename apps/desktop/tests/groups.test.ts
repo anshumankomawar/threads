@@ -19,7 +19,7 @@ const NOW = new Date(2026, 10, 2, 12).getTime();
 function thread(id: string, fields: Partial<Thread> = {}): Thread {
   return {
     id,
-    kind: "response",
+    kind: "issue",
     title: id,
     requester: me,
     createdBy: me,
@@ -29,9 +29,7 @@ function thread(id: string, fields: Partial<Thread> = {}): Thread {
     dueAtMs: null,
     effortHours: null,
     labelIds: [],
-    schedule: null,
-    blocks: [],
-    workedMinutes: 0,
+    triage: null,
     attendees: [],
     branchedFromId: null,
     blocksId: null,

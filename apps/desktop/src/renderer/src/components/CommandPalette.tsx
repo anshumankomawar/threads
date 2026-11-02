@@ -1,23 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { Label, Person, Thread, ThreadKind } from "model";
 import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
-import type { NewThreadKind } from "./NewThreadPalette";
 
 type Tab = "all" | ThreadKind;
 
-// Tabs filter to one kind of thread; Work is focus blocks.
+// Tabs filter to one kind of thread.
 const TABS: { id: Tab; label: string; shortcut: string }[] = [
   { id: "all", label: "All", shortcut: "⌘ 1" },
-  { id: "response", label: "Threads", shortcut: "⌘ 2" },
-  { id: "meeting", label: "Meetings", shortcut: "⌘ 3" },
-  { id: "focus", label: "Work", shortcut: "⌘ 4" },
-  { id: "conversation", label: "Conversations", shortcut: "⌘ 5" },
-];
-
-const NEW_ACTIONS: { kind: NewThreadKind; label: string; shortcut?: string }[] = [
-  { kind: "response", label: "New Thread", shortcut: "⌘ N" },
-  { kind: "meeting", label: "New Meeting" },
-  { kind: "focus", label: "New Focus Block" },
+  { id: "issue", label: "Threads", shortcut: "⌘ 2" },
+  { id: "conversation", label: "Conversations", shortcut: "⌘ 3" },
 ];
 
 const SOURCES: DataSource[] = ["cloudflare", "local", "sample"];
@@ -29,21 +20,9 @@ const SOURCE_HINTS: Record<DataSource, string> = {
 };
 
 const SECTION_TITLES: Record<ThreadKind, string> = {
-  response: "Threads",
-  meeting: "Meetings",
-  focus: "Work",
+  issue: "Threads",
   conversation: "Conversations",
 };
-
-// When a scheduled thread happens: "4:00 PM" today, "Mon 10:00 AM" otherwise.
-function scheduleHint(thread: Thread): string | undefined {
-  if (thread.schedule === null) return undefined;
-  const start = new Date(thread.schedule.startMs);
-  const time = start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  return start.toDateString() === new Date().toDateString()
-    ? time
-    : `${start.toLocaleDateString(undefined, { weekday: "short" })} ${time}`;
-}
 
 type Item = { id: string; label: string; shortcut?: string; run: () => void };
 type Section = { title: string; items: Item[] };
@@ -72,7 +51,7 @@ export function CommandPalette({
   labels: Label[];
   onOpenLabel: (id: string) => void;
   onNewGroup: () => void;
-  onNewThread: (kind: NewThreadKind) => void;
+  onNewThread: () => void;
   onOpenThread: (id: string) => void;
   onClose: () => void;
 }): React.JSX.Element {
@@ -90,17 +69,14 @@ export function CommandPalette({
     onClose();
   };
 
-  const kinds: ThreadKind[] =
-    tab === "all" ? ["response", "meeting", "focus", "conversation"] : [tab];
+  const kinds: ThreadKind[] = tab === "all" ? ["issue", "conversation"] : [tab];
   const sections: Section[] = [
     {
       title: "Quick Actions",
-      items: NEW_ACTIONS.filter((action) => kinds.includes(action.kind)).map((action) => ({
-        id: `new-${action.kind}`,
-        label: action.label,
-        shortcut: action.shortcut,
-        run: run(() => onNewThread(action.kind)),
-      })),
+      items:
+        tab === "conversation"
+          ? []
+          : [{ id: "new-thread", label: "New Thread", shortcut: "⌘ N", run: run(onNewThread) }],
     },
     // Who you're viewing as, and where the data comes from.
     ...(tab === "all"
@@ -151,7 +127,6 @@ export function CommandPalette({
         .map((thread) => ({
           id: thread.id,
           label: thread.title,
-          shortcut: kind === "response" ? undefined : scheduleHint(thread),
           run: run(() => onOpenThread(thread.id)),
         })),
     })),
@@ -179,7 +154,7 @@ export function CommandPalette({
     } else if (event.key === "Enter") {
       event.preventDefault();
       items[selectedIndex]?.run();
-    } else if (event.metaKey && ["1", "2", "3", "4", "5"].includes(event.key)) {
+    } else if (event.metaKey && ["1", "2", "3"].includes(event.key)) {
       event.preventDefault();
       changeTab(TABS[Number(event.key) - 1].id);
     }

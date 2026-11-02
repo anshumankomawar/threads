@@ -134,11 +134,10 @@ async function started(server = new FakeServer(), database: SyncDatabase = memor
 }
 
 const draft = {
-  kind: "response" as const,
+  kind: "issue" as const,
   description: "Somewhere warm",
   assignee: arjun,
   invitees: [],
-  schedule: null,
 };
 
 test("bootstraps the pool from the server and opens the socket", async () => {
