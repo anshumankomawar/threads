@@ -2804,6 +2804,13 @@ body * {
   font-weight: 500;
 }
 
+/* Lined up with the group label above it. */
+.conversation-empty {
+  margin: 0;
+  padding: 4px var(--sidebar-inset) 6px;
+  color: var(--text-tertiary);
+}
+
 .conversation-row {
   display: flex;
   gap: 8px;

@@ -346,19 +346,26 @@ function ConversationList({
       </li>
     );
   };
-  if (conversations.unread.length === 0 && conversations.read.length === 0)
-    return <p className="sidebar-empty">No conversations</p>;
+  // Unread always shows, so it's clear when there's nothing new; Read shows once there's something in it.
   return (
     <>
-      {(["unread", "read"] as const).map((group) =>
-        conversations[group].length === 0 ? null : (
-          <section key={group} className="conversation-group">
-            <h2 className="conversation-group-label">{group === "unread" ? "Unread" : "Read"}</h2>
-            <ul className="thread-list" aria-label={group === "unread" ? "Unread" : "Read"}>
-              {conversations[group].map((conversation) => row(conversation, group === "unread"))}
-            </ul>
-          </section>
-        ),
+      <section className="conversation-group">
+        <h2 className="conversation-group-label">Unread</h2>
+        {conversations.unread.length === 0 ? (
+          <p className="conversation-empty">Nothing new</p>
+        ) : (
+          <ul className="thread-list" aria-label="Unread">
+            {conversations.unread.map((conversation) => row(conversation, true))}
+          </ul>
+        )}
+      </section>
+      {conversations.read.length > 0 && (
+        <section className="conversation-group">
+          <h2 className="conversation-group-label">Read</h2>
+          <ul className="thread-list" aria-label="Read">
+            {conversations.read.map((conversation) => row(conversation, false))}
+          </ul>
+        </section>
       )}
     </>
   );
