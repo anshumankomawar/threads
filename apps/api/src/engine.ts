@@ -601,15 +601,12 @@ export class SyncEngine {
       }
       // The thread it started in says so in a message from whoever started it, linking to it.
       if (data.kind === "conversation" && parent !== undefined) {
-        const names = data.attendeeIds
-          .filter((id) => id !== actor.id)
-          .map((id) => person(id)?.name ?? id);
         batch.put("Entry", {
           id: `${data.id}:started`,
           threadId: parent.id,
           kind: "message",
           authorId: actor.id,
-          text: `Started a conversation with ${names.join(", ")}: ${threadLink(data.id)}`,
+          text: `Started a conversation ${threadLink(data.id)}`,
           createdAtMs: nowMs,
         });
         batch.put("Thread", { ...parent, updatedAtMs: nowMs });

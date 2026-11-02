@@ -182,7 +182,7 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   that mentions people in an ordinary thread starts a conversation with them instead of posting there: a thread of kind
   `conversation`, branched off the thread it started in (`branchedFromId`), with whoever started it and everyone
   mentioned as its `attendees`, and the reply as its first message (`onSend` in `App.tsx`). The server posts "Started a
-  conversation with …: <link>" in the thread it's in, as a message from whoever started it. Mentioning someone inside a conversation brings them into it
+  conversation <link>" in the thread it's in, as a message from whoever started it. Mentioning someone inside a conversation brings them into it
   ("added …"). A conversation has no assignee, schedule, due date or estimate; it takes no time on anyone's schedule
   and isn't in the inbox or outbox. It opens beside the thread it's in (the split view; `openThread` routes it there).
   The sidebar's Conversations tab (Schedule, Conversations, Outbox) lists your open ones in two groups
