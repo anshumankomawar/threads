@@ -14,6 +14,7 @@ import {
   GitBranchIcon,
   HourglassIcon,
   Link01Icon,
+  PanelRightIcon,
   MicOff01Icon,
   SparklesIcon,
   Tag01Icon,
@@ -23,7 +24,7 @@ import {
   UnavailableIcon,
   Video01Icon,
 } from "@hugeicons/core-free-icons";
-import { useContext, useEffect, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMe } from "../me";
 import { CurrentThreadContext, useThreadLinks } from "../threadLinks";
@@ -70,6 +71,7 @@ import {
   type Thread,
   mention,
   descriptionOf,
+  conversationStartedId,
 } from "model";
 import {
   DAY,
@@ -101,6 +103,14 @@ type ResolutionEntry = Extract<Entry, { kind: "resolution" }>;
 type CallEntry = Extract<Entry, { kind: "call" }>;
 type NotesEntry = Extract<Entry, { kind: "notes" }>;
 
+// Conversations opened in place, under the message in their thread that started them. One is open at a time.
+export type InlineConversations = {
+  openId: string | null;
+  onToggle: (conversationId: string) => void;
+  onMoveToSidebar: (conversationId: string) => void;
+  actionsFor: (conversation: Thread) => ThreadActions;
+};
+
 export type ThreadActions = {
   // A note in the thread's worklog; the thread stays where it is.
   onSend: (text: string) => void;
@@ -124,9 +134,13 @@ export type ThreadActions = {
   onMoveMessages: (messages: MessageEntry[]) => void;
 };
 
-// A thread link as a chip with the linked thread's current title; clicking opens it beside this one.
+// A thread link as a chip with the linked thread's current title; clicking opens it beside this one (a conversation
+// opens in place). A conversation shows a chat bubble; any other thread, a branch.
 function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
   const links = useThreadLinks();
+  const isConversation = links.threads.some(
+    (thread) => thread.id === threadId && thread.kind === "conversation",
+  );
   const title = links.titleOf(threadId) ?? "Thread";
   if (useContext(CurrentThreadContext) === threadId)
     return <span className="thread-link-self">#{title}</span>;
@@ -139,7 +153,7 @@ function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
         links.open(threadId);
       }}
     >
-      <HugeiconsIcon icon={GitBranchIcon} size={11} aria-hidden />
+      <HugeiconsIcon icon={isConversation ? BubbleChatIcon : GitBranchIcon} size={11} aria-hidden />
       {title}
     </button>
   );
@@ -611,6 +625,7 @@ function ThreadHeader({
 }
 
 function MessageBlock({
+  children,
   message,
   nowMs,
   selected,
@@ -626,8 +641,10 @@ function MessageBlock({
   run: "single" | "start" | "middle" | "end" | undefined;
   // While some messages are selected, a click selects instead of placing the cursor.
   selecting: boolean;
-  onSelect: (mode: SelectMode) => void;
-  onContextMenu: (event: React.MouseEvent) => void;
+  onSelect?: (mode: SelectMode) => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
+  // Shown in place of the message's text.
+  children?: React.ReactNode;
 }): React.JSX.Element {
   const modeFor = (event: React.MouseEvent): SelectMode | undefined =>
     event.shiftKey ? "range" : event.metaKey || selecting ? "toggle" : undefined;
@@ -645,7 +662,7 @@ function MessageBlock({
       onClick={(event) => {
         if ((event.target as HTMLElement).closest("button, a") !== null) return;
         const mode = modeFor(event);
-        if (mode !== undefined) onSelect(mode);
+        if (mode !== undefined) onSelect?.(mode);
       }}
       onContextMenu={onContextMenu}
     >
@@ -655,9 +672,70 @@ function MessageBlock({
           <span className="thread-author">{message.author.name}</span>
           <span className="thread-time">{formatRelativeTime(message.createdAtMs, nowMs)}</span>
         </div>
-        <MessageText text={message.text} />
+        {children ?? <MessageText text={message.text} />}
       </div>
     </div>
+  );
+}
+
+// A conversation in place, indented under the message that started it, with its messages and its own reply. The link
+// in that message opens and folds it; "Move to sidebar" (on hover) shows it beside the thread instead.
+function InlineConversation({
+  conversation,
+  nowMs,
+  inline,
+}: {
+  conversation: Thread;
+  nowMs: number;
+  inline: InlineConversations;
+}): React.JSX.Element {
+  const me = useMe();
+  const focusRef = useRef<(() => void) | null>(null);
+  const actions = inline.actionsFor(conversation);
+  const replyTo = latestFromOthers(conversation, me.id)?.author;
+
+  return (
+    <section className="inline-conversation" aria-label={conversation.title}>
+      <button
+        type="button"
+        className="inline-conversation-move"
+        aria-label="Move to sidebar"
+        title="Move to sidebar"
+        onClick={() => inline.onMoveToSidebar(conversation.id)}
+      >
+        <HugeiconsIcon icon={PanelRightIcon} {...ICON_PROPS} />
+      </button>
+      {conversation.entries.map((entry) =>
+        entry.kind === "message" ? (
+          <MessageBlock
+            key={entry.id}
+            message={entry}
+            nowMs={nowMs}
+            selected={false}
+            run={undefined}
+            selecting={false}
+          />
+        ) : entry.kind === "event" ? (
+          <EventLine key={entry.id} event={entry} nowMs={nowMs} />
+        ) : null,
+      )}
+      {!isDone(conversation.status) && (
+        <ReplyBlock
+          key={`${conversation.id}:${replyTo?.id ?? ""}`}
+          placeholder={replyTo === undefined ? "Reply…" : `Reply to ${replyTo.name.split(" ")[0]}…`}
+          focusRef={focusRef}
+          onSubmit={actions.onSend}
+          onBranch={actions.onBranch}
+          onCommand={(name) => {
+            if (name === "blocked") actions.onBlocked();
+            if (name === "close") actions.onSetStatus("closed");
+            if (name === "task") actions.onTask();
+          }}
+          threadId={conversation.id}
+          inConversation
+        />
+      )}
+    </section>
   );
 }
 
@@ -1107,10 +1185,12 @@ export function ThreadView({
   thread,
   people,
   actions,
+  inline,
 }: {
   thread: Thread;
   people: Person[];
   actions: ThreadActions;
+  inline: InlineConversations;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1168,7 +1248,7 @@ export function ThreadView({
 
   // Messages selected to move, in thread order: right-click → Select, ⌘-click, or shift-click for a range. Kept
   // per thread; moved messages drop out of it on their own. Escape clears it.
-  const { titleOf, nameOf } = useThreadLinks();
+  const { titleOf, nameOf, threads: allThreads } = useThreadLinks();
   const [selection, setSelection] = useState<{
     threadId: string;
     ids: string[];
@@ -1288,21 +1368,42 @@ export function ThreadView({
               actions={actions}
             />
             {rest.map((entry, index) => {
+              // The message that started a conversation here carries it, folded or open, right under it.
+              const started =
+                entry.kind === "message"
+                  ? allThreads.find(
+                      (other) =>
+                        other.kind === "conversation" &&
+                        other.branchedFromId === thread.id &&
+                        conversationStartedId(other.id) === entry.id,
+                    )
+                  : undefined;
               if (entry.kind === "message")
                 return (
-                  <MessageBlock
-                    key={entry.id}
-                    message={entry}
-                    nowMs={nowMs}
-                    selected={pickedIds.includes(entry.id)}
-                    run={runAt(index)}
-                    selecting={selecting}
-                    onSelect={(mode) => select(entry.id, mode)}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      setMenu({ x: event.clientX, y: event.clientY, items: menuFor(entry) });
-                    }}
-                  />
+                  <Fragment key={entry.id}>
+                    <MessageBlock
+                      message={entry}
+                      nowMs={nowMs}
+                      selected={pickedIds.includes(entry.id)}
+                      run={runAt(index)}
+                      selecting={selecting}
+                      onSelect={(mode) => select(entry.id, mode)}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setMenu({ x: event.clientX, y: event.clientY, items: menuFor(entry) });
+                      }}
+                    >
+                      {/* Just the conversation, as a chat chip: the words are for notifications and search. */}
+                      {started !== undefined ? (
+                        <div className="thread-text">
+                          <ThreadLinkChip threadId={started.id} />
+                        </div>
+                      ) : undefined}
+                    </MessageBlock>
+                    {started !== undefined && inline.openId === started.id && (
+                      <InlineConversation conversation={started} nowMs={nowMs} inline={inline} />
+                    )}
+                  </Fragment>
                 );
               if (entry.kind === "event")
                 return <EventLine key={entry.id} event={entry} nowMs={nowMs} />;

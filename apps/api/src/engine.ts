@@ -9,6 +9,7 @@ import {
   labelSlug,
   levelPositions,
   localPeople,
+  conversationStartedId,
   mentionsIn,
   MIN_EFFORT_HOURS,
   MODEL_NAMES,
@@ -825,7 +826,7 @@ export class SyncEngine {
       // The thread it started in says so in a message from whoever started it, linking to it.
       if (data.kind === "conversation" && parent !== undefined) {
         batch.put("Entry", {
-          id: `${data.id}:started`,
+          id: conversationStartedId(data.id),
           threadId: parent.id,
           kind: "message",
           authorId: actor.id,

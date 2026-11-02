@@ -200,6 +200,11 @@ export function plainThreadLinks(
     .replace(MENTION, (_, personId: string) => `@${nameOf(personId) ?? "someone"}`);
 }
 
+// The id of the message that announces a conversation in the thread it started in, so the thread can show the
+// conversation there.
+export const conversationStartedId = (conversationId: string): string =>
+  `${conversationId}:started`;
+
 // A message's words without the mentions it opens with: "[[person:arjun]] can you look?" is "can you look?".
 export function withoutLeadingMentions(text: string): string {
   return text.replace(/^(\[\[person:[^\]]+\]\][\s,]*)+/, "");

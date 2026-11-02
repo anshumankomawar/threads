@@ -37,7 +37,12 @@ import {
   type DataSource,
 } from "./api";
 import type { SyncClient } from "./sync/syncClient";
-import { ThreadView, type MessageEntry, type ThreadActions } from "./components/ThreadView";
+import {
+  ThreadView,
+  type InlineConversations,
+  type MessageEntry,
+  type ThreadActions,
+} from "./components/ThreadView";
 import { MovePalette, type MoveTarget } from "./components/MovePalette";
 import { BlockedPalette } from "./components/BlockedPalette";
 import { MentionToasts } from "./components/MentionToasts";
@@ -217,6 +222,8 @@ const App = observer(function App(): React.JSX.Element {
     remember(CONTENT_ZOOM_KEY, String(contentZoom));
   }, [contentZoom]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // The conversation open in place, under the message that started it in its thread.
+  const [inlineConversationId, setInlineConversationId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -262,16 +269,18 @@ const App = observer(function App(): React.JSX.Element {
     });
   };
 
-  // Opening a thread marks it, and the one you're leaving, as seen. A conversation opens beside the thread it's in.
+  // Opening a thread marks it, and the one you're leaving, as seen. A conversation opens in place, in the thread it's
+  // in.
   const openThread = (id: string | null): void => {
     const conversation = threads.find(
       (thread) => thread.id === id && thread.kind === "conversation",
     );
     if (conversation?.branchedFromId) {
       openThread(conversation.branchedFromId);
-      setSplitThreadId(conversation.id);
+      setInlineConversationId(conversation.id);
       return;
     }
+    setInlineConversationId(null);
     const now = Date.now();
     setLastSeen((current) => ({
       ...current,
@@ -382,7 +391,22 @@ const App = observer(function App(): React.JSX.Element {
     threads,
     labels,
     groups,
-    open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
+    open: (threadId) => {
+      // A link to a conversation in a thread on screen opens or folds it in place; one elsewhere opens its thread.
+      const conversation = threads.find(
+        (thread) => thread.id === threadId && thread.kind === "conversation",
+      );
+      if (conversation !== undefined) {
+        if (
+          conversation.branchedFromId === activeThreadId ||
+          conversation.branchedFromId === splitThreadId
+        )
+          setInlineConversationId((open) => (open === threadId ? null : threadId));
+        else openThread(threadId);
+        return;
+      }
+      setSplitThreadId(threadId === activeThreadId ? null : threadId);
+    },
     search: (query) => {
       const needle = query.toLowerCase();
       return threads
@@ -418,11 +442,11 @@ const App = observer(function App(): React.JSX.Element {
     );
   };
 
-  // A conversation stays Unread while it's open and moves to Read once you click off it (open something else or close
-  // it), so it doesn't jump between groups under you. Whoever wrote can tell it's been seen.
-  const openConversation = [splitThread, activeThread].find(
-    (thread) => thread?.kind === "conversation",
-  )?.id;
+  // A conversation stays Unread while it's open (in place or beside its thread) and moves to Read once you click off it
+  // (fold it, open something else or close it), so it doesn't jump between groups under you. Whoever wrote can tell it's been seen.
+  const openConversation =
+    inlineConversationId ??
+    [splitThread, activeThread].find((thread) => thread?.kind === "conversation")?.id;
   const conversationOpenRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const left = conversationOpenRef.current;
@@ -525,6 +549,16 @@ const App = observer(function App(): React.JSX.Element {
     return items;
   };
 
+  const inline: InlineConversations = {
+    openId: inlineConversationId,
+    onToggle: (id) => setInlineConversationId((open) => (open === id ? null : id)),
+    onMoveToSidebar: (id) => {
+      setInlineConversationId(null);
+      setSplitThreadId(id);
+    },
+    actionsFor: (conversation) => actionsFor(conversation),
+  };
+
   const actionsFor = (thread: Thread): ThreadActions => {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
@@ -559,7 +593,7 @@ const App = observer(function App(): React.JSX.Element {
           me,
         );
         client.addEntry(conversationId, "message", text, me);
-        setSplitThreadId(conversationId);
+        setInlineConversationId(conversationId);
       },
       onBlocked: () => setBlocking(thread),
       onTask: () => {
@@ -666,7 +700,7 @@ const App = observer(function App(): React.JSX.Element {
             <Sidebar
               day={day}
               conversations={conversationsFor(threads, me)}
-              splitThreadId={splitThread?.id ?? null}
+              openConversationId={openConversation ?? null}
               activity={activityFor(threads, me, seenAt, nowMs)}
               groupNotices={groupNoticesFor(
                 groups,
@@ -802,6 +836,7 @@ const App = observer(function App(): React.JSX.Element {
                   thread={activeThread}
                   people={people}
                   actions={actionsFor(activeThread)}
+                  inline={inline}
                 />
                 {splitThread !== undefined && (
                   <section className="split-pane" aria-label={splitThread.title}>
@@ -829,6 +864,7 @@ const App = observer(function App(): React.JSX.Element {
                       thread={splitThread}
                       people={people}
                       actions={actionsFor(splitThread)}
+                      inline={inline}
                     />
                   </section>
                 )}

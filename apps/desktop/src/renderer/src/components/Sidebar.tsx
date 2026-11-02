@@ -304,11 +304,11 @@ function AgendaView({
 // latest message, who wrote it, and the thread the conversation is in. Opening one shows it beside that thread.
 function ConversationList({
   conversations,
-  splitThreadId,
+  openConversationId,
   onOpenThread,
 }: {
   conversations: Conversations;
-  splitThreadId: string | null;
+  openConversationId: string | null;
   onOpenThread: (id: string) => void;
 }): React.JSX.Element {
   const { titleOf, nameOf } = useThreadLinks();
@@ -332,7 +332,7 @@ function ConversationList({
         <div
           className="conversation-row"
           onContextMenu={(event) => openMenu(event, conversation)}
-          data-active={conversation.id === splitThreadId}
+          data-active={conversation.id === openConversationId}
           data-unread={unread}
           role="button"
           tabIndex={0}
@@ -596,7 +596,7 @@ export type SidebarPage = "unplaced" | "settings" | { label: string };
 export function Sidebar({
   day,
   conversations,
-  splitThreadId,
+  openConversationId,
   activity,
   groupNotices,
   groups,
@@ -620,8 +620,8 @@ export function Sidebar({
 }: {
   day: Day;
   conversations: Conversations;
-  // The thread open beside the main one, which is where a conversation opens.
-  splitThreadId: string | null;
+  // The conversation open now, in place or beside its thread.
+  openConversationId: string | null;
   // What changed on your threads, for the notifications bell.
   activity: ActivityItem[];
   // Groups someone added you to, for the same bell.
@@ -705,7 +705,7 @@ export function Sidebar({
         {tab === "conversations" && (
           <ConversationList
             conversations={conversations}
-            splitThreadId={splitThreadId}
+            openConversationId={openConversationId}
             onOpenThread={onOpenThread}
           />
         )}

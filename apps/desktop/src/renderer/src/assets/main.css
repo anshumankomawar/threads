@@ -2004,6 +2004,42 @@ body * {
   font-size: 12px;
 }
 
+/* A conversation in place, indented well under the message that started it: past that message's 22px avatar and 15px
+   gap, and a step further, so it reads as nested. "Move to sidebar" shows in its corner on hover. */
+.inline-conversation {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: -6px 0 0 calc(37px + 28px);
+}
+
+.inline-conversation-move {
+  position: absolute;
+  top: 6px;
+  right: 0;
+  z-index: 1;
+  display: flex;
+  padding: 4px;
+  border: none;
+  border-radius: 4px;
+  color: var(--icon-tertiary);
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.inline-conversation:hover .inline-conversation-move,
+.inline-conversation-move:focus-visible {
+  opacity: 1;
+}
+
+.inline-conversation-move:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
 /* The `#`, `@` and `/` menus in a reply, at the caret. */
 .thread-menu {
   position: fixed;
