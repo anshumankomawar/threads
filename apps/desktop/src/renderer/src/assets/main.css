@@ -2004,6 +2004,73 @@ body * {
   font-size: 12px;
 }
 
+/* A conversation as a card where it started: neutral, like the property chips, not a link. */
+.conversation-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: min(100%, 480px);
+  margin-top: 4px;
+  padding: 8px 12px 8px 10px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  background-color: var(--bg-quaternary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.conversation-card:hover,
+.conversation-card[aria-expanded="true"] {
+  border-color: var(--stroke-focused);
+  background-color: var(--bg-tertiary);
+}
+
+.conversation-card[data-done="true"] {
+  opacity: 0.7;
+}
+
+.conversation-card-icon {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--icon-tertiary);
+}
+
+.conversation-card-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.conversation-card-title {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conversation-card-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Overlapping avatars of who's in it. */
+.conversation-card-people {
+  display: flex;
+}
+
+.conversation-card-people > .identicon + .identicon {
+  margin-left: -4px;
+}
+
 /* A conversation in place, indented well under the message that started it: past that message's 22px avatar and 15px
    gap, and a step further, so it reads as nested. "Move to sidebar" shows in its corner on hover. */
 .inline-conversation {

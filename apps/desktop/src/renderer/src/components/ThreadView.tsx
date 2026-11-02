@@ -28,7 +28,7 @@ import { Fragment, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMe } from "../me";
 import { CurrentThreadContext, useThreadLinks } from "../threadLinks";
-import { latestFromOthers } from "../conversations";
+import { isUnread, latestFromOthers } from "../conversations";
 import {
   closeThreadMenu,
   offerKey,
@@ -678,7 +678,66 @@ function MessageBlock({
   );
 }
 
-// A conversation in place, indented under the message that started it, with its messages and its own reply. The link
+// A conversation as a card in the thread it started in: what it's about, who's in it, how many replies and who wrote
+// last, and a dot while there's something new for you. Clicking it opens the conversation under it, or folds it.
+function ConversationCard({
+  conversation,
+  open,
+  nowMs,
+  onToggle,
+}: {
+  conversation: Thread;
+  open: boolean;
+  nowMs: number;
+  onToggle: () => void;
+}): React.JSX.Element {
+  const me = useMe();
+  const messages = conversation.entries.filter(
+    (entry): entry is MessageEntry => entry.kind === "message",
+  );
+  const replies = messages.length - 1;
+  const last = messages.at(-1);
+  return (
+    <button
+      type="button"
+      className="conversation-card"
+      aria-expanded={open}
+      data-done={isDone(conversation.status)}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+    >
+      <span className="conversation-card-icon" aria-hidden>
+        <HugeiconsIcon icon={BubbleChatIcon} size={14} />
+      </span>
+      <span className="conversation-card-body">
+        <span className="conversation-card-title">{conversation.title}</span>
+        <span className="conversation-card-meta">
+          <span className="conversation-card-people" aria-hidden>
+            {conversation.attendees.slice(0, 3).map((person) => (
+              <Identicon key={person.id} seed={person.id} size={14} />
+            ))}
+          </span>
+          <span>
+            {replies <= 0 ? "No replies yet" : replies === 1 ? "1 reply" : `${replies} replies`}
+            {replies > 0 && last !== undefined && (
+              <>
+                {" · "}
+                {last.author.id === me.id ? "you" : last.author.name.split(" ")[0]}{" "}
+                {formatRelativeTime(last.createdAtMs, nowMs)}
+              </>
+            )}
+            {isDone(conversation.status) && " · Closed"}
+          </span>
+        </span>
+      </span>
+      {isUnread(conversation, me.id) && <span className="unread-dot" aria-label="Unread" />}
+    </button>
+  );
+}
+
+// A conversation in place, indented under the message that started it, with its messages and its own reply. Its card
 // in that message opens and folds it; "Move to sidebar" (on hover) shows it beside the thread instead.
 function InlineConversation({
   conversation,
@@ -1393,11 +1452,14 @@ export function ThreadView({
                         setMenu({ x: event.clientX, y: event.clientY, items: menuFor(entry) });
                       }}
                     >
-                      {/* Just the conversation, as a chat chip: the words are for notifications and search. */}
+                      {/* Just the conversation, as a card: the words are for notifications and search. */}
                       {started !== undefined ? (
-                        <div className="thread-text">
-                          <ThreadLinkChip threadId={started.id} />
-                        </div>
+                        <ConversationCard
+                          conversation={started}
+                          open={inline.openId === started.id}
+                          nowMs={nowMs}
+                          onToggle={() => inline.onToggle(started.id)}
+                        />
                       ) : undefined}
                     </MessageBlock>
                     {started !== undefined && inline.openId === started.id && (
