@@ -206,6 +206,22 @@ export function participants(thread: Thread): Person[] {
   return [...people.values()];
 }
 
+// Whether someone is part of a thread: they asked, it's theirs, something was sent to them, or they've written in it.
+// Writing a thread's description doesn't count, so making one on someone's behalf leaves you out of it; they're the
+// one tracking it. Unlike `participants`, which counts everyone who's written anything.
+export function involves(thread: Thread, personId: string): boolean {
+  return (
+    thread.requester.id === personId ||
+    thread.assignee?.id === personId ||
+    thread.entries.some(
+      (entry) =>
+        entry.kind === "message" &&
+        (entry.sentTo.some((person) => person.id === personId) ||
+          (entry.author.id === personId && entry.id !== thread.id)),
+    )
+  );
+}
+
 // Who a reply goes to by default (⌘↵), as in email: whoever last sent you something here, else the other side.
 export function replyTo(thread: Thread, personId: string): Person[] {
   const sent = lastSentTo(thread, personId);

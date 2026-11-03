@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { Label, Person, Thread } from "model";
 import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
+import { orgDetails } from "../org";
 
-type Tab = "all" | "threads" | "groups";
+type Tab = "all" | "threads" | "groups" | "people";
 
-// Tabs narrow the results to threads, or to groups and labels.
+// Tabs narrow the results to threads, to groups and labels, or to people.
 const TABS: { id: Tab; label: string; shortcut: string }[] = [
   { id: "all", label: "All", shortcut: "⌘ 1" },
   { id: "threads", label: "Threads", shortcut: "⌘ 2" },
   { id: "groups", label: "Groups and labels", shortcut: "⌘ 3" },
+  { id: "people", label: "People", shortcut: "⌘ 4" },
 ];
 
 const SOURCES: DataSource[] = ["cloudflare", "local", "sample"];
@@ -19,7 +21,8 @@ const SOURCE_HINTS: Record<DataSource, string> = {
   sample: "Demo team",
 };
 
-type Item = { id: string; label: string; shortcut?: string; run: () => void };
+// `keywords` are matched as well as the label, such as someone's level and role.
+type Item = { id: string; label: string; shortcut?: string; keywords?: string; run: () => void };
 type Section = { title: string; items: Item[] };
 
 // Delta's command palette: search input, filter tabs, then sectioned results.
@@ -30,6 +33,8 @@ export function CommandPalette({
   onSwitchSource,
   onViewAs,
   onOpenProfile,
+  people,
+  onOpenPerson,
   labels,
   onOpenLabel,
   onNewGroup,
@@ -43,6 +48,8 @@ export function CommandPalette({
   onSwitchSource: (source: DataSource) => void;
   onViewAs: () => void;
   onOpenProfile: () => void;
+  people: Person[];
+  onOpenPerson: (id: string) => void;
   labels: Label[];
   onOpenLabel: (id: string) => void;
   onNewGroup: () => void;
@@ -75,6 +82,20 @@ export function CommandPalette({
         run: run(() => onOpenLabel(label.id)),
       })),
   };
+  // Everyone else, by name; opening one shows their profile and the threads you're both in.
+  const peopleSection: Section = {
+    title: "People",
+    items: people
+      .filter((person) => person.id !== me.id)
+      .toSorted((a, b) => a.name.localeCompare(b.name))
+      .map((person) => ({
+        id: `person-${person.id}`,
+        label: person.name,
+        shortcut: orgDetails(person) || undefined,
+        keywords: [person.level, person.role].filter(Boolean).join(" "),
+        run: run(() => onOpenPerson(person.id)),
+      })),
+  };
   const sections: Section[] = [
     {
       title: "Quick Actions",
@@ -93,6 +114,7 @@ export function CommandPalette({
               { id: "new-group", label: "New Group", run: onNewGroup },
             ],
           },
+          peopleSection,
           groupsAndLabels,
           {
             title: "Data",
@@ -116,7 +138,8 @@ export function CommandPalette({
         ]
       : []),
     ...(tab === "groups" ? [groupsAndLabels] : []),
-    ...(tab === "groups"
+    ...(tab === "people" ? [peopleSection] : []),
+    ...(tab === "groups" || tab === "people"
       ? []
       : [
           {
@@ -129,7 +152,12 @@ export function CommandPalette({
           },
         ]),
   ]
-    .map((section) => ({ ...section, items: section.items.filter((item) => matches(item.label)) }))
+    .map((section) => ({
+      ...section,
+      items: section.items.filter(
+        (item) => matches(item.label) || (item.keywords !== undefined && matches(item.keywords)),
+      ),
+    }))
     .filter((section) => section.items.length > 0);
 
   const items = sections.flatMap((section) => section.items);
@@ -152,7 +180,7 @@ export function CommandPalette({
     } else if (event.key === "Enter") {
       event.preventDefault();
       items[selectedIndex]?.run();
-    } else if (event.metaKey && ["1", "2", "3"].includes(event.key)) {
+    } else if (event.metaKey && ["1", "2", "3", "4"].includes(event.key)) {
       event.preventDefault();
       changeTab(TABS[Number(event.key) - 1].id);
     }

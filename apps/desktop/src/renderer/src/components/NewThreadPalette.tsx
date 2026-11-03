@@ -31,6 +31,7 @@ export function NewThreadPalette({
   me,
   labels,
   initialLabels,
+  initialAssignee = null,
   onCreate,
   onClose,
 }: {
@@ -40,6 +41,8 @@ export function NewThreadPalette({
   labels: Label[];
   // What it starts with, such as the group you're making it in.
   initialLabels: Label[];
+  // Who it's for, first in the list, such as whoever's profile you're making it from.
+  initialAssignee?: Person | null;
   onCreate: (draft: NewThreadDraft) => void;
   onClose: () => void;
 }): React.JSX.Element {
@@ -66,7 +69,7 @@ export function NewThreadPalette({
     { id: "unassigned", label: "Unassigned", value: null },
     ...everyone,
     { id: me.id, label: "Me", person: me, value: me },
-  ];
+  ].toSorted((a, b) => Number(b.id === initialAssignee?.id) - Number(a.id === initialAssignee?.id));
   const askerOptions: Option[] = [{ id: me.id, label: "Me", person: me, value: me }, ...everyone];
   const matches = (label: string): boolean => label.toLowerCase().includes(query);
   const newLabel = labelSlug(filter);

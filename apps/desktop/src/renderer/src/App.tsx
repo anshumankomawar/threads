@@ -60,6 +60,7 @@ import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon, Cancel01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { Identicon } from "./components/Identicon";
+import { PersonView } from "./components/PersonView";
 import { ProfileView } from "./components/ProfileView";
 import { LabelView } from "./components/LabelView";
 import { NewGroupPalette } from "./components/NewGroupPalette";
@@ -300,11 +301,21 @@ const App = observer(function App(): React.JSX.Element {
     const group = groups.find((candidate) => candidate.labelId === labelId);
     if (group !== undefined) setLastSeen((current) => ({ ...current, [group.id]: Date.now() }));
   };
+  // Someone's profile; your own is the profile and org.
+  const openPerson = (personId: string): void => {
+    if (personId === me.id) openProfile();
+    else openPage({ person: personId });
+  };
   const toggleSidebar = (): void => setSidebarOpen((open) => !open);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [renamingOrganization, setRenamingOrganization] = useState(false);
   const organization = client.organization;
-  const shownLabelId = page !== null && typeof page === "object" ? page.label : null;
+  const shownLabelId =
+    page !== null && typeof page === "object" && "label" in page ? page.label : null;
+  const shownPerson =
+    page !== null && typeof page === "object" && "person" in page
+      ? people.find((person) => person.id === page.person)
+      : undefined;
   const shownGroup = groups.find((group) => group.labelId === shownLabelId);
   // A group's label comes back from the server just after the group, so go by the group until then.
   const shownLabel: Label | undefined =
@@ -497,6 +508,7 @@ const App = observer(function App(): React.JSX.Element {
     labels,
     groups,
     open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
+    openPerson,
     search: (query) => {
       const needle = query.toLowerCase();
       return threads
@@ -885,7 +897,8 @@ const App = observer(function App(): React.JSX.Element {
                   ? me.name
                   : page === "settings"
                     ? "Settings"
-                    : (shownLabel?.name ??
+                    : (shownPerson?.name ??
+                      shownLabel?.name ??
                       activeThread?.title ??
                       (shownDraft === undefined ? undefined : shownDraft.draft?.title || "Draft"))}
               </span>
@@ -937,9 +950,24 @@ const App = observer(function App(): React.JSX.Element {
                 onRenameOrganization={
                   organization === undefined ? null : () => setRenamingOrganization(true)
                 }
+                onOpenPerson={openPerson}
               />
             ) : page === "settings" ? (
               <SettingsView me={me} people={people} />
+            ) : shownPerson !== undefined ? (
+              <PersonView
+                key={shownPerson.id}
+                person={shownPerson}
+                me={me}
+                people={people}
+                threads={threads}
+                groups={groups}
+                unreadIds={unreadIds}
+                onOpenPerson={openPerson}
+                onOpenLabel={openLabel}
+                onNewThread={() => openNew()}
+                onOpenThread={openThread}
+              />
             ) : shownLabel !== undefined ? (
               <LabelView
                 key={shownLabel.id}
@@ -956,6 +984,7 @@ const App = observer(function App(): React.JSX.Element {
                 }}
                 onNewThread={() => openNew()}
                 onOpenThread={openThread}
+                onOpenPerson={openPerson}
               />
             ) : shownDraft !== undefined ? (
               <DraftView
@@ -1052,6 +1081,8 @@ const App = observer(function App(): React.JSX.Element {
               labels={selectableLabels(labels, groups)}
               // Made from a group or label's page, a thread starts with that label.
               initialLabels={shownLabel === undefined ? [] : [shownLabel]}
+              // Made from someone's profile, it's for them.
+              initialAssignee={shownPerson ?? null}
               onCreate={createThread}
               onClose={() => setNewThreadOpen(false)}
             />
@@ -1126,6 +1157,8 @@ const App = observer(function App(): React.JSX.Element {
                 setViewAsOpen(true);
               }}
               onOpenProfile={openProfile}
+              people={people}
+              onOpenPerson={openPerson}
               labels={labels}
               onOpenLabel={openLabel}
               onNewGroup={() => {

@@ -153,16 +153,27 @@ function MessageText({
 
 // Text with its thread links as chips, inline.
 function LinkedText({ text }: { text: string }): React.JSX.Element {
-  const { nameOf } = useThreadLinks();
+  const { nameOf, openPerson } = useThreadLinks();
   return (
     <>
       {splitThreadLinks(text).map((part, index) =>
         "threadId" in part ? (
           <ThreadLinkChip key={index} threadId={part.threadId} />
         ) : "personId" in part ? (
-          <span key={index} className="mention">
-            @{nameOf(part.personId) ?? "someone"}
-          </span>
+          nameOf(part.personId) === undefined ? (
+            <span key={index} className="mention">
+              @someone
+            </span>
+          ) : (
+            <button
+              key={index}
+              type="button"
+              className="mention person-link"
+              onClick={() => openPerson(part.personId)}
+            >
+              @{nameOf(part.personId)}
+            </button>
+          )
         ) : "groupId" in part ? (
           <span key={index} className="mention">
             @{nameOf(groupTarget(part.groupId)) ?? "group"}
@@ -495,7 +506,7 @@ function MessageBlock({
   onContextMenu?: (event: React.MouseEvent) => void;
 }): React.JSX.Element {
   // Whoever the message names: the people it mentions and the members of the groups it mentions.
-  const { groups } = useThreadLinks();
+  const { groups, openPerson } = useThreadLinks();
   const named = new Set([
     ...mentionsIn(message.text),
     ...groupMentionsIn(message.text).flatMap(
@@ -525,7 +536,13 @@ function MessageBlock({
       <Avatar person={message.author} />
       <div className="thread-body">
         <div className="thread-meta">
-          <span className="thread-author">{message.author.name}</span>
+          <button
+            type="button"
+            className="thread-author person-link"
+            onClick={() => openPerson(message.author.id)}
+          >
+            {message.author.name}
+          </button>
           {/* Who it was sent to, unless the message @mentions them all already (or the groups they're in), or that it's
               a note nobody was told about. The description is neither. */}
           {message.sentTo.length === 0 ? (

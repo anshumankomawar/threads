@@ -8,6 +8,8 @@ export type ThreadLinks = {
   titleOf: (threadId: string) => string | undefined;
   nameOf: (personId: string) => string | undefined;
   open: (threadId: string) => void;
+  // Someone's profile, from their name on a message or a mention.
+  openPerson: (personId: string) => void;
   search: (query: string) => { id: string; title: string }[];
   people: Person[];
   // Every thread, for the details panel's graph of branches.
@@ -20,6 +22,7 @@ export const ThreadLinksContext = createContext<ThreadLinks>({
   titleOf: () => undefined,
   nameOf: () => undefined,
   open: () => {},
+  openPerson: () => {},
   search: () => [],
   people: [],
   threads: [],

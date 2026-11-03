@@ -1,4 +1,4 @@
-import type { Entry, Person, Thread } from "model";
+import { involves, type Entry, type Person, type Thread } from "model";
 
 // What changed on your threads that doesn't need you to act: replies and the status lines worth knowing about (closed,
 // reopened, renamed, handed over, blocked, unblocked, messages moved). Conversations aren't
@@ -35,21 +35,6 @@ export type ActivityItem = {
   unread: number;
 };
 
-// Whether you're part of a thread: you asked, it's yours, something was sent to you, or you've written in it. Writing a thread's
-// description doesn't count, so making one on someone's behalf leaves you out of it; they're the one tracking it.
-function involves(thread: Thread, me: Person): boolean {
-  return (
-    thread.requester.id === me.id ||
-    thread.assignee?.id === me.id ||
-    thread.entries.some(
-      (entry) => entry.kind === "message" && entry.sentTo.some((person) => person.id === me.id),
-    ) ||
-    thread.entries.some(
-      (entry) => entry.kind === "message" && entry.author.id === me.id && entry.id !== thread.id,
-    )
-  );
-}
-
 function author(entry: Entry): Person | null {
   if (entry.kind === "event") return entry.actor;
   if (entry.kind === "message" || entry.kind === "resolution") return entry.author;
@@ -66,7 +51,7 @@ export function activityFor(
   return threads
     .flatMap((thread): ActivityItem[] => {
       // Archived threads are put away, news and all.
-      if (thread.status === "archived" || !involves(thread, me)) return [];
+      if (thread.status === "archived" || !involves(thread, me.id)) return [];
       const relevant = thread.entries.filter((entry) => {
         const person = author(entry);
         if (person === null || person.id === me.id || entry.createdAtMs < nowMs - WINDOW_MS)

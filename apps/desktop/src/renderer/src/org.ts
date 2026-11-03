@@ -32,3 +32,11 @@ export function chainAbove(people: Person[], personId: string): Person[] {
   }
   return chain;
 }
+
+// "L4 · PM", or nothing for people without org details.
+export function orgDetails(person: Person): string {
+  return [person.level, person.role]
+    .filter((detail): detail is string => detail !== undefined)
+    .map((detail) => detail.toUpperCase())
+    .join(" · ");
+}

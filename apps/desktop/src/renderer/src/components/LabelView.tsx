@@ -24,11 +24,13 @@ function Members({
   people,
   me,
   onUpdate,
+  onOpenPerson,
 }: {
   group: Group;
   people: Person[];
   me: Person;
   onUpdate: (changes: GroupChanges) => void;
+  onOpenPerson: (id: string) => void;
 }): React.JSX.Element {
   const isMember = group.memberIds.includes(me.id);
   const members = group.memberIds.flatMap((id) => people.find((person) => person.id === id) ?? []);
@@ -40,7 +42,9 @@ function Members({
       {members.map((person) => (
         <li key={person.id} className="group-member">
           <Identicon seed={person.id} size={14} />
-          {person.name}
+          <button type="button" className="person-link" onClick={() => onOpenPerson(person.id)}>
+            {person.name}
+          </button>
           {isMember && !onlyMember && (
             <button
               type="button"
@@ -150,6 +154,7 @@ export function LabelView({
   onUpdateGroup,
   onNewThread,
   onOpenThread,
+  onOpenPerson,
 }: {
   label: Label;
   group: Group | undefined;
@@ -162,6 +167,7 @@ export function LabelView({
   onUpdateGroup: (changes: GroupChanges) => void;
   onNewThread: () => void;
   onOpenThread: (id: string) => void;
+  onOpenPerson: (id: string) => void;
 }): React.JSX.Element {
   const openMenu = useThreadMenu();
   const [filter, setFilter] = useState<ThreadFilter>(NO_FILTER);
@@ -209,7 +215,13 @@ export function LabelView({
 
       {group !== undefined && (
         <>
-          <Members group={group} people={people} me={me} onUpdate={onUpdateGroup} />
+          <Members
+            group={group}
+            people={people}
+            me={me}
+            onUpdate={onUpdateGroup}
+            onOpenPerson={onOpenPerson}
+          />
           <div className="group-actions">
             {!isMember && !group.archived && (
               <button

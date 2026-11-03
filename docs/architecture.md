@@ -278,6 +278,22 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
   thread's label chip can find or make one.
 - **A wipe** (`#reset` in `worker.ts`) clears threads but keeps the organization, labels and groups.
 
+## Profiles
+
+- **Your own** (`ProfileView`) is you, your inbox counts and the org tree, with the organization's rename.
+- **Anyone else's** (`PersonView`, the `{ person }` page) opens in the main area like a group's page. It shows who they are,
+  their manager and the chain above, their reports, and the groups you're both in, each linking on. Then **the threads
+  you're both in** (`sharedThreads` in `profile.ts`), in three lists by whose turn it is: waiting on you, waiting on them,
+  and everything else. Closed threads hide behind an "N closed" chip, as on a group's page, and archived ones never show.
+  "New thread to them" opens the new-thread palette with them first to pick.
+- **Being in a thread** is one rule, `involves` in `model.ts`: you asked, it's yours, something was sent to you, or you've
+  replied. It's the same rule as for notifications (`activityFor`). Writing a thread's description doesn't count, so a
+  thread made on someone's behalf is between them and whoever has it. `participants` is wider, counting every author.
+- **What a profile shows is not access.** Every client has every thread, so a profile shows only what you share, never
+  their whole inbox, but it doesn't hide anything from the client (see Sync groups).
+- **Getting there**: the People section and tab of ⌘K (by name, level or role), names in the org tree, a group's member
+  chips, a message's author, an @mention, and the people on a profile. Your own name opens your own profile.
+
 ## Buckets, sorting and scoring
 
 The inbox (the sidebar's Inbox tab) is grouped into your **buckets** and ordered within each by **score**. There's no schedule: the app helps you get through your work, not plan your hours.

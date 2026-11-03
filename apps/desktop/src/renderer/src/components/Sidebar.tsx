@@ -462,7 +462,8 @@ function GroupList({
   onNewGroup: () => void;
 }): React.JSX.Element {
   const count = (labelId: string): number => threadsWithLabel(threads, labelId).length;
-  const activeLabel = typeof page === "object" ? page?.label : undefined;
+  const activeLabel =
+    page !== null && typeof page === "object" && "label" in page ? page.label : undefined;
   const row = (id: string, labelId: string, name: string): React.JSX.Element => {
     const open = (): void => onOpenLabel(labelId);
     const openThreads = count(labelId);
@@ -669,8 +670,9 @@ function SidebarTabs({
   );
 }
 
-// What opens in the main area from the sidebar: settings, or a label's threads (a group's, when it's a group's label).
-export type SidebarPage = "settings" | { label: string };
+// What opens in the main area from the sidebar: settings, a label's threads (a group's, when it's a group's label), or
+// someone's profile.
+export type SidebarPage = "settings" | { label: string } | { person: string };
 
 export function Sidebar({
   inbox,

@@ -2358,6 +2358,40 @@ body * {
   text-decoration: underline;
 }
 
+/* A name that opens that person's profile (`PersonView`): looks like the text around it until hovered. */
+.person-link {
+  padding: 0;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.person-link:hover {
+  text-decoration: underline;
+}
+
+.thread-author.person-link {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mention.person-link {
+  color: var(--accent);
+}
+
+.org-name .person-link {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.person-page .profile-facts {
+  max-width: 640px;
+}
+
 /* A change the server refused, under the top bar until it's dismissed or the next change is made. */
 .save-error {
   display: flex;

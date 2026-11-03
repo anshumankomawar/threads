@@ -2,16 +2,8 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Building03Icon } from "@hugeicons/core-free-icons";
 import { bucketsOf, isDone, waitingOn, type Person, type Thread } from "model";
 import { useState } from "react";
-import { buildOrgTree, chainAbove, countUnder, type OrgNode } from "../org";
+import { buildOrgTree, chainAbove, countUnder, orgDetails, type OrgNode } from "../org";
 import { Identicon } from "./Identicon";
-
-// "L4 · PM", or nothing for people without org details.
-function orgDetails(person: Person): string {
-  return [person.level, person.role]
-    .filter((detail): detail is string => detail !== undefined)
-    .map((detail) => detail.toUpperCase())
-    .join(" · ");
-}
 
 // Direct reports, or how many are folded away when the branch is closed.
 function reportLabel(node: OrgNode, collapsed: boolean): string {
@@ -59,12 +51,14 @@ function OrgBranch({
   me,
   chain,
   indent,
+  onOpenPerson,
 }: {
   node: OrgNode;
   me: Person;
   // You and the managers above you; their names stay bright and their teams start open.
   chain: Set<string>;
   indent: Indent;
+  onOpenPerson: (id: string) => void;
 }): React.JSX.Element {
   const [collapsed, setCollapsed] = useState(!chain.has(node.person.id));
   const { person, reports } = node;
@@ -99,7 +93,22 @@ function OrgBranch({
           <Identicon seed={person.id} size={16} />
         </Guides>
         <span className="org-name">
-          {person.name}
+          {isMe ? (
+            person.name
+          ) : (
+            // Their name opens their profile; the rest of a manager's row opens and closes their branch.
+            <button
+              type="button"
+              className="person-link"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenPerson(person.id);
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              {person.name}
+            </button>
+          )}
           {/* The sample team already calls you "You". */}
           {isMe && person.name !== "You" && <span className="org-you">you</span>}
         </span>
@@ -115,6 +124,7 @@ function OrgBranch({
               me={me}
               chain={chain}
               indent={reportIndent(indent, index, reports.length)}
+              onOpenPerson={onOpenPerson}
             />
           ))}
         </ul>
@@ -132,6 +142,7 @@ export function ProfileView({
   nowMs,
   organizationName,
   onRenameOrganization,
+  onOpenPerson,
 }: {
   people: Person[];
   me: Person;
@@ -140,6 +151,7 @@ export function ProfileView({
   organizationName: string;
   // Null when the server doesn't have an organization to rename, because it hasn't been updated yet.
   onRenameOrganization: (() => void) | null;
+  onOpenPerson: (id: string) => void;
 }): React.JSX.Element {
   const tree = buildOrgTree(people);
   const managers = chainAbove(people, me.id);
@@ -210,13 +222,21 @@ export function ProfileView({
                   me={me}
                   chain={chain}
                   indent={reportIndent(undefined, index, tree.length)}
+                  onOpenPerson={onOpenPerson}
                 />
               ))}
             </ul>
           </li>
         ) : (
           tree.map((node) => (
-            <OrgBranch key={node.person.id} node={node} me={me} chain={chain} indent={undefined} />
+            <OrgBranch
+              key={node.person.id}
+              node={node}
+              me={me}
+              chain={chain}
+              indent={undefined}
+              onOpenPerson={onOpenPerson}
+            />
           ))
         )}
       </ul>
