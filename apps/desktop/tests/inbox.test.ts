@@ -93,10 +93,16 @@ test("a note isn't sent to anyone, and what you send yourself doesn't count", ()
   expect(buildInbox([notes], me, [], NOW).order).toEqual([]);
 });
 
-test("your own work stays until it's closed, whatever you mark done", () => {
+test("marking your own work done takes it out until someone else does something there", () => {
   const mine = thread({ doneBy: { me: NOW } });
-  expect(buildInbox([mine], me, [], NOW).order).toEqual([mine]);
-  expect(buildInbox([{ ...mine, status: "closed" }], me, [], NOW).order).toEqual([]);
+  expect(buildInbox([mine], me, [], NOW).order).toEqual([]);
+  // Done is yours alone: it isn't closed for anyone.
+  expect(mine.status).toBe("open");
+  // Your own reply after marking it done keeps it out; anyone else's brings it back.
+  const replied = { ...mine, entries: [message(me, [other], NOW + HOUR)] };
+  expect(buildInbox([replied], me, [], NOW + HOUR).order).toEqual([]);
+  const answered = { ...mine, entries: [message(other, [], NOW + HOUR)] };
+  expect(buildInbox([answered], me, [], NOW + HOUR).order).toEqual([answered]);
 });
 
 test("snoozing takes a thread out of your inbox until then", () => {

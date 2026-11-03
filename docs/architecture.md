@@ -211,10 +211,11 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
   `snoozeUntilMs`. Scoped changes (also `seen` and `bucketId`) are about whoever sends them: `applyScopedChanges` in
   `sync.ts` applies them on the server and, optimistically, in the app (`UpdateTransaction`), and they're quiet: no
   activity line, and the thread doesn't count as updated.
-- **Keys** (`inboxKeysRef` in `App.tsx`; never while typing or with a dialog open): J/K open the next or previous
-  thread in your inbox, E marks the open one done (your own work closes, for everyone; anything else is done for you
-  until someone sends you something new) and opens the next, H snoozes it until 9 tomorrow, R puts the cursor in the
-  reply, and Escape leaves the reply. E and H offer Undo. A thread in your inbox opens at its top without taking the
+- **Keys** (`inboxKeysRef` in `App.tsx`; never with a dialog open, and only ⌘E while typing): J/K open the next or
+  previous thread in your inbox, ⌘E marks the open one done for you (it never closes it: closing is
+  always by hand, by anyone, with `/close`, the status or right-click; it comes back when someone else sends you
+  something new or, for your own work, does anything there) and opens the next, H snoozes it until 9 tomorrow, R puts the cursor in the
+  reply, and Escape leaves the reply. ⌘E and H offer Undo. A thread in your inbox opens at its top without taking the
   cursor, so the keys work until you choose to reply.
 - **Sent** (the sidebar's Sent tab, beside Inbox and Groups): what you asked others for, messages you sent that
   nobody has answered yet, and your blocked threads, by who has each. Each leaves when they answer or close it.

@@ -207,7 +207,7 @@ export type ThreadChanges = Partial<
 export type ScopedChanges = {
   // Marks it seen, now.
   seen?: true;
-  // Done for you (E) now, out of your inbox until someone sends you something; false brings it back.
+  // Done for you (⌘E) now, out of your inbox until someone sends you something; false brings it back.
   done?: boolean;
   // Out of your inbox until then (H); null brings it back now.
   snoozeUntilMs?: number | null;

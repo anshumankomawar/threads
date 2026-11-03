@@ -19,7 +19,7 @@ export type CommandMenuState = {
 export const COMMANDS = [
   { name: "blocked", label: "Blocked", hint: "Ask someone for what you need in a new thread" },
   { name: "task", label: "Task", hint: "Turn what you were asked into a task of your own" },
-  { name: "close", label: "Close", hint: "Mark this thread done" },
+  { name: "close", label: "Close", hint: "Close this thread for everyone" },
 ] as const;
 
 export type CommandName = (typeof COMMANDS)[number]["name"];

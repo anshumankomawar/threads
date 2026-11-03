@@ -442,9 +442,9 @@ const App = observer(function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Superhuman's keys for the inbox, without a modifier and never while typing or with a dialog open: J/K open the
-  // next or previous thread in it, E marks the open one done, H snoozes it, R puts the cursor in the reply, and Escape
-  // leaves the reply so the keys work again. Set each render so it sees the current state.
+  // Superhuman's keys for the inbox, never with a dialog open: ⌘E marks the open thread done, even from the reply; then,
+  // without a modifier and not while typing, J/K open the next or previous thread, H snoozes it, R puts the cursor in
+  // the reply, and Escape leaves the reply so the keys work again. Set each render so it sees the current state.
   const inboxKeysRef = useRef<(event: KeyboardEvent) => void>(() => {});
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => inboxKeysRef.current(event);
@@ -562,20 +562,12 @@ const App = observer(function App(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [undo]);
 
-  // E, as in Superhuman: done with it. Your own work closes, for everyone; anything else is done for you, until someone
-  // sends you something new. Either way the next thread in your inbox opens.
+  // ⌘E: done with it, for you. It never closes the thread, which is always by hand (/close, the
+  // status, right-click), so nobody's ask is closed under them. The next thread in your inbox opens.
   const markDone = (thread: Thread): void => {
     moveOn(thread);
-    if (waitingOn(thread) === me.id) {
-      client.updateThread(thread.id, { status: "closed" }, me);
-      setUndo({
-        text: "Closed",
-        run: () => client.updateThread(thread.id, { status: "open" }, me),
-      });
-    } else {
-      client.updateThread(thread.id, { done: true }, me);
-      setUndo({ text: "Done", run: () => client.updateThread(thread.id, { done: false }, me) });
-    }
+    client.updateThread(thread.id, { done: true }, me);
+    setUndo({ text: "Done", run: () => client.updateThread(thread.id, { done: false }, me) });
   };
 
   // H: out of your inbox until 9 tomorrow morning.
@@ -609,7 +601,7 @@ const App = observer(function App(): React.JSX.Element {
     items.push("separator");
     if (inboxReason(thread, me.id, nowMs) !== null) {
       items.push(
-        { label: "Done", shortcut: "E", run: () => markDone(thread) },
+        { label: "Done", shortcut: "⌘E", run: () => markDone(thread) },
         { label: "Snooze until tomorrow", shortcut: "H", run: () => snooze(thread) },
         "separator",
       );
@@ -697,6 +689,30 @@ const App = observer(function App(): React.JSX.Element {
   };
 
   inboxKeysRef.current = (event) => {
+    const key = event.key.toLowerCase();
+    const order = inbox.order;
+    const at = order.findIndex((thread) => thread.id === activeThreadId);
+    const inInbox = activeThread !== undefined && at !== -1;
+    const dialogOpen = (): boolean =>
+      searchOpen ||
+      newThreadOpen ||
+      composeOpen ||
+      viewAsOpen ||
+      editingBucket !== null ||
+      blocking !== null ||
+      moving !== null ||
+      newGroupOpen ||
+      renamingOrganization ||
+      organization?.name === "" ||
+      threadMenu !== null ||
+      document.querySelector(".chip-menu, .context-menu, .thread-menu") !== null;
+    // ⌘E: done with it, for you. It works from the reply too, so you can answer and move on.
+    if (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && key === "e") {
+      if (!inInbox || dialogOpen()) return;
+      event.preventDefault();
+      markDone(activeThread);
+      return;
+    }
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const target = event.target as HTMLElement;
     const typing = target.closest("input, textarea, select, [contenteditable='true']") !== null;
@@ -710,30 +726,11 @@ const App = observer(function App(): React.JSX.Element {
         target.blur();
       return;
     }
-    if (event.defaultPrevented) return;
-    const dialogOpen =
-      searchOpen ||
-      newThreadOpen ||
-      composeOpen ||
-      viewAsOpen ||
-      editingBucket !== null ||
-      blocking !== null ||
-      moving !== null ||
-      newGroupOpen ||
-      renamingOrganization ||
-      organization?.name === "" ||
-      threadMenu !== null ||
-      document.querySelector(".chip-menu, .context-menu, .thread-menu") !== null;
-    if (dialogOpen) return;
-    const key = event.key.toLowerCase();
-    const order = inbox.order;
-    const at = order.findIndex((thread) => thread.id === activeThreadId);
-    const inInbox = activeThread !== undefined && at !== -1;
+    if (event.defaultPrevented || dialogOpen()) return;
     if (key === "j" || key === "k") {
       const next = at === -1 ? order[0] : order[at + (key === "j" ? 1 : -1)];
       if (next !== undefined) openThread(next.id);
-    } else if (key === "e" && inInbox) markDone(activeThread);
-    else if (key === "h" && inInbox) snooze(activeThread);
+    } else if (key === "h" && inInbox) snooze(activeThread);
     else if (key === "r" && activeThread !== undefined)
       // The thread's own reply, at the end of its document.
       [

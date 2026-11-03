@@ -104,7 +104,7 @@ export type Thread = {
   labelIds: string[];
   // Which of their buckets it's in, for each person it's in the inbox of, by id; missing until it's sorted for them.
   triage: Record<string, Triage>;
-  // When each person last marked it done for themselves (E), by id. Something sent to them after brings it back.
+  // When each person last marked it done for themselves (⌘E), by id. Something sent to them after brings it back.
   doneBy: Record<string, number>;
   // Until when each person has snoozed it (H), by id; it's out of their inbox until then.
   snoozedUntil: Record<string, number>;
@@ -156,14 +156,25 @@ export function lastSentTo(thread: Thread, personId: string): Message | undefine
   );
 }
 
-// Why a thread is in someone's inbox, as in email: it's theirs to finish (`assigned`, until it's closed), or someone
-// sent them something since they last marked it done (`sent`). Snoozing takes it out until then; closing takes it out
-// for everyone.
+// Why a thread is in someone's inbox, as in email: it's theirs to finish (`assigned`), or someone sent them something
+// (`sent`). Marking it done (⌘E) takes it out for them alone, never closing it, until someone else does something
+// there: sends them something new or, for their own work, anything at all. Snoozing takes it out until then; closing,
+// which is always by hand, takes it out for everyone.
 export type InboxReason = "assigned" | "sent";
 
 export function inboxReason(thread: Thread, personId: string, nowMs: number): InboxReason | null {
   if (isDone(thread.status) || (thread.snoozedUntil[personId] ?? 0) > nowMs) return null;
-  if (waitingOn(thread) === personId) return "assigned";
+  const doneAt = thread.doneBy[personId];
+  if (
+    waitingOn(thread) === personId &&
+    (doneAt === undefined ||
+      thread.entries.some(
+        (entry) =>
+          entry.createdAtMs > doneAt &&
+          (entry.kind === "event" ? entry.actor : entry.author).id !== personId,
+      ))
+  )
+    return "assigned";
   const sent = lastSentTo(thread, personId);
   return sent !== undefined && sent.createdAtMs > (thread.doneBy[personId] ?? 0) ? "sent" : null;
 }
