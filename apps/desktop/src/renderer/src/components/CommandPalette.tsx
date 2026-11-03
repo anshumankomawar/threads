@@ -37,6 +37,8 @@ export function CommandPalette({
   onOpenPerson,
   labels,
   onOpenLabel,
+  sprints,
+  onOpenSprint,
   onNewGroup,
   onNewThread,
   onOpenThread,
@@ -52,6 +54,9 @@ export function CommandPalette({
   onOpenPerson: (id: string) => void;
   labels: Label[];
   onOpenLabel: (id: string) => void;
+  // Groups' sprints, each named with its group.
+  sprints: { id: string; label: string }[];
+  onOpenSprint: (id: string) => void;
   onNewGroup: () => void;
   onNewThread: () => void;
   onOpenThread: (id: string) => void;
@@ -73,14 +78,22 @@ export function CommandPalette({
 
   const groupsAndLabels: Section = {
     title: "Groups and Labels",
-    items: labels
-      .toSorted((a, b) => a.name.localeCompare(b.name))
-      .map((label) => ({
-        id: `label-${label.id}`,
-        label: label.name,
-        shortcut: label.groupId === null ? "Label" : "Group",
-        run: run(() => onOpenLabel(label.id)),
+    items: [
+      ...labels
+        .toSorted((a, b) => a.name.localeCompare(b.name))
+        .map((label) => ({
+          id: `label-${label.id}`,
+          label: label.name,
+          shortcut: label.groupId === null ? "Label" : "Group",
+          run: run(() => onOpenLabel(label.id)),
+        })),
+      ...sprints.map((sprint) => ({
+        id: `sprint-${sprint.id}`,
+        label: sprint.label,
+        shortcut: "Sprint",
+        run: run(() => onOpenSprint(sprint.id)),
       })),
+    ],
   };
   // Everyone else, by name; opening one shows their profile and the threads you're both in.
   const peopleSection: Section = {

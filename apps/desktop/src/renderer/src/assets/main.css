@@ -3226,30 +3226,19 @@ body * {
   color: var(--urgent);
 }
 
-/* The sprint picked on a group's page. */
-.sprint {
-  flex-shrink: 0;
+/* A sprint's page (`SprintView`): its name edits in place, like a title. */
+.sprint-title-input {
+  width: 100%;
   max-width: 640px;
-  margin-top: 20px;
-  padding: 12px 14px;
-  border: 1px solid var(--stroke-tertiary);
-  border-radius: 8px;
-}
-
-.sprint-head {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  align-items: center;
-}
-
-.sprint-name {
-  min-width: 0;
+  margin: 0;
   padding: 0;
   border: none;
   color: var(--text-primary);
   font: inherit;
+  font-size: 20px;
   font-weight: 600;
+  line-height: 28px;
+  letter-spacing: -0.2px;
   background: transparent;
   outline: none;
 }
@@ -3272,21 +3261,11 @@ body * {
   color-scheme: dark light;
 }
 
-.sprint-closed {
-  color: var(--text-tertiary);
-  font-size: 12px;
-}
-
-.sprint-summary {
-  margin: 6px 0 0;
-  color: var(--text-tertiary);
-}
-
 .sprint-load {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 4px 16px;
-  margin: 10px 0 0;
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -3297,12 +3276,4 @@ body * {
 
 .sprint-load-detail {
   color: var(--text-tertiary);
-}
-
-.sprint-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  margin-top: 12px;
 }

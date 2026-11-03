@@ -306,13 +306,15 @@ A board and a sprint are ways of looking at threads; neither changes one.
   sprint runs from a day to a year. A thread taken out of the group (its label removed) leaves the group's open sprints
   as a side effect; closed sprints keep their record. Threads go in a sprint by changing the sprint's `threadIds` (the
   whole list, like a group's members), never by changing the thread, so a thread made and added in one batch works.
-- **In the app**: a group's page has a sprint filter beside the others. Picking one narrows the list or board to its
-  threads and shows `SprintPanel`: its name and dates, a summary ("3 threads · 1 blocked"), each assignee's load (open
-  threads and estimated hours; a shared thread counts in full for each of its assignees), adding the group's threads,
-  and closing or reopening it. A closed sprint with unfinished threads offers to start the next with them. "New sprint"
-  is numbered after the others and runs two weeks, from today or from where the latest ends (`nextSprint`). A thread
-  made from an open sprint goes in it, if it keeps the group's label. A thread's right-click menu adds it to, or takes
-  it out of, the open sprints of your groups it's in. Starting and closing sprints show in the group's activity.
+- **In the app**: each sprint has its own page (`SprintView`, the `{ sprint }` page), opened from its group's Sprints
+  button (which lists them, with "New sprint") or ⌘K ("Platform › Sprint 2"). The group's page itself shows no sprint.
+  A sprint's page has its name (renamed in place) and dates, its group (linking back), a summary ("3 threads · 1
+  blocked"), each assignee's load (open threads and estimated hours; a shared thread counts in full for each of its
+  assignees), and its threads as a list or a board, with adding the group's threads, closing or reopening it, and, once
+  closed with unfinished threads, starting the next with them. "New sprint" is numbered after the others and runs two
+  weeks, from today or from where the latest ends (`nextSprint`). A thread made on an open sprint's page starts with
+  the group's label and goes in the sprint, if it keeps the label. A thread's right-click menu adds it to, or takes it
+  out of, the open sprints of your groups it's in. Starting and closing sprints show in the group's activity.
 
 ## Profiles
 

@@ -22,6 +22,7 @@ import {
   plainThreadLinks,
   splitThreadLinks,
   UNREAD_THREAD_IDS,
+  type Group,
   type Label,
   type Bucket,
   type ComposeDraft,
@@ -59,12 +60,13 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { ArrowExpand01Icon, Cancel01Icon, Delete02Icon } from "@hugeicons/core-free-icons";
 import { Identicon } from "./components/Identicon";
 import { PersonView } from "./components/PersonView";
+import { SprintView } from "./components/SprintView";
 import { ProfileView } from "./components/ProfileView";
 import { LabelView } from "./components/LabelView";
 import { NewGroupPalette } from "./components/NewGroupPalette";
 import { OrganizationPrompt } from "./components/OrganizationPrompt";
 import { groupNoticesFor, groupsFor, selectableLabels } from "./groups";
-import { openSprintWith, sprintsOf } from "./sprints";
+import { nextSprint, openSprintWith, sprintsOf } from "./sprints";
 import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { buildInbox } from "./inbox";
@@ -306,6 +308,12 @@ const App = observer(function App(): React.JSX.Element {
     if (personId === me.id) openProfile();
     else openPage({ person: personId });
   };
+  const openSprint = (sprintId: string): void => openPage({ sprint: sprintId });
+  // Starts the next sprint in a group (`nextSprint`), with any threads to carry over, and opens it.
+  const startSprint = (group: Group, threadIds: string[]): void => {
+    const next = nextSprint(sprintsOf(sprints, group.id), Date.now());
+    openSprint(client.createSprint(group.id, next.name, next, threadIds, me));
+  };
   const toggleSidebar = (): void => setSidebarOpen((open) => !open);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const [renamingOrganization, setRenamingOrganization] = useState(false);
@@ -316,6 +324,12 @@ const App = observer(function App(): React.JSX.Element {
     page !== null && typeof page === "object" && "person" in page
       ? people.find((person) => person.id === page.person)
       : undefined;
+  // A sprint's page, with the group it's in.
+  const shownSprint =
+    page !== null && typeof page === "object" && "sprint" in page
+      ? sprints.find((sprint) => sprint.id === page.sprint)
+      : undefined;
+  const sprintGroup = groups.find((group) => group.id === shownSprint?.groupId);
   const shownGroup = groups.find((group) => group.labelId === shownLabelId);
   // A group's label comes back from the server just after the group, so go by the group until then.
   const shownLabel: Label | undefined =
@@ -329,6 +343,9 @@ const App = observer(function App(): React.JSX.Element {
           createdById: shownGroup.createdById,
           createdAtMs: shownGroup.createdAtMs,
         });
+  // The label a thread made from this page starts with: the group's or label's, or a sprint's group's, which it needs
+  // to go in the sprint.
+  const pageLabel = shownLabel ?? labels.find((label) => label.id === sprintGroup?.labelId);
 
   // Starting a thread opens the new-thread panel.
   const [newThreadOpen, setNewThreadOpen] = useState(false);
@@ -912,7 +929,8 @@ const App = observer(function App(): React.JSX.Element {
                     ? "Settings"
                     : page === "all"
                       ? "All threads"
-                      : (shownPerson?.name ??
+                      : (shownSprint?.name ??
+                        shownPerson?.name ??
                         shownLabel?.name ??
                         activeThread?.title ??
                         (shownDraft === undefined
@@ -985,6 +1003,26 @@ const App = observer(function App(): React.JSX.Element {
                 onNewThread={() => openNew()}
                 onOpenThread={openThread}
               />
+            ) : shownSprint !== undefined && sprintGroup !== undefined ? (
+              <SprintView
+                key={shownSprint.id}
+                sprint={shownSprint}
+                group={sprintGroup}
+                threads={threads}
+                people={people}
+                me={me}
+                nowMs={nowMs}
+                unreadIds={unreadIds}
+                groupSprints={sprintsOf(sprints, sprintGroup.id)}
+                onUpdate={(changes) => client.updateSprint(shownSprint.id, changes, me)}
+                onStartNext={(threadIds) => startSprint(sprintGroup, threadIds)}
+                onOpenGroup={() => openLabel(sprintGroup.labelId)}
+                onOpenPerson={openPerson}
+                onNewThread={() => openNew(shownSprint.id)}
+                onOpenThread={openThread}
+                // Straight to the thread: from the board you stay on the board, rather than moving on through your inbox.
+                onSetStatus={(thread, status) => client.updateThread(thread.id, { status }, me)}
+              />
             ) : page === "all" || shownLabel !== undefined ? (
               <LabelView
                 key={shownLabel?.id ?? "all"}
@@ -1000,15 +1038,13 @@ const App = observer(function App(): React.JSX.Element {
                   if (shownGroup !== undefined) client.updateGroup(shownGroup.id, changes, me);
                 }}
                 sprints={shownGroup === undefined ? [] : sprintsOf(sprints, shownGroup.id)}
-                onCreateSprint={(name, dates, threadIds) =>
-                  shownGroup === undefined
-                    ? ""
-                    : client.createSprint(shownGroup.id, name, dates, threadIds, me)
-                }
-                onUpdateSprint={(sprintId, changes) => client.updateSprint(sprintId, changes, me)}
+                onOpenSprint={openSprint}
+                onNewSprint={() => {
+                  if (shownGroup !== undefined) startSprint(shownGroup, []);
+                }}
                 // Straight to the thread: from the board you stay on the board, rather than moving on through your inbox.
                 onSetStatus={(thread, status) => client.updateThread(thread.id, { status }, me)}
-                onNewThread={openNew}
+                onNewThread={() => openNew()}
                 onOpenThread={openThread}
                 onOpenPerson={openPerson}
               />
@@ -1106,7 +1142,7 @@ const App = observer(function App(): React.JSX.Element {
               me={me}
               labels={selectableLabels(labels, groups)}
               // Made from a group or label's page, a thread starts with that label.
-              initialLabels={shownLabel === undefined ? [] : [shownLabel]}
+              initialLabels={pageLabel === undefined ? [] : [pageLabel]}
               // Made from someone's profile, it's for them.
               initialAssignee={shownPerson ?? null}
               onCreate={createThread}
@@ -1187,6 +1223,13 @@ const App = observer(function App(): React.JSX.Element {
               onOpenPerson={openPerson}
               labels={labels}
               onOpenLabel={openLabel}
+              sprints={groups.flatMap((group) =>
+                sprintsOf(sprints, group.id).map((sprint) => ({
+                  id: sprint.id,
+                  label: `${group.name} › ${sprint.name}`,
+                })),
+              )}
+              onOpenSprint={openSprint}
               onNewGroup={() => {
                 setSearchOpen(false);
                 setNewGroupOpen(true);

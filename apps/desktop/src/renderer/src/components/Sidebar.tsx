@@ -687,8 +687,13 @@ function SidebarTabs({
 }
 
 // What opens in the main area from the sidebar: settings, every thread, a label's threads (a group's, when it's a
-// group's label), or someone's profile.
-export type SidebarPage = "settings" | "all" | { label: string } | { person: string };
+// group's label), someone's profile, or a group's sprint.
+export type SidebarPage =
+  | "settings"
+  | "all"
+  | { label: string }
+  | { person: string }
+  | { sprint: string };
 
 export function Sidebar({
   inbox,
