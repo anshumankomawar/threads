@@ -30,6 +30,13 @@ function validate<Target extends "json" | "query", Schema extends z.ZodType>(
   });
 }
 
+// What the app sends to draft a thread (POST /ai/compose, in src/worker.ts).
+export const composeRequest = z.object({
+  author: z.object({ id: z.string(), name: z.string() }),
+  people: z.array(z.object({ id: z.string(), name: z.string() })).max(500),
+  text: z.string().min(1).max(4000),
+});
+
 // Answers an engine error with its status, and rethrows anything else.
 function fail(c: Context, error: unknown): Response {
   if (error instanceof EngineError) return c.json({ error: error.message }, error.status);

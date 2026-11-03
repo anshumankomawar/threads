@@ -154,6 +154,8 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 10. **Times shown in text use the actor's time zone.** The server runs in UTC; use `utcOffsetMinutes` (activity
     lines) and `X-UTC-Offset` (seeding).
 11. **No REST endpoints.** The API is the sync protocol only. New capabilities are new transaction types or models.
+    The one exception is stateless AI helpers that read and write no data, such as `POST /ai/compose`: they run in
+    the Worker entry, outside any workspace, and whatever they produce reaches the data as ordinary transactions.
 
 ## Thread links and branching
 
@@ -171,6 +173,17 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - A branch is an ordinary `response` thread with `branchedFromId` set, between the same people as its parent
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
+
+## Writing a thread as one message (⌘⇧N)
+
+`ComposePanel` takes one message written as you'd say it ("@Anshu @Arjun can you review this CR. @Omar can you also
+track this"). While you type, the app sends it with everyone's names to `POST /ai/compose` (`apps/api/src/compose.ts`,
+Workers AI), which drafts a title, any shared context, and an ask per distinct request with the people it's for; the
+panel previews that draft. Enter makes the thread from it with ordinary transactions (`composeThread` in `App.tsx`):
+the title and context as the thread and its description, the first person asked as its assignee, and each ask as a
+message sent to its people. So it's still one thread, in each person's inbox and sorted for them by what they were
+asked (the triage prompt reads the latest message sent to them). Without the model it falls back to the first
+sentence as the title and one ask for everyone mentioned.
 
 ## Inbox, notes and sending (like email)
 

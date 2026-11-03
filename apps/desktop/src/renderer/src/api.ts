@@ -1,4 +1,4 @@
-import type { SyncMessage } from "model";
+import type { ComposeDraft, ComposeRequest, SyncMessage } from "model";
 import { openIndexedDb } from "./sync/database";
 import { SyncClient, type Transport } from "./sync/syncClient";
 import { RejectedError } from "./sync/transactions";
@@ -80,6 +80,27 @@ function httpTransport(server: Server): Transport {
       return { close: () => socket.close() };
     },
   };
+}
+
+// The model's draft of a new thread from what you typed (POST /ai/compose). Not part of sync: it reads and writes
+// nothing.
+export async function composeDraft(
+  source: DataSource,
+  request: ComposeRequest,
+  signal: AbortSignal,
+): Promise<ComposeDraft> {
+  const server = serverFor(source);
+  const response = await fetch(`${server.url}/ai/compose`, {
+    method: "POST",
+    signal,
+    headers: {
+      "Content-Type": "application/json",
+      ...(server.token === undefined ? {} : { Authorization: `Bearer ${server.token}` }),
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`Drafting failed with ${response.status}`);
+  return response.json() as Promise<ComposeDraft>;
 }
 
 // A sync client for a data source, with its own local database.

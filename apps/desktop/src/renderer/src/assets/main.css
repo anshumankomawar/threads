@@ -2813,3 +2813,105 @@ body * {
   background: none;
   cursor: pointer;
 }
+
+/* The new-message panel (⌘⇧N): what you write on top, the model's draft of the thread under it. */
+.compose {
+  max-height: 560px;
+}
+
+.compose-input {
+  flex-shrink: 0;
+  min-height: 72px;
+  padding: 12px;
+  border: none;
+  border-bottom: 1px solid var(--panel-border);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  background: transparent;
+  outline: none;
+  resize: none;
+}
+
+.compose-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.compose-mentions {
+  flex-shrink: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.compose-preview {
+  min-height: 0;
+  padding: 0 0 10px;
+  overflow-y: auto;
+  transition: opacity 120ms ease;
+}
+
+/* A draft of what you'd typed a moment ago fades until the new one arrives. */
+.compose-preview[data-current="false"] {
+  opacity: 0.6;
+}
+
+.compose-title {
+  padding: 0 12px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.compose-context,
+.compose-empty {
+  margin: 4px 12px 0;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+.compose-asks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0 12px;
+  list-style: none;
+}
+
+.compose-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.compose-ask-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.compose-ask-person {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.compose-ask-text {
+  color: var(--text-primary);
+}
+
+.compose-footer {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--panel-border);
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.compose-footer kbd {
+  font: inherit;
+}

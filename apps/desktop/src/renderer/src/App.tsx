@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
+import { ComposePanel } from "./components/ComposePanel";
 import { BucketPalette } from "./components/BucketPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -20,6 +21,7 @@ import {
   UNREAD_THREAD_IDS,
   type Label,
   type Bucket,
+  type ComposeDraft,
   type Person,
   type Thread,
   type ThreadChanges,
@@ -33,6 +35,7 @@ import {
 import { observer } from "mobx-react-lite";
 import {
   CLOUDFLARE_AVAILABLE,
+  composeDraft,
   createSyncClient,
   serverFor,
   SOURCE_LABELS,
@@ -321,6 +324,27 @@ const App = observer(function App(): React.JSX.Element {
     openThread(client.createThread(draft, me));
   };
 
+  // ⌘⇧N: a new thread written as one message, drafted by the model (`ComposePanel`). The first person asked has it;
+  // each ask is a message sent to its people, which puts the thread in their inboxes, sorted by what they were asked.
+  const [composeOpen, setComposeOpen] = useState(false);
+  const composeThread = (draft: ComposeDraft): void => {
+    setComposeOpen(false);
+    const byId = new Map(people.map((person) => [person.id, person]));
+    const asked = (ask: ComposeDraft["asks"][number]): Person[] =>
+      ask.personIds.flatMap((id) => byId.get(id) ?? []);
+    const threadId = client.createThread(
+      {
+        title: draft.title,
+        description: draft.context,
+        assignee: draft.asks.flatMap(asked)[0] ?? null,
+      },
+      me,
+    );
+    for (const ask of draft.asks)
+      client.addEntry(threadId, "message", ask.text, me, undefined, asked(ask));
+    openThread(threadId);
+  };
+
   // Your buckets, edited from the inbox and saved to your profile as a whole list. A thread placed by hand stays put.
   const buckets = bucketsOf(me);
   const [editingBucket, setEditingBucket] = useState<Bucket | "new" | null>(null);
@@ -369,6 +393,13 @@ const App = observer(function App(): React.JSX.Element {
       if (event.shiftKey && key === "f") {
         event.preventDefault();
         setSearchOpen(true);
+        return;
+      }
+      if (event.shiftKey && key === "n") {
+        event.preventDefault();
+        setSearchOpen(false);
+        setNewThreadOpen(false);
+        setComposeOpen(true);
         return;
       }
       if (event.shiftKey) return;
@@ -661,6 +692,7 @@ const App = observer(function App(): React.JSX.Element {
     const dialogOpen =
       searchOpen ||
       newThreadOpen ||
+      composeOpen ||
       viewAsOpen ||
       editingBucket !== null ||
       blocking !== null ||
@@ -919,6 +951,15 @@ const App = observer(function App(): React.JSX.Element {
               nowMs={nowMs}
               onOpenThread={openThread}
               onOpenLabel={openLabel}
+            />
+          )}
+          {composeOpen && (
+            <ComposePanel
+              people={people}
+              me={me}
+              draftWith={(request, signal) => composeDraft(source, request, signal)}
+              onCreate={composeThread}
+              onClose={() => setComposeOpen(false)}
             />
           )}
           {newThreadOpen && (

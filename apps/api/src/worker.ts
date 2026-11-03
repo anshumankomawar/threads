@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
+import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { AnyRecord, ModelName, SyncAction, SyncMessage } from "model";
-import { createWorkspaceApp } from "./app.ts";
+import { composeRequest, createWorkspaceApp } from "./app.ts";
 import {
   ensureOrganization,
   isWorkspaceName,
@@ -13,6 +14,7 @@ import {
   type EngineStorage,
   type WorkspaceName,
 } from "./engine.ts";
+import { workersAiComposer } from "./compose.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
 // Request details a Workspace object needs. The desktop app sends them as headers; a browser WebSocket can't set
@@ -238,6 +240,18 @@ app.use(async (c, next) => {
   const given = c.req.header("Authorization")?.replace(/^Bearer /, "") ?? c.req.query("token");
   if (given !== token) return c.json({ error: "Unauthorized" }, 401);
   await next();
+});
+
+// Drafting a new thread from what you typed (src/compose.ts). It reads and writes nothing, so it runs here, outside
+// any workspace.
+app.post("/ai/compose", zValidator("json", composeRequest), async (c) => {
+  const { AI: ai } = c.env as { AI?: Ai };
+  if (ai === undefined) return c.json({ error: "No AI here" }, 503);
+  try {
+    return c.json(await workersAiComposer(ai)(c.req.valid("json")));
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : "The model failed" }, 502);
+  }
 });
 
 // Each workspace lives in its own Durable Object, picked with X-Workspace (or `workspace` on the socket).
