@@ -35,13 +35,15 @@ export type ActivityItem = {
   unread: number;
 };
 
-// Whether you're part of a thread: you asked, it's yours, you're invited, or you've replied in it. Writing a thread's
+// Whether you're part of a thread: you asked, it's yours, something was sent to you, or you've written in it. Writing a thread's
 // description doesn't count, so making one on someone's behalf leaves you out of it; they're the one tracking it.
 function involves(thread: Thread, me: Person): boolean {
   return (
     thread.requester.id === me.id ||
     thread.assignee?.id === me.id ||
-    thread.attendees.some((person) => person.id === me.id) ||
+    thread.entries.some(
+      (entry) => entry.kind === "message" && entry.sentTo.some((person) => person.id === me.id),
+    ) ||
     thread.entries.some(
       (entry) => entry.kind === "message" && entry.author.id === me.id && entry.id !== thread.id,
     )
@@ -64,8 +66,7 @@ export function activityFor(
   return threads
     .flatMap((thread): ActivityItem[] => {
       // Archived threads are put away, news and all.
-      if (thread.kind === "conversation" || thread.status === "archived" || !involves(thread, me))
-        return [];
+      if (thread.status === "archived" || !involves(thread, me)) return [];
       const relevant = thread.entries.filter((entry) => {
         const person = author(entry);
         if (person === null || person.id === me.id || entry.createdAtMs < nowMs - WINDOW_MS)

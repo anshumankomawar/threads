@@ -1,4 +1,4 @@
-import { mention, type Entry, type Person, type Thread } from "model";
+import type { Entry, Person, Thread } from "model";
 import { expect, test } from "vite-plus/test";
 import { activityFor } from "../src/renderer/src/activity";
 
@@ -10,11 +10,12 @@ const MINUTE = 60_000;
 const NOW = new Date(2026, 10, 2, 12).getTime();
 
 let counter = 0;
-const message = (author: Person, text: string, atMs: number): Entry => ({
+const message = (author: Person, text: string, atMs: number, sentTo: Person[] = []): Entry => ({
   id: `e${++counter}`,
   kind: "message",
   author,
   text,
+  sentTo,
   createdAtMs: atMs,
 });
 const event = (actor: Person, text: string, atMs: number): Entry => ({
@@ -28,21 +29,21 @@ const event = (actor: Person, text: string, atMs: number): Entry => ({
 function thread(id: string, entries: Entry[], fields: Partial<Thread> = {}): Thread {
   return {
     id,
-    kind: "issue",
     title: id,
     requester: me,
     assignee: sam,
     status: "open",
     priority: "none",
     dueAtMs: null,
-    attendees: [],
     branchedFromId: null,
     blocksId: null,
     createdBy: me,
     seenBy: {},
     effortHours: null,
     labelIds: [],
-    triage: null,
+    triage: {},
+    doneBy: {},
+    snoozedUntil: {},
     updatedAtMs: NOW,
     entries,
     ...fields,
@@ -117,14 +118,10 @@ test("a new thread is opened, and other messages are replies", () => {
   ]);
 });
 
-test("your own doings, conversations, routine edits and other people's threads stay out", () => {
+test("your own doings, routine edits and other people's threads stay out", () => {
   const items = activityFor(
     [
       thread("mine", [message(me, "Started", NOW - MINUTE)]),
-      thread("talk", [message(sam, `${mention("me")} can you check?`, NOW - MINUTE)], {
-        kind: "conversation",
-        attendees: [sam, me],
-      }),
       thread("routine", [
         event(sam, "set priority to High", NOW - MINUTE),
         event(sam, "estimated this at 2h", NOW - MINUTE),

@@ -2,15 +2,14 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Add01Icon,
   ArrowRight01Icon,
-  BubbleChatIcon,
   InboxIcon,
   MoreHorizontalIcon,
   PanelLeftIcon,
   PanelRightIcon,
   PencilEdit02Icon,
   Search01Icon,
+  SentIcon,
   UserGroupIcon,
-  ViewIcon,
 } from "@hugeicons/core-free-icons";
 import { useResizablePanel } from "./useResizablePanel";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -20,16 +19,15 @@ import { useThreadLinks } from "../threadLinks";
 import { useThreadMenu } from "../threadMenu";
 import { Identicon } from "./Identicon";
 import {
+  lastSentTo,
   plainThreadLinks,
-  withoutLeadingMentions,
   type Bucket,
   type Group,
   type Label,
   type Thread,
 } from "model";
 import { filterLabels, threadsWithLabel, type GroupLists, type GroupNotice } from "../groups";
-import { latestFromOthers, type Conversations } from "../conversations";
-import { KIND_ICONS } from "../kindIcons";
+import { THREAD_ICON } from "../threadIcon";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import type { ActivityItem } from "../activity";
 import { NotificationsButton } from "./Notifications";
@@ -136,8 +134,9 @@ function savedCollapsed(): string[] {
 // The dragged thread travels as this type, so only inbox rows drop on buckets.
 const DRAG_TYPE = "application/x-thread-id";
 
-// One thread in the inbox: who it's from, its title and when it's due, and under them why it matters (who asked, how
-// soon, how urgent). Hovering shows why it's in its bucket, in the model's words. Drag it to another bucket to move it.
+// One thread in the inbox: who it's from, its title and when it's due, and under them, as in email, what they last sent
+// you, or for your own work why it matters (who asked, how soon, how urgent). Hovering shows why it's in its bucket,
+// in the model's words. Drag it to another bucket to move it.
 function InboxRow({
   item,
   active,
@@ -151,11 +150,17 @@ function InboxRow({
 }): React.JSX.Element {
   const openMenu = useThreadMenu();
   const me = useMe();
+  const { titleOf, nameOf } = useThreadLinks();
   const { thread } = item;
   const titleRef = useOverflowFade<HTMLSpanElement>();
-  const sorted = thread.triage?.personId === me.id ? thread.triage : null;
+  const sorted = thread.triage[me.id];
   const why = sorted?.manual ? "Placed here by you" : (sorted?.reason ?? "");
   const person = item.from ?? thread.requester;
+  const latest = item.why === "sent" ? lastSentTo(thread, me.id) : undefined;
+  const line =
+    latest === undefined
+      ? item.reason
+      : `${latest.author.name.split(" ")[0]}: ${plainThreadLinks(latest.text, titleOf, nameOf)}`;
   return (
     <li className="thread-item">
       <div
@@ -188,7 +193,7 @@ function InboxRow({
               </span>
             )}
           </span>
-          <span className="inbox-row-why">{item.reason}</span>
+          <span className="inbox-row-why">{line}</span>
         </span>
       </div>
     </li>
@@ -387,88 +392,10 @@ function InboxView({
   );
 }
 
-// Your open conversations, in two groups: Unread (someone else wrote since you last looked) and Read. Each row is the
-// latest message, who wrote it, and the thread the conversation is in. Opening one shows it beside that thread.
-function ConversationList({
-  conversations,
-  openConversationId,
-  onOpenThread,
-}: {
-  conversations: Conversations;
-  openConversationId: string | null;
-  onOpenThread: (id: string) => void;
-}): React.JSX.Element {
-  const { titleOf, nameOf } = useThreadLinks();
-  const me = useMe();
-  const openMenu = useThreadMenu();
-  const row = (conversation: Thread, unread: boolean): React.JSX.Element => {
-    const latest =
-      latestFromOthers(conversation, me.id) ??
-      conversation.entries.findLast((entry) => entry.kind === "message");
-    const author = latest?.kind === "message" ? latest.author : conversation.requester;
-    // The words, without the mentions a message opens with.
-    const text =
-      latest?.kind === "message"
-        ? plainThreadLinks(withoutLeadingMentions(latest.text), titleOf, nameOf)
-        : conversation.title;
-    const where =
-      conversation.branchedFromId === null ? undefined : titleOf(conversation.branchedFromId);
-    const open = (): void => onOpenThread(conversation.id);
-    return (
-      <li key={conversation.id} className="thread-item">
-        <div
-          className="conversation-row"
-          onContextMenu={(event) => openMenu(event, conversation)}
-          data-active={conversation.id === openConversationId}
-          data-unread={unread}
-          role="button"
-          tabIndex={0}
-          onClick={open}
-          onKeyDown={(event) => activateOnKey(event, open)}
-        >
-          <Identicon seed={author.id} size={16} />
-          <span className="conversation-body">
-            <span className="conversation-text">{text}</span>
-            <span className="conversation-meta">
-              <span className="conversation-author">
-                {author.id === me.id ? "You" : author.name.split(" ")[0]}
-              </span>
-              {where !== undefined && ` · ${where}`}
-            </span>
-          </span>
-          {unread && <span className="unread-dot" aria-label="Unread" />}
-        </div>
-      </li>
-    );
-  };
-  // Unread always shows, so it's clear when there's nothing new; Read shows once there's something in it.
-  return (
-    <>
-      <section className="conversation-group">
-        <h2 className="conversation-group-label">Unread</h2>
-        {conversations.unread.length === 0 ? (
-          <p className="conversation-empty">Nothing new</p>
-        ) : (
-          <ul className="thread-list" aria-label="Unread">
-            {conversations.unread.map((conversation) => row(conversation, true))}
-          </ul>
-        )}
-      </section>
-      {conversations.read.length > 0 && (
-        <section className="conversation-group">
-          <h2 className="conversation-group-label">Read</h2>
-          <ul className="thread-list" aria-label="Read">
-            {conversations.read.map((conversation) => row(conversation, false))}
-          </ul>
-        </section>
-      )}
-    </>
-  );
-}
-
-// What you're tracking: what you've asked others for, whether you made it or someone made it on your behalf, and your
-// blocked threads: the title, who has it, and when they'll get to it. It leaves when they close it.
-function Tracking({
+// Sent, as in email: what you've asked others for (whether you made it or someone made it on your behalf), messages
+// you sent that nobody has answered yet, and your blocked threads: the title, who has it, and when it's due. Each
+// leaves when they answer or close it.
+function Sent({
   items,
   activeThreadId,
   unreadIds,
@@ -481,9 +408,9 @@ function Tracking({
 }): React.JSX.Element {
   const openMenu = useThreadMenu();
   return (
-    <ul className="thread-list" aria-label="Tracking">
+    <ul className="thread-list" aria-label="Sent">
+      {items.length === 0 && <li className="conversation-empty">Nothing you're waiting on</li>}
       {items.map((item) => {
-        const icon = KIND_ICONS[item.thread.kind];
         const label = [item.from?.name.split(" ")[0], item.dueLabel]
           .filter((part) => part != null)
           .join(" · ");
@@ -501,7 +428,7 @@ function Tracking({
               onKeyDown={(event) => activateOnKey(event, open)}
             >
               <span className="sidebar-row-icon" aria-hidden>
-                <HugeiconsIcon icon={icon} size={12} />
+                <HugeiconsIcon icon={THREAD_ICON} size={12} />
               </span>
               <span className="sidebar-row-label">{item.thread.title}</span>
               {unreadIds.has(item.thread.id) && <span className="unread-dot" aria-label="Unread" />}
@@ -587,14 +514,13 @@ function GroupList({
 }
 
 // The sidebar shows one list at a time, picked by the icon tabs under its top bar, like Obsidian's side panes.
-type SidebarTab = "inbox" | "conversations" | "tracking" | "groups";
+type SidebarTab = "inbox" | "sent" | "groups";
 
 const TAB_KEY = "sidebar-tab";
 
 const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
   { tab: "inbox", label: "Inbox", icon: InboxIcon },
-  { tab: "conversations", label: "Conversations", icon: BubbleChatIcon },
-  { tab: "tracking", label: "Tracking", icon: ViewIcon },
+  { tab: "sent", label: "Sent", icon: SentIcon },
   { tab: "groups", label: "Groups", icon: UserGroupIcon },
 ];
 
@@ -608,21 +534,19 @@ function savedTab(): SidebarTab {
 }
 
 // The tab strip, as in Notion: the chosen tab opens out to show its name, the others fold back to their icon, with a
-// count beside the Inbox, Conversations (the unread ones) and Tracking while they have anything. Your avatar at the far end opens your profile and
+// count beside the Inbox and Sent while they have anything. Your avatar at the far end opens your profile and
 // the org (in the main area, like a thread).
 function SidebarTabs({
   tab,
   inboxCount,
-  conversationCount,
-  trackingCount,
+  sentCount,
   profileOpen,
   onTab,
   onToggleProfile,
 }: {
   tab: SidebarTab;
   inboxCount: number;
-  conversationCount: number;
-  trackingCount: number;
+  sentCount: number;
   profileOpen: boolean;
   onTab: (tab: SidebarTab) => void;
   onToggleProfile: () => void;
@@ -630,8 +554,7 @@ function SidebarTabs({
   const me = useMe();
   const counts: Record<SidebarTab, number> = {
     inbox: inboxCount,
-    conversations: conversationCount,
-    tracking: trackingCount,
+    sent: sentCount,
     groups: 0,
   };
   // Each name's own width, so the chosen tab grows to exactly fit it (animating to a guessed maximum finishes early
@@ -684,8 +607,6 @@ export type SidebarPage = "settings" | { label: string };
 export function Sidebar({
   inbox,
   bucketActions,
-  conversations,
-  openConversationId,
   activity,
   groupNotices,
   groups,
@@ -708,9 +629,6 @@ export function Sidebar({
 }: {
   inbox: Inbox;
   bucketActions: BucketActions;
-  conversations: Conversations;
-  // The conversation open now, in place or beside its thread.
-  openConversationId: string | null;
   // What changed on your threads, for the notifications bell.
   activity: ActivityItem[];
   // Groups someone added you to, for the same bell.
@@ -784,20 +702,12 @@ export function Sidebar({
       <SidebarTabs
         tab={tab}
         inboxCount={inbox.order.length}
-        conversationCount={conversations.unread.length}
-        trackingCount={inbox.tracking.length}
+        sentCount={inbox.sent.length}
         profileOpen={profileOpen}
         onTab={chooseTab}
         onToggleProfile={onToggleProfile}
       />
       <div className="sidebar-content">
-        {tab === "conversations" && (
-          <ConversationList
-            conversations={conversations}
-            openConversationId={openConversationId}
-            onOpenThread={onOpenThread}
-          />
-        )}
         {tab === "inbox" && (
           <InboxView
             inbox={inbox}
@@ -817,9 +727,9 @@ export function Sidebar({
             onNewGroup={onNewGroup}
           />
         )}
-        {tab === "tracking" && (
-          <Tracking
-            items={inbox.tracking}
+        {tab === "sent" && (
+          <Sent
+            items={inbox.sent}
             activeThreadId={activeThreadId}
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}

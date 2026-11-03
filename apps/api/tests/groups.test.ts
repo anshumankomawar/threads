@@ -85,10 +85,8 @@ const createThread = (id: string, fields: object = {}): TransactionInput =>
     modelName: "Thread",
     data: {
       id,
-      kind: "issue",
       title: "A thread",
       assigneeId: "arjun",
-      attendeeIds: [],
       ...fields,
     },
   }) as TransactionInput;
@@ -183,26 +181,10 @@ test("a thread's label changes are logged, in words that fit a label or a group"
   ]);
 });
 
-test("labels work on threads, but not conversations", async () => {
+test("labels work on threads, and must exist", async () => {
   await transact("anshu", [createThread("t1", { labelIds: ["bug"] })]);
   expect((await threadOf("t1")).labelIds).toEqual(["bug"]);
-  await transact("anshu", [
-    createThread("c1", {
-      kind: "conversation",
-      assigneeId: null,
-      attendeeIds: ["arjun"],
-      branchedFromId: "t1",
-    }),
-  ]);
-  expect((await transact("anshu", [updateThread("c1", { labelIds: ["bug"] })])).status).toBe(400);
-  const labelled = createThread("c2", {
-    kind: "conversation",
-    assigneeId: null,
-    attendeeIds: ["arjun"],
-    branchedFromId: "t1",
-    labelIds: ["bug"],
-  });
-  expect((await transact("anshu", [labelled])).status).toBe(400);
+  expect((await transact("anshu", [updateThread("t1", { labelIds: ["nope"] })])).status).toBe(404);
 });
 
 // --- Groups ---
@@ -300,20 +282,6 @@ test("a blocker or branch stays in its parent's groups, but not its other labels
   expect((await threadOf("b2")).labelIds).toEqual(["billing"]);
 });
 
-test("a conversation doesn't inherit its thread's groups", async () => {
-  await transact("anshu", [createGroup("g1", "Billing")]);
-  await transact("anshu", [createThread("t1", { labelIds: ["billing"] })]);
-  await transact("anshu", [
-    createThread("c1", {
-      kind: "conversation",
-      assigneeId: null,
-      attendeeIds: ["arjun"],
-      branchedFromId: "t1",
-    }),
-  ]);
-  expect((await threadOf("c1")).labelIds).toEqual([]);
-});
-
 test("only seeded labels affect the score: a made-up one can't jump the queue", async () => {
   await transact("anshu", [createThread("plain"), createThread("bug"), createThread("made-up")]);
   await transact("anshu", [createLabel("Very Important")]);
@@ -342,7 +310,6 @@ test("records stored by older versions load in today's shape", () => {
     ...rest
   } = {
     id: "t1",
-    kind: "issue",
     title: "Old",
     requesterId: "anshu",
     createdById: "anshu",
@@ -352,25 +319,41 @@ test("records stored by older versions load in today's shape", () => {
     dueAtMs: null,
     effortHours: null,
     labelIds: [],
-    triage: null,
-    attendeeIds: [],
+    triage: {},
+    doneBy: {},
+    snoozedUntil: {},
     branchedFromId: null,
     blocksId: null,
     seenBy: {},
     createdAtMs: NOW,
     updatedAtMs: NOW,
   } satisfies ThreadRecord;
-  // Labels were tags, threads had schedules, and meetings were their own kind with a call link.
+  // Labels were tags, threads had schedules and kinds, meetings had call links, messages weren't sent to anyone, and
+  // a bucket was one person's.
   const old = { schedule: null, blocks: [], workedMinutes: 0 };
   engine.load(
     [
       {
         modelName: "Thread",
-        data: { ...rest, ...old, kind: "response", tagIds: ["bug"] } as never,
+        data: {
+          ...rest,
+          ...old,
+          kind: "response",
+          tagIds: ["bug"],
+          attendeeIds: [],
+          triage: { personId: "arjun", bucketId: "bugs", reason: "", manual: false, stale: false },
+        } as never,
       },
       {
         modelName: "Thread",
-        data: { ...rest, ...old, id: "m1", kind: "meeting", attendeeIds: ["anshu", "kk"] } as never,
+        data: {
+          ...rest,
+          ...old,
+          id: "m1",
+          kind: "meeting",
+          attendeeIds: ["anshu", "kk"],
+          triage: null,
+        } as never,
       },
       {
         modelName: "Entry",
@@ -382,15 +365,41 @@ test("records stored by older versions load in today's shape", () => {
           createdAtMs: NOW,
         } as never,
       },
+      {
+        modelName: "Entry",
+        data: {
+          id: "e1",
+          threadId: "t1",
+          kind: "message",
+          authorId: "anshu",
+          text: "Hi",
+          createdAtMs: NOW,
+        } as never,
+      },
     ],
     1,
   );
   const stored = engine.models.Thread.get("t1");
-  expect(stored).toMatchObject({ kind: "issue", labelIds: ["bug"], triage: null });
-  for (const gone of ["tagIds", "schedule", "blocks", "workedMinutes"])
+  expect(stored).toMatchObject({
+    labelIds: ["bug"],
+    triage: { arjun: { bucketId: "bugs", reason: "", manual: false, stale: false } },
+    doneBy: {},
+    snoozedUntil: {},
+  });
+  for (const gone of ["tagIds", "schedule", "blocks", "workedMinutes", "kind", "attendeeIds"])
     expect(stored).not.toHaveProperty(gone);
-  expect(engine.models.Thread.get("m1")).toMatchObject({ kind: "issue", attendeeIds: [] });
-  expect(engine.models.Entry.size).toBe(0);
+  expect(engine.models.Thread.get("m1")).toMatchObject({ triage: {} });
+  expect([...engine.models.Entry.values()]).toEqual([
+    {
+      id: "e1",
+      threadId: "t1",
+      kind: "message",
+      authorId: "anshu",
+      text: "Hi",
+      createdAtMs: NOW,
+      sentToIds: [],
+    },
+  ]);
 });
 
 test("restoring puts back what a wipe keeps", () => {

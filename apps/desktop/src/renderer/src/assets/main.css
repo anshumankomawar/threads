@@ -228,6 +228,7 @@ body * {
 
 /* Cursor's main chat surface, darker than the sidebar. */
 .main {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -763,21 +764,6 @@ body * {
   margin-left: auto;
 }
 
-.thread-attendees {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 6px;
-}
-
-.thread-attendee {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
 /* Right-aligned top bar actions (the details toggle). */
 .topbar-end {
   display: flex;
@@ -921,14 +907,6 @@ body * {
 
 .graph-thread[data-current="true"] {
   font-weight: 500;
-}
-
-.graph-at {
-  display: flex;
-  justify-content: center;
-  width: 8px;
-  flex-shrink: 0;
-  font-size: 11px;
 }
 
 .graph-title {
@@ -1473,11 +1451,6 @@ body * {
   margin-top: 4px;
 }
 
-/* A conversation's people sit inline in the who-and-when line. */
-.thread-byline .thread-attendees {
-  margin-top: 0;
-}
-
 .thread-header .chip[data-tone="assignee"] {
   font-size: 12px;
 }
@@ -1578,109 +1551,6 @@ body * {
 .thread-byline .thread-link {
   height: 18px;
   font-size: 12px;
-}
-
-/* A conversation as a card where it started: neutral, like the property chips, not a link. */
-.conversation-card {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  width: min(100%, 480px);
-  margin-top: 4px;
-  padding: 8px 12px 8px 10px;
-  border: 1px solid var(--stroke-tertiary);
-  border-radius: 8px;
-  color: var(--text-primary);
-  font: inherit;
-  text-align: left;
-  background-color: var(--bg-quaternary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.conversation-card:hover,
-.conversation-card[aria-expanded="true"] {
-  border-color: var(--stroke-focused);
-  background-color: var(--bg-tertiary);
-}
-
-.conversation-card[data-done="true"] {
-  opacity: 0.7;
-}
-
-.conversation-card-icon {
-  display: flex;
-  flex-shrink: 0;
-  color: var(--icon-tertiary);
-}
-
-.conversation-card-body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.conversation-card-title {
-  overflow: hidden;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conversation-card-meta {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-/* Overlapping avatars of who's in it. */
-.conversation-card-people {
-  display: flex;
-}
-
-.conversation-card-people > .identicon + .identicon {
-  margin-left: -4px;
-}
-
-/* A conversation in place, indented well under the message that started it: past that message's 22px avatar and 15px
-   gap, and a step further, so it reads as nested. "Move to sidebar" shows in its corner on hover. */
-.inline-conversation {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin: -6px 0 0 calc(37px + 28px);
-}
-
-.inline-conversation-move {
-  position: absolute;
-  top: 6px;
-  right: 0;
-  z-index: 1;
-  display: flex;
-  padding: 4px;
-  border: none;
-  border-radius: 4px;
-  color: var(--icon-tertiary);
-  background: none;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 120ms;
-}
-
-.inline-conversation:hover .inline-conversation-move,
-.inline-conversation-move:focus-visible {
-  opacity: 1;
-}
-
-.inline-conversation-move:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-tertiary);
 }
 
 /* The `#`, `@` and `/` menus in a reply, at the caret. */
@@ -2297,61 +2167,6 @@ body * {
   color: var(--text-tertiary);
 }
 
-.conversation-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin: 0 var(--row-gutter);
-  padding: 6px calc(var(--sidebar-inset) - var(--row-gutter));
-  border-radius: var(--row-radius);
-  cursor: pointer;
-  outline: none;
-}
-
-.conversation-row:hover:not([data-active="true"]) {
-  background-color: var(--bg-quaternary);
-}
-
-.conversation-row[data-active="true"] {
-  background-color: var(--bg-tertiary);
-}
-
-.conversation-body {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.conversation-row > .identicon {
-  flex-shrink: 0;
-}
-
-.conversation-meta {
-  overflow: hidden;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conversation-author {
-  color: var(--text-secondary);
-}
-
-.conversation-text {
-  overflow: hidden;
-  color: var(--text-secondary);
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.conversation-row[data-unread="true"] .conversation-text {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
 /* A plain sidebar list row (Tracking): icon, title, and who and when on the right. */
 .sidebar-row-icon {
   position: absolute;
@@ -2916,4 +2731,99 @@ body * {
 
 .list-page-meta[data-overdue="true"] {
   color: var(--urgent);
+}
+
+/* Who a message went to, or that it's a note nobody was told about. */
+.thread-sent-to,
+.thread-note {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.thread-note {
+  padding: 0 5px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 4px;
+  font-size: 10.5px;
+  line-height: 15px;
+}
+
+/* The reply's To line: who ⌘↵ sends to, and the keys. Enter alone adds a note. */
+.reply-to {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.reply-to-label {
+  margin-right: 2px;
+}
+
+.reply-to-person {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  height: 22px;
+  padding: 0 4px 0 6px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+}
+
+.reply-to-remove {
+  display: flex;
+  padding: 2px;
+  border: none;
+  color: var(--icon-tertiary);
+  background: none;
+  cursor: pointer;
+}
+
+.reply-to-remove:hover {
+  color: var(--text-primary);
+}
+
+.reply-to-keys {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.reply-to-keys kbd {
+  padding: 0 4px;
+  border: 1px solid var(--stroke-focused);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 10px;
+}
+
+.undo-toast {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  z-index: 20;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  background-color: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  transform: translateX(-50%);
+}
+
+.undo-toast button {
+  padding: 0;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  background: none;
+  cursor: pointer;
 }

@@ -13,7 +13,6 @@ import type {
   Priority,
   Status,
   Thread,
-  ThreadKind,
   Triage,
 } from "./model";
 
@@ -22,7 +21,6 @@ import type {
 // A thread without its people or entries; those are references, resolved from the object pool.
 export type ThreadRecord = {
   id: string;
-  kind: ThreadKind;
   title: string;
   requesterId: string;
   // Who really made it, when they asked on the requester's behalf; otherwise the requester.
@@ -33,9 +31,11 @@ export type ThreadRecord = {
   dueAtMs: number | null;
   effortHours: number | null;
   labelIds: string[];
-  // Its inbox bucket for whoever it's waiting on (`Triage`): set by the server's model, or by that person by hand.
-  triage: Triage | null;
-  attendeeIds: string[];
+  // Its bucket for each person whose inbox it's in, by id (`Triage`): set by the server's model, or by them by hand.
+  triage: Record<string, Triage>;
+  // Per person, by id: when they last marked it done for themselves, and until when they've snoozed it.
+  doneBy: Record<string, number>;
+  snoozedUntil: Record<string, number>;
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
   // The thread this one blocks (made with `/blocked`): that thread stays blocked until this one closes.
@@ -47,7 +47,8 @@ export type ThreadRecord = {
 };
 
 type EntryFields =
-  | { kind: "message"; authorId: string; text: string }
+  // `sentToIds` empty is a note: in the thread, but nobody is told.
+  | { kind: "message"; authorId: string; text: string; sentToIds: string[] }
   | { kind: "event"; actorId: string; text: string }
   | { kind: "resolution"; authorId: string; text: string };
 
@@ -88,17 +89,18 @@ export const ModelRegistry = {
       branchedFromId: "Thread",
       blocksId: "Thread",
     },
-    referenceArrays: { attendeeIds: "Person", labelIds: "Label" },
+    referenceArrays: { labelIds: "Label" },
     backReferences: { entries: "Entry" },
   },
   Entry: {
     loadStrategy: "instant",
     references: { threadId: "Thread", authorId: "Person", actorId: "Person" },
+    referenceArrays: { sentToIds: "Person" },
   },
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v17");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v18");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -161,10 +163,8 @@ export type TransactionInput =
 
 export type ThreadCreate = {
   id: string;
-  kind: ThreadKind;
   title: string;
   assigneeId: string | null;
-  attendeeIds: string[];
   // Set when a discussion is branched off another thread (`#` in a message).
   branchedFromId?: string | null;
   // Set when the thread is what another one is blocked on (`/blocked`).
@@ -198,19 +198,68 @@ export type ThreadChanges = Partial<
     | "dueAtMs"
     | "effortHours"
     | "labelIds"
-    // Placing it in one of your buckets by hand: `{ personId: you, manual: true }`, only while it's waiting on you.
-    | "triage"
   >
-> & {
-  // Marks the thread seen by whoever sends it, now. Records nothing in the activity.
+> &
+  ScopedChanges;
+
+// Changes that are only about whoever sends them, applied by `applyScopedChanges` on the server and, optimistically,
+// in the app. They're quiet: no activity line, and the thread doesn't count as updated.
+export type ScopedChanges = {
+  // Marks it seen, now.
   seen?: true;
+  // Done for you (E) now, out of your inbox until someone sends you something; false brings it back.
+  done?: boolean;
+  // Out of your inbox until then (H); null brings it back now.
+  snoozeUntilMs?: number | null;
+  // Puts it in one of your buckets by hand; null hands it back to the model to sort.
+  bucketId?: string | null;
 };
+
+// A thread record with whoever sent them's scoped changes applied, and the rest of the changes, still to apply.
+export function applyScopedChanges<Changes extends ScopedChanges>(
+  record: ThreadRecord,
+  changes: Changes,
+  actorId: string,
+  nowMs: number,
+): { record: ThreadRecord; rest: Omit<Changes, keyof ScopedChanges> } {
+  const { seen, done, snoozeUntilMs, bucketId, ...rest } = changes;
+  const without = (map: Record<string, number>): Record<string, number> =>
+    Object.fromEntries(Object.entries(map).filter(([id]) => id !== actorId));
+  let next = record;
+  if (seen) next = { ...next, seenBy: { ...next.seenBy, [actorId]: nowMs } };
+  if (done !== undefined)
+    next = {
+      ...next,
+      doneBy: done ? { ...next.doneBy, [actorId]: nowMs } : without(next.doneBy),
+    };
+  if (snoozeUntilMs !== undefined)
+    next = {
+      ...next,
+      snoozedUntil:
+        snoozeUntilMs === null
+          ? without(next.snoozedUntil)
+          : { ...next.snoozedUntil, [actorId]: snoozeUntilMs },
+    };
+  if (bucketId !== undefined) {
+    const { [actorId]: _mine, ...others } = next.triage;
+    next = {
+      ...next,
+      triage:
+        bucketId === null
+          ? others
+          : { ...others, [actorId]: { bucketId, reason: "", manual: true, stale: false } },
+    };
+  }
+  return { record: next, rest };
+}
 
 export type EntryCreate = {
   id: string;
   threadId: string;
   kind: "message" | "resolution";
   text: string;
+  // Who a message is sent to (⌘↵); none makes it a note.
+  sentToIds?: string[];
 };
 
 // `utcOffsetMinutes` is the actor's time zone, so activity lines such as "set the due date to Fri, Nov 7" read in their
@@ -230,7 +279,6 @@ export type TransactionBatchResponse = { lastSyncId: number };
 export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: number): ThreadRecord {
   return {
     id: data.id,
-    kind: data.kind,
     title: data.title,
     requesterId: data.onBehalfOfId ?? actorId,
     createdById: actorId,
@@ -240,11 +288,9 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
     dueAtMs: null,
     effortHours: null,
     labelIds: data.labelIds ?? [],
-    triage: null,
-    attendeeIds:
-      data.kind === "conversation"
-        ? [actorId, ...data.attendeeIds.filter((id) => id !== actorId)]
-        : [],
+    triage: {},
+    doneBy: {},
+    snoozedUntil: {},
     branchedFromId: data.branchedFromId ?? null,
     blocksId: data.blocksId ?? null,
     seenBy: {},
@@ -281,7 +327,13 @@ export function groupFromCreate(data: GroupCreate, actorId: string, nowMs: numbe
 export function entryFromCreate(data: EntryCreate, actorId: string, nowMs: number): EntryRecord {
   const base = { id: data.id, threadId: data.threadId, createdAtMs: nowMs };
   return data.kind === "message"
-    ? { ...base, kind: "message", authorId: actorId, text: data.text }
+    ? {
+        ...base,
+        kind: "message",
+        authorId: actorId,
+        text: data.text,
+        sentToIds: (data.sentToIds ?? []).filter((id) => id !== actorId),
+      }
     : { ...base, kind: "resolution", authorId: actorId, text: data.text };
 }
 
@@ -297,6 +349,7 @@ export function toEntry(record: EntryRecord, person: (id: string) => Person): En
         kind: "message",
         author: person(record.authorId),
         text: record.text,
+        sentTo: record.sentToIds.map(person),
       };
     case "event":
       return { ...base, kind: "event", actor: person(record.actorId), text: record.text };
@@ -314,7 +367,6 @@ export function toThread(
   const person = (id: string): Person => people.get(id) ?? unknownPerson(id);
   return {
     id: record.id,
-    kind: record.kind,
     title: record.title,
     requester: person(record.requesterId),
     createdBy: person(record.createdById),
@@ -325,7 +377,8 @@ export function toThread(
     effortHours: record.effortHours,
     labelIds: record.labelIds,
     triage: record.triage,
-    attendees: record.attendeeIds.map(person),
+    doneBy: record.doneBy,
+    snoozedUntil: record.snoozedUntil,
     branchedFromId: record.branchedFromId,
     blocksId: record.blocksId,
     seenBy: record.seenBy,
@@ -368,6 +421,7 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
           kind: "message",
           authorId: entry.author.id,
           text: entry.text,
+          sentToIds: entry.sentTo.map((person) => person.id),
         };
       case "event":
         return { ...base, kind: "event", actorId: entry.actor.id, text: entry.text };
@@ -378,7 +432,6 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
   return {
     thread: {
       id: thread.id,
-      kind: thread.kind,
       title: thread.title,
       requesterId: thread.requester.id,
       createdById: thread.createdBy.id,
@@ -389,7 +442,8 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
       effortHours: thread.effortHours,
       labelIds: thread.labelIds,
       triage: thread.triage,
-      attendeeIds: thread.attendees.map((person) => person.id),
+      doneBy: thread.doneBy,
+      snoozedUntil: thread.snoozedUntil,
       branchedFromId: thread.branchedFromId,
       blocksId: thread.blocksId,
       seenBy: thread.seenBy,

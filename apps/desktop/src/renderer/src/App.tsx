@@ -24,7 +24,9 @@ import {
   type Thread,
   type ThreadChanges,
   waitingOn,
-  mentionsIn,
+  inboxReason,
+  lastSentTo,
+  participants,
   threadLink,
   withoutLeadingMentions,
 } from "model";
@@ -37,12 +39,7 @@ import {
   type DataSource,
 } from "./api";
 import type { SyncClient } from "./sync/syncClient";
-import {
-  ThreadView,
-  type InlineConversations,
-  type MessageEntry,
-  type ThreadActions,
-} from "./components/ThreadView";
+import { ThreadView, type MessageEntry, type ThreadActions } from "./components/ThreadView";
 import { MovePalette, type MoveTarget } from "./components/MovePalette";
 import { BlockedPalette } from "./components/BlockedPalette";
 import { MentionToasts } from "./components/MentionToasts";
@@ -61,7 +58,6 @@ import { groupNoticesFor, groupsFor, selectableLabels } from "./groups";
 import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { buildInbox } from "./inbox";
-import { conversationsFor, isUnread } from "./conversations";
 import { activityFor } from "./activity";
 
 // Mouse moves within this many pixels of the top nudge the drag-region resync element.
@@ -221,8 +217,6 @@ const App = observer(function App(): React.JSX.Element {
     remember(CONTENT_ZOOM_KEY, String(contentZoom));
   }, [contentZoom]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  // The conversation open in place, under the message that started it in its thread.
-  const [inlineConversationId, setInlineConversationId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -264,18 +258,8 @@ const App = observer(function App(): React.JSX.Element {
     });
   };
 
-  // Opening a thread marks it, and the one you're leaving, as seen. A conversation opens in place, in the thread it's
-  // in.
+  // Opening a thread marks it, and the one you're leaving, as seen.
   const openThread = (id: string | null): void => {
-    const conversation = threads.find(
-      (thread) => thread.id === id && thread.kind === "conversation",
-    );
-    if (conversation?.branchedFromId) {
-      openThread(conversation.branchedFromId);
-      setInlineConversationId(conversation.id);
-      return;
-    }
-    setInlineConversationId(null);
     const now = Date.now();
     setLastSeen((current) => ({
       ...current,
@@ -334,7 +318,7 @@ const App = observer(function App(): React.JSX.Element {
   // The panel's title and description make the thread. It appears at once and syncs in the background.
   const createThread = (draft: NewThreadDraft): void => {
     setNewThreadOpen(false);
-    openThread(client.createThread({ kind: "issue", ...draft, invitees: [] }, me));
+    openThread(client.createThread(draft, me));
   };
 
   // Your buckets, edited from the inbox and saved to your profile as a whole list. A thread placed by hand stays put.
@@ -342,16 +326,7 @@ const App = observer(function App(): React.JSX.Element {
   const [editingBucket, setEditingBucket] = useState<Bucket | "new" | null>(null);
   const saveBuckets = (next: Bucket[]): void => client.updatePerson({ buckets: next }, me);
   const placeIn = (threadId: string, bucketId: string | null): void =>
-    client.updateThread(
-      threadId,
-      {
-        triage:
-          bucketId === null
-            ? null
-            : { personId: me.id, bucketId, reason: "", manual: true, stale: false },
-      },
-      me,
-    );
+    client.updateThread(threadId, { bucketId }, me);
   const bucketActions: BucketActions = {
     onNew: () => setEditingBucket("new"),
     onEdit: (bucket) => setEditingBucket(bucket),
@@ -414,6 +389,16 @@ const App = observer(function App(): React.JSX.Element {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Superhuman's keys for the inbox, without a modifier and never while typing or with a dialog open: J/K open the
+  // next or previous thread in it, E marks the open one done, H snoozes it, R puts the cursor in the reply, and Escape
+  // leaves the reply so the keys work again. Set each render so it sees the current state.
+  const inboxKeysRef = useRef<(event: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => inboxKeysRef.current(event);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   // The thread open beside the main one, from clicking a thread link.
   const [splitThreadId, setSplitThreadId] = useState<string | null>(null);
   const splitThread =
@@ -427,22 +412,7 @@ const App = observer(function App(): React.JSX.Element {
     threads,
     labels,
     groups,
-    open: (threadId) => {
-      // A link to a conversation in a thread on screen opens or folds it in place; one elsewhere opens its thread.
-      const conversation = threads.find(
-        (thread) => thread.id === threadId && thread.kind === "conversation",
-      );
-      if (conversation !== undefined) {
-        if (
-          conversation.branchedFromId === activeThreadId ||
-          conversation.branchedFromId === splitThreadId
-        )
-          setInlineConversationId((open) => (open === threadId ? null : threadId));
-        else openThread(threadId);
-        return;
-      }
-      setSplitThreadId(threadId === activeThreadId ? null : threadId);
-    },
+    open: (threadId) => setSplitThreadId(threadId === activeThreadId ? null : threadId),
     search: (query) => {
       const needle = query.toLowerCase();
       return threads
@@ -460,37 +430,20 @@ const App = observer(function App(): React.JSX.Element {
     withPerson?: Person,
     movedEntryIds?: string[],
   ): string => {
-    const others = [withPerson, from.requester, from.assignee, ...from.attendees].filter(
+    const others = [withPerson, ...participants(from)].filter(
       (person): person is Person => person !== undefined && person !== null && person.id !== me.id,
     );
     return client.createThread(
       {
-        kind: "issue",
         title,
         description: "",
         assignee: others[0] ?? null,
-        invitees: [],
         branchedFromId: from.id,
         movedEntryIds,
       },
       me,
     );
   };
-
-  // A conversation stays Unread while it's open (in place or beside its thread) and moves to Read once you click off it
-  // (fold it, open something else or close it), so it doesn't jump between groups under you. Whoever wrote can tell it's been seen.
-  const openConversation =
-    inlineConversationId ??
-    [splitThread, activeThread].find((thread) => thread?.kind === "conversation")?.id;
-  const conversationOpenRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    const left = conversationOpenRef.current;
-    conversationOpenRef.current = openConversation;
-    if (left === undefined || left === openConversation) return;
-    const conversation = threads.find((thread) => thread.id === left);
-    if (conversation !== undefined && isUnread(conversation, me.id))
-      client.updateThread(left, { seen: true }, me);
-  }, [openConversation, threads, client, me]);
 
   // `/blocked`: the thread the form is for while it's open, and the new thread asking someone for what it needs,
   // which blocks it until it closes.
@@ -503,11 +456,9 @@ const App = observer(function App(): React.JSX.Element {
   ): void => {
     client.createThread(
       {
-        kind: "issue",
         title,
         description,
         assignee: person,
-        invitees: [],
         branchedFromId: from.id,
         blocksId: from.id,
       },
@@ -550,6 +501,42 @@ const App = observer(function App(): React.JSX.Element {
     openThread(next?.id ?? null);
   };
 
+  // A change just made from the inbox, which Undo takes back for a few seconds.
+  const [undo, setUndo] = useState<{ text: string; run: () => void } | null>(null);
+  useEffect(() => {
+    if (undo === null) return;
+    const timer = setTimeout(() => setUndo(null), 5000);
+    return () => clearTimeout(timer);
+  }, [undo]);
+
+  // E, as in Superhuman: done with it. Your own work closes, for everyone; anything else is done for you, until someone
+  // sends you something new. Either way the next thread in your inbox opens.
+  const markDone = (thread: Thread): void => {
+    moveOn(thread);
+    if (waitingOn(thread) === me.id) {
+      client.updateThread(thread.id, { status: "closed" }, me);
+      setUndo({
+        text: "Closed",
+        run: () => client.updateThread(thread.id, { status: "open" }, me),
+      });
+    } else {
+      client.updateThread(thread.id, { done: true }, me);
+      setUndo({ text: "Done", run: () => client.updateThread(thread.id, { done: false }, me) });
+    }
+  };
+
+  // H: out of your inbox until 9 tomorrow morning.
+  const snooze = (thread: Thread): void => {
+    const until = new Date(nowMs + 24 * 60 * 60_000);
+    until.setHours(9, 0, 0, 0);
+    moveOn(thread);
+    client.updateThread(thread.id, { snoozeUntilMs: until.getTime() }, me);
+    setUndo({
+      text: "Snoozed until tomorrow",
+      run: () => client.updateThread(thread.id, { snoozeUntilMs: null }, me),
+    });
+  };
+
   // Every change is a transaction: applied here at once, then sent to the server, which records property changes
   // as activity lines that sync back. Each open thread (main or split) gets its own actions.
   // The menu for a thread right-clicked in a list: open it here or beside the one you're in, move it to another of
@@ -567,8 +554,13 @@ const App = observer(function App(): React.JSX.Element {
     if (activeThreadId !== null && activeThreadId !== thread.id)
       items.push({ label: "Open beside", run: () => setSplitThreadId(thread.id) });
     items.push("separator");
-    if (waitingOn(thread) === me.id && !isDone(thread.status)) {
-      const current = thread.triage?.personId === me.id ? thread.triage : null;
+    if (inboxReason(thread, me.id, nowMs) !== null) {
+      items.push(
+        { label: "Done", shortcut: "E", run: () => markDone(thread) },
+        { label: "Snooze until tomorrow", shortcut: "H", run: () => snooze(thread) },
+        "separator",
+      );
+      const current = thread.triage[me.id] ?? null;
       for (const bucket of buckets)
         if (bucket.id !== current?.bucketId)
           items.push({ label: `Move to ${bucket.name}`, run: () => placeIn(thread.id, bucket.id) });
@@ -589,60 +581,16 @@ const App = observer(function App(): React.JSX.Element {
     return items;
   };
 
-  const inline: InlineConversations = {
-    openId: inlineConversationId,
-    onToggle: (id) => setInlineConversationId((open) => (open === id ? null : id)),
-    onMoveToSidebar: (id) => {
-      setInlineConversationId(null);
-      setSplitThreadId(id);
-    },
-    actionsFor: (conversation) => actionsFor(conversation),
-  };
-
   const actionsFor = (thread: Thread): ThreadActions => {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
-      onSend: (text) => {
-        // Mentioning people in a thread starts a conversation with them, beside it; in a conversation it adds them.
-        const mentioned = people.filter(
-          (person) => person.id !== me.id && mentionsIn(text).includes(person.id),
-        );
-        if (thread.kind === "conversation" || mentioned.length === 0) {
-          client.addEntry(thread.id, "message", text, me);
-          return;
-        }
-        const said = plainThreadLinks(
-          withoutLeadingMentions(text),
-          threadLinks.titleOf,
-          threadLinks.nameOf,
-        ).trim();
-        const firstLine = said.split("\n")[0];
-        const conversationId = client.createThread(
-          {
-            kind: "conversation",
-            title: (firstLine === ""
-              ? `With ${mentioned.map((person) => person.name).join(", ")}`
-              : firstLine.charAt(0).toUpperCase() + firstLine.slice(1)
-            ).slice(0, 80),
-            description: "",
-            assignee: null,
-            invitees: mentioned,
-            branchedFromId: thread.id,
-          },
-          me,
-        );
-        client.addEntry(conversationId, "message", text, me);
-        setInlineConversationId(conversationId);
-      },
+      // Enter: a note in the thread, nobody told. ⌘↵: sent to people, into their inbox.
+      onNote: (text) => client.addEntry(thread.id, "message", text, me),
+      onSend: (text, to) => client.addEntry(thread.id, "message", text, me, undefined, to),
       onBlocked: () => setBlocking(thread),
       onTask: () => {
-        // The latest message that asked you something, if there is one; else the thread itself.
-        const question = thread.entries.findLast(
-          (entry): entry is Extract<typeof entry, { kind: "message" }> =>
-            entry.kind === "message" &&
-            entry.author.id !== me.id &&
-            mentionsIn(entry.text).includes(me.id),
-        );
+        // The latest thing someone sent you here, if anything; else the thread itself.
+        const question = lastSentTo(thread, me.id);
         const asked = question
           ? plainThreadLinks(
               withoutLeadingMentions(question.text),
@@ -653,17 +601,22 @@ const App = observer(function App(): React.JSX.Element {
         const title = (asked.split("\n")[0] || `Follow up: ${thread.title}`).slice(0, 80);
         const taskId = client.createThread(
           {
-            kind: "issue",
             title,
             description: question ? `${question.author.name}: “${asked}”` : "",
             assignee: me,
-            invitees: [],
             branchedFromId: thread.id,
           },
           me,
         );
-        // Saying so where you were asked lets them know.
-        client.addEntry(thread.id, "message", `Taking this on in ${threadLink(taskId)}`, me);
+        // Saying so where you were asked, sent to whoever asked, lets them know.
+        client.addEntry(
+          thread.id,
+          "message",
+          `Taking this on in ${threadLink(taskId)}`,
+          me,
+          undefined,
+          question === undefined ? [] : [question.author],
+        );
         setSplitThreadId(taskId);
       },
       // Closing something in your inbox finishes it there, so the next thread opens.
@@ -688,6 +641,48 @@ const App = observer(function App(): React.JSX.Element {
       onBranch: (title) => createBranch(thread, title),
       onMoveMessages: (messages) => setMoving({ from: thread, messages }),
     };
+  };
+
+  inboxKeysRef.current = (event) => {
+    if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+    const dialogOpen =
+      searchOpen ||
+      newThreadOpen ||
+      viewAsOpen ||
+      editingBucket !== null ||
+      blocking !== null ||
+      moving !== null ||
+      newGroupOpen ||
+      renamingOrganization ||
+      organization?.name === "" ||
+      threadMenu !== null ||
+      document.querySelector(".chip-menu, .context-menu, .thread-menu") !== null;
+    if (dialogOpen) return;
+    const target = event.target as HTMLElement;
+    if (target.closest("input, textarea, select, [contenteditable='true']") !== null) {
+      if (event.key === "Escape" && target.closest(".thread-panes") !== null) target.blur();
+      return;
+    }
+    const key = event.key.toLowerCase();
+    const order = inbox.order;
+    const at = order.findIndex((thread) => thread.id === activeThreadId);
+    const inInbox = activeThread !== undefined && at !== -1;
+    if (key === "j" || key === "k") {
+      const next = at === -1 ? order[0] : order[at + (key === "j" ? 1 : -1)];
+      if (next !== undefined) openThread(next.id);
+    } else if (key === "e" && inInbox) markDone(activeThread);
+    else if (key === "h" && inInbox) snooze(activeThread);
+    else if (key === "r" && activeThread !== undefined)
+      // The thread's own reply, at the end of its document.
+      [
+        ...document.querySelectorAll<HTMLElement>(
+          ".thread-panes > .thread-view .thread-reply-editor",
+        ),
+      ]
+        .at(-1)
+        ?.focus();
+    else return;
+    event.preventDefault();
   };
 
   if (client.status !== "ready")
@@ -738,8 +733,6 @@ const App = observer(function App(): React.JSX.Element {
             <Sidebar
               inbox={inbox}
               bucketActions={bucketActions}
-              conversations={conversationsFor(threads, me)}
-              openConversationId={openConversation ?? null}
               activity={activityFor(threads, me, seenAt, nowMs)}
               groupNotices={groupNoticesFor(
                 groups,
@@ -864,7 +857,7 @@ const App = observer(function App(): React.JSX.Element {
                   thread={activeThread}
                   people={people}
                   actions={actionsFor(activeThread)}
-                  inline={inline}
+                  autoFocusReply={inboxReason(activeThread, me.id, nowMs) === null}
                 />
                 {splitThread !== undefined && (
                   <section className="split-pane" aria-label={splitThread.title}>
@@ -892,10 +885,23 @@ const App = observer(function App(): React.JSX.Element {
                       thread={splitThread}
                       people={people}
                       actions={actionsFor(splitThread)}
-                      inline={inline}
                     />
                   </section>
                 )}
+              </div>
+            )}
+            {undo !== null && (
+              <div className="undo-toast" role="status">
+                <span>{undo.text}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    undo.run();
+                    setUndo(null);
+                  }}
+                >
+                  Undo
+                </button>
               </div>
             )}
           </main>

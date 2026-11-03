@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { Label, Person, Thread, ThreadKind } from "model";
+import type { Label, Person, Thread } from "model";
 import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
 
-type Tab = "all" | ThreadKind;
+type Tab = "all" | "threads" | "groups";
 
-// Tabs filter to one kind of thread.
+// Tabs narrow the results to threads, or to groups and labels.
 const TABS: { id: Tab; label: string; shortcut: string }[] = [
   { id: "all", label: "All", shortcut: "⌘ 1" },
-  { id: "issue", label: "Threads", shortcut: "⌘ 2" },
-  { id: "conversation", label: "Conversations", shortcut: "⌘ 3" },
+  { id: "threads", label: "Threads", shortcut: "⌘ 2" },
+  { id: "groups", label: "Groups and labels", shortcut: "⌘ 3" },
 ];
 
 const SOURCES: DataSource[] = ["cloudflare", "local", "sample"];
@@ -17,11 +17,6 @@ const SOURCE_HINTS: Record<DataSource, string> = {
   cloudflare: "Shared",
   local: "Local Worker",
   sample: "Demo team",
-};
-
-const SECTION_TITLES: Record<ThreadKind, string> = {
-  issue: "Threads",
-  conversation: "Conversations",
 };
 
 type Item = { id: string; label: string; shortcut?: string; run: () => void };
@@ -69,13 +64,23 @@ export function CommandPalette({
     onClose();
   };
 
-  const kinds: ThreadKind[] = tab === "all" ? ["issue", "conversation"] : [tab];
+  const groupsAndLabels: Section = {
+    title: "Groups and Labels",
+    items: labels
+      .toSorted((a, b) => a.name.localeCompare(b.name))
+      .map((label) => ({
+        id: `label-${label.id}`,
+        label: label.name,
+        shortcut: label.groupId === null ? "Label" : "Group",
+        run: run(() => onOpenLabel(label.id)),
+      })),
+  };
   const sections: Section[] = [
     {
       title: "Quick Actions",
       items:
-        tab === "conversation"
-          ? []
+        tab === "groups"
+          ? [{ id: "new-group", label: "New Group", run: onNewGroup }]
           : [{ id: "new-thread", label: "New Thread", shortcut: "⌘ N", run: run(onNewThread) }],
     },
     // Who you're viewing as, and where the data comes from.
@@ -88,17 +93,7 @@ export function CommandPalette({
               { id: "new-group", label: "New Group", run: onNewGroup },
             ],
           },
-          {
-            title: "Groups and Labels",
-            items: labels
-              .toSorted((a, b) => a.name.localeCompare(b.name))
-              .map((label) => ({
-                id: `label-${label.id}`,
-                label: label.name,
-                shortcut: label.groupId === null ? "Label" : "Group",
-                run: run(() => onOpenLabel(label.id)),
-              })),
-          },
+          groupsAndLabels,
           {
             title: "Data",
             items: [
@@ -120,16 +115,19 @@ export function CommandPalette({
           },
         ]
       : []),
-    ...kinds.map((kind) => ({
-      title: SECTION_TITLES[kind],
-      items: threads
-        .filter((thread) => thread.kind === kind)
-        .map((thread) => ({
-          id: thread.id,
-          label: thread.title,
-          run: run(() => onOpenThread(thread.id)),
-        })),
-    })),
+    ...(tab === "groups" ? [groupsAndLabels] : []),
+    ...(tab === "groups"
+      ? []
+      : [
+          {
+            title: "Threads",
+            items: threads.map((thread) => ({
+              id: thread.id,
+              label: thread.title,
+              run: run(() => onOpenThread(thread.id)),
+            })),
+          },
+        ]),
   ]
     .map((section) => ({ ...section, items: section.items.filter((item) => matches(item.label)) }))
     .filter((section) => section.items.length > 0);

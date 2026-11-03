@@ -1,5 +1,5 @@
 import { formatDue, formatRelativeTime } from "../format";
-import { bucketsOf, plainThreadLinks, STATUS_LABELS, type Person, type Thread } from "model";
+import { bucketsOf, plainThreadLinks, STATUS_LABELS, type Thread } from "model";
 import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
 import { useResizablePanel } from "./useResizablePanel";
@@ -72,7 +72,7 @@ export function DetailsPanel({
   const nameOf = (personId: string): string | undefined =>
     people.find((person) => person.id === personId)?.name;
   // Which of your buckets it's in, and why, while it's waiting on you.
-  const triage = thread.triage?.personId === me.id ? thread.triage : null;
+  const triage = thread.triage[me.id] ?? null;
   const bucket = bucketsOf(me).find((candidate) => candidate.id === triage?.bucketId);
 
   return (
@@ -138,15 +138,15 @@ export function DetailsPanel({
   );
 }
 
-// The threads branched off a thread, conversations included, oldest first.
+// The threads branched off a thread, oldest first.
 function branchesOf(thread: Thread, threads: Thread[]): Thread[] {
   return threads
     .filter((other) => other.branchedFromId === thread.id)
     .toSorted((a, b) => (a.entries[0]?.createdAtMs ?? 0) - (b.entries[0]?.createdAtMs ?? 0));
 }
 
-// The thread's family as a graph, like `git log --graph`: from the thread everything branched from, each branch and
-// conversation forks off where it started. Click one to open it. Nothing shows for a thread with no branches.
+// The thread's family as a graph, like `git log --graph`: from the thread everything branched from, each branch forks
+// off where it started. Click one to open it. Nothing shows for a thread with no branches.
 function ThreadGraph({
   current,
   threads,
@@ -176,23 +176,8 @@ function ThreadGraph({
           data-current={thread.id === current.id}
           onClick={() => onOpenThread(thread.id)}
         >
-          {thread.kind === "conversation" ? (
-            <span className="graph-at" aria-hidden>
-              @
-            </span>
-          ) : (
-            <span className="status-dot" data-status={thread.status} aria-hidden />
-          )}
-          <span
-            className="graph-title"
-            title={
-              thread.kind === "conversation"
-                ? `With ${thread.attendees.map(firstName).join(", ")}`
-                : undefined
-            }
-          >
-            {thread.title}
-          </span>
+          <span className="status-dot" data-status={thread.status} aria-hidden />
+          <span className="graph-title">{thread.title}</span>
         </button>
         {branches.length > 0 && (
           <ul className="graph-children">
@@ -210,8 +195,4 @@ function ThreadGraph({
       <div className="graph">{renderThread(root, 0)}</div>
     </Section>
   );
-}
-
-function firstName(person: Person): string {
-  return person.name.split(" ")[0];
 }

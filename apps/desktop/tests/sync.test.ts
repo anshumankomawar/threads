@@ -134,10 +134,8 @@ async function started(server = new FakeServer(), database: SyncDatabase = memor
 }
 
 const draft = {
-  kind: "issue" as const,
   description: "Somewhere warm",
   assignee: arjun,
-  invitees: [],
 };
 
 test("bootstraps the pool from the server and opens the socket", async () => {
@@ -163,6 +161,20 @@ test("a change shows at once, goes out in one batch per tick, and completes when
   ]);
   expect(client.queue.pending).toEqual([]);
   expect(client.lastSyncId).toBe(server.lastSyncId);
+});
+
+test("done, snoozed and bucket changes show at once, on whoever made them", async () => {
+  const { client } = await started();
+  const threadId = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
+  client.updateThread(threadId, { done: true, snoozeUntilMs: 5, bucketId: "coding" }, arjun);
+  const thread = client.threads.find((candidate) => candidate.id === threadId);
+  expect(thread?.doneBy).toEqual({ arjun: expect.any(Number) });
+  expect(thread?.snoozedUntil).toEqual({ arjun: 5 });
+  expect(thread?.triage).toEqual({
+    arjun: { bucketId: "coding", reason: "", manual: true, stale: false },
+  });
+  // None of them are fields of the thread itself.
+  expect(thread).not.toHaveProperty("done");
 });
 
 test("a thread's description is a message with the thread's id, and a thread can have none", async () => {
@@ -257,6 +269,7 @@ test("moving messages shows at once, and is undone if the server refuses it", as
     kind: "message",
     authorId: "arjun",
     text: "Pricing?",
+    sentToIds: [],
     createdAtMs: 2,
   });
   await settle();

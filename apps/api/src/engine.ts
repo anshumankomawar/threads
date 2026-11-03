@@ -1,5 +1,9 @@
 import {
+  applyScopedChanges,
   bucketsOf,
+  descriptionOf,
+  inboxPeople,
+  lastSentTo,
   entryFromCreate,
   groupFromCreate,
   labelFromCreate,
@@ -7,9 +11,7 @@ import {
   fromThread,
   labelSlug,
   localPeople,
-  conversationStartedId,
   MAX_BUCKETS,
-  mentionsIn,
   MIN_EFFORT_HOURS,
   MODEL_NAMES,
   plainThreadLinks,
@@ -26,6 +28,7 @@ import {
   toThread,
   toThreads,
   type AnyRecord,
+  type EntryRecord,
   type Bucket,
   type Label,
   type ModelName,
@@ -35,6 +38,7 @@ import {
   type Thread,
   type ThreadChanges,
   type ThreadRecord,
+  type Triage,
   type TransactionInput,
 } from "model";
 import { z } from "zod";
@@ -124,36 +128,10 @@ class Batch {
     return records;
   }
 
-  // A thread that's done closes the conversations still open in it, each saying why.
-  closeConversations(
-    threadId: string,
-    actorId: string,
-    nowMs: number,
-    transactionId: string,
-  ): void {
-    for (const conversation of this.all("Thread"))
-      if (
-        conversation.kind === "conversation" &&
-        conversation.branchedFromId === threadId &&
-        !isDone(conversation.status)
-      ) {
-        this.put("Thread", { ...conversation, status: "closed", updatedAtMs: nowMs });
-        this.put("Entry", {
-          id: `${transactionId}:closed:${conversation.id}`,
-          threadId: conversation.id,
-          kind: "event",
-          actorId,
-          text: `closed with ${threadLink(threadId)}`,
-          createdAtMs: nowMs,
-        });
-      }
-  }
-
-  // Whose inbox an issue is in, the same rule as `waitingOn` in the model.
+  // Whose turn a thread is, the same rule as `waitingOn` in the model.
   waitingOn(threadId: string): string | null {
     const thread = this.get("Thread", threadId);
-    if (thread === undefined || thread.kind !== "issue") return null;
-    return thread.assigneeId ?? thread.requesterId;
+    return thread === undefined ? null : (thread.assigneeId ?? thread.requesterId);
   }
 
   // The open threads still blocking a thread.
@@ -170,10 +148,8 @@ const id = z.string().min(1).max(100);
 
 const threadCreate = z.object({
   id,
-  kind: z.enum(["issue", "conversation"]),
   title: z.string().trim().min(1).max(200),
   assigneeId: id.nullable(),
-  attendeeIds: z.array(id),
   branchedFromId: id.nullable().optional(),
   blocksId: id.nullable().optional(),
   onBehalfOfId: id.nullable().optional(),
@@ -192,17 +168,11 @@ const threadChanges = z
     labelIds: z
       .array(id)
       .refine((labels) => new Set(labels).size === labels.length, "Labels must be unique"),
-    // Only ever placed by hand from the client; the model's choices are the server's own writes.
-    triage: z
-      .strictObject({
-        personId: id,
-        bucketId: id,
-        reason: z.string().max(200),
-        manual: z.literal(true),
-        stale: z.literal(false),
-      })
-      .nullable(),
+    // Scoped to whoever sends them (`applyScopedChanges`).
     seen: z.literal(true),
+    done: z.boolean(),
+    snoozeUntilMs: z.number().int().nullable(),
+    bucketId: id.nullable(),
   })
   .partial();
 
@@ -243,6 +213,11 @@ const entryCreate = z.object({
   threadId: id,
   kind: z.enum(["message", "resolution"]),
   text: z.string().trim().min(1),
+  sentToIds: z
+    .array(id)
+    .max(50)
+    .refine((ids) => new Set(ids).size === ids.length, "Each person once")
+    .optional(),
 });
 
 export const transactionInput = z.union([
@@ -374,32 +349,47 @@ function describeChanges(
 // --- Engine -----------------------------------------------------------------------------------------------
 
 // A record stored by an older version, in today's shape, or null when it no longer has one. Labels were tags; threads
-// had schedules, and meetings and focus blocks were kinds of their own (they're issues now) with call links and notes.
+// had schedules and kinds (meetings, focus blocks, conversations: all plain threads now) with call links and notes;
+// messages weren't sent to anyone (they're notes); and a thread's bucket was one person's rather than one per person.
 function upgrade(modelName: ModelName, data: AnyRecord): AnyRecord | null {
   if (modelName === "Entry") {
     const { kind } = data as { kind: string };
-    return kind === "call" || kind === "notes" ? null : data;
+    if (kind === "call" || kind === "notes") return null;
+    const entry = data as EntryRecord;
+    return entry.kind === "message" ? { ...entry, sentToIds: entry.sentToIds ?? [] } : entry;
   }
   if (modelName !== "Thread") return data;
+  type Old = ThreadRecord & {
+    tagIds?: string[];
+    schedule?: unknown;
+    blocks?: unknown;
+    workedMinutes?: unknown;
+    kind?: string;
+    attendeeIds?: string[];
+    triage: ThreadRecord["triage"] | (Triage & { personId: string }) | null;
+  };
   const {
     tagIds,
     schedule: _schedule,
     blocks: _blocks,
     workedMinutes: _workedMinutes,
+    kind: _kind,
+    attendeeIds: _attendeeIds,
+    triage,
     ...thread
-  } = data as ThreadRecord & {
-    tagIds?: string[];
-    schedule?: unknown;
-    blocks?: unknown;
-    workedMinutes?: unknown;
+  } = data as Old;
+  const perPerson = (): ThreadRecord["triage"] => {
+    if (triage === null || triage === undefined) return {};
+    if (!("personId" in triage)) return triage as ThreadRecord["triage"];
+    const { personId, ...sorted } = triage as Triage & { personId: string };
+    return { [personId]: sorted };
   };
-  const kind = thread.kind === "conversation" ? "conversation" : "issue";
   return {
     ...thread,
-    kind,
     labelIds: thread.labelIds ?? tagIds ?? [],
-    triage: thread.triage ?? null,
-    attendeeIds: kind === "conversation" ? thread.attendeeIds : [],
+    triage: perPerson(),
+    doneBy: thread.doneBy ?? {},
+    snoozedUntil: thread.snoozedUntil ?? {},
   };
 }
 
@@ -502,62 +492,70 @@ export class SyncEngine {
     );
   }
 
-  // Whether an issue needs sorting for whoever it's waiting on: it's open (or blocked) and has no bucket of theirs, or
-  // the model's choice is stale. Handing it to someone else, or deleting its bucket, leaves it unsorted again.
-  #needsTriage(thread: ThreadRecord): string | null {
-    if (thread.kind !== "issue" || isDone(thread.status)) return null;
-    const personId = thread.assigneeId ?? thread.requesterId;
-    const { triage } = thread;
-    const buckets = bucketsOf(this.models.Person.get(personId));
-    const sorted =
-      triage !== null &&
-      !triage.stale &&
-      triage.personId === personId &&
-      buckets.some((bucket) => bucket.id === triage.bucketId);
-    return sorted ? null : personId;
+  // A thread as the app sees it, with its entries and people resolved.
+  #view(record: ThreadRecord): Thread {
+    const entries = [...this.models.Entry.values()].filter((entry) => entry.threadId === record.id);
+    return toThread(record, entries, this.models.Person);
+  }
+
+  // Who a thread needs sorting for: everyone whose inbox it's in (`inboxPeople`) without a bucket of theirs, or whose
+  // bucket the model chose before something changed (`stale`). Someone sending it to a new person, or deleting a
+  // bucket, leaves it unsorted for them.
+  #needsTriage(thread: Thread): string[] {
+    return inboxPeople(thread).filter((personId) => {
+      const triage = thread.triage[personId];
+      const buckets = bucketsOf(this.models.Person.get(personId));
+      return (
+        triage === undefined ||
+        triage.stale ||
+        !buckets.some((bucket) => bucket.id === triage.bucketId)
+      );
+    });
   }
 
   // Everyone with unsorted threads, each with what the model needs. `skip` holds threads to leave for now, such as
   // ones the model just failed on.
   triageRequests(skip: ReadonlySet<string> = new Set()): TriageRequest[] {
-    const byPerson = new Map<string, ThreadRecord[]>();
-    for (const thread of this.models.Thread.values()) {
-      const personId = this.#needsTriage(thread);
-      if (personId === null || skip.has(thread.id)) continue;
-      byPerson.set(personId, [...(byPerson.get(personId) ?? []), thread]);
+    const threads = this.threads();
+    const byPerson = new Map<string, Thread[]>();
+    for (const thread of threads) {
+      if (skip.has(thread.id)) continue;
+      for (const personId of this.#needsTriage(thread))
+        byPerson.set(personId, [...(byPerson.get(personId) ?? []), thread]);
     }
     const name = (personId: string): string | undefined => this.models.Person.get(personId)?.name;
     const title = (threadId: string): string | undefined => this.models.Thread.get(threadId)?.title;
-    return [...byPerson].flatMap(([personId, threads]) => {
+    const plain = (text: string): string => plainThreadLinks(text, title, name);
+    return [...byPerson].flatMap(([personId, waiting]) => {
       const person = this.models.Person.get(personId);
       if (person === undefined) return [];
-      const examples = [...this.models.Thread.values()].flatMap((thread) =>
-        thread.triage?.manual && thread.triage.personId === personId
-          ? [{ title: thread.title, bucketId: thread.triage.bucketId }]
-          : [],
-      );
+      const examples = threads.flatMap((thread) => {
+        const triage = thread.triage[personId];
+        return triage?.manual ? [{ title: thread.title, bucketId: triage.bucketId }] : [];
+      });
       return [
         {
           person,
           buckets: bucketsOf(person),
           examples: examples.slice(-20),
-          threads: threads.map((thread) => {
-            // What it's about: its description, or its first message.
-            const opening = [...this.models.Entry.values()]
-              .filter((entry) => entry.threadId === thread.id && entry.kind === "message")
-              .sort(
-                (a, b) =>
-                  Number(b.id === thread.id) - Number(a.id === thread.id) ||
-                  a.createdAtMs - b.createdAtMs,
-              )[0];
+          threads: waiting.map((thread) => {
+            // What it's about: its description (or first message), and the latest thing sent to them, if anything was.
+            const opening =
+              descriptionOf(thread) ?? thread.entries.find((entry) => entry.kind === "message");
+            const sent = lastSentTo(thread, personId);
+            const text = [
+              opening?.kind === "message" ? plain(opening.text) : "",
+              sent !== undefined && sent !== opening
+                ? `${sent.author.name} sent: ${plain(sent.text)}`
+                : "",
+            ]
+              .filter((part) => part !== "")
+              .join("\n");
             return {
               id: thread.id,
               title: thread.title,
-              from: name(thread.requesterId) ?? thread.requesterId,
-              text:
-                opening?.kind === "message"
-                  ? plainThreadLinks(opening.text, title, name).slice(0, 600)
-                  : "",
+              from: (sent?.author ?? thread.requester).name,
+              text: text.slice(0, 600),
             };
           }),
         },
@@ -565,23 +563,26 @@ export class SyncEngine {
     });
   }
 
-  // Saves the model's choices for one person's threads. Any thread that changed hands, was closed, or was placed by
-  // hand while the model was thinking keeps what it has; a bucket that's gone is ignored.
+  // Saves the model's choices for one person's threads. Any thread that left their inbox, or that they placed by hand,
+  // while the model was thinking keeps what it has; a bucket that's gone is ignored.
   applyTriage(personId: string, results: TriageResult[]): SyncAction[] {
     return this.write((batch) => {
       const buckets = bucketsOf(batch.get("Person", personId));
       for (const { threadId, bucketId, reason } of results) {
-        const thread = batch.get("Thread", threadId);
-        if (thread === undefined || this.#needsTriage(thread) !== personId) continue;
+        const record = batch.get("Thread", threadId);
+        if (record === undefined || !this.#needsTriage(this.#view(record)).includes(personId))
+          continue;
         if (!buckets.some((bucket) => bucket.id === bucketId)) continue;
         batch.put("Thread", {
-          ...thread,
+          ...record,
           triage: {
-            personId,
-            bucketId,
-            reason: reason.trim().slice(0, 120),
-            manual: false,
-            stale: false,
+            ...record.triage,
+            [personId]: {
+              bucketId,
+              reason: reason.trim().slice(0, 120),
+              manual: false,
+              stale: false,
+            },
           },
         });
       }
@@ -739,39 +740,20 @@ export class SyncEngine {
       if (batch.get("Thread", data.id) !== undefined)
         throw new EngineError(409, `Thread already exists: ${data.id}`);
       if (data.assigneeId !== null) requirePerson(data.assigneeId);
-      for (const attendee of data.attendeeIds) requirePerson(attendee);
       const parent = data.branchedFromId ? batch.get("Thread", data.branchedFromId) : undefined;
       if (data.branchedFromId && parent === undefined)
         throw new EngineError(404, "Thread not found");
-      // A conversation is with the people mentioned, inside an open thread that isn't itself a conversation (mentioning
-      // someone in a conversation adds them to it instead).
-      if (data.kind === "conversation") {
-        if (parent === undefined || parent.kind === "conversation" || isDone(parent.status))
-          throw new EngineError(400, "A conversation starts in an open thread");
-        if (data.attendeeIds.every((id) => id === actor.id))
-          throw new EngineError(400, "A conversation needs someone to talk to");
-        if (data.assigneeId !== null) throw new EngineError(400, "A conversation has no assignee");
-      }
       const blocked = data.blocksId ? batch.get("Thread", data.blocksId) : undefined;
       if (data.blocksId && (blocked === undefined || isDone(blocked.status)))
         throw new EngineError(404, "Thread not found");
       // Asking on someone's behalf makes them the requester; who really made it stays on record.
       const onBehalfOf = data.onBehalfOfId === actor.id ? null : (data.onBehalfOfId ?? null);
-      if (onBehalfOf !== null) {
-        if (data.kind !== "issue")
-          throw new EngineError(400, "Only a thread can be made on someone's behalf");
-        requirePerson(onBehalfOf);
-      }
-      if (data.kind === "conversation" && (data.labelIds ?? []).length > 0)
-        throw new EngineError(400, "A conversation has no labels");
+      if (onBehalfOf !== null) requirePerson(onBehalfOf);
       requireLabels(data.labelIds ?? []);
       // A branch or blocker stays in its parent's groups, so a project's blockers don't fall out of the project.
-      const inherited =
-        data.kind === "conversation"
-          ? []
-          : [...(parent?.labelIds ?? []), ...(blocked?.labelIds ?? [])].filter(
-              (labelId) => batch.get("Label", labelId)?.groupId != null,
-            );
+      const inherited = [...(parent?.labelIds ?? []), ...(blocked?.labelIds ?? [])].filter(
+        (labelId) => batch.get("Label", labelId)?.groupId != null,
+      );
       const made = threadFromCreate(data, actor.id, nowMs);
       batch.put("Thread", {
         ...made,
@@ -797,18 +779,6 @@ export class SyncEngine {
           text: `is blocked on ${threadLink(data.id)}`,
           createdAtMs: nowMs,
         });
-      }
-      // The thread it started in says so in a message from whoever started it, linking to it.
-      if (data.kind === "conversation" && parent !== undefined) {
-        batch.put("Entry", {
-          id: conversationStartedId(data.id),
-          threadId: parent.id,
-          kind: "message",
-          authorId: actor.id,
-          text: `Started a conversation ${threadLink(data.id)}`,
-          createdAtMs: nowMs,
-        });
-        batch.put("Thread", { ...parent, updatedAtMs: nowMs });
       }
       return;
     }
@@ -862,31 +832,17 @@ export class SyncEngine {
           throw new EngineError(403, "Only whoever opened a thread writes its description");
       } else if (batch.get("Thread", data.id) !== undefined)
         throw new EngineError(400, "An entry can't take another thread's id");
+      // Sending (⌘↵) is to real people, and only a message is sent; anything else is a note in the thread.
+      const sentTo = data.sentToIds ?? [];
+      if (sentTo.length > 0 && data.kind !== "message")
+        throw new EngineError(400, "Only a message is sent to people");
+      for (const personId of sentTo) requirePerson(personId);
       batch.put("Entry", entryFromCreate(data, actor.id, nowMs));
-      // Mentioning someone in a conversation brings them into it.
-      const joining =
-        thread.kind === "conversation" && data.kind === "message"
-          ? mentionsIn(data.text).filter(
-              (id) => !thread.attendeeIds.includes(id) && person(id) !== undefined,
-            )
-          : [];
       batch.put("Thread", {
         ...thread,
-        attendeeIds: [...thread.attendeeIds, ...joining],
         status: data.kind === "resolution" ? "closed" : thread.status,
         updatedAtMs: nowMs,
       });
-      if (joining.length > 0)
-        batch.put("Entry", {
-          id: `${data.id}:added`,
-          threadId: thread.id,
-          kind: "event",
-          actorId: actor.id,
-          text: `added ${joining.map((id) => person(id)?.name ?? id).join(", ")}`,
-          createdAtMs: nowMs,
-        });
-      if (data.kind === "resolution")
-        batch.closeConversations(thread.id, actor.id, nowMs, transaction.id);
       return;
     }
 
@@ -904,12 +860,15 @@ export class SyncEngine {
         JSON.stringify(list.toSorted((a, b) => a.id.localeCompare(b.id)));
       if (buckets !== undefined && key(buckets) !== key(bucketsOf(target)))
         for (const thread of batch.all("Thread")) {
-          const { triage } = thread;
-          if (triage?.personId !== actor.id) continue;
-          const kept = buckets.some((bucket) => bucket.id === triage.bucketId);
-          if (!kept) batch.put("Thread", { ...thread, triage: null });
-          else if (!triage.manual)
-            batch.put("Thread", { ...thread, triage: { ...triage, stale: true } });
+          const { [actor.id]: mine, ...others } = thread.triage;
+          if (mine === undefined) continue;
+          const kept = buckets.some((bucket) => bucket.id === mine.bucketId);
+          if (!kept) batch.put("Thread", { ...thread, triage: others });
+          else if (!mine.manual)
+            batch.put("Thread", {
+              ...thread,
+              triage: { ...others, [actor.id]: { ...mine, stale: true } },
+            });
         }
       return;
     }
@@ -918,33 +877,19 @@ export class SyncEngine {
     const { changes } = transaction;
     if (changes.assigneeId !== undefined && changes.assigneeId !== null)
       requirePerson(changes.assigneeId);
-    if (changes.requesterId !== undefined) {
-      if (thread.kind !== "issue")
-        throw new EngineError(400, "Only a thread has a requester to change");
-      requirePerson(changes.requesterId);
+    if (changes.requesterId !== undefined) requirePerson(changes.requesterId);
+    if (changes.labelIds !== undefined) requireLabels(changes.labelIds);
+    // Changes that are only about you (seen, done, snoozed, placed in one of your buckets) are quiet: no activity
+    // line, and they don't count as an update. You place only what's in your inbox, into a bucket of yours.
+    if (changes.bucketId !== undefined && changes.bucketId !== null) {
+      if (!inboxPeople(this.#view(thread)).includes(actor.id))
+        throw new EngineError(400, "Only a thread in your inbox goes in your buckets");
+      if (!bucketsOf(actor).some((bucket) => bucket.id === changes.bucketId))
+        throw new EngineError(404, "Bucket not found");
     }
-    if (changes.labelIds !== undefined) {
-      if (thread.kind === "conversation")
-        throw new EngineError(400, "A conversation has no labels");
-      requireLabels(changes.labelIds);
-    }
-    // Opening a thread marks it seen, and placing it in a bucket is yours alone: both are quiet, with no activity
-    // line, and don't count as an update.
-    const { seen, triage, ...edits } = changes;
-    if (seen) batch.put("Thread", { ...thread, seenBy: { ...thread.seenBy, [actor.id]: nowMs } });
-    if (triage !== undefined) {
-      if (batch.waitingOn(thread.id) !== actor.id || isDone(thread.status))
-        throw new EngineError(400, "Only an open thread in your inbox goes in your buckets");
-      if (triage !== null) {
-        if (triage.personId !== actor.id)
-          throw new EngineError(403, "People sort only their own inbox");
-        if (!bucketsOf(actor).some((bucket) => bucket.id === triage.bucketId))
-          throw new EngineError(404, "Bucket not found");
-      }
-      // Null hands it back to the model to sort.
-      batch.put("Thread", { ...(batch.get("Thread", thread.id) ?? thread), triage });
-    }
-    const current = batch.get("Thread", thread.id) ?? thread;
+    const { record: scoped, rest: edits } = applyScopedChanges(thread, changes, actor.id, nowMs);
+    if (scoped !== thread) batch.put("Thread", scoped);
+    const current = scoped;
     const lines = describeChanges(
       current,
       edits,
@@ -954,16 +899,17 @@ export class SyncEngine {
       offsetMinutes,
     );
     if (lines.length === 0) return;
-    // A new title can mean a different bucket, unless it was placed by hand.
-    const retitled = edits.title !== undefined && current.triage?.manual === false;
-    batch.put("Thread", {
-      ...current,
-      ...edits,
-      ...(retitled && current.triage !== null
-        ? { triage: { ...current.triage, stale: true } }
-        : {}),
-      updatedAtMs: nowMs,
-    });
+    // A new title can mean a different bucket for everyone, except where they placed it by hand.
+    const triage =
+      edits.title === undefined
+        ? current.triage
+        : Object.fromEntries(
+            Object.entries(current.triage).map(([personId, sorted]) => [
+              personId,
+              sorted.manual ? sorted : { ...sorted, stale: true },
+            ]),
+          );
+    batch.put("Thread", { ...current, ...edits, triage, updatedAtMs: nowMs });
     lines.forEach((text, index) =>
       batch.put("Entry", {
         id: `${transaction.id}:${index}`,
@@ -974,9 +920,6 @@ export class SyncEngine {
         createdAtMs: nowMs,
       }),
     );
-
-    if (changes.status !== undefined && isDone(changes.status))
-      batch.closeConversations(thread.id, actor.id, nowMs, transaction.id);
 
     // Closing (or archiving) the last open blocker unblocks the thread it was for.
     const blocked = thread.blocksId ? batch.get("Thread", thread.blocksId) : undefined;

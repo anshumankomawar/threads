@@ -1,10 +1,13 @@
 import {
+  applyScopedChanges,
   entryFromCreate,
   groupFromCreate,
   labelFromCreate,
   threadFromCreate,
   type AnyRecord,
   type ModelName,
+  type ThreadChanges,
+  type ThreadRecord,
   type TransactionBatch,
   type TransactionBatchResponse,
   type TransactionInput,
@@ -97,10 +100,35 @@ export class UpdateTransaction extends BaseTransaction {
   }
 
   apply(pool: ObjectPool): void {
-    const current = pool.get(this.modelName, this.modelId) as Record<string, unknown> | undefined;
+    const current = pool.get(this.modelName, this.modelId);
     if (current === undefined) return;
-    this.original = Object.fromEntries(Object.keys(this.changes).map((key) => [key, current[key]]));
-    pool.set(this.modelName, { ...current, ...this.changes } as AnyRecord);
+    const next = this.#changed(current);
+    this.original = this.#before(current, next);
+    pool.set(this.modelName, next);
+  }
+
+  // The record with this change on top. On a thread, changes that are only about whoever made them (seen, done,
+  // snoozed, placed in a bucket) land on that person's entry, as the server will put them (`applyScopedChanges`).
+  #changed(record: AnyRecord): AnyRecord {
+    if (this.modelName !== "Thread") return { ...record, ...this.changes } as AnyRecord;
+    const { record: scoped, rest } = applyScopedChanges(
+      record as ThreadRecord,
+      this.changes as ThreadChanges,
+      this.actorId,
+      Date.now(),
+    );
+    return { ...scoped, ...rest };
+  }
+
+  // The values a change replaced, by field, for rolling it back.
+  #before(record: AnyRecord, next: AnyRecord): Record<string, unknown> {
+    const was = record as Record<string, unknown>;
+    const now = next as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(now)
+        .filter((key) => now[key] !== was[key])
+        .map((key) => [key, was[key]]),
+    );
   }
 
   rollback(pool: ObjectPool): void {
@@ -111,9 +139,9 @@ export class UpdateTransaction extends BaseTransaction {
 
   // Puts this change on top of a newer server copy of the model.
   rebase(record: AnyRecord): AnyRecord {
-    const server = record as Record<string, unknown>;
-    this.original = Object.fromEntries(Object.keys(this.changes).map((key) => [key, server[key]]));
-    return { ...record, ...this.changes } as AnyRecord;
+    const next = this.#changed(record);
+    this.original = this.#before(record, next);
+    return next;
   }
 }
 

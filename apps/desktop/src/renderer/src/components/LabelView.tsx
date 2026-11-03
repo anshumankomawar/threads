@@ -13,7 +13,7 @@ import {
 import { useState } from "react";
 import { formatRelativeTime } from "../format";
 import { NO_FILTER, threadsWithLabel, type ThreadFilter } from "../groups";
-import { KIND_ICONS } from "../kindIcons";
+import { THREAD_ICON } from "../threadIcon";
 import { useThreadMenu } from "../threadMenu";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./ThreadView";
@@ -293,7 +293,7 @@ export function LabelView({
         <ul className="list-page-items">
           {shown.map((thread) => {
             const meta = [
-              thread.assignee?.name ?? (thread.kind === "issue" ? "Unassigned" : null),
+              thread.assignee?.name ?? "Unassigned",
               thread.status === "open" ? null : STATUS_LABELS[thread.status],
             ]
               .filter((part) => part !== null)
@@ -307,7 +307,7 @@ export function LabelView({
                   onContextMenu={(event) => openMenu(event, thread)}
                 >
                   <span className="list-page-icon" aria-hidden>
-                    <HugeiconsIcon icon={KIND_ICONS[thread.kind]} size={13} />
+                    <HugeiconsIcon icon={THREAD_ICON} size={13} />
                   </span>
                   <span className="list-page-body">
                     <span className="list-page-name">

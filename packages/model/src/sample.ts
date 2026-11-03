@@ -90,16 +90,21 @@ type Fields = {
 
 function thread(id: string, title: string, fields: Fields, nowMs: number, drafts: Draft[]): Thread {
   const entries: Entry[] = drafts.map(([kind, person, text, ago], index) => {
-    // The opening message is the thread's description (`descriptionOf`).
+    // The opening message is the thread's description (`descriptionOf`), a note; replies are sent to the other side.
     const entryId = index === 0 && kind === "message" ? id : `${id}-${index}`;
     const createdAtMs = nowMs - ago;
-    return kind === "event"
-      ? { kind, id: entryId, actor: person, text, createdAtMs }
-      : { kind, id: entryId, author: person, text, createdAtMs };
+    const sentTo =
+      index === 0
+        ? []
+        : [fields.requester, fields.assignee ?? null].filter(
+            (other): other is Person => other !== null && other.id !== person.id,
+          );
+    if (kind === "event") return { kind, id: entryId, actor: person, text, createdAtMs };
+    if (kind === "resolution") return { kind, id: entryId, author: person, text, createdAtMs };
+    return { kind, id: entryId, author: person, text, sentTo, createdAtMs };
   });
   return {
     id,
-    kind: "issue",
     title,
     requester: fields.requester,
     createdBy: fields.requester,
@@ -110,8 +115,9 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     effortHours: fields.effortHours ?? null,
     labelIds: fields.labelIds ?? [],
     // The server's model sorts them into buckets once the workspace loads.
-    triage: null,
-    attendees: [],
+    triage: {},
+    doneBy: {},
+    snoozedUntil: {},
     branchedFromId: fields.blocksId ?? null,
     blocksId: fields.blocksId ?? null,
     seenBy: {},

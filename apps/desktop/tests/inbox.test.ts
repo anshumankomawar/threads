@@ -1,4 +1,4 @@
-import { DEFAULT_BUCKETS, type Person, type Thread, type Triage } from "model";
+import { DEFAULT_BUCKETS, type Entry, type Person, type Thread, type Triage } from "model";
 import { expect, test } from "vite-plus/test";
 import { buildInbox } from "../src/renderer/src/inbox";
 
@@ -16,7 +16,6 @@ let counter = 0;
 function thread(fields: Partial<Thread> = {}): Thread {
   return {
     id: `thread-${++counter}`,
-    kind: "issue",
     title: "Title",
     requester: other,
     assignee: me,
@@ -24,21 +23,30 @@ function thread(fields: Partial<Thread> = {}): Thread {
     priority: "none",
     dueAtMs: null,
     effortHours: null,
-    triage: null,
-    attendees: [],
+    labelIds: [],
+    triage: {},
+    doneBy: {},
+    snoozedUntil: {},
     branchedFromId: null,
     blocksId: null,
     createdBy: other,
     seenBy: {},
-    labelIds: [],
     updatedAtMs: NOW,
     entries: [],
     ...fields,
   };
 }
 
-const sorted = (bucketId: string, person = me, manual = false): Triage => ({
-  personId: person.id,
+const message = (author: Person, sentTo: Person[], atMs = NOW - HOUR, text = "Hi"): Entry => ({
+  kind: "message",
+  id: `m-${++counter}`,
+  author,
+  text,
+  sentTo,
+  createdAtMs: atMs,
+});
+
+const sorted = (bucketId: string, manual = false): Triage => ({
   bucketId,
   reason: "Because",
   manual,
@@ -50,49 +58,79 @@ const inBucket = (threads: Thread[], bucketId: string, person = me): string[] =>
     .buckets.find((group) => group.bucket.id === bucketId)
     ?.items.map((item) => item.thread.id) ?? [];
 
-test("each thread waiting on you is in the bucket it was sorted into, your buckets in your order", () => {
-  const customer = thread({ triage: sorted("customers") });
-  const bug = thread({ triage: sorted("bugs") });
+test("each thread in your inbox is in the bucket it was sorted into for you, your buckets in your order", () => {
+  const customer = thread({ triage: { me: sorted("customers"), other: sorted("bugs") } });
+  const bug = thread({ triage: { me: sorted("bugs") } });
   const inbox = buildInbox([customer, bug], me, [], NOW);
   expect(inbox.buckets.map((group) => group.bucket.id)).toEqual(
     DEFAULT_BUCKETS.map((bucket) => bucket.id),
   );
   expect(inBucket([customer, bug], "customers")).toEqual([customer.id]);
   expect(inBucket([customer, bug], "bugs")).toEqual([bug.id]);
-  expect(inbox.unsorted).toEqual([]);
   expect(inbox.order).toEqual([customer, bug]);
 });
 
-test("a thread waiting to be sorted again stays in its bucket meanwhile", () => {
-  const stale = thread({ triage: { ...sorted("bugs"), stale: true } });
-  expect(inBucket([stale], "bugs")).toEqual([stale.id]);
+test("a thread someone sent you is in your inbox until you mark it done, and comes back when they send again", () => {
+  const sent = thread({
+    assignee: kim,
+    requester: kim,
+    entries: [message(kim, [me], NOW - 2 * HOUR, "Can you check the numbers?")],
+  });
+  const [item] = buildInbox([sent], me, [], NOW).unsorted;
+  expect([item.thread, item.why, item.from]).toEqual([sent, "sent", kim]);
+  const done = { ...sent, doneBy: { me: NOW - HOUR } };
+  expect(buildInbox([done], me, [], NOW).order).toEqual([]);
+  const again = { ...done, entries: [...done.entries, message(kim, [me], NOW - 30 * 60_000)] };
+  expect(buildInbox([again], me, [], NOW).order).toEqual([again]);
 });
 
-test("your own buckets replace the defaults", () => {
-  const mine = { ...me, buckets: [{ id: "today", name: "Today", description: "" }] };
-  const today = thread({ assignee: mine, triage: sorted("today") });
-  expect(buildInbox([today], mine, [], NOW).buckets).toEqual([
-    { bucket: mine.buckets[0], items: [expect.objectContaining({ thread: today })] },
-  ]);
+test("a note isn't sent to anyone, and what you send yourself doesn't count", () => {
+  const notes = thread({
+    assignee: kim,
+    requester: kim,
+    entries: [message(kim, []), message(me, [kim])],
+  });
+  expect(buildInbox([notes], me, [], NOW).order).toEqual([]);
+});
+
+test("your own work stays until it's closed, whatever you mark done", () => {
+  const mine = thread({ doneBy: { me: NOW } });
+  expect(buildInbox([mine], me, [], NOW).order).toEqual([mine]);
+  expect(buildInbox([{ ...mine, status: "closed" }], me, [], NOW).order).toEqual([]);
+});
+
+test("snoozing takes a thread out of your inbox until then", () => {
+  const snoozed = thread({ snoozedUntil: { me: NOW + HOUR } });
+  expect(buildInbox([snoozed], me, [], NOW).order).toEqual([]);
+  expect(buildInbox([snoozed], me, [], NOW + 2 * HOUR).order).toEqual([snoozed]);
+  // Someone else's snooze is theirs.
+  expect(
+    buildInbox([thread({ snoozedUntil: { other: NOW + HOUR } })], me, [], NOW).order,
+  ).toHaveLength(1);
 });
 
 test("a thread is unsorted until it's sorted for you, in a bucket you still have", () => {
   const fresh = thread();
-  const forSomeoneElse = thread({ triage: sorted("bugs", other) });
-  const gone = thread({ triage: sorted("deleted") });
+  const forSomeoneElse = thread({ triage: { other: sorted("bugs") } });
+  const gone = thread({ triage: { me: sorted("deleted") } });
   const inbox = buildInbox([fresh, forSomeoneElse, gone], me, [], NOW);
   expect(inbox.unsorted.map((item) => item.thread)).toEqual([fresh, forSomeoneElse, gone]);
-  expect(inbox.buckets.every((group) => group.items.length === 0)).toBe(true);
   // Unsorted threads come first in the order.
   expect(inbox.order[0]).toBe(fresh);
 });
 
+test("a thread waiting to be sorted again stays in its bucket meanwhile", () => {
+  const stale = thread({ triage: { me: { ...sorted("bugs"), stale: true } } });
+  expect(inBucket([stale], "bugs")).toEqual([stale.id]);
+});
+
 test("within a bucket, threads needing an assignee lead, blocked ones trail, the rest by score", () => {
-  const low = thread({ priority: "low", triage: sorted("coding") });
-  const urgent = thread({ priority: "urgent", triage: sorted("coding") });
-  const dueSoon = thread({ dueAtMs: NOW + HOUR, triage: sorted("coding") });
-  const blocked = thread({ status: "blocked", priority: "urgent", triage: sorted("coding") });
-  const unassigned = thread({ requester: me, assignee: null, triage: sorted("coding") });
+  const coding = { me: sorted("coding") };
+  const low = thread({ priority: "low", triage: coding });
+  const urgent = thread({ priority: "urgent", triage: coding });
+  const dueSoon = thread({ dueAtMs: NOW + HOUR, triage: coding });
+  const blocked = thread({ status: "blocked", priority: "urgent", triage: coding });
+  const unassigned = thread({ requester: me, assignee: null, triage: coding });
   expect(inBucket([low, blocked, dueSoon, urgent, unassigned], "coding")).toEqual([
     unassigned.id,
     urgent.id,
@@ -102,32 +140,10 @@ test("within a bucket, threads needing an assignee lead, blocked ones trail, the
   ]);
 });
 
-test("threads assigned to someone else, done, or conversations aren't in your inbox", () => {
-  const theirs = thread({ assignee: kim, requester: kim });
-  const done = thread({ status: "closed" });
-  const archived = thread({ status: "archived" });
-  const talk = thread({ kind: "conversation", assignee: null, attendees: [other, me] });
-  const inbox = buildInbox([theirs, done, archived, talk], me, [], NOW);
-  expect(inbox.order).toEqual([]);
-  expect(inbox.tracking).toEqual([]);
-});
-
-test("reassigning moves the thread to the new assignee's inbox", () => {
-  const reassigned = thread({ assignee: kim, triage: sorted("bugs") });
-  expect(buildInbox([reassigned], me, [], NOW).order).toEqual([]);
-  // Sorted for you, not for them: it waits to be sorted for Kim.
-  expect(buildInbox([reassigned], kim, [], NOW).unsorted.map((item) => item.thread)).toEqual([
-    reassigned,
-  ]);
-});
-
 test("each row says who it's from and how soon it's due", () => {
-  const due = thread({ dueAtMs: NOW + DAY, priority: "urgent", triage: sorted("bugs") });
-  const late = thread({ dueAtMs: NOW - HOUR, triage: sorted("bugs") });
-  // Urgent work never falls below the floor, so it leads even something overdue.
-  const [first, second] = buildInbox([late, due], me, [], NOW).buckets.find(
-    (group) => group.bucket.id === "bugs",
-  )!.items;
+  const due = thread({ dueAtMs: NOW + DAY, priority: "urgent" });
+  const late = thread({ dueAtMs: NOW - HOUR });
+  const [first, second] = buildInbox([late, due], me, [], NOW).unsorted;
   expect([first.thread, first.reason, first.dueLabel]).toEqual([
     due,
     "From Sam Rivera · due tomorrow · urgent",
@@ -140,23 +156,39 @@ test("each row says who it's from and how soon it's due", () => {
   ]);
 });
 
-test("Tracking is what you asked of others, with who has it, and your blocked threads", () => {
+test("Sent is what you asked of others, what you sent that's unanswered, and your blocked threads", () => {
   const asked = thread({ requester: me, assignee: kim, createdBy: me });
-  const blocked = thread({ status: "blocked", triage: sorted("bugs") });
+  const awaiting = thread({
+    requester: kim,
+    assignee: kim,
+    entries: [message(kim, [me], NOW - 2 * HOUR), message(me, [kim], NOW - HOUR)],
+    doneBy: { me: NOW - 90 * 60_000 },
+  });
+  const answered = thread({
+    requester: kim,
+    assignee: kim,
+    entries: [message(me, [kim], NOW - 2 * HOUR), message(kim, [me], NOW - HOUR)],
+  });
+  const blocked = thread({ status: "blocked", triage: { me: sorted("bugs") } });
   const blocker = thread({ requester: me, assignee: kim, blocksId: blocked.id });
-  const inbox = buildInbox([asked, blocked, blocker], me, [], NOW);
-  expect(inbox.tracking.map((item) => [item.thread.id, item.from?.id])).toEqual([
+  const inbox = buildInbox([asked, awaiting, answered, blocked, blocker], me, [], NOW);
+  expect(inbox.sent.map((item) => [item.thread.id, item.from?.id])).toEqual([
     [asked.id, kim.id],
+    [awaiting.id, kim.id],
     [blocked.id, kim.id],
     [blocker.id, kim.id],
   ]);
-  // The blocked thread is still yours, last in its bucket, labelled with who it's blocked on.
+  // Answered, it's back in your inbox instead.
+  expect(inbox.unsorted.map((item) => item.thread)).toEqual([answered]);
   const [item] = inbox.buckets.find((group) => group.bucket.id === "bugs")!.items;
   expect([item.reason, item.dueLabel]).toEqual(["Blocked on Kim Park", "Blocked"]);
 });
 
-test("a thread made on someone's behalf is theirs to track, not its maker's", () => {
-  const made = thread({ requester: kim, createdBy: me, assignee: other });
-  expect(buildInbox([made], kim, [], NOW).tracking.map((item) => item.thread)).toEqual([made]);
-  expect(buildInbox([made], me, [], NOW).tracking).toEqual([]);
+test("threads assigned to someone else, or done, aren't in your inbox", () => {
+  const theirs = thread({ assignee: kim, requester: kim });
+  const done = thread({ status: "closed" });
+  const archived = thread({ status: "archived" });
+  const inbox = buildInbox([theirs, done, archived], me, [], NOW);
+  expect(inbox.order).toEqual([]);
+  expect(inbox.sent).toEqual([]);
 });

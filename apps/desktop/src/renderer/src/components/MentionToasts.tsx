@@ -1,10 +1,4 @@
-import {
-  mentionsIn,
-  plainThreadLinks,
-  withoutLeadingMentions,
-  type Person,
-  type Thread,
-} from "model";
+import { plainThreadLinks, withoutLeadingMentions, type Person, type Thread } from "model";
 import { useEffect, useRef, useState } from "react";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
@@ -12,12 +6,11 @@ import { Identicon } from "./Identicon";
 // How long a toast stays up.
 const SHOW_MS = 6000;
 
-type Mention = { id: string; thread: Thread; author: Person; text: string; atMs: number };
+type Sent = { id: string; thread: Thread; author: Person; text: string; atMs: number };
 
-// Someone mentioning you, as a short toast in the top right: who, in which conversation, and what they said. Clicking
-// it opens the conversation; it goes away on its own after a few seconds. Mentions showing at the same time share
-// one toast. Only mentions that arrive while the app is
-// open show, never ones from before it loaded.
+// Something sent to you (⌘↵), as a short toast in the top right: who, in which thread, and what they said. Clicking it
+// opens the thread; it goes away on its own after a few seconds. Messages arriving together share one toast. Only
+// ones that arrive while the app is open show, never ones from before it loaded; notes never do.
 export function MentionToasts({
   threads,
   me,
@@ -26,7 +19,7 @@ export function MentionToasts({
 }: {
   threads: Thread[];
   me: Person;
-  // When the app finished loading; older mentions aren't news.
+  // When the app finished loading; anything older isn't news.
   sinceMs: number;
   onOpen: (threadId: string) => void;
 }): React.JSX.Element | null {
@@ -34,7 +27,7 @@ export function MentionToasts({
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
 
-  const toasts: Mention[] = threads
+  const toasts: Sent[] = threads
     .flatMap((thread) =>
       thread.entries.flatMap((entry) =>
         entry.kind === "message" &&
@@ -43,7 +36,7 @@ export function MentionToasts({
         entry.createdAtMs <= nowMs &&
         nowMs - entry.createdAtMs < SHOW_MS &&
         !dismissed.has(entry.id) &&
-        mentionsIn(entry.text).includes(me.id)
+        entry.sentTo.some((person) => person.id === me.id)
           ? [
               {
                 id: entry.id,
@@ -83,12 +76,12 @@ export function MentionToasts({
           <div className="toast-title">
             {toasts.length === 1 ? (
               <>
-                <span className="toast-author">{latest.author.name}</span> mentioned you in{" "}
+                <span className="toast-author">{latest.author.name}</span> sent you{" "}
                 <span className="toast-thread">{latest.thread.title}</span>
               </>
             ) : (
               <>
-                <span className="toast-author">{toasts.length} mentions</span> from{" "}
+                <span className="toast-author">{toasts.length} messages</span> from{" "}
                 <span className="toast-author">{namesList(authors)}</span>
               </>
             )}

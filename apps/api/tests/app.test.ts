@@ -60,10 +60,8 @@ const txId = (): string => `tx-${++counter}`;
 const createThread = (
   id: string,
   fields: Partial<{
-    kind: string;
     title: string;
     assigneeId: string | null;
-    attendeeIds: string[];
     branchedFromId: string;
   }> = {},
 ): TransactionInput =>
@@ -73,10 +71,8 @@ const createThread = (
     modelName: "Thread",
     data: {
       id,
-      kind: "issue",
       title: "Plan the offsite",
       assigneeId: "arjun",
-      attendeeIds: [],
       ...fields,
     },
   }) as TransactionInput;
@@ -130,7 +126,6 @@ test("a new thread and its opening message become one ordered batch of sync acti
     [lastSyncId + 2, "Entry", "I"],
   ]);
   expect(await thread("t1")).toMatchObject({
-    kind: "issue",
     title: "Plan the offsite",
     requester: { id: "anshu" },
     assignee: { id: "arjun" },
@@ -169,76 +164,53 @@ test("a thread's description shares its id, is written by whoever opened it, and
   ).toBe(400);
 });
 
-// --- Conversations ---
+// --- Notes and sending ---
 
-const conversation = (id: string, parentId: string, attendeeIds: string[]): TransactionInput =>
-  createThread(id, {
-    kind: "conversation",
-    title: "Which endpoint?",
-    assigneeId: null,
-    attendeeIds,
-    branchedFromId: parentId,
-  });
-
-test("a conversation is with the people mentioned, and the thread it's in links to it", async () => {
-  await transact("anshu", [createThread("t1")]);
-  await transact("anshu", [conversation("c1", "t1", ["arjun"]), message("m1", "c1", "Which one?")]);
-  expect(await thread("c1")).toMatchObject({
-    kind: "conversation",
-    requester: { id: "anshu" },
-    assignee: null,
-    attendees: [{ id: "anshu" }, { id: "arjun" }],
-    branchedFromId: "t1",
-  });
-  expect((await thread("t1"))?.entries.at(-1)).toMatchObject({
-    kind: "message",
-    author: { id: "anshu" },
-    text: "Started a conversation [[thread:c1]]",
-  });
-  // Only in an open thread that isn't itself a conversation, with someone else, and with no assignee or time.
-  expect((await transact("anshu", [conversation("c2", "c1", ["kk"])])).status).toBe(400);
-  expect((await transact("anshu", [conversation("c3", "t1", ["anshu"])])).status).toBe(400);
-  expect((await transact("anshu", [conversation("c4", "missing", ["kk"])])).status).toBe(404);
-  const assigned = createThread("c5", {
-    kind: "conversation",
-    assigneeId: "kk",
-    attendeeIds: ["kk"],
-    branchedFromId: "t1",
-  });
-  expect((await transact("anshu", [assigned])).status).toBe(400);
+const sendTo = (
+  id: string,
+  threadId: string,
+  sentToIds: string[],
+  text = "Can you look?",
+): TransactionInput => ({
+  id: txId(),
+  type: "create",
+  modelName: "Entry",
+  data: { id, threadId, kind: "message", text, sentToIds },
 });
 
-test("mentioning someone in a conversation brings them in", async () => {
-  await transact("anshu", [createThread("t1"), conversation("c1", "t1", ["arjun"])]);
-  await transact("arjun", [message("m1", "c1", "Ask [[person:kk]] too")]);
-  const talk = await thread("c1");
-  expect(talk?.attendees.map((person) => person.id)).toEqual(["anshu", "arjun", "kk"]);
-  expect(talk?.entries.at(-1)).toMatchObject({ kind: "event", text: "added KK" });
+test("a message is a note unless it's sent to people, who must exist", async () => {
+  await transact("anshu", [createThread("t1"), message("m1", "t1", "Notes for later")]);
+  await transact("anshu", [sendTo("m2", "t1", ["kk", "anshu"])]);
+  const [note, sent] = (await thread("t1"))?.entries ?? [];
+  expect(note).toMatchObject({ kind: "message", sentTo: [] });
+  // Sending to yourself is just a note to them.
+  expect(sent).toMatchObject({ kind: "message", sentTo: [{ id: "kk" }] });
+  expect((await transact("anshu", [sendTo("m3", "t1", ["nobody"])])).status).toBe(404);
+  const resolution = {
+    id: txId(),
+    type: "create",
+    modelName: "Entry",
+    data: { id: "r1", threadId: "t1", kind: "resolution", text: "Done", sentToIds: ["kk"] },
+  } as TransactionInput;
+  expect((await transact("anshu", [resolution])).status).toBe(400);
 });
 
-test("closing or resolving a thread closes the conversations in it", async () => {
-  await transact("anshu", [
-    createThread("t1"),
-    conversation("c1", "t1", ["arjun"]),
-    conversation("c2", "t1", ["kk"]),
-  ]);
-  await transact("arjun", [update("c2", { status: "closed" })]);
-  await transact("anshu", [update("t1", { status: "closed" })]);
-  expect((await thread("c1"))?.status).toBe("closed");
-  expect((await thread("c1"))?.entries.at(-1)).toMatchObject({ text: "closed with [[thread:t1]]" });
-  // One already closed by hand says nothing more.
-  expect((await thread("c2"))?.entries.at(-1)).toMatchObject({ text: "changed status to Closed" });
-
-  await transact("anshu", [createThread("t2"), conversation("c3", "t2", ["arjun"])]);
-  await transact("arjun", [
-    {
-      id: txId(),
-      type: "create",
-      modelName: "Entry",
-      data: { id: "r1", threadId: "t2", kind: "resolution", text: "Done" },
-    },
-  ]);
-  expect((await thread("c3"))?.status).toBe("closed");
+test("done and snoozed are each person's own, and quiet", async () => {
+  await transact("anshu", [createThread("t1"), sendTo("m1", "t1", ["kk"])]);
+  const before = (await thread("t1"))?.updatedAtMs;
+  clock = NOW + 1000;
+  await transact("kk", [update("t1", { done: true })]);
+  await transact("arjun", [update("t1", { snoozeUntilMs: NOW + 60_000 })]);
+  const after = await thread("t1");
+  expect(after).toMatchObject({
+    doneBy: { kk: NOW + 1000 },
+    snoozedUntil: { arjun: NOW + 60_000 },
+    updatedAtMs: before,
+  });
+  expect(after?.entries.filter((entry) => entry.kind === "event")).toEqual([]);
+  await transact("kk", [update("t1", { done: false })]);
+  await transact("arjun", [update("t1", { snoozeUntilMs: null })]);
+  expect(await thread("t1")).toMatchObject({ doneBy: {}, snoozedUntil: {} });
 });
 
 test("updates record an activity line for each real change, in the actor's words", async () => {
@@ -309,19 +281,7 @@ test("a batch with a bad transaction changes nothing", async () => {
 test.each([
   ["an unknown actor", "nobody", [createThread("t2")], 404],
   ["an unknown assignee", "anshu", [createThread("t2", { assigneeId: "nobody" })], 404],
-  [
-    "an unknown person in a conversation",
-    "anshu",
-    [
-      createThread("t2", {
-        kind: "conversation",
-        assigneeId: null,
-        attendeeIds: ["nobody"],
-        branchedFromId: "t1",
-      }),
-    ],
-    404,
-  ],
+  ["sending to someone unknown", "anshu", [sendTo("m9", "t1", ["nobody"])], 404],
   ["a duplicate thread id", "anshu", [createThread("t1")], 409],
   ["a misspelled field", "anshu", [update("t1", { statuss: "closed" })], 400],
   ["a bad status", "anshu", [update("t1", { status: "finished" })], 400],

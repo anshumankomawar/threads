@@ -51,10 +51,8 @@ const create = (id: string, fields: object = {}): TransactionInput =>
     modelName: "Thread",
     data: {
       id,
-      kind: "issue",
       title: "Set up the on-call rotation",
       assigneeId: "arjun",
-      attendeeIds: [],
       ...fields,
     },
   }) as TransactionInput;
@@ -103,20 +101,9 @@ test("whoever made the thread writes its description, even when someone else is 
   expect((await transact("kk", [description("t2")])).status).toBe(403);
 });
 
-test("on behalf of needs a real person, and only threads can use it", async () => {
+test("on behalf of needs a real person", async () => {
   const nobody = await transact("anshu", [create("t1", { onBehalfOfId: "nobody" })]);
   expect(nobody.status).toBe(404);
-  await transact("anshu", [create("t1", { assigneeId: null })]);
-  const conversation = await transact("anshu", [
-    create("t2", {
-      kind: "conversation",
-      assigneeId: null,
-      attendeeIds: ["arjun"],
-      branchedFromId: "t1",
-      onBehalfOfId: "kk",
-    }),
-  ]);
-  expect(conversation.status).toBe(400);
 });
 
 test("the requester can change later, with an activity line, keeping who made it", async () => {
@@ -131,16 +118,7 @@ test("the requester can change later, with an activity line, keeping who made it
   expect(activity(await thread("t1"))).toEqual(["made KK the requester"]);
 });
 
-test("changing the requester needs a real person, and only threads have one to change", async () => {
-  await transact("anshu", [
-    create("t1"),
-    create("chat", {
-      kind: "conversation",
-      assigneeId: null,
-      attendeeIds: ["arjun"],
-      branchedFromId: "t1",
-    }),
-  ]);
+test("changing the requester needs a real person", async () => {
+  await transact("anshu", [create("t1")]);
   expect((await transact("anshu", [update("t1", { requesterId: "nobody" })])).status).toBe(404);
-  expect((await transact("anshu", [update("chat", { requesterId: "kk" })])).status).toBe(400);
 });

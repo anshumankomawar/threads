@@ -46,7 +46,7 @@ const create = (
   id: `tx-${++counter}`,
   type: "create",
   modelName: "Thread",
-  data: { id, kind: "issue", title, assigneeId, attendeeIds: [] },
+  data: { id, title, assigneeId },
 });
 const update = (modelId: string, changes: object): TransactionInput =>
   ({
@@ -64,7 +64,17 @@ const setBuckets = (buckets: object[]): TransactionInput =>
     modelId: "arjun",
     changes: { buckets },
   }) as TransactionInput;
-const triage = (id: string) => engine.models.Thread.get(id)?.triage;
+const triage = (id: string, personId = "arjun") => engine.models.Thread.get(id)?.triage[personId];
+const send = (
+  threadId: string,
+  sentToIds: string[],
+  text = "Can you take a look?",
+): TransactionInput => ({
+  id: `tx-${++counter}`,
+  type: "create",
+  modelName: "Entry",
+  data: { id: `m-${counter}`, threadId, kind: "message", text, sentToIds },
+});
 
 test("new threads are sorted into the buckets of whoever they're waiting on", async () => {
   run("anshu", create("t1", "Customer can't log in"), create("t2", "Plan the offsite"));
@@ -73,7 +83,6 @@ test("new threads are sorted into the buckets of whoever they're waiting on", as
   expect(asked[0].person.id).toBe("arjun");
   expect(asked[0].buckets).toEqual(DEFAULT_BUCKETS);
   expect(triage("t1")).toEqual({
-    personId: "arjun",
     bucketId: "customers",
     reason: "About customer can't log in",
     manual: false,
@@ -95,20 +104,20 @@ test("a thread is sorted again when it changes hands or is retitled, but not for
   run("anshu", update("t1", { assigneeId: "kk" }));
   await triager.kick();
   expect(asked[1].person.id).toBe("kk");
-  expect(triage("t1")?.personId).toBe("kk");
+  expect(triage("t1", "kk")?.bucketId).toBe("other");
   run("anshu", update("t1", { title: "Customer offsite" }));
   // It stays where it was until the model has looked again.
-  expect(triage("t1")).toMatchObject({ bucketId: "other", stale: true });
+  expect(triage("t1", "kk")).toMatchObject({ bucketId: "other", stale: true });
   await triager.kick();
-  expect(triage("t1")).toMatchObject({ personId: "kk", bucketId: "customers" });
+  expect(triage("t1", "kk")).toMatchObject({ bucketId: "customers", stale: false });
 });
 
 test("placing a thread by hand sticks, and becomes an example for the model", async () => {
   run("anshu", create("t1", "Customer can't log in"), create("t2", "Plan the offsite"));
   const triager = new Triager(engine, classify);
   await triager.kick();
-  const manual = { personId: "arjun", bucketId: "bugs", reason: "", manual: true, stale: false };
-  run("arjun", update("t1", { triage: manual }));
+  const manual = { bucketId: "bugs", reason: "", manual: true, stale: false };
+  run("arjun", update("t1", { bucketId: "bugs" }));
   expect(triage("t1")).toEqual(manual);
   // Retitling keeps a hand-placed thread where it is.
   run("arjun", update("t1", { title: "Customer still can't log in" }));
@@ -119,30 +128,28 @@ test("placing a thread by hand sticks, and becomes an example for the model", as
     { title: "Customer still can't log in", bucketId: "bugs" },
   ]);
   // Null hands it back to the model.
-  run("arjun", update("t1", { triage: null }));
+  run("arjun", update("t1", { bucketId: null }));
   await triager.kick();
   expect(triage("t1")).toMatchObject({ bucketId: "customers", manual: false });
 });
 
-test("only whoever a thread waits on places it, in a bucket of theirs", () => {
+test("you place only what's in your inbox, into a bucket of yours", () => {
   run("anshu", create("t1", "Plan the offsite"));
-  const into = (personId: string, bucketId: string) =>
-    update("t1", { triage: { personId, bucketId, reason: "", manual: true, stale: false } });
-  expect(() => run("kk", into("kk", "bugs"))).toThrow("Only an open thread in your inbox");
-  expect(() => run("arjun", into("kk", "bugs"))).toThrow("People sort only their own inbox");
-  expect(() => run("arjun", into("arjun", "nope"))).toThrow("Bucket not found");
+  expect(() => run("kk", update("t1", { bucketId: "bugs" }))).toThrow(
+    "Only a thread in your inbox",
+  );
+  expect(() => run("arjun", update("t1", { bucketId: "nope" }))).toThrow("Bucket not found");
+  // Sending it to KK puts it in their inbox, so they can place it.
+  run("anshu", send("t1", ["kk"]));
+  run("kk", update("t1", { bucketId: "bugs" }));
+  expect(triage("t1", "kk")?.manual).toBe(true);
 });
 
 test("new buckets sort the inbox again, keeping hand-placed threads whose bucket is still there", async () => {
   run("anshu", create("t1", "Customer can't log in"), create("t2", "Plan the offsite"));
   const triager = new Triager(engine, classify);
   await triager.kick();
-  run(
-    "arjun",
-    update("t1", {
-      triage: { personId: "arjun", bucketId: "customers", reason: "", manual: true, stale: false },
-    }),
-  );
+  run("arjun", update("t1", { bucketId: "customers" }));
   // Reordering changes nothing.
   run("arjun", setBuckets(DEFAULT_BUCKETS.toReversed()));
   expect(triage("t2")).toMatchObject({ bucketId: "other", stale: false });
@@ -159,7 +166,7 @@ test("new buckets sort the inbox again, keeping hand-placed threads whose bucket
   run("arjun", setBuckets(mine));
   expect(triage("t1")?.manual).toBe(true);
   // Its bucket is gone, so it waits to be sorted.
-  expect(triage("t2")).toBeNull();
+  expect(triage("t2")).toBeUndefined();
   await triager.kick();
   expect(asked.at(-1)?.buckets).toEqual(mine);
   expect(triage("t2")?.bucketId).toBe("later");
@@ -197,7 +204,7 @@ test("a failing model leaves threads unsorted and waits before trying them again
   run("anshu", create("t1", "Plan the offsite"));
   failing = true;
   await triager.kick();
-  expect(triage("t1")).toBeNull();
+  expect(triage("t1")).toBeUndefined();
   expect(retries).toEqual([NOW + 60_000]);
   failing = false;
   await triager.kick();
@@ -207,28 +214,21 @@ test("a failing model leaves threads unsorted and waits before trying them again
   expect(triage("t1")?.bucketId).toBe("other");
 });
 
-test("closed threads, conversations and threads that moved on aren't sorted", async () => {
-  run("anshu", create("t1", "Plan the offsite"));
-  run("anshu", {
-    id: "tx-chat",
-    type: "create",
-    modelName: "Thread",
-    data: {
-      id: "c1",
-      kind: "conversation",
-      title: "Quick q",
-      assigneeId: null,
-      attendeeIds: ["kk"],
-      branchedFromId: "t1",
-    },
-  });
-  run("anshu", create("t2", "Old work"), update("t2", { status: "closed" }));
-  const [request] = engine.triageRequests();
-  expect(request.threads.map((thread) => thread.id)).toEqual(["t1"]);
-  // The model answered for someone the thread no longer waits on: ignored.
-  run("anshu", update("t1", { assigneeId: "kk" }));
+test("a thread is sorted for everyone whose inbox it's in, but not once it's closed", async () => {
+  run("anshu", create("t1", "Plan the offsite"), create("t2", "Old work"));
+  run("anshu", update("t2", { status: "closed" }));
+  run("arjun", send("t1", ["kk"], "Can you book the venue?"));
+  const requests = engine.triageRequests();
+  expect(requests.map((request) => [request.person.id, request.threads.map((t) => t.id)])).toEqual([
+    ["arjun", ["t1"]],
+    ["kk", ["t1"]],
+  ]);
+  // Who sent it to KK, and what, is what the model reads for them.
+  expect(requests[1].threads[0]).toMatchObject({ from: "Arjun", text: "Can you book the venue?" });
+  // The model answered for someone the thread is no longer with: ignored.
+  run("anshu", update("t1", { assigneeId: "lena" }));
   engine.applyTriage("arjun", [{ threadId: "t1", bucketId: "other", reason: "" }]);
-  expect(triage("t1")).toBeNull();
+  expect(triage("t1")).toBeUndefined();
 });
 
 test("the prompt numbers buckets and threads, and answers map back to them", () => {

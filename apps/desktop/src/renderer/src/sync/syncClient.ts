@@ -18,7 +18,6 @@ import {
   type SyncMessage,
   type Thread,
   type ThreadChanges,
-  type ThreadKind,
   type TransactionBatch,
   type TransactionBatchResponse,
 } from "model";
@@ -50,13 +49,10 @@ export type Transport = {
 };
 
 export type NewThread = {
-  kind: ThreadKind;
   title: string;
   // Its description (`descriptionOf`), shown under the title; empty for none.
   description: string;
   assignee: Person | null;
-  // The people in a conversation, besides you.
-  invitees: Person[];
   // The thread this one branches off from.
   branchedFromId?: string | null;
   // The thread this one blocks (`/blocked`).
@@ -395,10 +391,8 @@ export class SyncClient {
           modelName: "Thread",
           data: {
             id: threadId,
-            kind: draft.kind,
             title: draft.title.trim().slice(0, 200),
             assigneeId: draft.assignee?.id ?? null,
-            attendeeIds: draft.invitees.map((person) => person.id),
             branchedFromId: draft.branchedFromId ?? null,
             blocksId: draft.blocksId ?? null,
             onBehalfOfId: draft.onBehalfOf?.id ?? null,
@@ -448,13 +442,14 @@ export class SyncClient {
     );
   }
 
-  // `id` is given only for a thread's description, which takes the thread's id.
+  // `id` is given only for a thread's description, which takes the thread's id. A message sent to nobody is a note.
   addEntry(
     threadId: string,
     kind: EntryCreate["kind"],
     text: string,
     me: Person,
     id: string = crypto.randomUUID(),
+    sentTo: Person[] = [],
   ): void {
     this.#enqueue(
       new CreationTransaction(
@@ -462,7 +457,7 @@ export class SyncClient {
           id: crypto.randomUUID(),
           type: "create",
           modelName: "Entry",
-          data: { id, threadId, kind, text },
+          data: { id, threadId, kind, text, sentToIds: sentTo.map((person) => person.id) },
         },
         me.id,
       ),

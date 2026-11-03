@@ -5,24 +5,21 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Add01Icon,
   InboxIcon,
-  BubbleChatIcon,
   ArrowDown02Icon,
   Calendar01Icon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
   GitBranchIcon,
   HourglassIcon,
-  PanelRightIcon,
   TaskAdd01Icon,
   Tag01Icon,
   Tick02Icon,
   UnavailableIcon,
 } from "@hugeicons/core-free-icons";
-import { Fragment, useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useMe } from "../me";
 import { CurrentThreadContext, useThreadLinks } from "../threadLinks";
-import { isUnread, latestFromOthers } from "../conversations";
 import {
   closeThreadMenu,
   offerKey,
@@ -63,9 +60,9 @@ import {
   type Thread,
   mention,
   descriptionOf,
-  conversationStartedId,
   bucketsOf,
-  waitingOn,
+  inboxPeople,
+  replyTo,
 } from "model";
 import { DAY, formatDue, formatRelativeTime, startOfDay } from "../format";
 import { Identicon } from "./Identicon";
@@ -87,17 +84,11 @@ type EventEntry = Extract<Entry, { kind: "event" }>;
 type SelectMode = "toggle" | "range";
 type ResolutionEntry = Extract<Entry, { kind: "resolution" }>;
 
-// Conversations opened in place, under the message in their thread that started them. One is open at a time.
-export type InlineConversations = {
-  openId: string | null;
-  onToggle: (conversationId: string) => void;
-  onMoveToSidebar: (conversationId: string) => void;
-  actionsFor: (conversation: Thread) => ThreadActions;
-};
-
 export type ThreadActions = {
-  // A note in the thread's worklog; the thread stays where it is.
-  onSend: (text: string) => void;
+  // A note in the thread (Enter): nobody is told.
+  onNote: (text: string) => void;
+  // A message sent to people (⌘↵), which puts the thread in their inbox.
+  onSend: (text: string, to: Person[]) => void;
   // `/blocked`: opens the form for asking someone what this thread needs, in a new thread that blocks it.
   onBlocked: () => void;
   // `/task`: turns what you were asked here into a task of your own, a new thread linked from this one.
@@ -119,13 +110,9 @@ export type ThreadActions = {
   onMoveMessages: (messages: MessageEntry[]) => void;
 };
 
-// A thread link as a chip with the linked thread's current title; clicking opens it beside this one (a conversation
-// opens in place). A conversation shows a chat bubble; any other thread, a branch.
+// A thread link as a chip with the linked thread's current title; clicking opens it beside this one.
 function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
   const links = useThreadLinks();
-  const isConversation = links.threads.some(
-    (thread) => thread.id === threadId && thread.kind === "conversation",
-  );
   const title = links.titleOf(threadId) ?? "Thread";
   if (useContext(CurrentThreadContext) === threadId)
     return <span className="thread-link-self">#{title}</span>;
@@ -138,7 +125,7 @@ function ThreadLinkChip({ threadId }: { threadId: string }): React.JSX.Element {
         links.open(threadId);
       }}
     >
-      <HugeiconsIcon icon={isConversation ? BubbleChatIcon : GitBranchIcon} size={11} aria-hidden />
+      <HugeiconsIcon icon={GitBranchIcon} size={11} aria-hidden />
       {title}
     </button>
   );
@@ -383,21 +370,16 @@ function ThreadHeader({
   actions: ThreadActions;
 }): React.JSX.Element {
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
-  // A conversation is open or closed; it's never blocked or archived on its own.
-  const statuses =
-    thread.kind === "conversation"
-      ? (["open", "closed"] as Status[])
-      : (Object.keys(STATUS_LABELS) as Status[]);
+  const statuses = Object.keys(STATUS_LABELS) as Status[];
   const priorities = Object.keys(PRIORITY_LABELS) as Priority[];
   const priorityTone =
     thread.priority === "urgent" ? "urgent" : thread.priority === "none" ? "muted" : undefined;
   const dueTone = due === null ? "muted" : due.overdue ? "urgent" : undefined;
-  const isIssue = thread.kind === "issue";
   const me = useMe();
-  // Its bucket shows only to whoever it's waiting on, since buckets are theirs.
-  const inMyInbox = isIssue && !isDone(thread.status) && waitingOn(thread) === me.id;
+  // Its bucket shows only to people whose inbox it's in, since buckets are theirs.
+  const inMyInbox = inboxPeople(thread).includes(me.id);
   const buckets = bucketsOf(me);
-  const triage = thread.triage?.personId === me.id ? thread.triage : null;
+  const triage = thread.triage[me.id] ?? null;
   const bucket = buckets.find((candidate) => candidate.id === triage?.bucketId);
 
   const description = ask?.text.trim() ?? "";
@@ -405,56 +387,42 @@ function ThreadHeader({
   return (
     <header className="thread-header" id={ask === undefined ? undefined : `entry-${ask.id}`}>
       <div className="thread-byline">
-        {thread.kind === "conversation" ? (
-          <>
-            <HugeiconsIcon icon={BubbleChatIcon} {...ICON_PROPS} />
-            <span className="thread-attendees">
-              {thread.attendees.map((person) => (
-                <span key={person.id} className="thread-attendee">
-                  <Identicon seed={person.id} size={14} />
-                  {person.name}
-                </span>
-              ))}
-            </span>
-          </>
-        ) : (
-          <>
-            <MenuChip
-              label={thread.requester.name}
-              icon={<Identicon seed={thread.requester.id} size={14} />}
-              tone="assignee"
-              options={people.map((person) => ({
-                label: person.name,
-                value: person,
-                icon: <Identicon seed={person.id} size={14} />,
-              }))}
-              onSelect={actions.onSetRequester}
-            />
-            <span className="thread-byline-verb">asked</span>
-            <MenuChip
-              label={thread.assignee?.name ?? "no one yet"}
-              icon={thread.assignee !== null && <Identicon seed={thread.assignee.id} size={14} />}
-              tone="assignee"
-              options={people.map((person) => ({
-                label: person.name,
-                value: person,
-                icon: <Identicon seed={person.id} size={14} />,
-              }))}
-              onSelect={actions.onSetAssignee}
-            />
-            {/* Who really made it, when someone made it for the requester. */}
-            {thread.createdBy.id !== thread.requester.id && (
-              <>
-                <span className="thread-byline-dot">·</span>
-                <span>via {thread.createdBy.name}</span>
-              </>
-            )}
-          </>
-        )}
+        <>
+          <MenuChip
+            label={thread.requester.name}
+            icon={<Identicon seed={thread.requester.id} size={14} />}
+            tone="assignee"
+            options={people.map((person) => ({
+              label: person.name,
+              value: person,
+              icon: <Identicon seed={person.id} size={14} />,
+            }))}
+            onSelect={actions.onSetRequester}
+          />
+          <span className="thread-byline-verb">asked</span>
+          <MenuChip
+            label={thread.assignee?.name ?? "no one yet"}
+            icon={thread.assignee !== null && <Identicon seed={thread.assignee.id} size={14} />}
+            tone="assignee"
+            options={people.map((person) => ({
+              label: person.name,
+              value: person,
+              icon: <Identicon seed={person.id} size={14} />,
+            }))}
+            onSelect={actions.onSetAssignee}
+          />
+          {/* Who really made it, when someone made it for the requester. */}
+          {thread.createdBy.id !== thread.requester.id && (
+            <>
+              <span className="thread-byline-dot">·</span>
+              <span>via {thread.createdBy.name}</span>
+            </>
+          )}
+        </>
         {thread.branchedFromId !== null && (
           <>
             <span className="thread-byline-dot">·</span>
-            <span>{thread.kind === "conversation" ? "In" : "Branched from"}</span>
+            <span>Branched from</span>
             <ThreadLinkChip threadId={thread.branchedFromId} />
           </>
         )}
@@ -500,47 +468,42 @@ function ThreadHeader({
             onSelect={actions.onSetBucket}
           />
         )}
-        {isIssue && (
-          <>
-            <MenuChip
-              label={PRIORITY_LABELS[thread.priority]}
-              tone={priorityTone}
-              options={priorities.map((priority) => ({
-                label: PRIORITY_LABELS[priority],
-                value: priority,
-              }))}
-              onSelect={actions.onSetPriority}
-            />
-            <MenuChip
-              label={due?.label ?? "No due date"}
-              icon={<HugeiconsIcon icon={Calendar01Icon} {...ICON_PROPS} />}
-              tone={dueTone}
-              options={dueOptions(nowMs)}
-              onSelect={actions.onSetDue}
-            />
-            <MenuChip
-              label={thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
-              icon={<HugeiconsIcon icon={HourglassIcon} {...ICON_PROPS} />}
-              tone={thread.effortHours === null ? "muted" : undefined}
-              options={[
-                ...EFFORT_OPTIONS.map((hours) => ({
-                  label: formatEffort(hours),
-                  value: hours as number | null,
-                })),
-                { label: "No estimate", value: null },
-              ]}
-              onSelect={actions.onSetEffort}
-            />
-          </>
-        )}
-        {thread.kind !== "conversation" && <LabelChip thread={thread} actions={actions} />}
+        <MenuChip
+          label={PRIORITY_LABELS[thread.priority]}
+          tone={priorityTone}
+          options={priorities.map((priority) => ({
+            label: PRIORITY_LABELS[priority],
+            value: priority,
+          }))}
+          onSelect={actions.onSetPriority}
+        />
+        <MenuChip
+          label={due?.label ?? "No due date"}
+          icon={<HugeiconsIcon icon={Calendar01Icon} {...ICON_PROPS} />}
+          tone={dueTone}
+          options={dueOptions(nowMs)}
+          onSelect={actions.onSetDue}
+        />
+        <MenuChip
+          label={thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
+          icon={<HugeiconsIcon icon={HourglassIcon} {...ICON_PROPS} />}
+          tone={thread.effortHours === null ? "muted" : undefined}
+          options={[
+            ...EFFORT_OPTIONS.map((hours) => ({
+              label: formatEffort(hours),
+              value: hours as number | null,
+            })),
+            { label: "No estimate", value: null },
+          ]}
+          onSelect={actions.onSetEffort}
+        />
+        <LabelChip thread={thread} actions={actions} />
       </div>
     </header>
   );
 }
 
 function MessageBlock({
-  children,
   message,
   nowMs,
   selected,
@@ -558,8 +521,6 @@ function MessageBlock({
   selecting: boolean;
   onSelect?: (mode: SelectMode) => void;
   onContextMenu?: (event: React.MouseEvent) => void;
-  // Shown in place of the message's text.
-  children?: React.ReactNode;
 }): React.JSX.Element {
   const modeFor = (event: React.MouseEvent): SelectMode | undefined =>
     event.shiftKey ? "range" : event.metaKey || selecting ? "toggle" : undefined;
@@ -585,131 +546,19 @@ function MessageBlock({
       <div className="thread-body">
         <div className="thread-meta">
           <span className="thread-author">{message.author.name}</span>
+          {/* Who it was sent to, or that it's a note nobody was told about. The description is neither. */}
+          {message.sentTo.length > 0 ? (
+            <span className="thread-sent-to">
+              to {message.sentTo.map((person) => person.name.split(" ")[0]).join(", ")}
+            </span>
+          ) : (
+            <span className="thread-note">Note</span>
+          )}
           <span className="thread-time">{formatRelativeTime(message.createdAtMs, nowMs)}</span>
         </div>
-        {children ?? <MessageText text={message.text} />}
+        <MessageText text={message.text} />
       </div>
     </div>
-  );
-}
-
-// A conversation as a card in the thread it started in: what it's about, who's in it, how many replies and who wrote
-// last, and a dot while there's something new for you. Clicking it opens the conversation under it, or folds it.
-function ConversationCard({
-  conversation,
-  open,
-  nowMs,
-  onToggle,
-}: {
-  conversation: Thread;
-  open: boolean;
-  nowMs: number;
-  onToggle: () => void;
-}): React.JSX.Element {
-  const me = useMe();
-  const messages = conversation.entries.filter(
-    (entry): entry is MessageEntry => entry.kind === "message",
-  );
-  const replies = messages.length - 1;
-  const last = messages.at(-1);
-  return (
-    <button
-      type="button"
-      className="conversation-card"
-      aria-expanded={open}
-      data-done={isDone(conversation.status)}
-      onClick={(event) => {
-        event.stopPropagation();
-        onToggle();
-      }}
-    >
-      <span className="conversation-card-icon" aria-hidden>
-        <HugeiconsIcon icon={BubbleChatIcon} size={14} />
-      </span>
-      <span className="conversation-card-body">
-        <span className="conversation-card-title">{conversation.title}</span>
-        <span className="conversation-card-meta">
-          <span className="conversation-card-people" aria-hidden>
-            {conversation.attendees.slice(0, 3).map((person) => (
-              <Identicon key={person.id} seed={person.id} size={14} />
-            ))}
-          </span>
-          <span>
-            {replies <= 0 ? "No replies yet" : replies === 1 ? "1 reply" : `${replies} replies`}
-            {replies > 0 && last !== undefined && (
-              <>
-                {" · "}
-                {last.author.id === me.id ? "you" : last.author.name.split(" ")[0]}{" "}
-                {formatRelativeTime(last.createdAtMs, nowMs)}
-              </>
-            )}
-            {isDone(conversation.status) && " · Closed"}
-          </span>
-        </span>
-      </span>
-      {isUnread(conversation, me.id) && <span className="unread-dot" aria-label="Unread" />}
-    </button>
-  );
-}
-
-// A conversation in place, indented under the message that started it, with its messages and its own reply. Its card
-// in that message opens and folds it; "Move to sidebar" (on hover) shows it beside the thread instead.
-function InlineConversation({
-  conversation,
-  nowMs,
-  inline,
-}: {
-  conversation: Thread;
-  nowMs: number;
-  inline: InlineConversations;
-}): React.JSX.Element {
-  const me = useMe();
-  const focusRef = useRef<(() => void) | null>(null);
-  const actions = inline.actionsFor(conversation);
-  const replyTo = latestFromOthers(conversation, me.id)?.author;
-
-  return (
-    <section className="inline-conversation" aria-label={conversation.title}>
-      <button
-        type="button"
-        className="inline-conversation-move"
-        aria-label="Move to sidebar"
-        title="Move to sidebar"
-        onClick={() => inline.onMoveToSidebar(conversation.id)}
-      >
-        <HugeiconsIcon icon={PanelRightIcon} {...ICON_PROPS} />
-      </button>
-      {conversation.entries.map((entry) =>
-        entry.kind === "message" ? (
-          <MessageBlock
-            key={entry.id}
-            message={entry}
-            nowMs={nowMs}
-            selected={false}
-            run={undefined}
-            selecting={false}
-          />
-        ) : entry.kind === "event" ? (
-          <EventLine key={entry.id} event={entry} nowMs={nowMs} />
-        ) : null,
-      )}
-      {!isDone(conversation.status) && (
-        <ReplyBlock
-          key={`${conversation.id}:${replyTo?.id ?? ""}`}
-          placeholder={replyTo === undefined ? "Reply…" : `Reply to ${replyTo.name.split(" ")[0]}…`}
-          focusRef={focusRef}
-          onSubmit={actions.onSend}
-          onBranch={actions.onBranch}
-          onCommand={(name) => {
-            if (name === "blocked") actions.onBlocked();
-            if (name === "close") actions.onSetStatus("closed");
-            if (name === "task") actions.onTask();
-          }}
-          threadId={conversation.id}
-          inConversation
-        />
-      )}
-    </section>
   );
 }
 
@@ -775,33 +624,49 @@ function ReplyFocus({
   return null;
 }
 
-// The next message, written in place at the end of the thread. Enter sends, Shift+Enter breaks the line.
+// The next message, written in place at the end of the thread. Enter adds it as a note: it's in the thread, but nobody
+// is told. ⌘↵ sends it to the people on its To line (whoever last sent you something here, to start with, plus anyone
+// you @mention), which puts the thread in their inbox. Shift+Enter breaks the line.
 function ReplyBlock({
   placeholder,
   focusRef,
-  onSubmit,
+  defaultTo,
+  people,
+  onNote,
+  onSend,
   onBranch,
   onCommand,
   threadId,
-  inConversation,
+  autoFocus,
 }: {
   threadId: string;
-  // Mentions in a conversation add people to it; elsewhere they start one.
-  inConversation: boolean;
   placeholder: string;
   focusRef: React.RefObject<(() => void) | null>;
-  onSubmit: (text: string) => void;
+  // Who ⌘↵ sends to until you change it.
+  defaultTo: Person[];
+  people: Person[];
+  onNote: (text: string) => void;
+  onSend: (text: string, to: Person[]) => void;
   onBranch: ThreadActions["onBranch"];
   onCommand: (name: CommandName) => void;
+  // Whether the reply takes the cursor when it appears.
+  autoFocus: boolean;
 }): React.JSX.Element {
   const me = useMe();
-  const handlersRef = useRef({ onSubmit });
+  const [to, setTo] = useState<Person[]>(defaultTo);
+  const addTo = (person: Person): void =>
+    setTo((current) =>
+      person.id === me.id || current.some((other) => other.id === person.id)
+        ? current
+        : [...current, person],
+    );
+  const handlersRef = useRef({ onNote, onSend, to });
   useEffect(() => {
-    handlersRef.current = { onSubmit };
+    handlersRef.current = { onNote, onSend, to };
   });
 
   const editor = useEditor({
-    autofocus: "end",
+    autofocus: autoFocus ? "end" : false,
     extensions: [
       // No underline, so ⌘U stays the app's user picker.
       StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
@@ -816,6 +681,8 @@ function ReplyBlock({
         // The `#` and `/` menus, when open, get keys first.
         if (offerKey(view.dom, event)) return true;
         if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
+        // Escape-free way out: ⌘↵ sends, plain Enter is a note.
+        const sending = event.metaKey || event.ctrlKey;
         // Thread links go out as `[[thread:<id>]]`.
         const text = view.state.doc
           .textBetween(0, view.state.doc.content.size, "\n", (leaf) =>
@@ -827,7 +694,9 @@ function ReplyBlock({
           )
           .trim();
         if (text.length > 0) {
-          handlersRef.current.onSubmit(text);
+          const { onNote, onSend, to } = handlersRef.current;
+          if (sending && to.length > 0) onSend(text, to);
+          else onNote(text);
           view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
         }
         return true;
@@ -863,8 +732,12 @@ function ReplyBlock({
     if (option.kind === "command") {
       commandMenu?.take();
       onCommand(option.name);
-    } else if (option.kind === "person") mentionMenu?.pick(option.person);
-    else if (menu === null) return;
+    } else if (option.kind === "person") {
+      // Mentioning someone puts them on the To line too.
+      mentionMenu?.pick(option.person);
+      const person = people.find((candidate) => candidate.id === option.person.id);
+      if (person !== undefined) addTo(person);
+    } else if (menu === null) return;
     else if (option.kind === "link") menu.pick(option.link);
     else menu.pick({ id: onBranch(option.title), title: option.title });
   };
@@ -924,13 +797,55 @@ function ReplyBlock({
           <span className="thread-author">{me.name}</span>
         </div>
         <EditorContent editor={editor} className="thread-reply" />
+        <div className="reply-to" onClick={(event) => event.stopPropagation()}>
+          <span className="reply-to-label">To</span>
+          {to.map((person) => (
+            <span key={person.id} className="reply-to-person">
+              <Identicon seed={person.id} size={12} />
+              {person.name.split(" ")[0]}
+              <button
+                type="button"
+                className="reply-to-remove"
+                aria-label={`Don't send to ${person.name}`}
+                onClick={() =>
+                  setTo((current) => current.filter((other) => other.id !== person.id))
+                }
+              >
+                <HugeiconsIcon icon={Cancel01Icon} size={10} aria-hidden />
+              </button>
+            </span>
+          ))}
+          <MenuChip
+            label={to.length === 0 ? "Add someone" : "Add"}
+            icon={<HugeiconsIcon icon={Add01Icon} size={11} aria-hidden />}
+            tone="muted"
+            options={people
+              .filter(
+                (person) => person.id !== me.id && !to.some((other) => other.id === person.id),
+              )
+              .map((person) => ({
+                label: person.name,
+                value: person,
+                icon: <Identicon seed={person.id} size={14} />,
+              }))}
+            onSelect={addTo}
+          />
+          <span className="reply-to-keys">
+            <kbd>↵</kbd> note
+            {to.length > 0 && (
+              <>
+                {" · "}
+                <kbd>⌘↵</kbd> send
+              </>
+            )}
+          </span>
+        </div>
       </div>
       {open !== null && options.length > 0 && (
         <ThreadMenu
           rect={open.rect}
           options={options}
           selected={Math.min(selected, options.length - 1)}
-          inConversation={inConversation}
           onHover={setSelected}
           onChoose={choose}
         />
@@ -968,14 +883,12 @@ function ThreadMenu({
   rect,
   options,
   selected,
-  inConversation,
   onHover,
   onChoose,
 }: {
   rect: DOMRect | null;
   options: MenuOption[];
   selected: number;
-  inConversation: boolean;
   onHover: (index: number) => void;
   onChoose: (option: MenuOption) => void;
 }): React.JSX.Element | null {
@@ -1010,12 +923,7 @@ function ThreadMenu({
             <>
               <Identicon seed={option.person.id} size={14} />
               <span className="thread-menu-title">
-                {option.person.name}{" "}
-                <span className="thread-menu-hint">
-                  {inConversation
-                    ? "adds them to this conversation"
-                    : "starts a conversation with them"}
-                </span>
+                {option.person.name} <span className="thread-menu-hint">sends it to them too</span>
               </span>
             </>
           ) : option.kind === "command" ? (
@@ -1056,12 +964,13 @@ export function ThreadView({
   thread,
   people,
   actions,
-  inline,
+  autoFocusReply = true,
 }: {
   thread: Thread;
   people: Person[];
   actions: ThreadActions;
-  inline: InlineConversations;
+  // Off while working through the inbox, so its keys work until you choose to reply (R).
+  autoFocusReply?: boolean;
 }): React.JSX.Element {
   const endRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1102,8 +1011,10 @@ export function ThreadView({
     if (previous !== undefined && entries.length <= previous) return;
     const added = previous === undefined ? [] : entries.slice(previous);
     const yours = added.some((entry) => entryPerson(entry)?.id === me.id);
-    if (previous === undefined || followingRef.current || yours) bringReplyIntoView();
-  }, [entries, me.id]);
+    // Opened from the inbox, a thread starts at its top, title first.
+    if (previous === undefined ? autoFocusReply : followingRef.current || yours)
+      bringReplyIntoView();
+  }, [entries, me.id, autoFocusReply]);
 
   // Tracks following as you scroll; reaching the reply block marks everything seen.
   const onScroll = (): void => {
@@ -1119,7 +1030,7 @@ export function ThreadView({
 
   // Messages selected to move, in thread order: right-click → Select, ⌘-click, or shift-click for a range. Kept
   // per thread; moved messages drop out of it on their own. Escape clears it.
-  const { titleOf, nameOf, threads: allThreads } = useThreadLinks();
+  const { titleOf, nameOf } = useThreadLinks();
   const [selection, setSelection] = useState<{
     threadId: string;
     ids: string[];
@@ -1197,10 +1108,12 @@ export function ThreadView({
       (entry.kind === "message" || entry.kind === "resolution") && entryPerson(entry)?.id !== me.id,
   ).length;
 
-  // In a conversation, you're replying to whoever wrote last.
-  const asker =
-    thread.kind === "conversation" ? latestFromOthers(thread, me.id)?.author : undefined;
-  const placeholder = asker !== undefined ? `Reply to ${asker.name.split(" ")[0]}…` : "Reply…";
+  // As in email, a reply goes back to whoever last sent you something here, else the other side.
+  const defaultTo = replyTo(thread, me.id);
+  const placeholder =
+    defaultTo.length === 0
+      ? "Write a note…"
+      : `Write a note, or ⌘↵ to send to ${defaultTo.map((person) => person.name.split(" ")[0]).join(", ")}…`;
 
   // Clicking empty space in the thread, including below the last block, puts the cursor in the reply.
   const onBackgroundMouseDown = (event: React.MouseEvent): void => {
@@ -1232,45 +1145,21 @@ export function ThreadView({
               actions={actions}
             />
             {rest.map((entry, index) => {
-              // The message that started a conversation here carries it, folded or open, right under it.
-              const started =
-                entry.kind === "message"
-                  ? allThreads.find(
-                      (other) =>
-                        other.kind === "conversation" &&
-                        other.branchedFromId === thread.id &&
-                        conversationStartedId(other.id) === entry.id,
-                    )
-                  : undefined;
               if (entry.kind === "message")
                 return (
-                  <Fragment key={entry.id}>
-                    <MessageBlock
-                      message={entry}
-                      nowMs={nowMs}
-                      selected={pickedIds.includes(entry.id)}
-                      run={runAt(index)}
-                      selecting={selecting}
-                      onSelect={(mode) => select(entry.id, mode)}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        setMenu({ x: event.clientX, y: event.clientY, items: menuFor(entry) });
-                      }}
-                    >
-                      {/* Just the conversation, as a card: the words are for notifications and search. */}
-                      {started !== undefined ? (
-                        <ConversationCard
-                          conversation={started}
-                          open={inline.openId === started.id}
-                          nowMs={nowMs}
-                          onToggle={() => inline.onToggle(started.id)}
-                        />
-                      ) : undefined}
-                    </MessageBlock>
-                    {started !== undefined && inline.openId === started.id && (
-                      <InlineConversation conversation={started} nowMs={nowMs} inline={inline} />
-                    )}
-                  </Fragment>
+                  <MessageBlock
+                    key={entry.id}
+                    message={entry}
+                    nowMs={nowMs}
+                    selected={pickedIds.includes(entry.id)}
+                    run={runAt(index)}
+                    selecting={selecting}
+                    onSelect={(mode) => select(entry.id, mode)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setMenu({ x: event.clientX, y: event.clientY, items: menuFor(entry) });
+                    }}
+                  />
                 );
               if (entry.kind === "event")
                 return <EventLine key={entry.id} event={entry} nowMs={nowMs} />;
@@ -1279,10 +1168,13 @@ export function ThreadView({
             {isDone(thread.status) ? null : (
               <ReplyBlock
                 // Someone new to reply to changes the prompt, which the editor only takes when it's made.
-                key={`${thread.id}:${asker?.id ?? ""}`}
+                key={`${thread.id}:${defaultTo.map((person) => person.id).join(",")}`}
                 placeholder={placeholder}
                 focusRef={focusReplyRef}
-                onSubmit={actions.onSend}
+                defaultTo={defaultTo}
+                people={people}
+                onNote={actions.onNote}
+                onSend={actions.onSend}
                 onBranch={actions.onBranch}
                 onCommand={(name) => {
                   if (name === "blocked") actions.onBlocked();
@@ -1290,7 +1182,7 @@ export function ThreadView({
                   if (name === "task") actions.onTask();
                 }}
                 threadId={thread.id}
-                inConversation={thread.kind === "conversation"}
+                autoFocus={autoFocusReply}
               />
             )}
             <div ref={endRef} />

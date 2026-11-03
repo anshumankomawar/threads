@@ -55,12 +55,11 @@ export function bucketsOf(person: Person | undefined): Bucket[] {
     : DEFAULT_BUCKETS;
 }
 
-// Which of their buckets a thread is in for whoever it's waiting on: chosen by the model with a short reason, or
-// placed by them by hand (`manual`), which sticks. It's for one person; once the thread is waiting on someone else, or
-// the bucket is gone, it's sorted again. When their buckets change or the thread is retitled, the model's choice goes
-// `stale`: the thread stays where it is until the model has looked again, so nothing jumps around in the meantime.
+// Which of someone's buckets a thread is in for them (`Thread.triage` is keyed by person): chosen by the model with a
+// short reason, or placed by them by hand (`manual`), which sticks. Once their bucket is gone it's sorted again. When
+// their buckets change or the thread is retitled, the model's choice goes `stale`: the thread stays where it is until
+// the model has looked again, so nothing jumps around in the meantime.
 export type Triage = {
-  personId: string;
   bucketId: string;
   reason: string;
   manual: boolean;
@@ -89,31 +88,24 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
   urgent: "Urgent",
 };
 
-// A thread is a log of one ask: messages, activity, and the resolution that closes it.
+// A thread is a log of one ask: messages, activity, and the resolution that closes it. A message is a note in the
+// thread (`sentTo` empty: nobody is told) or sent to people (⌘↵), which puts the thread in their inbox, like email.
 export type Entry =
   | {
       kind: "message";
       id: string;
       author: Person;
       text: string;
+      sentTo: Person[];
       createdAtMs: number;
     }
   | { kind: "event"; id: string; actor: Person; text: string; createdAtMs: number }
   | { kind: "resolution"; id: string; author: Person; text: string; createdAtMs: number };
 
-// Everything is a thread. An issue is an ask of someone, in their inbox until it's closed; a conversation is a talk
-// with the people you @mention, branched off the thread it started in, and in nobody's inbox. They share the same
-// document, replies and resolution.
-export type ThreadKind = "issue" | "conversation";
-
-export const KIND_LABELS: Record<ThreadKind, string> = {
-  issue: "Thread",
-  conversation: "Conversation",
-};
-
+// Everything is a thread: an ask, with whoever it's assigned to, a log of notes and messages sent between people, and
+// the resolution that closes it.
 export type Thread = {
   id: string;
-  kind: ThreadKind;
   title: string;
   // Whoever is asking: they track it until it closes. Not always whoever made it (`createdBy`).
   requester: Person;
@@ -127,10 +119,12 @@ export type Thread = {
   effortHours: number | null;
   // Ids of its labels. A group's label puts it in that group; the most important of `SEEDED_LABELS` feeds its score.
   labelIds: string[];
-  // Which inbox bucket it's in for whoever it's waiting on; null until it's sorted.
-  triage: Triage | null;
-  // The people in a conversation (whoever started it and everyone mentioned); empty for issues.
-  attendees: Person[];
+  // Which of their buckets it's in, for each person it's in the inbox of, by id; missing until it's sorted for them.
+  triage: Record<string, Triage>;
+  // When each person last marked it done for themselves (E), by id. Something sent to them after brings it back.
+  doneBy: Record<string, number>;
+  // Until when each person has snoozed it (H), by id; it's out of their inbox until then.
+  snoozedUntil: Record<string, number>;
   // The thread this one was branched off from, if any.
   branchedFromId: string | null;
   // The thread this one blocks, if it was made with `/blocked`.
@@ -156,23 +150,79 @@ export function lastMessage(thread: Thread): Message | undefined {
   return thread.entries.findLast((entry): entry is Message => entry.kind === "message");
 }
 
-// Whose turn it is, which decides whose inbox the thread is in: the assignee's, or whoever asked while nobody is
-// assigned. Messages never move it, so a thread is a worklog; it leaves the inbox when it's closed. Conversations
-// aren't in anyone's inbox.
-export function waitingOn(thread: Thread): string | null {
-  if (thread.kind === "conversation") return null;
+// Whose turn it is: the assignee, or whoever asked while nobody is assigned. The thread is theirs to finish, so it
+// stays in their inbox until it's closed. Messages never move it.
+export function waitingOn(thread: Thread): string {
   return thread.assignee?.id ?? thread.requester.id;
 }
 
-// The other side of an issue from someone: whoever asked if it's the assignee, and the assignee otherwise.
+// The other side of a thread from someone: whoever asked if it's the assignee, and the assignee otherwise.
 export function otherSide(thread: Thread, personId: string): Person | null {
-  if (thread.kind !== "issue" || thread.assignee === null) return null;
+  if (thread.assignee === null) return null;
   const other = personId === thread.assignee.id ? thread.requester : thread.assignee;
   return other.id === personId ? null : other;
 }
 
+// The latest message someone else sent this person in the thread.
+export function lastSentTo(thread: Thread, personId: string): Message | undefined {
+  return thread.entries.findLast(
+    (entry): entry is Message =>
+      entry.kind === "message" &&
+      entry.author.id !== personId &&
+      entry.sentTo.some((person) => person.id === personId),
+  );
+}
+
+// Why a thread is in someone's inbox, as in email: it's theirs to finish (`assigned`, until it's closed), or someone
+// sent them something since they last marked it done (`sent`). Snoozing takes it out until then; closing takes it out
+// for everyone.
+export type InboxReason = "assigned" | "sent";
+
+export function inboxReason(thread: Thread, personId: string, nowMs: number): InboxReason | null {
+  if (isDone(thread.status) || (thread.snoozedUntil[personId] ?? 0) > nowMs) return null;
+  if (waitingOn(thread) === personId) return "assigned";
+  const sent = lastSentTo(thread, personId);
+  return sent !== undefined && sent.createdAtMs > (thread.doneBy[personId] ?? 0) ? "sent" : null;
+}
+
+// Everyone whose inbox a thread is in, snoozed or not, which is who it's sorted for.
+export function inboxPeople(thread: Thread): string[] {
+  const candidates = new Set([
+    waitingOn(thread),
+    ...thread.entries.flatMap((entry) =>
+      entry.kind === "message" ? entry.sentTo.map((person) => person.id) : [],
+    ),
+  ]);
+  return [...candidates].filter((personId) => inboxReason(thread, personId, 0) !== null);
+}
+
+// Everyone on a thread: whoever asked, whoever has it, and everyone who's written in it or been sent something.
+export function participants(thread: Thread): Person[] {
+  const people = new Map<string, Person>();
+  const add = (person: Person | null): void => {
+    if (person !== null && !people.has(person.id)) people.set(person.id, person);
+  };
+  add(thread.requester);
+  add(thread.assignee);
+  for (const entry of thread.entries)
+    if (entry.kind === "message") {
+      add(entry.author);
+      entry.sentTo.forEach(add);
+    }
+  return [...people.values()];
+}
+
+// Who a reply goes to by default (⌘↵), as in email: whoever last sent you something here, else the other side.
+export function replyTo(thread: Thread, personId: string): Person[] {
+  const sent = lastSentTo(thread, personId);
+  if (sent !== undefined) return [sent.author];
+  const other =
+    otherSide(thread, personId) ?? (thread.requester.id === personId ? null : thread.requester);
+  return other === null ? [] : [other];
+}
+
 // Links inside a message's text: another thread as `[[thread:<id>]]` (`#` in a reply), a person as
-// `[[person:<id>]]` (`@` in a reply; mentioning someone asks them a question).
+// `[[person:<id>]]` (`@` in a reply; mentioning someone adds them to who it's sent to).
 const LINK = /\[\[(thread|person):([^\]\s]+)\]\]/g;
 const THREAD_LINK = /\[\[thread:([^\]\s]+)\]\]/g;
 const MENTION = /\[\[person:([^\]\s]+)\]\]/g;
@@ -205,11 +255,6 @@ export function plainThreadLinks(
     .replace(THREAD_LINK, (_, threadId: string) => `#${titleOf(threadId) ?? "thread"}`)
     .replace(MENTION, (_, personId: string) => `@${nameOf(personId) ?? "someone"}`);
 }
-
-// The id of the message that announces a conversation in the thread it started in, so the thread can show the
-// conversation there.
-export const conversationStartedId = (conversationId: string): string =>
-  `${conversationId}:started`;
 
 // A message's words without the mentions it opens with: "[[person:arjun]] can you look?" is "can you look?".
 export function withoutLeadingMentions(text: string): string {
