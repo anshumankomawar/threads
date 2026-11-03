@@ -200,6 +200,15 @@ export function PersonView({
         </p>
       ) : (
         <>
+          {/* Right under the chip that shows them, so they appear where you clicked rather than below every open thread. */}
+          {showClosed && (
+            <ThreadList
+              title="Closed"
+              threads={shared.closed}
+              unreadIds={unreadIds}
+              onOpenThread={onOpenThread}
+            />
+          )}
           <ThreadList
             title="Waiting on you"
             threads={shared.waitingOnYou}
@@ -218,14 +227,6 @@ export function PersonView({
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}
           />
-          {showClosed && (
-            <ThreadList
-              title="Closed"
-              threads={shared.closed}
-              unreadIds={unreadIds}
-              onOpenThread={onOpenThread}
-            />
-          )}
         </>
       )}
     </div>

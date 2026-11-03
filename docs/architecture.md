@@ -284,7 +284,8 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
 - **Anyone else's** (`PersonView`, the `{ person }` page) opens in the main area like a group's page. It shows who they are,
   their manager and the chain above, their reports, and the groups you're both in, each linking on. Then **the threads
   you're both in** (`sharedThreads` in `profile.ts`), in three lists by whose turn it is: waiting on you, waiting on them,
-  and everything else. Closed threads hide behind an "N closed" chip, as on a group's page, and archived ones never show.
+  and everything else. Closed threads hide behind an "N closed" chip, as on a group's page, and show right under it when it's on, so
+  they appear where you clicked; archived ones never show.
   "New thread to them" opens the new-thread palette with them first to pick.
 - **Being in a thread** is one rule, `involves` in `model.ts`: you asked, it's yours, something was sent to you, or you've
   replied. It's the same rule as for notifications (`activityFor`). Writing a thread's description doesn't count, so a
