@@ -6,7 +6,7 @@ import { isDone, type Group, type Label, type Person, type Thread } from "model"
 export type ThreadFilter = {
   // Open threads only, or closed ones too.
   includeDone: boolean;
-  // Only threads this person has or asked for.
+  // Only threads this person owns or is assigned.
   personId: string | null;
   // Only threads that also have this label.
   labelId: string | null;
@@ -14,21 +14,22 @@ export type ThreadFilter = {
 
 export const NO_FILTER: ThreadFilter = { includeDone: false, personId: null, labelId: null };
 
-// The threads with a label, most recently active first. Archived threads stay out; they're put away.
+// The organization's threads, all of them or those with a label (a group's, for the group), narrowed by a filter, most
+// recently active first. Archived threads stay out; they're put away.
 export function threadsWithLabel(
   threads: Thread[],
-  labelId: string,
+  labelId: string | null,
   filter: ThreadFilter = NO_FILTER,
 ): Thread[] {
   return threads
     .filter(
       (thread) =>
-        thread.labelIds.includes(labelId) &&
+        (labelId === null || thread.labelIds.includes(labelId)) &&
         thread.status !== "archived" &&
         (filter.includeDone || !isDone(thread.status)) &&
         (filter.personId === null ||
-          thread.assignee?.id === filter.personId ||
-          thread.requester.id === filter.personId) &&
+          thread.owner.id === filter.personId ||
+          thread.assignees.some((person) => person.id === filter.personId)) &&
         (filter.labelId === null || thread.labelIds.includes(filter.labelId)),
     )
     .toSorted((a, b) => b.updatedAtMs - a.updatedAtMs);

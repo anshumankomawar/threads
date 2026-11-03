@@ -17,7 +17,9 @@ function notificationText(item: ActivityItem, me: Person, plain: (text: string) 
   const { entry } = item;
   if (entry.kind === "event") return `${name} ${plain(entry.text)}`;
   if (item.summary === "opened") {
-    return item.thread.assignee?.id === me.id ? `${name} asked you` : `${name} started this`;
+    return item.thread.assignees.some((person) => person.id === me.id)
+      ? `${name} asked you`
+      : `${name} started this`;
   }
   const text = entry.kind === "message" || entry.kind === "resolution" ? plain(entry.text) : "";
   return `${name}: ${text}`;

@@ -22,10 +22,11 @@ import type {
 export type ThreadRecord = {
   id: string;
   title: string;
-  requesterId: string;
-  // Who really made it, when they asked on the requester's behalf; otherwise the requester.
+  // Its owner: whoever made it.
   createdById: string;
-  assigneeId: string | null;
+  // Everyone it's assigned to. A message @mentioning someone adds them (`SyncEngine.#apply`); a group @mentioned is
+  // assigned through its label, in `labelIds`.
+  assigneeIds: string[];
   status: Status;
   priority: Priority;
   dueAtMs: number | null;
@@ -40,7 +41,7 @@ export type ThreadRecord = {
   branchedFromId: string | null;
   // The thread this one blocks (made with `/blocked`): that thread stays blocked until this one closes.
   blocksId: string | null;
-  // When each person last opened it, so whoever asked them a question can see it was seen.
+  // When each person last opened it, so whoever asked them something can see it was seen.
   seenBy: Record<string, number>;
   createdAtMs: number;
   updatedAtMs: number;
@@ -83,13 +84,11 @@ export const ModelRegistry = {
   Thread: {
     loadStrategy: "instant",
     references: {
-      requesterId: "Person",
       createdById: "Person",
-      assigneeId: "Person",
       branchedFromId: "Thread",
       blocksId: "Thread",
     },
-    referenceArrays: { labelIds: "Label" },
+    referenceArrays: { assigneeIds: "Person", labelIds: "Label" },
     backReferences: { entries: "Entry" },
   },
   Entry: {
@@ -100,7 +99,7 @@ export const ModelRegistry = {
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v18");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v19");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -164,13 +163,12 @@ export type TransactionInput =
 export type ThreadCreate = {
   id: string;
   title: string;
-  assigneeId: string | null;
+  // Who it's assigned to from the start; more join as they're @mentioned.
+  assigneeIds?: string[];
   // Set when a discussion is branched off another thread (`#` in a message).
   branchedFromId?: string | null;
   // Set when the thread is what another one is blocked on (`/blocked`).
   blocksId?: string | null;
-  // Who is really asking, when it isn't whoever is making the thread. They become its requester.
-  onBehalfOfId?: string | null;
   // Its labels from the start, such as the group it's made in.
   labelIds?: string[];
 };
@@ -188,17 +186,7 @@ export type OrganizationChanges = Pick<Organization, "name">;
 export type PersonChanges = { buckets?: Bucket[] };
 
 export type ThreadChanges = Partial<
-  Pick<
-    ThreadRecord,
-    | "title"
-    | "requesterId"
-    | "assigneeId"
-    | "status"
-    | "priority"
-    | "dueAtMs"
-    | "effortHours"
-    | "labelIds"
-  >
+  Pick<ThreadRecord, "title" | "status" | "priority" | "dueAtMs" | "effortHours" | "labelIds">
 > &
   ScopedChanges;
 
@@ -258,7 +246,7 @@ export type EntryCreate = {
   threadId: string;
   kind: "message" | "resolution";
   text: string;
-  // Who a message is sent to (⌘↵); none makes it a note.
+  // Who a message is sent to; none makes it a note.
   sentToIds?: string[];
 };
 
@@ -280,9 +268,8 @@ export function threadFromCreate(data: ThreadCreate, actorId: string, nowMs: num
   return {
     id: data.id,
     title: data.title,
-    requesterId: data.onBehalfOfId ?? actorId,
     createdById: actorId,
-    assigneeId: data.assigneeId,
+    assigneeIds: [...new Set(data.assigneeIds ?? [])],
     status: "open",
     priority: "none",
     dueAtMs: null,
@@ -368,9 +355,8 @@ export function toThread(
   return {
     id: record.id,
     title: record.title,
-    requester: person(record.requesterId),
-    createdBy: person(record.createdById),
-    assignee: record.assigneeId === null ? null : person(record.assigneeId),
+    owner: person(record.createdById),
+    assignees: record.assigneeIds.map(person),
     status: record.status,
     priority: record.priority,
     dueAtMs: record.dueAtMs,
@@ -433,9 +419,8 @@ export function fromThread(thread: Thread): { thread: ThreadRecord; entries: Ent
     thread: {
       id: thread.id,
       title: thread.title,
-      requesterId: thread.requester.id,
-      createdById: thread.createdBy.id,
-      assigneeId: thread.assignee?.id ?? null,
+      createdById: thread.owner.id,
+      assigneeIds: thread.assignees.map((person) => person.id),
       status: thread.status,
       priority: thread.priority,
       dueAtMs: thread.dueAtMs,

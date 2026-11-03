@@ -9,7 +9,7 @@ const CHUNK = 20;
 export const RETRY_MS = 60_000;
 
 // Keeps every inbox sorted. After each change (and when the workspace loads) it asks the model about the threads
-// that aren't sorted for whoever they're waiting on, and saves its choices as their own batch, so they reach clients
+// that aren't sorted for whoever's inbox they're in, and saves its choices as their own batch, so they reach clients
 // like any other change. It runs one pass at a time; a kick while it's running runs another pass after it.
 export class Triager {
   readonly #engine: SyncEngine;

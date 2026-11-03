@@ -2,12 +2,10 @@ import {
   bucketsOf,
   inboxReason,
   isDone,
-  askerId,
+  isPersonal,
   lastSentTo,
-  otherSide,
   levelPositions,
   threadScore,
-  waitingOn,
   type Bucket,
   type InboxReason,
   type Person,
@@ -17,10 +15,12 @@ import { DAY, startOfDay } from "./format";
 
 export type InboxItem = {
   thread: Thread;
-  // Why it's in your inbox: yours to finish, or someone sent you something. Null for what you sent.
+  // Why it's in your inbox: assigned to you, or someone sent you something. Null for your outbox (Sent).
   why: InboxReason | null;
-  // Who it's from: whoever sent you the latest message, else the other side; for what you sent, who has it.
-  from: Person | null;
+  // Who it's from: whoever sent you the latest message, else its owner.
+  from: Person;
+  // Who to show it by: who it's from, or for your outbox, who else is on it ("Sam +2").
+  who: string | null;
   // Why it's where it is in its bucket: who it's from, how soon it's due, and so on.
   reason: string;
   dueLabel: string | null;
@@ -34,12 +34,11 @@ export type BucketGroup = { bucket: Bucket; items: InboxItem[] };
 export type Inbox = {
   // Your buckets in your order, each with the threads the model (or you) put there, most important first.
   buckets: BucketGroup[];
-  // Waiting on you but not sorted yet, while the model gets to them.
+  // In your inbox but not sorted yet, while the model gets to them.
   unsorted: InboxItem[];
   // Everything in the inbox in the order it's shown, for moving on to the next thread.
   order: Thread[];
-  // What you sent and are waiting on, like email's Sent: what you asked others for, messages you sent that nobody
-  // has answered yet, and your blocked threads, by who they're blocked on.
+  // Your outbox, like email's Sent: the open threads you own that anyone else is on, newest first.
   sent: InboxItem[];
 };
 
@@ -56,14 +55,12 @@ function shortDate(atMs: number, nowMs: number): string {
   return new Date(atMs).toLocaleDateString(undefined, format);
 }
 
-// A thread's score for whoever it's waiting on.
+// A thread's score: how much it matters, weighing its owner's level.
 export function scoreOf(thread: Thread, people: Person[], nowMs: number): number {
-  const asker = askerId(thread.requester.id, thread.assignee?.id ?? null, waitingOn(thread));
-  return threadScore(thread, levelPositions(people)(asker), nowMs);
+  return threadScore(thread, levelPositions(people)(thread.owner.id), nowMs);
 }
 
 function reasonFor(thread: Thread, me: Person, sender: Person, nowMs: number): string {
-  if (thread.assignee === null) return "Needs an assignee";
   const due = thread.dueAtMs;
   const days = due === null ? null : daysUntil(due, nowMs);
   return [
@@ -85,9 +82,27 @@ function reasonFor(thread: Thread, me: Person, sender: Person, nowMs: number): s
     .join(" · ");
 }
 
-// Your inbox, as in email: every open thread that's yours to finish or that someone sent you something on since you
-// last marked it done, unless you've snoozed it (`inboxReason`), in the bucket it was sorted into for you, ordered by
-// how much it matters. Blocked threads stay, last in their bucket. What you sent and are waiting on is Sent.
+// Everyone else on a thread you own: its assignees and whoever you've sent it to.
+function othersOn(thread: Thread, me: Person): Person[] {
+  const others = new Map<string, Person>();
+  for (const person of thread.assignees) others.set(person.id, person);
+  for (const entry of thread.entries)
+    if (entry.kind === "message" && entry.author.id === me.id)
+      for (const person of entry.sentTo) others.set(person.id, person);
+  others.delete(me.id);
+  return [...others.values()];
+}
+
+// "Sam", or "Sam +2" when there are more.
+const shortNames = (people: Person[]): string | null =>
+  people.length === 0
+    ? null
+    : `${people[0].name.split(" ")[0]}${people.length > 1 ? ` +${people.length - 1}` : ""}`;
+
+// Your inbox, as in email: every open thread assigned to you or that someone sent you something on since you last
+// marked it done, unless you've snoozed it (`inboxReason`), in the bucket it was sorted into for you, ordered by how
+// much it matters. Blocked threads stay, last in their bucket. Your outbox (Sent) is every open thread you own that
+// anyone else is on, until it's closed.
 export function buildInbox(threads: Thread[], me: Person, people: Person[], nowMs: number): Inbox {
   const buckets = bucketsOf(me);
   const byBucket = new Map<string, InboxItem[]>(buckets.map((bucket) => [bucket.id, []]));
@@ -99,25 +114,20 @@ export function buildInbox(threads: Thread[], me: Person, people: Person[], nowM
   for (const thread of threads) {
     if (isDone(thread.status)) continue;
     const why = inboxReason(thread, me.id, nowMs);
-    const turn = waitingOn(thread);
-    // The last message anyone sent here, if it was yours: you're waiting to hear back.
-    const lastSend = thread.entries.findLast(
-      (entry) => entry.kind === "message" && entry.sentTo.length > 0,
-    );
-    const awaiting = lastSend?.kind === "message" && lastSend.author.id === me.id;
-    const asked = turn !== me.id && thread.requester.id === me.id;
-    if (why === null && !asked && !awaiting) continue;
+    const owned = thread.owner.id === me.id && !isPersonal(thread);
+    if (why === null && !owned) continue;
     const due = thread.dueAtMs;
     const overdue = due !== null && due < nowMs;
     const isBlocked = thread.status === "blocked";
-    const blockedOn = isBlocked ? blockerOf(thread)?.assignee : undefined;
+    const blockedOn = isBlocked ? blockerOf(thread)?.assignees[0] : undefined;
     const sender = lastSentTo(thread, me.id)?.author;
-    const from =
-      (why === "sent" ? sender : undefined) ?? otherSide(thread, me.id) ?? thread.requester;
+    const others = othersOn(thread, me);
+    const from = (why === "sent" ? sender : undefined) ?? thread.owner;
     const item: InboxItem = {
       thread,
       why,
       from,
+      who: why === null ? shortNames(others) : from.name.split(" ")[0],
       reason: isBlocked
         ? blockedOn
           ? `Blocked on ${blockedOn.name}`
@@ -134,24 +144,16 @@ export function buildInbox(threads: Thread[], me: Person, people: Person[], nowM
       score: scoreOf(thread, people, nowMs),
     };
     if (why === null) {
-      // Sent: who has it, or who you're waiting to hear from.
-      const holder =
-        awaiting && lastSend?.kind === "message"
-          ? lastSend.sentTo[0]
-          : [thread.assignee, thread.requester].find((person) => person?.id === turn);
-      sent.push({ ...item, from: holder ?? null });
+      sent.push(item);
       continue;
     }
     const triage = thread.triage[me.id];
     const group = triage === undefined ? undefined : byBucket.get(triage.bucketId);
     (group ?? unsorted).push(item);
-    if (isBlocked) sent.push({ ...item, from: blockedOn ?? null });
   }
 
-  // Threads needing an assignee come first, since nobody else can act on them; blocked ones go last, with nothing to
-  // do until they're unblocked; the rest by score.
-  const rank = ({ thread }: InboxItem): number =>
-    thread.status === "blocked" ? 2 : thread.assignee === null ? 0 : 1;
+  // Blocked threads go last, with nothing to do until they're unblocked; the rest by score.
+  const rank = ({ thread }: InboxItem): number => (thread.status === "blocked" ? 1 : 0);
   const byScore = (a: InboxItem, b: InboxItem): number => rank(a) - rank(b) || b.score - a.score;
   const groups = buckets.map((bucket) => ({
     bucket,

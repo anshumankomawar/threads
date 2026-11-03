@@ -52,7 +52,9 @@ function ThreadList({
       <ul className="list-page-items">
         {threads.map((thread) => {
           const meta = [
-            thread.assignee?.name ?? "Unassigned",
+            thread.assignees.length === 0
+              ? "Unassigned"
+              : thread.assignees.map((person) => person.name.split(" ")[0]).join(", "),
             thread.status === "open" ? null : STATUS_LABELS[thread.status],
           ]
             .filter((part) => part !== null)
@@ -75,7 +77,7 @@ function ThreadList({
                       <span className="unread-dot" aria-label="Unread" />
                     )}
                   </span>
-                  <span className="list-page-reason">{`Asked by ${thread.requester.name}`}</span>
+                  <span className="list-page-reason">{`By ${thread.owner.name}`}</span>
                 </span>
                 {meta !== "" && <span className="list-page-meta">{meta}</span>}
               </button>
@@ -120,7 +122,7 @@ export function PersonView({
   const managers = chainAbove(people, person.id);
   const reports = people.filter((other) => other.managerId === person.id);
   const firstName = person.name.split(" ")[0];
-  const openCount = shared.waitingOnYou.length + shared.waitingOnThem.length + shared.others.length;
+  const openCount = shared.forYou.length + shared.forThem.length + shared.others.length;
   const details = orgDetails(person);
 
   return (
@@ -210,14 +212,14 @@ export function PersonView({
             />
           )}
           <ThreadList
-            title="Waiting on you"
-            threads={shared.waitingOnYou}
+            title="Assigned to you"
+            threads={shared.forYou}
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}
           />
           <ThreadList
-            title={`Waiting on ${firstName}`}
-            threads={shared.waitingOnThem}
+            title={`Assigned to ${firstName}`}
+            threads={shared.forThem}
             unreadIds={unreadIds}
             onOpenThread={onOpenThread}
           />

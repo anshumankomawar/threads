@@ -71,7 +71,7 @@ export function DetailsPanel({
   const history = thread.entries.flatMap((entry) => (entry.kind === "event" ? [entry] : []));
   const nameOf = (personId: string): string | undefined =>
     people.find((person) => person.id === personId)?.name;
-  // Which of your buckets it's in, and why, while it's waiting on you.
+  // Which of your buckets it's in, and why, while it's in your inbox.
   const triage = thread.triage[me.id] ?? null;
   const bucket = bucketsOf(me).find((candidate) => candidate.id === triage?.bucketId);
 

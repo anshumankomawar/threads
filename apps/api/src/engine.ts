@@ -2,6 +2,8 @@ import {
   applyScopedChanges,
   bucketsOf,
   GROUP_TARGET,
+  groupMentionsIn,
+  mentionsIn,
   descriptionOf,
   inboxPeople,
   lastSentTo,
@@ -129,12 +131,6 @@ class Batch {
     return records;
   }
 
-  // Whose turn a thread is, the same rule as `waitingOn` in the model.
-  waitingOn(threadId: string): string | null {
-    const thread = this.get("Thread", threadId);
-    return thread === undefined ? null : (thread.assigneeId ?? thread.requesterId);
-  }
-
   // The open threads still blocking a thread.
   openBlockers(threadId: string): ThreadRecord[] {
     return this.all("Thread").filter(
@@ -150,18 +146,15 @@ const id = z.string().min(1).max(100);
 const threadCreate = z.object({
   id,
   title: z.string().trim().min(1).max(200),
-  assigneeId: id.nullable(),
+  assigneeIds: z.array(id).max(50).optional(),
   branchedFromId: id.nullable().optional(),
   blocksId: id.nullable().optional(),
-  onBehalfOfId: id.nullable().optional(),
   labelIds: z.array(id).optional(),
 });
 
 const threadChanges = z
   .strictObject({
     title: z.string().trim().min(1).max(200),
-    requesterId: id,
-    assigneeId: id,
     status: z.enum(["open", "blocked", "closed", "archived"]),
     priority: z.enum(["none", "low", "medium", "high", "urgent"]),
     dueAtMs: z.number().int().nullable(),
@@ -283,8 +276,6 @@ function localTime(ms: number, offsetMinutes: number, options: Intl.DateTimeForm
 function describeChanges(
   thread: ThreadRecord,
   changes: ThreadChanges,
-  actor: Person,
-  people: (id: string) => Person | undefined,
   labelOf: (id: string) => Label | undefined,
   offsetMinutes: number,
 ): string[] {
@@ -313,18 +304,6 @@ function describeChanges(
         ? "removed the due date"
         : `set the due date to ${localTime(changes.dueAtMs, offsetMinutes, { weekday: "short", month: "short", day: "numeric" })}`,
     );
-  if (
-    changes.assigneeId !== undefined &&
-    changes.assigneeId !== null &&
-    changes.assigneeId !== thread.assigneeId
-  )
-    lines.push(
-      changes.assigneeId === actor.id
-        ? "took this on"
-        : `assigned this to ${people(changes.assigneeId)?.name ?? changes.assigneeId}`,
-    );
-  if (changes.requesterId !== undefined && changes.requesterId !== thread.requesterId)
-    lines.push(`made ${people(changes.requesterId)?.name ?? changes.requesterId} the requester`);
   if (changes.effortHours !== undefined && changes.effortHours !== thread.effortHours)
     lines.push(
       changes.effortHours === null
@@ -351,7 +330,8 @@ function describeChanges(
 
 // A record stored by an older version, in today's shape, or null when it no longer has one. Labels were tags; threads
 // had schedules and kinds (meetings, focus blocks, conversations: all plain threads now) with call links and notes;
-// messages weren't sent to anyone (they're notes); and a thread's bucket was one person's rather than one per person.
+// messages weren't sent to anyone (they're notes); a thread's bucket was one person's rather than one per person; and a
+// thread had a requester and one assignee, where now its maker owns it and any number of people are assigned.
 function upgrade(modelName: ModelName, data: AnyRecord): AnyRecord | null {
   if (modelName === "Entry") {
     const { kind } = data as { kind: string };
@@ -367,6 +347,8 @@ function upgrade(modelName: ModelName, data: AnyRecord): AnyRecord | null {
     workedMinutes?: unknown;
     kind?: string;
     attendeeIds?: string[];
+    requesterId?: string;
+    assigneeId?: string | null;
     triage: ThreadRecord["triage"] | (Triage & { personId: string }) | null;
   };
   const {
@@ -376,6 +358,8 @@ function upgrade(modelName: ModelName, data: AnyRecord): AnyRecord | null {
     workedMinutes: _workedMinutes,
     kind: _kind,
     attendeeIds: _attendeeIds,
+    requesterId,
+    assigneeId,
     triage,
     ...thread
   } = data as Old;
@@ -387,6 +371,9 @@ function upgrade(modelName: ModelName, data: AnyRecord): AnyRecord | null {
   };
   return {
     ...thread,
+    createdById: thread.createdById ?? requesterId,
+    assigneeIds:
+      thread.assigneeIds ?? (assigneeId === null || assigneeId === undefined ? [] : [assigneeId]),
     labelIds: thread.labelIds ?? tagIds ?? [],
     triage: perPerson(),
     doneBy: thread.doneBy ?? {},
@@ -401,7 +388,7 @@ export type EngineOptions = {
   onActions?: (actions: SyncAction[]) => void;
 };
 
-// What the model needs to sort one person's inbox: their buckets, the threads waiting on them that aren't sorted
+// What the model needs to sort one person's inbox: their buckets, the threads in their inbox that aren't sorted
 // for them yet, and the ones they placed by hand, as examples of what they mean.
 export type TriageRequest = {
   person: Person;
@@ -559,7 +546,7 @@ export class SyncEngine {
             return {
               id: thread.id,
               title: thread.title,
-              from: (sent?.author ?? thread.requester).name,
+              from: (sent?.author ?? thread.owner).name,
               text: text.slice(0, 600),
             };
           }),
@@ -744,16 +731,13 @@ export class SyncEngine {
       const { data } = transaction;
       if (batch.get("Thread", data.id) !== undefined)
         throw new EngineError(409, `Thread already exists: ${data.id}`);
-      if (data.assigneeId !== null) requirePerson(data.assigneeId);
+      for (const personId of data.assigneeIds ?? []) requirePerson(personId);
       const parent = data.branchedFromId ? batch.get("Thread", data.branchedFromId) : undefined;
       if (data.branchedFromId && parent === undefined)
         throw new EngineError(404, "Thread not found");
       const blocked = data.blocksId ? batch.get("Thread", data.blocksId) : undefined;
       if (data.blocksId && (blocked === undefined || isDone(blocked.status)))
         throw new EngineError(404, "Thread not found");
-      // Asking on someone's behalf makes them the requester; who really made it stays on record.
-      const onBehalfOf = data.onBehalfOfId === actor.id ? null : (data.onBehalfOfId ?? null);
-      if (onBehalfOf !== null) requirePerson(onBehalfOf);
       requireLabels(data.labelIds ?? []);
       // A branch or blocker stays in its parent's groups, so a project's blockers don't fall out of the project.
       const inherited = [...(parent?.labelIds ?? []), ...(blocked?.labelIds ?? [])].filter(
@@ -764,15 +748,6 @@ export class SyncEngine {
         ...made,
         labelIds: [...new Set([...made.labelIds, ...inherited])],
       });
-      if (onBehalfOf !== null)
-        batch.put("Entry", {
-          id: `${data.id}:on-behalf`,
-          threadId: data.id,
-          kind: "event",
-          actorId: actor.id,
-          text: `created this on behalf of ${person(onBehalfOf)?.name ?? onBehalfOf}`,
-          createdAtMs: nowMs,
-        });
       // A blocker blocks the thread it's for until the blocker closes.
       if (blocked !== undefined) {
         batch.put("Thread", { ...blocked, status: "blocked", updatedAtMs: nowMs });
@@ -829,22 +804,39 @@ export class SyncEngine {
       if (batch.get("Entry", data.id) !== undefined)
         throw new EngineError(409, `Entry already exists: ${data.id}`);
       // An entry with its thread's id is the thread's description (`descriptionOf`): a message, written by whoever
-      // made the thread, who may have made it on someone's behalf. No entry takes another thread's id.
+      // made the thread. No entry takes another thread's id.
       if (data.id === thread.id) {
         if (data.kind !== "message")
           throw new EngineError(400, "A thread's description is a message");
-        if (actor.id !== (thread.createdById ?? thread.requesterId))
+        if (actor.id !== thread.createdById)
           throw new EngineError(403, "Only whoever opened a thread writes its description");
       } else if (batch.get("Thread", data.id) !== undefined)
         throw new EngineError(400, "An entry can't take another thread's id");
-      // Sending (⌘↵) is to real people, and only a message is sent; anything else is a note in the thread.
+      // Sending is to real people, and only a message is sent; anything else is a note in the thread.
       const sentTo = data.sentToIds ?? [];
       if (sentTo.length > 0 && data.kind !== "message")
         throw new EngineError(400, "Only a message is sent to people");
       for (const personId of sentTo) requirePerson(personId);
       batch.put("Entry", entryFromCreate(data, actor.id, nowMs));
+      // Whoever a message @mentions is assigned the thread, and a group @mentioned through its label. Mentions of
+      // people or groups that don't exist are left as text.
+      const mentioned =
+        data.kind === "message"
+          ? mentionsIn(data.text).filter((personId) => person(personId) !== undefined)
+          : [];
+      const groupLabels =
+        data.kind === "message"
+          ? groupMentionsIn(data.text).flatMap((groupId) => {
+              const labelId = batch.get("Group", groupId)?.labelId;
+              return labelId !== undefined && batch.get("Label", labelId) !== undefined
+                ? [labelId]
+                : [];
+            })
+          : [];
       batch.put("Thread", {
         ...thread,
+        assigneeIds: [...new Set([...thread.assigneeIds, ...mentioned])],
+        labelIds: [...new Set([...thread.labelIds, ...groupLabels])],
         status: data.kind === "resolution" ? "closed" : thread.status,
         updatedAtMs: nowMs,
       });
@@ -880,9 +872,6 @@ export class SyncEngine {
     const thread = batch.get("Thread", transaction.modelId);
     if (thread === undefined) throw new EngineError(404, "Thread not found");
     const { changes } = transaction;
-    if (changes.assigneeId !== undefined && changes.assigneeId !== null)
-      requirePerson(changes.assigneeId);
-    if (changes.requesterId !== undefined) requirePerson(changes.requesterId);
     if (changes.labelIds !== undefined) requireLabels(changes.labelIds);
     // Changes that are only about you (seen, done, snoozed, placed in one of your buckets) are quiet: no activity
     // line, and they don't count as an update. You place only what's in your inbox, into a bucket of yours.
@@ -898,8 +887,6 @@ export class SyncEngine {
     const lines = describeChanges(
       current,
       edits,
-      actor,
-      person,
       (labelId) => batch.get("Label", labelId),
       offsetMinutes,
     );
@@ -935,12 +922,12 @@ export class SyncEngine {
       batch.openBlockers(blocked.id).length === 0
     ) {
       batch.put("Thread", { ...blocked, status: "open", updatedAtMs: nowMs });
-      // Mirrors "is blocked on …": whoever has the thread is unblocked.
+      // Mirrors "is blocked on …", in its owner's name.
       batch.put("Entry", {
         id: `${transaction.id}:unblocked`,
         threadId: blocked.id,
         kind: "event",
-        actorId: blocked.assigneeId ?? blocked.requesterId,
+        actorId: blocked.createdById,
         text: `is unblocked, ${threadLink(thread.id)} is ${changes.status === "archived" ? "archived" : "closed"}`,
         createdAtMs: nowMs,
       });

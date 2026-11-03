@@ -140,8 +140,9 @@ function GroupTitle({
   );
 }
 
-// A label's threads, in the main area: for a group, with its members and history too, since a thread is in a group by
-// having the group's label. Open threads by default, and you can narrow by person or by another label.
+// The organization's threads, in the main area: all of them, or a label's. A group's page is its label's threads, with
+// its members too, since a thread is in a group by having the group's label. Open threads by default, and you can
+// narrow by person (who owns it or is assigned it), by a group or label, and show closed ones.
 export function LabelView({
   label,
   group,
@@ -156,7 +157,8 @@ export function LabelView({
   onOpenThread,
   onOpenPerson,
 }: {
-  label: Label;
+  // Null for every thread.
+  label: Label | null;
   group: Group | undefined;
   threads: Thread[];
   people: Person[];
@@ -171,18 +173,19 @@ export function LabelView({
 }): React.JSX.Element {
   const openMenu = useThreadMenu();
   const [filter, setFilter] = useState<ThreadFilter>(NO_FILTER);
-  const everything = threadsWithLabel(threads, label.id, { ...filter, includeDone: true });
-  const shown = threadsWithLabel(threads, label.id, filter);
+  const labelId = label?.id ?? null;
+  const everything = threadsWithLabel(threads, labelId, { ...filter, includeDone: true });
+  const shown = threadsWithLabel(threads, labelId, filter);
   const closedCount = everything.filter((thread) => isDone(thread.status)).length;
-  const inThese = threadsWithLabel(threads, label.id, { ...NO_FILTER, includeDone: true });
+  const inThese = threadsWithLabel(threads, labelId, { ...NO_FILTER, includeDone: true });
   const personOptions = people.filter((person) =>
     inThese.some(
-      (thread) => thread.assignee?.id === person.id || thread.requester.id === person.id,
+      (thread) =>
+        thread.owner.id === person.id || thread.assignees.some((other) => other.id === person.id),
     ),
   );
   const labelOptions = labels.filter(
-    (other) =>
-      other.id !== label.id && inThese.some((thread) => thread.labelIds.includes(other.id)),
+    (other) => other.id !== labelId && inThese.some((thread) => thread.labelIds.includes(other.id)),
   );
   const isMember = group?.memberIds.includes(me.id) ?? false;
   const nameOf = (personId: string): string =>
@@ -192,7 +195,7 @@ export function LabelView({
   return (
     <div className="list-page group-page">
       {group === undefined ? (
-        <h1 className="list-page-title">{label.name}</h1>
+        <h1 className="list-page-title">{label?.name ?? "All threads"}</h1>
       ) : (
         <GroupTitle
           key={group.name}
@@ -204,12 +207,12 @@ export function LabelView({
       )}
       <p className="list-page-summary">
         <HugeiconsIcon
-          icon={group === undefined ? Tag01Icon : UserGroupIcon}
+          icon={group !== undefined ? UserGroupIcon : label !== null ? Tag01Icon : THREAD_ICON}
           size={11}
           aria-hidden
         />{" "}
         {group === undefined
-          ? `Label · ${count}`
+          ? `${label === null ? "Everyone's" : "Label"} · ${count}`
           : `${group.memberIds.length} ${group.memberIds.length === 1 ? "member" : "members"} · ${count}${group.archived ? " · Archived" : ""}`}
       </p>
 
@@ -274,10 +277,12 @@ export function LabelView({
           />
           {labelOptions.length > 0 && (
             <MenuChip
-              label={labels.find((other) => other.id === filter.labelId)?.name ?? "Any label"}
+              label={
+                labels.find((other) => other.id === filter.labelId)?.name ?? "Any group or label"
+              }
               tone={filter.labelId === null ? "muted" : undefined}
               options={[
-                { label: "Any label", value: null as string | null },
+                { label: "Any group or label", value: null as string | null },
                 ...labelOptions.map((other) => ({ label: other.name, value: other.id })),
               ]}
               onSelect={(labelId) => setFilter((current) => ({ ...current, labelId }))}
@@ -305,7 +310,9 @@ export function LabelView({
         <ul className="list-page-items">
           {shown.map((thread) => {
             const meta = [
-              thread.assignee?.name ?? "Unassigned",
+              thread.assignees.length === 0
+                ? "Unassigned"
+                : thread.assignees.map((person) => person.name.split(" ")[0]).join(", "),
               thread.status === "open" ? null : STATUS_LABELS[thread.status],
             ]
               .filter((part) => part !== null)
@@ -328,7 +335,7 @@ export function LabelView({
                         <span className="unread-dot" aria-label="Unread" />
                       )}
                     </span>
-                    <span className="list-page-reason">{`Asked by ${thread.requester.name}`}</span>
+                    <span className="list-page-reason">{`By ${thread.owner.name}`}</span>
                   </span>
                   {meta !== "" && <span className="list-page-meta">{meta}</span>}
                 </button>

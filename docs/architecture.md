@@ -41,7 +41,7 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 
 | Path                                                 | What it is                                                                                                                                                        |
 | ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/model/src/model.ts`                        | The app's view types (`Thread` with nested `Entry`s and `Person`s), labels, `waitingOn`                                                                           |
+| `packages/model/src/model.ts`                        | The app's view types (`Thread` with nested `Entry`s and `Person`s), labels, inbox rules                                                                           |
 | `packages/model/src/sync.ts`                         | The sync protocol: records, `ModelRegistry`, `SCHEMA_HASH`, `SyncAction`, `TransactionInput`, records ↔ `Thread` conversion, `threadFromCreate`/`entryFromCreate` |
 | `packages/model/src/sample.ts`                       | Seed data: local people, the sample team and threads                                                                                                              |
 | `apps/api/src/engine.ts`                             | `SyncEngine`: transaction validation (zod), business rules and side effects, sync ids, the log, seeding                                                           |
@@ -62,7 +62,9 @@ Data is normalized into flat records linked by id, like database rows:
 - **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree), and `buckets` (their inbox
   buckets, each `{ id, name, description }`; `bucketsOf` falls back to `DEFAULT_BUCKETS`). Seeds refresh who people
   are but keep their `buckets`.
-- **Thread**: one ask. References people by id: `requesterId`, `assigneeId`, `createdById`. Has `status` (`open`,
+- **Thread**: one ask, visible to the whole organization. References people by id: `createdById` (its one owner,
+  whoever made it) and `assigneeIds` (everyone it's assigned to; groups are assigned through their label in
+  `labelIds`). Has `status` (`open`,
   `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`, `effortHours`, `labelIds`,
   `createdAtMs`, `updatedAtMs`, and per person, by id: `seenBy`, `doneBy`, `snoozedUntil` and `triage` (their bucket;
   see below). There are no kinds of thread.
@@ -70,9 +72,9 @@ Data is normalized into flat records linked by id, like database rows:
   who it was sent to, none for a note), `event` (activity line: `actorId`, `text`), `resolution`.
 - **A thread's description** is not a field: it's the message the thread was opened with, and it has the thread's
   own id (`descriptionOf`). The thread view shows it in the heading under the title; it's otherwise an ordinary
-  message (a note: the thread reaches its assignee by being assigned), and it counts as "opened" in notifications. The new-thread form asks for a
+  message (a note: the thread reaches its assignees by their being assigned), and it counts as "opened" in notifications. The new-thread form asks for a
   title, then an optional description (`createThread` sends the message with `id: threadId` only when there is one).
-  The server lets only whoever made the thread (`createdById`) write it, only as a message, keeps it out of moves, and lets no entry take
+  The server lets only its owner (`createdById`) write it, only as a message, keeps it out of moves, and lets no entry take
   another thread's id.
 
 The UI never works with records. `toThreads()` resolves references into the nested `Thread` shape from
@@ -174,15 +176,27 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
 
+## Owners, assignees and the global list
+
+Every thread is the organization's: everyone can see it, and anyone can close it. It has one **owner**, whoever made
+it (`createdById`, `Thread.owner`), and any number of **assignees**: picked when it's made (`assigneeIds` on create), and
+anyone @mentioned in a message since, which the server adds (`SyncEngine.#apply`, alongside the group's label for a
+group mention). Assignees aren't removed yet. The thread is in each assignee's inbox until they mark it done, and in its
+owner's outbox (Sent) until it's closed. A thread nobody else is on (no assignees, nothing sent to anyone) is its
+owner's own to-do, in their inbox (`isPersonal`, `assignedIds` in `model.ts`).
+
+People and groups are filters on one global list: All threads in the sidebar's Groups tab (`LabelView` with no label)
+narrows by person (owner or assignee), by group or label, and to closed threads too; a group's or label's page is the
+same list with its label applied (`threadsWithLabel` in `groups.ts`).
+
 ## @groups
 
 `@` offers groups as well as people, in replies and in the new-message panel. A group mention is `[[group:<id>]]` in
 the text (`groupMention`; the @ menus and drafts name it `group:<id>`, `mentionToken`), shown as @Name. Sending
 expands it to the group's members as they are then (`recipientsOf` in `compose.ts`), less you, into `sentToIds`, so each
 of them has the thread in their inbox; someone who joins later sees the group's threads on its page but gets only
-what's sent after. Mentioning a group also files the thread under its label. A thread asked of groups and nobody by
-name has no assignee: anyone in the group can close it, and each marks it done for themselves (⌘E); the asker has it
-in Sent (it's marked done for them, so it comes back to them when someone answers).
+what's sent after. Mentioning a group assigns it the thread through its label (the server adds it). Anyone in the group
+can close it, and each marks it done for themselves (⌘E).
 
 ## Writing a thread as one message (⌘⇧N)
 
@@ -190,8 +204,8 @@ in Sent (it's marked done for them, so it comes back to them when someone answer
 track this"). While you type, the app sends it with the names of the people it @mentions to `POST /ai/compose`
 (`apps/api/src/compose.ts`, Workers AI's Llama 3.1 8B, for speed), which drafts a title, any shared context, and an ask per distinct request with the people it's for; the
 panel previews that draft. Enter makes the thread from it with ordinary transactions (`composeThread` in `App.tsx`):
-the title and context as the thread and its description, the first person asked as its assignee, and each ask as a
-message sent to its people, opening with their @mentions (a message that @mentions everyone it went to doesn't also
+the title and context as the thread and its description, and each ask as a message sent to its people, opening with
+their @mentions, which assigns them (a message that @mentions everyone it went to doesn't also
 say "to …"). So it's still one thread, in each person's inbox and sorted for them by what they were
 asked (the triage prompt reads the latest message sent to them). Without the model it falls back to the first
 sentence as the title and one ask for everyone mentioned.
@@ -208,16 +222,16 @@ in place and kept as you type, with Send and Delete; sending it removes it.
 The model is Superhuman's, for threads: a thread is a reply thread with a title and an owner.
 
 - **Sends and notes.** In the reply, Enter sends it (`ReplyBlock` in `ThreadView.tsx`) to whoever last sent you
-  something there, else the other side (`replyTo` in `model.ts`), plus anyone @mentioned (`mentionNode.ts`). The To
+  something there, else (for its owner) its assignees or (for anyone else) its owner (`replyTo` in `model.ts`), plus
+  anyone @mentioned (`mentionNode.ts`), who's assigned the thread. The To
   line only shows once someone's mentioned, to add or take people off. With nobody to send to, it's a note: in the
   thread for anyone who opens it, but nobody is told (`sentToIds` empty). Sent messages show who they went to, notes say "Note". The server checks the people
-  exist and that only messages are sent. Who's on a thread is derived: whoever asked, whoever has it, and everyone
-  who's written in it or been sent something (`participants`).
+  exist and that only messages are sent. Who's on a thread is derived: its owner, its assignees, and everyone who's
+  written in it or been sent something (`participants`).
 - **Your inbox** (`inboxReason` in `model.ts`, shared by the server's sorting and the app's `buildInbox`): an open
-  thread is in it when it's yours to finish (`waitingOn`: its assignee, or whoever asked while nobody's assigned;
-  `assigned`, until it's closed), or someone sent you something since you last marked it done (`sent`), and you
-  haven't snoozed it. Messages never move a thread between people: a thread is a worklog. Closing takes it out for
-  everyone, and a closed thread takes no more replies.
+  thread is in it when it's assigned to you (`assigned`: you're one of its assignees, or it's your own to-do), or
+  someone sent you something since you last marked it done (`sent`), and you haven't snoozed it. Closing takes it out
+  for everyone, and a closed thread takes no more replies.
 - **Done and snooze are each person's own** (`doneBy`, `snoozedUntil`), set with the scoped changes `done` and
   `snoozeUntilMs`. Scoped changes (also `seen` and `bucketId`) are about whoever sends them: `applyScopedChanges` in
   `sync.ts` applies them on the server and, optimistically, in the app (`UpdateTransaction`), and they're quiet: no
@@ -225,20 +239,16 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
 - **Keys** (`inboxKeysRef` in `App.tsx`; never with a dialog open, and only ⌘E while typing): J/K open the next or
   previous thread in your inbox, ⌘E marks the open one done for you (it never closes it: closing is
   always by hand, by anyone, with `/close`, the status or right-click; it comes back when someone else sends you
-  something new or, for your own work, does anything there) and opens the next, H snoozes it until 9 tomorrow, R puts the cursor in the
+  something new or, when it's assigned to you, does anything there) and opens the next, H snoozes it until 9 tomorrow, R puts the cursor in the
   reply, and Escape leaves the reply. ⌘E and H offer Undo. A thread in your inbox opens at its top without taking the
   cursor, so the keys work until you choose to reply.
-- **Sent** (the sidebar's Sent tab, beside Inbox and Groups): what you asked others for, messages you sent that
-  nobody has answered yet, and your blocked threads, by who has each. Each leaves when they answer or close it.
+- **Sent** (the sidebar's Sent tab), your outbox: every open thread you own that anyone else is on, with who's on it
+  ("Sam +2"), until it's closed. When someone sends you something on it, it's in your inbox instead.
 - Something sent to you also shows as a toast (`MentionToasts`); several at once share one toast. When one needs real
   work, `/task` turns it into a task of your own: a new thread assigned to you, branched from where you were asked,
   with "Taking this on in <link>" sent back to whoever asked.
-- On behalf of: making a thread with `onBehalfOfId` makes that person its requester, so they track it and it counts
-  as their ask in the score. `createdById` keeps who really made it, and the server adds "created this on behalf of
-  ..." (`#apply`). The thread page has no requester or assignee line above the title. Anyone can pick anyone, since there are no real identities
-  yet (View As). Any requester can be changed later (`requesterId`, "made ... the requester"). The maker isn't part of
-  the thread: not in Sent, and writing the description doesn't count towards notifications (`involves` in
-  `activity.ts`); replying does. The details panel's Activity section lists a thread's activity lines as its audit log.
+- The thread page has no owner or assignee line above the title. The details panel's Activity section lists a thread's
+  activity lines as its audit log.
 - Notifications (`activityFor` in `activity.ts`, the bell in the sidebar's top bar, `Notifications.tsx`) list, per
   thread you're part of, the latest thing someone else did there in the past week: replies and the status lines worth
   knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved). Sorting and routine edits stay out. It's derived from entries, with nothing stored;
@@ -283,13 +293,13 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
 - **Your own** (`ProfileView`) is you, your inbox counts and the org tree, with the organization's rename.
 - **Anyone else's** (`PersonView`, the `{ person }` page) opens in the main area like a group's page. It shows who they are,
   their manager and the chain above, their reports, and the groups you're both in, each linking on. Then **the threads
-  you're both in** (`sharedThreads` in `profile.ts`), in three lists by whose turn it is: waiting on you, waiting on them,
-  and everything else. Closed threads hide behind an "N closed" chip, as on a group's page, and show right under it when it's on, so
+  you're both in** (`sharedThreads` in `profile.ts`), in three lists by who it's assigned to: you, them, and everything
+  else. Closed threads hide behind an "N closed" chip, as on a group's page, and show right under it when it's on, so
   they appear where you clicked; archived ones never show.
   "New thread to them" opens the new-thread palette with them first to pick.
-- **Being in a thread** is one rule, `involves` in `model.ts`: you asked, it's yours, something was sent to you, or you've
-  replied. It's the same rule as for notifications (`activityFor`). Writing a thread's description doesn't count, so a
-  thread made on someone's behalf is between them and whoever has it. `participants` is wider, counting every author.
+- **Being in a thread** is one rule, `involves` in `model.ts`: you own it, it's assigned to you, something was sent to
+  you, or you've written in it beyond its description. It's the same rule as for notifications (`activityFor`).
+  `participants` is wider, counting every author.
 - **What a profile shows is not access.** Every client has every thread, so a profile shows only what you share, never
   their whole inbox, but it doesn't hide anything from the client (see Sync groups).
 - **Getting there**: the People section and tab of ⌘K (by name, level or role), names in the org tree, a group's member
@@ -321,9 +331,9 @@ The inbox (the sidebar's Inbox tab) is grouped into your **buckets** and ordered
   `stale` (for that person, or for everyone on a retitle) instead of clearing them, so threads stay where they are until the model has looked again. Only a thread
   whose bucket was deleted waits under "Sorting".
 - **The score** (`threadScore` in `packages/model/src/score.ts`) rates a thread from 1 to 100: its due date, priority,
-  estimated effort, most important seeded label (`SEEDED_LABELS`) and the level of the person waiting on the answer
-  (`askerId`). It's computed when needed and never stored, because it changes as due dates approach. Within a bucket,
-  threads needing an assignee come first, blocked ones last, and the rest by score. Closing a thread from your inbox
+  estimated effort, most important seeded label (`SEEDED_LABELS`) and its owner's level. It's computed when needed and
+  never stored, because it changes as due dates approach. Within a bucket, blocked threads come last and the rest go
+  by score. Closing a thread from your inbox
   opens the next one (`inbox.order`).
 
 ## How to make common changes

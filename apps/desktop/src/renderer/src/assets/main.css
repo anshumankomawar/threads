@@ -622,8 +622,6 @@ body * {
   background-color: var(--status-closed);
 }
 
-/* "Anshu asked Ben": who asked, then who it's for. */
-/* Activity lines: muted, and tighter to the messages around them. */
 /* Activity lines: one short line each, tucked closer to the messages around them, and nearly touching when several
    come in a row (a run of status changes reads as one small group). */
 .thread-event {
@@ -1083,7 +1081,7 @@ body * {
 }
 
 /* Who's asking, beside the assign step's summary: you, unless you're making it on someone's behalf. */
-.palette-asker {
+.palette-side {
   display: inline-flex;
   flex-shrink: 0;
   gap: 6px;
@@ -1097,7 +1095,7 @@ body * {
   cursor: pointer;
 }
 
-.palette-asker:hover {
+.palette-side:hover {
   color: var(--text-primary);
 }
 
@@ -2337,7 +2335,7 @@ body * {
 }
 
 /* A second control beside "Asked by" on the new-thread palette's last step. */
-.palette-asker + .palette-asker {
+.palette-side + .palette-side {
   margin-left: 14px;
 }
 

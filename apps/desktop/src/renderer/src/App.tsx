@@ -28,10 +28,8 @@ import {
   type Person,
   type Thread,
   type ThreadChanges,
-  waitingOn,
   inboxReason,
   GROUP_TARGET,
-  groupMentionsIn,
   groupTarget,
   mentionToken,
   lastSentTo,
@@ -370,28 +368,10 @@ const App = observer(function App(): React.JSX.Element {
   const composeThread = (draft: ComposeDraft, fromDraftId: string | null): void => {
     setComposeOpen(false);
     if (fromDraftId !== null) drafts.remove(fromDraftId);
-    const asked = (ask: ComposeDraft["asks"][number]): Person[] =>
-      recipientsOf(ask.personIds, people, groups, me);
-    // The first person asked by name has it. Asked only of groups, it's the group's: nobody's assigned, anyone in it can
-    // close it, and each marks it done for themselves. It's filed under each group asked.
-    const named = draft.asks
-      .flatMap((ask) => ask.personIds)
-      .find((id) => !id.startsWith(GROUP_TARGET));
-    const asGroups = groups.filter((group) =>
-      draft.asks.some((ask) => ask.personIds.includes(groupTarget(group.id))),
-    );
-    const threadId = client.createThread(
-      {
-        title: draft.title,
-        description: draft.context,
-        assignee: people.find((person) => person.id === named) ?? null,
-        labelNames: asGroups.flatMap(
-          (group) => labels.find((label) => label.id === group.labelId)?.name ?? [],
-        ),
-      },
-      me,
-    );
-    // Each ask opens with its people's and groups' @mentions, so it reads "@Amara Can you review this CR?".
+    const threadId = client.createThread({ title: draft.title, description: draft.context }, me);
+    // Each ask opens with its people's and groups' @mentions, so it reads "@Amara Can you review this CR?". The server
+    // assigns the thread to everyone mentioned, and to each group through its label; each is sent their ask (a group's
+    // members as they are now), so it's in their inboxes.
     for (const ask of draft.asks)
       client.addEntry(
         threadId,
@@ -399,11 +379,8 @@ const App = observer(function App(): React.JSX.Element {
         [...ask.personIds.map(mentionToken), ask.text].join(" "),
         me,
         undefined,
-        asked(ask),
+        recipientsOf(ask.personIds, people, groups, me),
       );
-    // With nobody assigned it would wait on you, who asked; it's in your Sent instead, back when someone answers.
-    if (named === undefined && draft.asks.length > 0)
-      client.updateThread(threadId, { done: true }, me);
     openThread(threadId);
   };
 
@@ -533,7 +510,7 @@ const App = observer(function App(): React.JSX.Element {
       {
         title,
         description: "",
-        assignee: others[0] ?? null,
+        assignees: [...new Map(others.map((person) => [person.id, person])).values()],
         branchedFromId: from.id,
         movedEntryIds,
       },
@@ -554,7 +531,7 @@ const App = observer(function App(): React.JSX.Element {
       {
         title,
         description,
-        assignee: person,
+        assignees: [person],
         branchedFromId: from.id,
         blocksId: from.id,
       },
@@ -674,15 +651,8 @@ const App = observer(function App(): React.JSX.Element {
     return {
       // Enter sends to people, into their inbox; with nobody to send to, it's a note in the thread.
       onNote: (text) => client.addEntry(thread.id, "message", text, me),
-      onSend: (text, to) => {
-        client.addEntry(thread.id, "message", text, me, undefined, to);
-        // @mentioning a group files the thread under it too.
-        const added = groupMentionsIn(text).flatMap(
-          (groupId) => groups.find((group) => group.id === groupId)?.labelId ?? [],
-        );
-        if (added.some((labelId) => !thread.labelIds.includes(labelId)))
-          edit({ labelIds: [...new Set([...thread.labelIds, ...added])] });
-      },
+      // Whoever it @mentions is assigned the thread, and a group through its label (the server's doing).
+      onSend: (text, to) => client.addEntry(thread.id, "message", text, me, undefined, to),
       onBlocked: () => setBlocking(thread),
       onTask: () => {
         // The latest thing someone sent you here, if anything; else the thread itself.
@@ -699,7 +669,7 @@ const App = observer(function App(): React.JSX.Element {
           {
             title,
             description: question ? `${question.author.name}: “${asked}”` : "",
-            assignee: me,
+            assignees: [me],
             branchedFromId: thread.id,
           },
           me,
@@ -717,8 +687,8 @@ const App = observer(function App(): React.JSX.Element {
       },
       // Closing something in your inbox finishes it there, so the next thread opens.
       onSetStatus: (status) => {
+        if (isDone(status) && inboxReason(thread, me.id, nowMs) !== null) moveOn(thread);
         edit({ status });
-        if (isDone(status) && waitingOn(thread) === me.id) moveOn(thread);
       },
       onSetPriority: (priority) => edit({ priority }),
       onSetDue: (dueAtMs) => edit({ dueAtMs }),
@@ -732,8 +702,6 @@ const App = observer(function App(): React.JSX.Element {
         });
       },
       onSetBucket: (bucketId) => placeIn(thread.id, bucketId),
-      onSetAssignee: (person) => edit({ assigneeId: person.id }),
-      onSetRequester: (person) => edit({ requesterId: person.id }),
       onBranch: (title) => createBranch(thread, title),
       onMoveMessages: (messages) => setMoving({ from: thread, messages }),
     };
@@ -897,10 +865,14 @@ const App = observer(function App(): React.JSX.Element {
                   ? me.name
                   : page === "settings"
                     ? "Settings"
-                    : (shownPerson?.name ??
-                      shownLabel?.name ??
-                      activeThread?.title ??
-                      (shownDraft === undefined ? undefined : shownDraft.draft?.title || "Draft"))}
+                    : page === "all"
+                      ? "All threads"
+                      : (shownPerson?.name ??
+                        shownLabel?.name ??
+                        activeThread?.title ??
+                        (shownDraft === undefined
+                          ? undefined
+                          : shownDraft.draft?.title || "Draft"))}
               </span>
               <span className="topbar-end">
                 <button
@@ -968,10 +940,10 @@ const App = observer(function App(): React.JSX.Element {
                 onNewThread={() => openNew()}
                 onOpenThread={openThread}
               />
-            ) : shownLabel !== undefined ? (
+            ) : page === "all" || shownLabel !== undefined ? (
               <LabelView
-                key={shownLabel.id}
-                label={shownLabel}
+                key={shownLabel?.id ?? "all"}
+                label={shownLabel ?? null}
                 group={shownGroup}
                 threads={threads}
                 people={people}

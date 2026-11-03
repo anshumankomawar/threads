@@ -11,7 +11,7 @@ export type Person = {
 };
 
 // A group in someone's inbox: a name, and in plain words what belongs in it. The server's model reads the
-// description to sort each thread waiting on them into one bucket (`Thread.triage`).
+// description to sort each thread in their inbox into one bucket (`Thread.triage`).
 export type Bucket = { id: string; name: string; description: string };
 
 // Everyone's buckets until they make their own. The last one catches whatever fits nowhere else.
@@ -85,16 +85,16 @@ export type Entry =
   | { kind: "event"; id: string; actor: Person; text: string; createdAtMs: number }
   | { kind: "resolution"; id: string; author: Person; text: string; createdAtMs: number };
 
-// Everything is a thread: an ask, with whoever it's assigned to, a log of notes and messages sent between people, and
-// the resolution that closes it.
+// Everything is a thread, and every thread is visible to the whole organization: an ask, with whoever made it (its
+// owner), whoever it's assigned to, a log of notes and messages sent between people, and the resolution that closes
+// it. Anyone @mentioned in it is assigned it; a group @mentioned is assigned it through its label.
 export type Thread = {
   id: string;
   title: string;
-  // Whoever is asking: they track it until it closes. Not always whoever made it (`createdBy`).
-  requester: Person;
-  // Who really made it; someone else if they asked on the requester's behalf.
-  createdBy: Person;
-  assignee: Person | null;
+  // Whoever made it. It's in their outbox until it's closed.
+  owner: Person;
+  // Everyone it's assigned to: picked when it's made, or @mentioned since. It's in each of their inboxes.
+  assignees: Person[];
   status: Status;
   priority: Priority;
   dueAtMs: number | null;
@@ -133,17 +133,17 @@ export function lastMessage(thread: Thread): Message | undefined {
   return thread.entries.findLast((entry): entry is Message => entry.kind === "message");
 }
 
-// Whose turn it is: the assignee, or whoever asked while nobody is assigned. The thread is theirs to finish, so it
-// stays in their inbox until it's closed. Messages never move it.
-export function waitingOn(thread: Thread): string {
-  return thread.assignee?.id ?? thread.requester.id;
+// A thread nobody else is on: no assignees and nothing sent to anyone. It's its owner's own to-do.
+export function isPersonal(thread: Thread): boolean {
+  return (
+    thread.assignees.length === 0 &&
+    !thread.entries.some((entry) => entry.kind === "message" && entry.sentTo.length > 0)
+  );
 }
 
-// The other side of a thread from someone: whoever asked if it's the assignee, and the assignee otherwise.
-export function otherSide(thread: Thread, personId: string): Person | null {
-  if (thread.assignee === null) return null;
-  const other = personId === thread.assignee.id ? thread.requester : thread.assignee;
-  return other.id === personId ? null : other;
+// Whose work it is: its assignees, or its owner when it's their own to-do.
+export function assignedIds(thread: Thread): string[] {
+  return isPersonal(thread) ? [thread.owner.id] : thread.assignees.map((person) => person.id);
 }
 
 // The latest message someone else sent this person in the thread.
@@ -156,17 +156,17 @@ export function lastSentTo(thread: Thread, personId: string): Message | undefine
   );
 }
 
-// Why a thread is in someone's inbox, as in email: it's theirs to finish (`assigned`), or someone sent them something
+// Why a thread is in someone's inbox, as in email: it's assigned to them (`assigned`), or someone sent them something
 // (`sent`). Marking it done (⌘E) takes it out for them alone, never closing it, until someone else does something
-// there: sends them something new or, for their own work, anything at all. Snoozing takes it out until then; closing,
-// which is always by hand, takes it out for everyone.
+// there: sends them something new or, when it's assigned to them, anything at all. Snoozing takes it out until then;
+// closing, which is always by hand and anyone's to do, takes it out for everyone.
 export type InboxReason = "assigned" | "sent";
 
 export function inboxReason(thread: Thread, personId: string, nowMs: number): InboxReason | null {
   if (isDone(thread.status) || (thread.snoozedUntil[personId] ?? 0) > nowMs) return null;
   const doneAt = thread.doneBy[personId];
   if (
-    waitingOn(thread) === personId &&
+    assignedIds(thread).includes(personId) &&
     (doneAt === undefined ||
       thread.entries.some(
         (entry) =>
@@ -182,7 +182,7 @@ export function inboxReason(thread: Thread, personId: string, nowMs: number): In
 // Everyone whose inbox a thread is in, snoozed or not, which is who it's sorted for.
 export function inboxPeople(thread: Thread): string[] {
   const candidates = new Set([
-    waitingOn(thread),
+    ...assignedIds(thread),
     ...thread.entries.flatMap((entry) =>
       entry.kind === "message" ? entry.sentTo.map((person) => person.id) : [],
     ),
@@ -190,14 +190,14 @@ export function inboxPeople(thread: Thread): string[] {
   return [...candidates].filter((personId) => inboxReason(thread, personId, 0) !== null);
 }
 
-// Everyone on a thread: whoever asked, whoever has it, and everyone who's written in it or been sent something.
+// Everyone on a thread: its owner, its assignees, and everyone who's written in it or been sent something.
 export function participants(thread: Thread): Person[] {
   const people = new Map<string, Person>();
-  const add = (person: Person | null): void => {
-    if (person !== null && !people.has(person.id)) people.set(person.id, person);
+  const add = (person: Person): void => {
+    if (!people.has(person.id)) people.set(person.id, person);
   };
-  add(thread.requester);
-  add(thread.assignee);
+  add(thread.owner);
+  thread.assignees.forEach(add);
   for (const entry of thread.entries)
     if (entry.kind === "message") {
       add(entry.author);
@@ -206,13 +206,12 @@ export function participants(thread: Thread): Person[] {
   return [...people.values()];
 }
 
-// Whether someone is part of a thread: they asked, it's theirs, something was sent to them, or they've written in it.
-// Writing a thread's description doesn't count, so making one on someone's behalf leaves you out of it; they're the
-// one tracking it. Unlike `participants`, which counts everyone who's written anything.
+// Whether someone is part of a thread: they own it, it's assigned to them, something was sent to them, or they've
+// written in it beyond its description. Unlike `participants`, which counts everyone who's written anything.
 export function involves(thread: Thread, personId: string): boolean {
   return (
-    thread.requester.id === personId ||
-    thread.assignee?.id === personId ||
+    thread.owner.id === personId ||
+    thread.assignees.some((person) => person.id === personId) ||
     thread.entries.some(
       (entry) =>
         entry.kind === "message" &&
@@ -222,13 +221,13 @@ export function involves(thread: Thread, personId: string): boolean {
   );
 }
 
-// Who a reply goes to by default (⌘↵), as in email: whoever last sent you something here, else the other side.
+// Who a reply goes to by default, as in email: whoever last sent you something here; else, for its owner, everyone
+// it's assigned to, and for anyone else, its owner.
 export function replyTo(thread: Thread, personId: string): Person[] {
   const sent = lastSentTo(thread, personId);
   if (sent !== undefined) return [sent.author];
-  const other =
-    otherSide(thread, personId) ?? (thread.requester.id === personId ? null : thread.requester);
-  return other === null ? [] : [other];
+  if (thread.owner.id !== personId) return [thread.owner];
+  return thread.assignees.filter((person) => person.id !== personId);
 }
 
 // Links inside a message's text: another thread as `[[thread:<id>]]` (`#` in a reply), a person as

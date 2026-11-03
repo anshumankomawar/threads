@@ -135,7 +135,7 @@ async function started(server = new FakeServer(), database: SyncDatabase = memor
 
 const draft = {
   description: "Somewhere warm",
-  assignee: arjun,
+  assignees: [arjun],
 };
 
 test("bootstraps the pool from the server and opens the socket", async () => {

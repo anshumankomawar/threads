@@ -158,7 +158,7 @@ function InboxRow({
   const titleRef = useOverflowFade<HTMLSpanElement>();
   const sorted = thread.triage[me.id];
   const why = sorted?.manual ? "Placed here by you" : (sorted?.reason ?? "");
-  const person = item.from ?? thread.requester;
+  const person = item.from;
   const latest = item.why === "sent" ? lastSentTo(thread, me.id) : undefined;
   const line =
     latest === undefined
@@ -319,7 +319,7 @@ function BucketSection({
   );
 }
 
-// Your inbox: every thread waiting on you, in your buckets, each sorted most important first. Threads the model
+// Your inbox: every thread assigned or sent to you, in your buckets, each sorted most important first. Threads the model
 // hasn't got to yet wait at the top under "Sorting".
 function InboxView({
   inbox,
@@ -371,7 +371,7 @@ function InboxView({
           </ul>
         </section>
       )}
-      {nothing && <p className="conversation-empty">Nothing waiting on you</p>}
+      {nothing && <p className="conversation-empty">Nothing for you</p>}
       {inbox.buckets.map((group, index) => (
         <BucketSection
           key={group.bucket.id}
@@ -395,9 +395,8 @@ function InboxView({
   );
 }
 
-// Sent, as in email: what you've asked others for (whether you made it or someone made it on your behalf), messages
-// you sent that nobody has answered yet, and your blocked threads: the title, who has it, and when it's due. Each
-// leaves when they answer or close it.
+// Sent, your outbox: every open thread you own that anyone else is on, with who's on it and when it's due. Each
+// leaves when it's closed.
 function Sent({
   items,
   activeThreadId,
@@ -412,11 +411,9 @@ function Sent({
   const openMenu = useThreadMenu();
   return (
     <ul className="thread-list" aria-label="Sent">
-      {items.length === 0 && <li className="conversation-empty">Nothing you're waiting on</li>}
+      {items.length === 0 && <li className="conversation-empty">Nothing out with anyone</li>}
       {items.map((item) => {
-        const label = [item.from?.name.split(" ")[0], item.dueLabel]
-          .filter((part) => part != null)
-          .join(" · ");
+        const label = [item.who, item.dueLabel].filter((part) => part != null).join(" · ");
         const open = (): void => onOpenThread(item.thread.id);
         return (
           <li key={item.thread.id} className="thread-item">
@@ -452,6 +449,7 @@ function GroupList({
   threads,
   page,
   onOpenLabel,
+  onOpenAll,
   onNewGroup,
 }: {
   groups: GroupLists;
@@ -459,9 +457,11 @@ function GroupList({
   threads: Thread[];
   page: SidebarPage | null;
   onOpenLabel: (id: string) => void;
+  onOpenAll: () => void;
   onNewGroup: () => void;
 }): React.JSX.Element {
-  const count = (labelId: string): number => threadsWithLabel(threads, labelId).length;
+  const count = (labelId: string | null): number => threadsWithLabel(threads, labelId).length;
+  const allCount = count(null);
   const activeLabel =
     page !== null && typeof page === "object" && "label" in page ? page.label : undefined;
   const row = (id: string, labelId: string, name: string): React.JSX.Element => {
@@ -502,6 +502,22 @@ function GroupList({
       <button type="button" className="sidebar-new-group" onClick={onNewGroup}>
         New group
       </button>
+      {/* Every thread in the organization; a group or label is this list, filtered. */}
+      <ul className="thread-list" aria-label="All threads">
+        <li className="thread-item">
+          <div
+            className="sidebar-row"
+            data-active={page === "all"}
+            role="button"
+            tabIndex={0}
+            onClick={onOpenAll}
+            onKeyDown={(event) => activateOnKey(event, onOpenAll)}
+          >
+            <span className="sidebar-row-label">All threads</span>
+            {allCount > 0 && <span className="sidebar-row-meta">{allCount}</span>}
+          </div>
+        </li>
+      </ul>
       {section("Your groups", asItems(groups.mine))}
       {section("Other groups", asItems(groups.others))}
       {section(
@@ -670,9 +686,9 @@ function SidebarTabs({
   );
 }
 
-// What opens in the main area from the sidebar: settings, a label's threads (a group's, when it's a group's label), or
-// someone's profile.
-export type SidebarPage = "settings" | { label: string } | { person: string };
+// What opens in the main area from the sidebar: settings, every thread, a label's threads (a group's, when it's a
+// group's label), or someone's profile.
+export type SidebarPage = "settings" | "all" | { label: string } | { person: string };
 
 export function Sidebar({
   inbox,
@@ -805,6 +821,7 @@ export function Sidebar({
             threads={threads}
             page={page}
             onOpenLabel={onOpenLabel}
+            onOpenAll={() => onOpenPage("all")}
             onNewGroup={onNewGroup}
           />
         )}

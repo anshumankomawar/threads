@@ -12,6 +12,7 @@ const NOTEWORTHY = [
   /^renamed this/,
   /^took this on/,
   /^assigned this to/,
+  // Lines older threads still have.
   /^created this on behalf of/,
   /^made .* the requester/,
   /^is blocked on/,

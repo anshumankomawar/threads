@@ -45,7 +45,7 @@ const create = (
   id: `tx-${++counter}`,
   type: "create",
   modelName: "Thread",
-  data: { id, title, assigneeId },
+  data: { id, title, assigneeIds: assigneeId === null ? [] : [assigneeId] },
 });
 const update = (modelId: string, changes: object): TransactionInput =>
   ({
@@ -93,14 +93,14 @@ test("new threads are sorted into the buckets of whoever they're waiting on", as
   expect(asked).toHaveLength(1);
 });
 
-test("a thread is sorted again when it changes hands or is retitled, but not for other edits", async () => {
+test("a thread is sorted for someone newly assigned, and again when it's retitled, but not for other edits", async () => {
   run("anshu", create("t1", "Plan the offsite"));
   const triager = new Triager(engine, classify);
   await triager.kick();
   run("anshu", update("t1", { priority: "high" }));
   await triager.kick();
   expect(asked).toHaveLength(1);
-  run("anshu", update("t1", { assigneeId: "kk" }));
+  run("anshu", send("t1", ["kk"], "[[person:kk]] can you take this?"));
   await triager.kick();
   expect(asked[1].person.id).toBe("kk");
   expect(triage("t1", "kk")?.bucketId).toBe("read");
@@ -224,8 +224,8 @@ test("a thread is sorted for everyone whose inbox it's in, but not once it's clo
   ]);
   // Who sent it to KK, and what, is what the model reads for them.
   expect(requests[1].threads[0]).toMatchObject({ from: "Arjun", text: "Can you book the venue?" });
-  // The model answered for someone the thread is no longer with: ignored.
-  run("anshu", update("t1", { assigneeId: "lena" }));
+  // The model answered for someone the thread is no longer in the inbox of: ignored.
+  run("arjun", update("t1", { done: true }));
   engine.applyTriage("arjun", [{ threadId: "t1", bucketId: "read", reason: "" }]);
   expect(triage("t1")).toBeUndefined();
 });

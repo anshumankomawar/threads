@@ -66,10 +66,10 @@ export type ScoreFields = {
   labelIds?: string[];
 };
 
-// How important a thread is, from 1 to 100, which orders it within its inbox bucket. `askerLevel` is
-// `levelPositions` of whoever is waiting on the answer. Only the most important label counts, so piling labels on
+// How important a thread is, from 1 to 100, which orders it within its inbox bucket. `ownerLevel` is
+// `levelPositions` of whoever owns it. Only the most important label counts, so piling labels on
 // doesn't raise it. Urgent threads never fall below the floor.
-export function threadScore(fields: ScoreFields, askerLevel: number, nowMs: number): number {
+export function threadScore(fields: ScoreFields, ownerLevel: number, nowMs: number): number {
   const effortHours = fields.effortHours ?? null;
   const urgency = dueUrgency(fields.dueAtMs, effortHours, nowMs);
   const tag = Math.max(
@@ -81,7 +81,7 @@ export function threadScore(fields: ScoreFields, askerLevel: number, nowMs: numb
   const weighted =
     WEIGHTS.due * urgency +
     WEIGHTS.priority * PRIORITY_VALUE[fields.priority] +
-    WEIGHTS.level * askerLevel +
+    WEIGHTS.level * ownerLevel +
     WEIGHTS.tag * tag +
     WEIGHTS.effort * effortPull(effortHours, urgency);
   const score = 1 + 99 * weighted;
@@ -108,13 +108,4 @@ export function levelPositions(people: Iterable<Person>): (personId: string) => 
     const level = levels.get(personId);
     return level === undefined || max === min ? 0 : (level - min) / (max - min);
   };
-}
-
-// Whose answer a thread's score weighs: the other person from whoever it's waiting on.
-export function askerId(
-  requesterId: string,
-  assigneeId: string | null,
-  turn: string | null,
-): string {
-  return turn === requesterId && assigneeId !== null ? assigneeId : requesterId;
 }

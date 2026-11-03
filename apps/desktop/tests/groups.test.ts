@@ -20,9 +20,8 @@ function thread(id: string, fields: Partial<Thread> = {}): Thread {
   return {
     id,
     title: id,
-    requester: me,
-    createdBy: me,
-    assignee: sam,
+    owner: me,
+    assignees: [sam],
     status: "open",
     priority: "none",
     dueAtMs: null,
@@ -87,11 +86,20 @@ test("closed threads show only when asked for, and archived ones never do", () =
   ]);
 });
 
-test("a label's threads narrow by person, who has it or asked for it, and by another label", () => {
+test("every thread in the organization is the same list, unfiltered, archived ones put away", () => {
+  const threads = [
+    thread("billing", { labelIds: ["billing"] }),
+    thread("none"),
+    thread("old", { status: "archived" }),
+  ];
+  expect(ids(threadsWithLabel(threads, null))).toEqual(["billing", "none"]);
+});
+
+test("a label's threads narrow by person, who it's assigned to or who owns it, and by another label", () => {
   const threads = [
     thread("sams", { labelIds: ["billing"] }),
-    thread("asked-by-kim", { labelIds: ["billing"], requester: kim, assignee: me }),
-    thread("frontend", { labelIds: ["billing", "frontend"], assignee: me }),
+    thread("asked-by-kim", { labelIds: ["billing"], owner: kim, assignees: [me] }),
+    thread("frontend", { labelIds: ["billing", "frontend"], assignees: [me] }),
   ];
   expect(ids(threadsWithLabel(threads, "billing", { ...NO_FILTER, personId: "sam" }))).toEqual([
     "sams",

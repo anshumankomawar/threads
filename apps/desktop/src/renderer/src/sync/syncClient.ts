@@ -52,15 +52,14 @@ export type NewThread = {
   title: string;
   // Its description (`descriptionOf`), shown under the title; empty for none.
   description: string;
-  assignee: Person | null;
+  // Who it's assigned to from the start; anyone @mentioned in it joins them.
+  assignees?: Person[];
   // The thread this one branches off from.
   branchedFromId?: string | null;
   // The thread this one blocks (`/blocked`).
   blocksId?: string | null;
   // Messages moved in from the parent to open the thread, in place of a description.
   movedEntryIds?: string[];
-  // Who's really asking, when you're making it for someone else.
-  onBehalfOf?: Person | null;
   // Its labels from the start, by name; any that don't exist yet are made with it.
   labelNames?: string[];
 };
@@ -392,10 +391,9 @@ export class SyncClient {
           data: {
             id: threadId,
             title: draft.title.trim().slice(0, 200),
-            assigneeId: draft.assignee?.id ?? null,
+            assigneeIds: (draft.assignees ?? []).map((person) => person.id),
             branchedFromId: draft.branchedFromId ?? null,
             blocksId: draft.blocksId ?? null,
-            onBehalfOfId: draft.onBehalfOf?.id ?? null,
             labelIds,
           },
         },

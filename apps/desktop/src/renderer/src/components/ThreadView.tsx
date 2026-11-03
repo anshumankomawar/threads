@@ -106,8 +106,6 @@ export type ThreadActions = {
   onToggleLabel: (label: { id: string; name: string }) => void;
   // Puts it in one of your buckets by hand, or (null) hands it back to the model to sort.
   onSetBucket: (bucketId: string | null) => void;
-  onSetAssignee: (person: Person) => void;
-  onSetRequester: (person: Person) => void;
   // Starts a thread branching off this one, with the same people, and returns its id: from "New thread" in the
   // `#` menu, titled by what you typed.
   onBranch: (title: string) => string;

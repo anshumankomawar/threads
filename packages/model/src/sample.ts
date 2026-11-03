@@ -78,7 +78,7 @@ const DAY = 24 * HOUR;
 type Draft = ["message" | "event" | "resolution", Person, string, number];
 
 type Fields = {
-  requester: Person;
+  owner: Person;
   assignee?: Person | null;
   status?: Status;
   priority?: Priority;
@@ -96,7 +96,7 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
     const sentTo =
       index === 0
         ? []
-        : [fields.requester, fields.assignee ?? null].filter(
+        : [fields.owner, fields.assignee ?? null].filter(
             (other): other is Person => other !== null && other.id !== person.id,
           );
     if (kind === "event") return { kind, id: entryId, actor: person, text, createdAtMs };
@@ -106,9 +106,8 @@ function thread(id: string, title: string, fields: Fields, nowMs: number, drafts
   return {
     id,
     title,
-    requester: fields.requester,
-    createdBy: fields.requester,
-    assignee: fields.assignee ?? null,
+    owner: fields.owner,
+    assignees: fields.assignee ? [fields.assignee] : [],
     status: fields.status ?? "open",
     priority: fields.priority ?? "none",
     dueAtMs: fields.dueAtMs ?? null,
@@ -134,7 +133,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "headcount-plan",
       "Approve Q4 headcount plan",
       {
-        requester: priya,
+        owner: priya,
         assignee: me,
         priority: "high",
         dueAtMs: nowMs + 8 * HOUR,
@@ -155,7 +154,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "northwind-sso",
       "Northwind can't sign in with Okta since Tuesday",
       {
-        requester: maya,
+        owner: maya,
         assignee: me,
         priority: "urgent",
         dueAtMs: nowMs + 4 * HOUR,
@@ -182,7 +181,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "checkout-500s",
       "Checkout returns 500s for EU cards",
       {
-        requester: jordan,
+        owner: jordan,
         assignee: me,
         priority: "high",
         dueAtMs: nowMs + DAY,
@@ -203,7 +202,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "rate-limits",
       "Share API rate-limit numbers with support",
       {
-        requester: jordan,
+        owner: jordan,
         assignee: me,
         priority: "medium",
         dueAtMs: nowMs + 2 * DAY,
@@ -223,7 +222,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "acme-export",
       "Acme wants a CSV export of audit logs",
       {
-        requester: maya,
+        owner: maya,
         assignee: me,
         priority: "medium",
         dueAtMs: nowMs + 5 * DAY,
@@ -242,7 +241,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "search-pr",
       "Review: move search indexing to a queue",
-      { requester: sam, assignee: me, priority: "medium", dueAtMs: nowMs + DAY, effortHours: 1 },
+      { owner: sam, assignee: me, priority: "medium", dueAtMs: nowMs + DAY, effortHours: 1 },
       nowMs,
       [
         [
@@ -257,7 +256,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "billing-migration",
       "Migrate invoices to the new billing tables",
       {
-        requester: jordan,
+        owner: jordan,
         assignee: me,
         priority: "medium",
         dueAtMs: nowMs + 9 * DAY,
@@ -277,7 +276,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "flaky-e2e",
       "Login e2e test fails one run in five",
-      { requester: sam, assignee: me, priority: "low", effortHours: 2, labelIds: ["bug"] },
+      { owner: sam, assignee: me, priority: "low", effortHours: 2, labelIds: ["bug"] },
       nowMs,
       [
         [
@@ -291,7 +290,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "dark-mode",
       "Add dark mode to the settings pages",
-      { requester: daniel, assignee: me, priority: "low", effortHours: 4 },
+      { owner: daniel, assignee: me, priority: "low", effortHours: 4 },
       nowMs,
       [
         [
@@ -306,7 +305,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "onboarding-copy",
       "Review onboarding flow copy",
       {
-        requester: daniel,
+        owner: daniel,
         assignee: me,
         priority: "low",
         dueAtMs: nowMs + 6 * DAY,
@@ -327,7 +326,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "staging-access",
       "Grant staging database access for the new contractor",
       {
-        requester: elena,
+        owner: elena,
         assignee: me,
         priority: "medium",
         dueAtMs: nowMs + DAY,
@@ -348,7 +347,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "offsite-agenda",
       "Draft the offsite agenda",
       {
-        requester: priya,
+        owner: priya,
         assignee: me,
         priority: "low",
         dueAtMs: nowMs + 12 * DAY,
@@ -369,7 +368,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "pricing-copy",
       "Finalize Q4 pricing page copy",
-      { requester: me, assignee: daniel, priority: "high", dueAtMs: nowMs + 3 * DAY },
+      { owner: me, assignee: daniel, priority: "high", dueAtMs: nowMs + 3 * DAY },
       nowMs,
       [
         [
@@ -383,7 +382,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "load-test",
       "Load test the new sync endpoint",
-      { requester: me, assignee: sam, priority: "medium", dueAtMs: nowMs + 4 * DAY },
+      { owner: me, assignee: sam, priority: "medium", dueAtMs: nowMs + 4 * DAY },
       nowMs,
       [
         [
@@ -399,7 +398,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
       "soc2-evidence",
       "Collect SOC 2 evidence for access reviews",
       {
-        requester: elena,
+        owner: elena,
         assignee: me,
         status: "blocked",
         priority: "high",
@@ -420,7 +419,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "soc2-okta-export",
       "Export the Okta group membership report",
-      { requester: me, assignee: jordan, blocksId: "soc2-evidence", dueAtMs: nowMs + 3 * DAY },
+      { owner: me, assignee: jordan, blocksId: "soc2-evidence", dueAtMs: nowMs + 3 * DAY },
       nowMs,
       [
         [
@@ -435,7 +434,7 @@ export function sampleThreads(me: Person, nowMs = Date.now()): Thread[] {
     thread(
       "status-page",
       "Update the status page after the outage",
-      { requester: jordan, assignee: me, status: "closed", priority: "high" },
+      { owner: jordan, assignee: me, status: "closed", priority: "high" },
       nowMs,
       [
         ["message", jordan, "Can you post the incident summary on the status page?", 2 * DAY],

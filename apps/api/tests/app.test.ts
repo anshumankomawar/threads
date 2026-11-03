@@ -61,7 +61,7 @@ const createThread = (
   id: string,
   fields: Partial<{
     title: string;
-    assigneeId: string | null;
+    assigneeIds: string[];
     branchedFromId: string;
   }> = {},
 ): TransactionInput =>
@@ -72,7 +72,7 @@ const createThread = (
     data: {
       id,
       title: "Plan the offsite",
-      assigneeId: "arjun",
+      assigneeIds: ["arjun"],
       ...fields,
     },
   }) as TransactionInput;
@@ -127,8 +127,8 @@ test("a new thread and its opening message become one ordered batch of sync acti
   ]);
   expect(await thread("t1")).toMatchObject({
     title: "Plan the offsite",
-    requester: { id: "anshu" },
-    assignee: { id: "arjun" },
+    owner: { id: "anshu" },
+    assignees: [{ id: "arjun" }],
     status: "open",
     updatedAtMs: NOW,
     entries: [{ kind: "message", author: { id: "anshu" }, createdAtMs: NOW }],
@@ -218,8 +218,7 @@ test("updates record an activity line for each real change, in the actor's words
   clock = NOW + 1000;
   await transact("arjun", [update("t1", { status: "blocked", priority: "high" })]);
   await transact("arjun", [update("t1", { status: "blocked" })]);
-  await transact("arjun", [update("t1", { assigneeId: "arjun" })]);
-  await transact("arjun", [update("t1", { assigneeId: "kk" })]);
+
   const result = await thread("t1");
   expect(result).toMatchObject({
     status: "blocked",
@@ -228,7 +227,7 @@ test("updates record an activity line for each real change, in the actor's words
   });
   expect(
     result?.entries.filter((entry) => entry.kind === "event").map((entry) => entry.text),
-  ).toEqual(["changed status to Blocked", "set priority to High", "assigned this to KK"]);
+  ).toEqual(["changed status to Blocked", "set priority to High"]);
 });
 
 test("a resolution closes the thread, and reopening says so", async () => {
@@ -280,7 +279,8 @@ test("a batch with a bad transaction changes nothing", async () => {
 
 test.each([
   ["an unknown actor", "nobody", [createThread("t2")], 404],
-  ["an unknown assignee", "anshu", [createThread("t2", { assigneeId: "nobody" })], 404],
+  ["an unknown assignee", "anshu", [createThread("t2", { assigneeIds: ["nobody"] })], 404],
+  ["changing who it's assigned to directly", "anshu", [update("t1", { assigneeId: "kk" })], 400],
   ["sending to someone unknown", "anshu", [sendTo("m9", "t1", ["nobody"])], 404],
   ["a duplicate thread id", "anshu", [createThread("t1")], 409],
   ["a misspelled field", "anshu", [update("t1", { statuss: "closed" })], 400],

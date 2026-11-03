@@ -13,9 +13,8 @@ function thread(id: string, fields: Partial<Thread> = {}): Thread {
   return {
     id,
     title: id,
-    requester: me,
-    createdBy: me,
-    assignee: sam,
+    owner: me,
+    assignees: [sam],
     status: "open",
     priority: "none",
     dueAtMs: null,
@@ -44,10 +43,10 @@ const message = (id: string, author: Person, sentTo: Person[] = []): Entry => ({
 
 const ids = (threads: Thread[]): string[] => threads.map((item) => item.id);
 
-test("you're in a thread you asked for, have, were sent something in, or replied in", () => {
-  expect(involves(thread("asked", { requester: kim, assignee: me }), "me")).toBe(true);
-  expect(involves(thread("asked"), "me")).toBe(true);
-  const between = { requester: kim, assignee: sam };
+test("you're in a thread you own, are assigned, were sent something in, or replied in", () => {
+  expect(involves(thread("assigned", { owner: kim, assignees: [sam, me] }), "me")).toBe(true);
+  expect(involves(thread("owned"), "me")).toBe(true);
+  const between = { owner: kim, assignees: [sam] };
   expect(involves(thread("sent", { ...between, entries: [message("m", kim, [me])] }), "me")).toBe(
     true,
   );
@@ -55,28 +54,19 @@ test("you're in a thread you asked for, have, were sent something in, or replied
   expect(involves(thread("not", between), "me")).toBe(false);
 });
 
-test("writing a thread's description for someone else doesn't put you in it", () => {
-  const onBehalf = thread("t", {
-    requester: kim,
-    createdBy: me,
-    assignee: sam,
-    entries: [message("t", me)],
-  });
-  expect(involves(onBehalf, "me")).toBe(false);
-});
-
-test("a profile shows only threads you're both in, by whose turn it is, newest first", () => {
+test("a profile shows only threads you're both in, by who it's assigned to, newest first", () => {
   const threads = [
-    thread("mine-from-sam", { requester: sam, assignee: me }),
+    thread("mine-from-sam", { owner: sam, assignees: [me] }),
+    thread("both", { owner: kim, assignees: [sam, me], updatedAtMs: NOW - 2 * DAY }),
     thread("sams-older", { updatedAtMs: NOW - DAY }),
     thread("sams-newer"),
-    thread("kims", { requester: sam, assignee: kim, entries: [message("m", kim, [me])] }),
-    thread("without-me", { requester: kim, assignee: sam }),
-    thread("without-sam", { assignee: kim }),
+    thread("kims", { owner: sam, assignees: [kim], entries: [message("m", kim, [me])] }),
+    thread("without-me", { owner: kim, assignees: [sam] }),
+    thread("without-sam", { assignees: [kim] }),
   ];
   const shared = sharedThreads(threads, "me", "sam");
-  expect(ids(shared.waitingOnYou)).toEqual(["mine-from-sam"]);
-  expect(ids(shared.waitingOnThem)).toEqual(["sams-newer", "sams-older"]);
+  expect(ids(shared.forYou)).toEqual(["mine-from-sam", "both"]);
+  expect(ids(shared.forThem)).toEqual(["sams-newer", "sams-older"]);
   expect(ids(shared.others)).toEqual(["kims"]);
   expect(ids(shared.closed)).toEqual([]);
 });
@@ -91,7 +81,7 @@ test("closed threads you share are kept apart, and archived ones never show", ()
     "me",
     "sam",
   );
-  expect(ids(shared.waitingOnThem)).toEqual(["open"]);
+  expect(ids(shared.forThem)).toEqual(["open"]);
   expect(ids(shared.closed)).toEqual(["closed"]);
 });
 

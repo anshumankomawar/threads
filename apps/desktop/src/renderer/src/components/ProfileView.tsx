@@ -1,6 +1,6 @@
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Building03Icon } from "@hugeicons/core-free-icons";
-import { bucketsOf, isDone, waitingOn, type Person, type Thread } from "model";
+import { assignedIds, bucketsOf, isDone, type Person, type Thread } from "model";
 import { useState } from "react";
 import { buildOrgTree, chainAbove, countUnder, orgDetails, type OrgNode } from "../org";
 import { Identicon } from "./Identicon";
@@ -133,7 +133,7 @@ function OrgBranch({
   );
 }
 
-// You, then where you sit in the org: who you are and what's waiting on you, and below, the org tree laid out like a
+// You, then where you sit in the org: who you are and what's assigned to you, and below, the org tree laid out like a
 // file tree (neo-tree), with your branch open and your row marked.
 export function ProfileView({
   people,
@@ -160,7 +160,9 @@ export function ProfileView({
   const hasReportingLines = tree.some((node) => node.reports.length > 0);
   const summary = hasReportingLines ? count : `${count} · No reporting lines set yet`;
   const reports = people.filter((person) => person.managerId === me.id);
-  const waiting = threads.filter((thread) => !isDone(thread.status) && waitingOn(thread) === me.id);
+  const waiting = threads.filter(
+    (thread) => !isDone(thread.status) && assignedIds(thread).includes(me.id),
+  );
   const overdue = waiting.filter((thread) => thread.dueAtMs !== null && thread.dueAtMs < nowMs);
   const buckets = bucketsOf(me);
 
@@ -181,7 +183,7 @@ export function ProfileView({
         <dd>{reports.length === 0 ? "None" : reports.map((person) => person.name).join(", ")}</dd>
         <dt>Inbox</dt>
         <dd>
-          {waiting.length} waiting on you
+          {waiting.length} assigned to you
           {overdue.length > 0 && ` · ${overdue.length} overdue`}
         </dd>
         <dt>Buckets</dt>

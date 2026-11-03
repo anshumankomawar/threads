@@ -86,7 +86,7 @@ const createThread = (id: string, fields: object = {}): TransactionInput =>
     data: {
       id,
       title: "A thread",
-      assigneeId: "arjun",
+      assigneeIds: ["arjun"],
       ...fields,
     },
   }) as TransactionInput;
@@ -311,9 +311,8 @@ test("records stored by older versions load in today's shape", () => {
   } = {
     id: "t1",
     title: "Old",
-    requesterId: "anshu",
     createdById: "anshu",
-    assigneeId: "arjun",
+    assigneeIds: ["arjun"],
     status: "open",
     priority: "none",
     dueAtMs: null,
@@ -328,15 +327,22 @@ test("records stored by older versions load in today's shape", () => {
     createdAtMs: NOW,
     updatedAtMs: NOW,
   } satisfies ThreadRecord;
-  // Labels were tags, threads had schedules and kinds, meetings had call links, messages weren't sent to anyone, and
-  // a bucket was one person's.
-  const old = { schedule: null, blocks: [], workedMinutes: 0 };
+  // Labels were tags, threads had schedules and kinds, meetings had call links, messages weren't sent to anyone, a
+  // bucket was one person's, and a thread had a requester and one assignee.
+  const { assigneeIds: _assignees, ...unassigned } = rest;
+  const old = {
+    schedule: null,
+    blocks: [],
+    workedMinutes: 0,
+    requesterId: "anshu",
+    assigneeId: "arjun",
+  };
   engine.load(
     [
       {
         modelName: "Thread",
         data: {
-          ...rest,
+          ...unassigned,
           ...old,
           kind: "response",
           tagIds: ["bug"],
@@ -353,8 +359,9 @@ test("records stored by older versions load in today's shape", () => {
       {
         modelName: "Thread",
         data: {
-          ...rest,
+          ...unassigned,
           ...old,
+          assigneeId: null,
           id: "m1",
           kind: "meeting",
           attendeeIds: ["anshu", "kk"],
@@ -387,14 +394,25 @@ test("records stored by older versions load in today's shape", () => {
   );
   const stored = engine.models.Thread.get("t1");
   expect(stored).toMatchObject({
+    createdById: "anshu",
+    assigneeIds: ["arjun"],
     labelIds: ["bug"],
     triage: { arjun: { bucketId: "action", reason: "", manual: false, stale: false } },
     doneBy: {},
     snoozedUntil: {},
   });
-  for (const gone of ["tagIds", "schedule", "blocks", "workedMinutes", "kind", "attendeeIds"])
+  for (const gone of [
+    "tagIds",
+    "schedule",
+    "blocks",
+    "workedMinutes",
+    "kind",
+    "attendeeIds",
+    "requesterId",
+    "assigneeId",
+  ])
     expect(stored).not.toHaveProperty(gone);
-  expect(engine.models.Thread.get("m1")).toMatchObject({ triage: {} });
+  expect(engine.models.Thread.get("m1")).toMatchObject({ triage: {}, assigneeIds: [] });
   expect([...engine.models.Entry.values()]).toEqual([
     {
       id: "e1",
