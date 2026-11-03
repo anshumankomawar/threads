@@ -81,7 +81,8 @@ export function ComposePanel({
   const others = people.filter((person) => person.id !== me.id);
   const request = (body: string): ComposeRequest => ({
     author: { id: me.id, name: me.name },
-    people: people.map((person) => ({ id: person.id, name: person.name })),
+    // Only who's @mentioned, so the model can't hand an ask to anyone else.
+    people: mentionedPeople(body, people).map((person) => ({ id: person.id, name: person.name })),
     text: body,
   });
 

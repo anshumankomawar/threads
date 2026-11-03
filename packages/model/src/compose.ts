@@ -3,7 +3,7 @@
 
 export type ComposeRequest = {
   author: { id: string; name: string };
-  // Everyone who can be asked, so the model can tell who "@arjun" is.
+  // Who can be asked: the people @mentioned, so the model can tell who "@arjun" is and picks nobody else.
   people: { id: string; name: string }[];
   text: string;
 };

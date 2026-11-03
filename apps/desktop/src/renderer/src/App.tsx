@@ -27,6 +27,7 @@ import {
   type ThreadChanges,
   waitingOn,
   inboxReason,
+  mention,
   lastSentTo,
   participants,
   threadLink,
@@ -340,8 +341,16 @@ const App = observer(function App(): React.JSX.Element {
       },
       me,
     );
+    // Each ask opens with its people's @mentions, so it reads "@Amara Can you review this CR?".
     for (const ask of draft.asks)
-      client.addEntry(threadId, "message", ask.text, me, undefined, asked(ask));
+      client.addEntry(
+        threadId,
+        "message",
+        [...ask.personIds.map(mention), ask.text].join(" "),
+        me,
+        undefined,
+        asked(ask),
+      );
     openThread(threadId);
   };
 

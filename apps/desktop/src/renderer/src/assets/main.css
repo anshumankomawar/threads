@@ -623,15 +623,6 @@ body * {
 }
 
 /* "Anshu asked Ben": who asked, then who it's for. */
-.thread-byline-verb {
-  color: var(--text-tertiary);
-}
-
-/* The assignee chip's padding would double the gap after "asked". */
-.thread-byline-verb + .chip-anchor {
-  margin-left: -4px;
-}
-
 /* Activity lines: muted, and tighter to the messages around them. */
 /* Activity lines: one short line each, tucked closer to the messages around them, and nearly touching when several
    come in a row (a run of status changes reads as one small group). */
@@ -1435,10 +1426,6 @@ body * {
 
 .thread-byline svg {
   color: var(--icon-tertiary);
-}
-
-.thread-byline-dot {
-  color: var(--text-tertiary);
 }
 
 /* Who and when sit just above the title, the description follows it, and the properties come last with a little

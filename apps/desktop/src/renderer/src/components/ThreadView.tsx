@@ -59,6 +59,7 @@ import {
   type Status,
   type Thread,
   mention,
+  mentionsIn,
   descriptionOf,
   bucketsOf,
   inboxPeople,
@@ -360,13 +361,11 @@ function ThreadHeader({
   thread,
   ask,
   nowMs,
-  people,
   actions,
 }: {
   thread: Thread;
   ask: MessageEntry | undefined;
   nowMs: number;
-  people: Person[];
   actions: ThreadActions;
 }): React.JSX.Element {
   const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
@@ -386,47 +385,12 @@ function ThreadHeader({
 
   return (
     <header className="thread-header" id={ask === undefined ? undefined : `entry-${ask.id}`}>
-      <div className="thread-byline">
-        <>
-          <MenuChip
-            label={thread.requester.name}
-            icon={<Identicon seed={thread.requester.id} size={14} />}
-            tone="assignee"
-            options={people.map((person) => ({
-              label: person.name,
-              value: person,
-              icon: <Identicon seed={person.id} size={14} />,
-            }))}
-            onSelect={actions.onSetRequester}
-          />
-          <span className="thread-byline-verb">asked</span>
-          <MenuChip
-            label={thread.assignee?.name ?? "no one yet"}
-            icon={thread.assignee !== null && <Identicon seed={thread.assignee.id} size={14} />}
-            tone="assignee"
-            options={people.map((person) => ({
-              label: person.name,
-              value: person,
-              icon: <Identicon seed={person.id} size={14} />,
-            }))}
-            onSelect={actions.onSetAssignee}
-          />
-          {/* Who really made it, when someone made it for the requester. */}
-          {thread.createdBy.id !== thread.requester.id && (
-            <>
-              <span className="thread-byline-dot">·</span>
-              <span>via {thread.createdBy.name}</span>
-            </>
-          )}
-        </>
-        {thread.branchedFromId !== null && (
-          <>
-            <span className="thread-byline-dot">·</span>
-            <span>Branched from</span>
-            <ThreadLinkChip threadId={thread.branchedFromId} />
-          </>
-        )}
-      </div>
+      {thread.branchedFromId !== null && (
+        <div className="thread-byline">
+          <span>Branched from</span>
+          <ThreadLinkChip threadId={thread.branchedFromId} />
+        </div>
+      )}
       <h1 className="thread-title">{thread.title}</h1>
       {description !== "" && (
         <MessageText text={description} className="thread-text thread-description" />
@@ -546,13 +510,16 @@ function MessageBlock({
       <div className="thread-body">
         <div className="thread-meta">
           <span className="thread-author">{message.author.name}</span>
-          {/* Who it was sent to, or that it's a note nobody was told about. The description is neither. */}
-          {message.sentTo.length > 0 ? (
-            <span className="thread-sent-to">
-              to {message.sentTo.map((person) => person.name.split(" ")[0]).join(", ")}
-            </span>
-          ) : (
+          {/* Who it was sent to, unless the message @mentions them all already, or that it's a note nobody was told
+              about. The description is neither. */}
+          {message.sentTo.length === 0 ? (
             <span className="thread-note">Note</span>
+          ) : (
+            !message.sentTo.every((person) => mentionsIn(message.text).includes(person.id)) && (
+              <span className="thread-sent-to">
+                to {message.sentTo.map((person) => person.name.split(" ")[0]).join(", ")}
+              </span>
+            )
           )}
           <span className="thread-time">{formatRelativeTime(message.createdAtMs, nowMs)}</span>
         </div>
@@ -1153,13 +1120,7 @@ export function ThreadView({
           onScroll={onScroll}
         >
           <article ref={docRef} className="thread-doc">
-            <ThreadHeader
-              thread={thread}
-              ask={ask}
-              nowMs={nowMs}
-              people={people}
-              actions={actions}
-            />
+            <ThreadHeader thread={thread} ask={ask} nowMs={nowMs} actions={actions} />
             {rest.map((entry, index) => {
               if (entry.kind === "message")
                 return (

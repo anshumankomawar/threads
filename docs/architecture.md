@@ -177,11 +177,12 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 ## Writing a thread as one message (⌘⇧N)
 
 `ComposePanel` takes one message written as you'd say it ("@Anshu @Arjun can you review this CR. @Omar can you also
-track this"). While you type, the app sends it with everyone's names to `POST /ai/compose` (`apps/api/src/compose.ts`,
-Workers AI), which drafts a title, any shared context, and an ask per distinct request with the people it's for; the
+track this"). While you type, the app sends it with the names of the people it @mentions to `POST /ai/compose`
+(`apps/api/src/compose.ts`, Workers AI's Llama 3.1 8B, for speed), which drafts a title, any shared context, and an ask per distinct request with the people it's for; the
 panel previews that draft. Enter makes the thread from it with ordinary transactions (`composeThread` in `App.tsx`):
 the title and context as the thread and its description, the first person asked as its assignee, and each ask as a
-message sent to its people. So it's still one thread, in each person's inbox and sorted for them by what they were
+message sent to its people, opening with their @mentions (a message that @mentions everyone it went to doesn't also
+say "to …"). So it's still one thread, in each person's inbox and sorted for them by what they were
 asked (the triage prompt reads the latest message sent to them). Without the model it falls back to the first
 sentence as the title and one ask for everyone mentioned.
 
@@ -215,8 +216,8 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
   work, `/task` turns it into a task of your own: a new thread assigned to you, branched from where you were asked,
   with "Taking this on in <link>" sent back to whoever asked.
 - On behalf of: making a thread with `onBehalfOfId` makes that person its requester, so they track it and it counts
-  as their ask, in the byline and the score. `createdById` keeps who really made it, shown as "via" in the byline, and
-  the server adds "created this on behalf of ..." (`#apply`). Anyone can pick anyone, since there are no real identities
+  as their ask in the score. `createdById` keeps who really made it, and the server adds "created this on behalf of
+  ..." (`#apply`). The thread page has no requester or assignee line above the title. Anyone can pick anyone, since there are no real identities
   yet (View As). Any requester can be changed later (`requesterId`, "made ... the requester"). The maker isn't part of
   the thread: not in Sent, and writing the description doesn't count towards notifications (`involves` in
   `activity.ts`); replying does. The details panel's Activity section lists a thread's activity lines as its audit log.
