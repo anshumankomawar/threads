@@ -2,7 +2,7 @@ import { mergeAttributes, Node } from "@tiptap/react";
 import { PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { exitSuggestion, Suggestion, type SuggestionProps } from "@tiptap/suggestion";
-import { mention } from "model";
+import { mentionToken } from "model";
 import { offerKey } from "./threadLinkNode";
 
 // Typing `@` in a reply opens the people menu, announced on the editor's DOM like the `#` menu: MENTION_MENU_EVENT
@@ -25,8 +25,8 @@ export function closeMentionMenu(view: EditorView): void {
   exitSuggestion(view, mentionKey);
 }
 
-// A mention inside a message being written: a chip with the person's name, sent as `[[person:<id>]]`. Mentioning
-// someone in a thread starts a conversation with them; in a conversation it brings them in.
+// A mention inside a message being written: a chip with the person's or group's name, sent as `[[person:<id>]]` or
+// `[[group:<id>]]` (its id is `group:<id>`). It puts them, or the group's members, on the reply's To line.
 export const MentionNode = Node.create({
   name: "mention",
   group: "inline",
@@ -50,7 +50,7 @@ export const MentionNode = Node.create({
   },
 
   renderText({ node }) {
-    return mention(String(node.attrs.id));
+    return mentionToken(String(node.attrs.id));
   },
 
   addProseMirrorPlugins() {

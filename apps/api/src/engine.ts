@@ -1,6 +1,7 @@
 import {
   applyScopedChanges,
   bucketsOf,
+  GROUP_TARGET,
   descriptionOf,
   inboxPeople,
   lastSentTo,
@@ -523,7 +524,11 @@ export class SyncEngine {
       for (const personId of this.#needsTriage(thread))
         byPerson.set(personId, [...(byPerson.get(personId) ?? []), thread]);
     }
-    const name = (personId: string): string | undefined => this.models.Person.get(personId)?.name;
+    // People by id, groups by `group:<id>`.
+    const name = (target: string): string | undefined =>
+      target.startsWith(GROUP_TARGET)
+        ? this.models.Group.get(target.slice(GROUP_TARGET.length))?.name
+        : this.models.Person.get(target)?.name;
     const title = (threadId: string): string | undefined => this.models.Thread.get(threadId)?.title;
     const plain = (text: string): string => plainThreadLinks(text, title, name);
     return [...byPerson].flatMap(([personId, waiting]) => {

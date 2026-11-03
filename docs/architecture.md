@@ -174,6 +174,16 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
 
+## @groups
+
+`@` offers groups as well as people, in replies and in the new-message panel. A group mention is `[[group:<id>]]` in
+the text (`groupMention`; the @ menus and drafts name it `group:<id>`, `mentionToken`), shown as @Name. Sending
+expands it to the group's members as they are then (`recipientsOf` in `compose.ts`), less you, into `sentToIds`, so each
+of them has the thread in their inbox; someone who joins later sees the group's threads on its page but gets only
+what's sent after. Mentioning a group also files the thread under its label. A thread asked of groups and nobody by
+name has no assignee: anyone in the group can close it, and each marks it done for themselves (⌘E); the asker has it
+in Sent (it's marked done for them, so it comes back to them when someone answers).
+
 ## Writing a thread as one message (⌘⇧N)
 
 `ComposePanel` takes one message written as you'd say it ("@Anshu @Arjun can you review this CR. @Omar can you also

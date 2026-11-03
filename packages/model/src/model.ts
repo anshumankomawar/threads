@@ -216,15 +216,30 @@ export function replyTo(thread: Thread, personId: string): Person[] {
 }
 
 // Links inside a message's text: another thread as `[[thread:<id>]]` (`#` in a reply), a person as
-// `[[person:<id>]]` (`@` in a reply; mentioning someone adds them to who it's sent to).
-const LINK = /\[\[(thread|person):([^\]\s]+)\]\]/g;
+// `[[person:<id>]]` (`@` in a reply; mentioning someone adds them to who it's sent to), and a group as
+// `[[group:<id>]]` (sent to its members as they are when it's sent).
+const LINK = /\[\[(thread|person|group):([^\]\s]+)\]\]/g;
 const THREAD_LINK = /\[\[thread:([^\]\s]+)\]\]/g;
 const MENTION = /\[\[person:([^\]\s]+)\]\]/g;
+const GROUP_MENTION = /\[\[group:([^\]\s]+)\]\]/g;
 
 export const threadLink = (threadId: string): string => `[[thread:${threadId}]]`;
 export const mention = (personId: string): string => `[[person:${personId}]]`;
+export const groupMention = (groupId: string): string => `[[group:${groupId}]]`;
 
-export type TextPart = { text: string } | { threadId: string } | { personId: string };
+// What the @ menus and drafts mention: a person by id, or a group as `group:<id>`.
+export const GROUP_TARGET = "group:";
+export const groupTarget = (groupId: string): string => `${GROUP_TARGET}${groupId}`;
+export const mentionToken = (target: string): string =>
+  target.startsWith(GROUP_TARGET)
+    ? groupMention(target.slice(GROUP_TARGET.length))
+    : mention(target);
+
+export type TextPart =
+  | { text: string }
+  | { threadId: string }
+  | { personId: string }
+  | { groupId: string };
 
 // A message's text split into plain runs, thread links and mentions, for rendering.
 export function splitThreadLinks(text: string): TextPart[] {
@@ -232,27 +247,40 @@ export function splitThreadLinks(text: string): TextPart[] {
   let last = 0;
   for (const match of text.matchAll(LINK)) {
     if (match.index > last) parts.push({ text: text.slice(last, match.index) });
-    parts.push(match[1] === "thread" ? { threadId: match[2] } : { personId: match[2] });
+    parts.push(
+      match[1] === "thread"
+        ? { threadId: match[2] }
+        : match[1] === "group"
+          ? { groupId: match[2] }
+          : { personId: match[2] },
+    );
     last = match.index + match[0].length;
   }
   if (last < text.length) parts.push({ text: text.slice(last) });
   return parts;
 }
 
-// The text with each thread link as `#<title>` and each mention as `@<name>`, for previews and plain text.
+// The text with each thread link as `#<title>` and each mention as `@<name>`, for previews and plain text. `nameOf`
+// names people by id and groups by `group:<id>`.
 export function plainThreadLinks(
   text: string,
   titleOf: (threadId: string) => string | undefined,
-  nameOf: (personId: string) => string | undefined = () => undefined,
+  nameOf: (target: string) => string | undefined = () => undefined,
 ): string {
   return text
     .replace(THREAD_LINK, (_, threadId: string) => `#${titleOf(threadId) ?? "thread"}`)
-    .replace(MENTION, (_, personId: string) => `@${nameOf(personId) ?? "someone"}`);
+    .replace(MENTION, (_, personId: string) => `@${nameOf(personId) ?? "someone"}`)
+    .replace(GROUP_MENTION, (_, groupId: string) => `@${nameOf(groupTarget(groupId)) ?? "group"}`);
 }
 
 // A message's words without the mentions it opens with: "[[person:arjun]] can you look?" is "can you look?".
 export function withoutLeadingMentions(text: string): string {
-  return text.replace(/^(\[\[person:[^\]]+\]\][\s,]*)+/, "");
+  return text.replace(/^(\[\[(person|group):[^\]]+\]\][\s,]*)+/, "");
+}
+
+// Which groups a message mentions.
+export function groupMentionsIn(text: string): string[] {
+  return [...text.matchAll(GROUP_MENTION)].map((match) => match[1]);
 }
 
 // Who a message mentions.

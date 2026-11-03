@@ -3,6 +3,7 @@ import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPal
 import { ComposePanel } from "./components/ComposePanel";
 import { DraftView } from "./components/DraftView";
 import { useDrafts, type SavedDraft } from "./drafts";
+import { recipientsOf, targetsFor } from "./compose";
 import { BucketPalette } from "./components/BucketPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -29,7 +30,10 @@ import {
   type ThreadChanges,
   waitingOn,
   inboxReason,
-  mention,
+  GROUP_TARGET,
+  groupMentionsIn,
+  groupTarget,
+  mentionToken,
   lastSentTo,
   participants,
   threadLink,
@@ -355,27 +359,40 @@ const App = observer(function App(): React.JSX.Element {
   const composeThread = (draft: ComposeDraft, fromDraftId: string | null): void => {
     setComposeOpen(false);
     if (fromDraftId !== null) drafts.remove(fromDraftId);
-    const byId = new Map(people.map((person) => [person.id, person]));
     const asked = (ask: ComposeDraft["asks"][number]): Person[] =>
-      ask.personIds.flatMap((id) => byId.get(id) ?? []);
+      recipientsOf(ask.personIds, people, groups, me);
+    // The first person asked by name has it. Asked only of groups, it's the group's: nobody's assigned, anyone in it can
+    // close it, and each marks it done for themselves. It's filed under each group asked.
+    const named = draft.asks
+      .flatMap((ask) => ask.personIds)
+      .find((id) => !id.startsWith(GROUP_TARGET));
+    const asGroups = groups.filter((group) =>
+      draft.asks.some((ask) => ask.personIds.includes(groupTarget(group.id))),
+    );
     const threadId = client.createThread(
       {
         title: draft.title,
         description: draft.context,
-        assignee: draft.asks.flatMap(asked)[0] ?? null,
+        assignee: people.find((person) => person.id === named) ?? null,
+        labelNames: asGroups.flatMap(
+          (group) => labels.find((label) => label.id === group.labelId)?.name ?? [],
+        ),
       },
       me,
     );
-    // Each ask opens with its people's @mentions, so it reads "@Amara Can you review this CR?".
+    // Each ask opens with its people's and groups' @mentions, so it reads "@Amara Can you review this CR?".
     for (const ask of draft.asks)
       client.addEntry(
         threadId,
         "message",
-        [...ask.personIds.map(mention), ask.text].join(" "),
+        [...ask.personIds.map(mentionToken), ask.text].join(" "),
         me,
         undefined,
         asked(ask),
       );
+    // With nobody assigned it would wait on you, who asked; it's in your Sent instead, back when someone answers.
+    if (named === undefined && draft.asks.length > 0)
+      client.updateThread(threadId, { done: true }, me);
     openThread(threadId);
   };
 
@@ -470,7 +487,11 @@ const App = observer(function App(): React.JSX.Element {
       : threads.find((thread) => thread.id === splitThreadId);
   const threadLinks: ThreadLinks = {
     titleOf: (threadId) => threads.find((thread) => thread.id === threadId)?.title,
-    nameOf: (personId) => people.find((person) => person.id === personId)?.name,
+    // People by id, groups by `group:<id>`.
+    nameOf: (target) =>
+      target.startsWith(GROUP_TARGET)
+        ? groups.find((group) => groupTarget(group.id) === target)?.name
+        : people.find((person) => person.id === target)?.name,
     people,
     threads,
     labels,
@@ -641,7 +662,15 @@ const App = observer(function App(): React.JSX.Element {
     return {
       // Enter sends to people, into their inbox; with nobody to send to, it's a note in the thread.
       onNote: (text) => client.addEntry(thread.id, "message", text, me),
-      onSend: (text, to) => client.addEntry(thread.id, "message", text, me, undefined, to),
+      onSend: (text, to) => {
+        client.addEntry(thread.id, "message", text, me, undefined, to);
+        // @mentioning a group files the thread under it too.
+        const added = groupMentionsIn(text).flatMap(
+          (groupId) => groups.find((group) => group.id === groupId)?.labelId ?? [],
+        );
+        if (added.some((labelId) => !thread.labelIds.includes(labelId)))
+          edit({ labelIds: [...new Set([...thread.labelIds, ...added])] });
+      },
       onBlocked: () => setBlocking(thread),
       onTask: () => {
         // The latest thing someone sent you here, if anything; else the thread itself.
@@ -932,7 +961,7 @@ const App = observer(function App(): React.JSX.Element {
               <DraftView
                 key={shownDraft.id}
                 saved={shownDraft}
-                people={people}
+                targets={targetsFor(people, groups, me)}
                 nowMs={nowMs}
                 onChange={drafts.save}
                 onSend={(draft) => composeThread(draft, shownDraft.id)}
@@ -1007,7 +1036,7 @@ const App = observer(function App(): React.JSX.Element {
           {composeOpen && (
             <ComposePanel
               key={composing?.id ?? "new"}
-              people={people}
+              targets={targetsFor(people, groups, me)}
               me={me}
               initial={composing}
               draftWith={(request, signal) => composeDraft(source, request, signal)}

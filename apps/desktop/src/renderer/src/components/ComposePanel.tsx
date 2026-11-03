@@ -1,6 +1,6 @@
 import type { ComposeDraft, ComposeRequest, Person } from "model";
 import { useEffect, useRef, useState } from "react";
-import { handle, mentionedPeople, plainDraft } from "../compose";
+import { mentionedTargets, plainDraft, type Target } from "../compose";
 import type { SavedDraft } from "../drafts";
 import { Identicon } from "./Identicon";
 
@@ -16,10 +16,11 @@ function mentionQuery(text: string, caret: number): { start: number; query: stri
 // A new thread in one message (⌘⇧N): write it as you'd say it, "@Anshu @Arjun can you review this CR. @Ganesh can
 // you also track this", and the model drafts the thread while you type: its title, any shared context, and each
 // person's own ask. Anything it got wrong can be edited in the preview, which then stays as you left it (Redraft hands
-// it back to the model). Enter sends it: each ask goes to its people, so the thread is in each of their inboxes,
+// it back to the model). Enter sends it: each ask goes to its people (a group's members as they are now), so the
+// thread is in each of their inboxes,
 // sorted by what was asked of them. ⌘S, or closing with something written, keeps it as a draft for later instead.
 export function ComposePanel({
-  people,
+  targets,
   me,
   initial,
   draftWith,
@@ -27,7 +28,8 @@ export function ComposePanel({
   onSaveDraft,
   onClose,
 }: {
-  people: Person[];
+  // Who and which groups can be @mentioned (`targetsFor`).
+  targets: Target[];
   me: Person;
   // A saved draft to carry on with.
   initial: SavedDraft | null;
@@ -52,11 +54,13 @@ export function ComposePanel({
 
   useEffect(() => inputRef.current?.focus(), []);
 
-  const others = people.filter((person) => person.id !== me.id);
   const request = (body: string): ComposeRequest => ({
     author: { id: me.id, name: me.name },
-    // Only who's @mentioned, so the model can't hand an ask to anyone else.
-    people: mentionedPeople(body, people).map((person) => ({ id: person.id, name: person.name })),
+    // Only who's @mentioned, so the model can't hand an ask to anyone else. A group is asked as one.
+    people: mentionedTargets(body, targets).map((target) => ({
+      id: target.id,
+      name: target.group === null ? target.name : `${target.name} (group)`,
+    })),
     text: body,
   });
 
@@ -89,7 +93,7 @@ export function ComposePanel({
 
   const current = drafted !== null && drafted.text === trimmed;
   const shown: ComposeDraft | null =
-    edited ?? (trimmed === "" ? null : (drafted?.draft ?? plainDraft(trimmed, people, me)));
+    edited ?? (trimmed === "" ? null : (drafted?.draft ?? plainDraft(trimmed, targets)));
   const change = (next: Partial<ComposeDraft>): void => {
     if (shown !== null) setEdited({ ...shown, ...next });
   };
@@ -104,18 +108,18 @@ export function ComposePanel({
   const matches =
     mention === null || menuHidden
       ? []
-      : others
+      : targets
           .filter(
-            (person) =>
-              person.name.toLowerCase().startsWith(mention.query.toLowerCase()) ||
-              handle(person).toLowerCase().startsWith(mention.query.toLowerCase()),
+            (target) =>
+              target.name.toLowerCase().startsWith(mention.query.toLowerCase()) ||
+              target.handle.toLowerCase().startsWith(mention.query.toLowerCase()),
           )
           .slice(0, MENTION_MATCHES);
   const selectedIndex = Math.min(selected, Math.max(0, matches.length - 1));
 
-  const pick = (person: Person): void => {
+  const pick = (target: Target): void => {
     if (mention === null) return;
-    const inserted = `@${handle(person)} `;
+    const inserted = `@${target.handle} `;
     const next = text.slice(0, mention.start) + inserted + text.slice(caret);
     const at = mention.start + inserted.length;
     setText(next);
@@ -131,13 +135,13 @@ export function ComposePanel({
     const create = (draft: ComposeDraft): void =>
       onCreate({
         ...draft,
-        title: draft.title.trim() || plainDraft(trimmed, people, me).title || "New thread",
+        title: draft.title.trim() || plainDraft(trimmed, targets).title || "New thread",
       });
     if (edited !== null) return create(edited);
     if (current) return create(drafted.draft);
     setSubmitting(true);
     draftWith(request(trimmed), new AbortController().signal).then(create, () =>
-      create(plainDraft(trimmed, people, me)),
+      create(plainDraft(trimmed, targets)),
     );
   };
 
@@ -197,7 +201,7 @@ export function ComposePanel({
     }
   };
 
-  const byId = new Map(people.map((person) => [person.id, person]));
+  const byId = new Map(targets.map((target) => [target.id, target]));
 
   return (
     <div className="palette-overlay" onMouseDown={saveDraft}>
@@ -239,6 +243,11 @@ export function ComposePanel({
               >
                 <Identicon seed={person.id} size={14} />
                 <span className="palette-row-label">{person.name}</span>
+                {person.group !== null && (
+                  <span className="palette-row-shortcut">
+                    Group · {person.group.memberIds.length}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -291,7 +300,7 @@ export function ComposePanel({
                         .map((person) => (
                           <span key={person.id} className="compose-ask-person">
                             <Identicon seed={person.id} size={14} />
-                            {handle(person)}
+                            {person.group === null ? person.handle : `@${person.handle}`}
                             <button
                               type="button"
                               className="compose-ask-remove"

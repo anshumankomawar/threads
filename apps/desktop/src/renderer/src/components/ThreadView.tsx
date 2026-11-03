@@ -58,14 +58,18 @@ import {
   type Priority,
   type Status,
   type Thread,
-  mention,
   mentionsIn,
+  groupMentionsIn,
+  groupTarget,
+  GROUP_TARGET,
+  mentionToken,
   descriptionOf,
   bucketsOf,
   inboxPeople,
   replyTo,
 } from "model";
 import { DAY, formatDue, formatRelativeTime, startOfDay } from "../format";
+import { recipientsOf } from "../compose";
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
@@ -158,6 +162,10 @@ function LinkedText({ text }: { text: string }): React.JSX.Element {
         ) : "personId" in part ? (
           <span key={index} className="mention">
             @{nameOf(part.personId) ?? "someone"}
+          </span>
+        ) : "groupId" in part ? (
+          <span key={index} className="mention">
+            @{nameOf(groupTarget(part.groupId)) ?? "group"}
           </span>
         ) : (
           <span key={index}>{part.text}</span>
@@ -486,6 +494,14 @@ function MessageBlock({
   onSelect?: (mode: SelectMode) => void;
   onContextMenu?: (event: React.MouseEvent) => void;
 }): React.JSX.Element {
+  // Whoever the message names: the people it mentions and the members of the groups it mentions.
+  const { groups } = useThreadLinks();
+  const named = new Set([
+    ...mentionsIn(message.text),
+    ...groupMentionsIn(message.text).flatMap(
+      (groupId) => groups.find((group) => group.id === groupId)?.memberIds ?? [],
+    ),
+  ]);
   const modeFor = (event: React.MouseEvent): SelectMode | undefined =>
     event.shiftKey ? "range" : event.metaKey || selecting ? "toggle" : undefined;
   return (
@@ -510,12 +526,12 @@ function MessageBlock({
       <div className="thread-body">
         <div className="thread-meta">
           <span className="thread-author">{message.author.name}</span>
-          {/* Who it was sent to, unless the message @mentions them all already, or that it's a note nobody was told
-              about. The description is neither. */}
+          {/* Who it was sent to, unless the message @mentions them all already (or the groups they're in), or that it's
+              a note nobody was told about. The description is neither. */}
           {message.sentTo.length === 0 ? (
             <span className="thread-note">Note</span>
           ) : (
-            !message.sentTo.every((person) => mentionsIn(message.text).includes(person.id)) && (
+            !message.sentTo.every((person) => named.has(person.id)) && (
               <span className="thread-sent-to">
                 to {message.sentTo.map((person) => person.name.split(" ")[0]).join(", ")}
               </span>
@@ -626,10 +642,11 @@ function ReplyBlock({
   const [mentionedIds, setMentionedIds] = useState<string[]>([]);
   const [addedIds, setAddedIds] = useState<string[]>([]);
   const [removedIds, setRemovedIds] = useState<string[]>([]);
-  const byId = new Map(people.map((person) => [person.id, person]));
+  // A mentioned group sends it to its members as they are now.
+  const { groups } = useThreadLinks();
   const to = [
     ...defaultTo,
-    ...[...mentionedIds, ...addedIds].flatMap((id) => byId.get(id) ?? []),
+    ...recipientsOf([...mentionedIds, ...addedIds], people, groups, me),
   ].filter(
     (person, index, all) =>
       person.id !== me.id &&
@@ -678,7 +695,7 @@ function ReplyBlock({
             leaf.type.name === "threadLink"
               ? threadLink(String(leaf.attrs.id))
               : leaf.type.name === "mention"
-                ? mention(String(leaf.attrs.id))
+                ? mentionToken(String(leaf.attrs.id))
                 : "",
           )
           .trim();
@@ -714,7 +731,19 @@ function ReplyBlock({
                 person.id !== me.id &&
                 person.name.toLowerCase().includes(mentionMenu.query.toLowerCase()),
             )
-            .map((person) => ({ kind: "person", person }))
+            .map((person): MenuOption => ({ kind: "person", person }))
+            .concat(
+              links.groups
+                .filter(
+                  (group) =>
+                    !group.archived &&
+                    group.name.toLowerCase().includes(mentionMenu.query.toLowerCase()),
+                )
+                .map((group) => ({
+                  kind: "person",
+                  person: { id: groupTarget(group.id), name: group.name },
+                })),
+            )
         : menu === null
           ? []
           : menuOptions(menu.query, links.search, threadId);
@@ -906,7 +935,12 @@ function ThreadMenu({
             <>
               <Identicon seed={option.person.id} size={14} />
               <span className="thread-menu-title">
-                {option.person.name} <span className="thread-menu-hint">sends it to them too</span>
+                {option.person.name}{" "}
+                <span className="thread-menu-hint">
+                  {option.person.id.startsWith(GROUP_TARGET)
+                    ? "sends it to everyone in the group"
+                    : "sends it to them too"}
+                </span>
               </span>
             </>
           ) : option.kind === "command" ? (

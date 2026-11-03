@@ -1,5 +1,5 @@
-import type { ComposeDraft, Person } from "model";
-import { handle, plainDraft } from "../compose";
+import type { ComposeDraft } from "model";
+import { plainDraft, type Target } from "../compose";
 import type { SavedDraft } from "../drafts";
 import { formatRelativeTime } from "../format";
 import { useMe } from "../me";
@@ -10,14 +10,15 @@ import { Identicon } from "./Identicon";
 // thread (and drops the draft); Delete throws it away.
 export function DraftView({
   saved,
-  people,
+  targets,
   nowMs,
   onChange,
   onSend,
   onDelete,
 }: {
   saved: SavedDraft;
-  people: Person[];
+  // Who and which groups can be @mentioned (`targetsFor`).
+  targets: Target[];
   nowMs: number;
   onChange: (saved: SavedDraft) => void;
   onSend: (draft: ComposeDraft) => void;
@@ -25,8 +26,8 @@ export function DraftView({
 }): React.JSX.Element {
   const me = useMe();
   // Saved before the model had drafted it: start from the plain reading of what was written.
-  const draft = saved.draft ?? plainDraft(saved.text, people, me);
-  const byId = new Map(people.map((person) => [person.id, person]));
+  const draft = saved.draft ?? plainDraft(saved.text, targets);
+  const byId = new Map(targets.map((target) => [target.id, target]));
   const change = (next: Partial<ComposeDraft>): void =>
     onChange({ ...saved, draft: { ...draft, ...next } });
   const changeAsk = (index: number, next: ComposeDraft["asks"][number]): void =>
@@ -38,7 +39,7 @@ export function DraftView({
   const send = (): void =>
     onSend({
       ...draft,
-      title: draft.title.trim() || plainDraft(saved.text, people, me).title || "New thread",
+      title: draft.title.trim() || plainDraft(saved.text, targets).title || "New thread",
     });
 
   return (
@@ -94,7 +95,7 @@ export function DraftView({
                     .flatMap((id) => byId.get(id) ?? [])
                     .map((person) => (
                       <span key={person.id} className="draft-mention">
-                        @{handle(person)}
+                        @{person.handle}
                         <button
                           type="button"
                           className="draft-mention-remove"
