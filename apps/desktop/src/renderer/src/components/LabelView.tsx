@@ -8,14 +8,20 @@ import {
   type GroupChanges,
   type Label,
   type Person,
+  type Sprint,
+  type SprintChanges,
+  type Status,
   type Thread,
 } from "model";
 import { useState } from "react";
 import { formatRelativeTime } from "../format";
 import { NO_FILTER, threadsWithLabel, type ThreadFilter } from "../groups";
+import { nextSprint, openSprintWith, sprintDates, sprintThreads } from "../sprints";
 import { THREAD_ICON } from "../threadIcon";
 import { useThreadMenu } from "../threadMenu";
+import { Board } from "./Board";
 import { Identicon } from "./Identicon";
+import { SprintPanel } from "./SprintPanel";
 import { MenuChip } from "./ThreadView";
 
 // A group's members: anyone in it can add or remove people, and anyone can join or leave.
@@ -140,9 +146,23 @@ function GroupTitle({
   );
 }
 
+// The sprint menu's way to start one.
+const NEW_SPRINT = "new-sprint";
+
+// List or board, remembered on this device.
+const VIEW_KEY = "list-view";
+function savedView(): "list" | "board" {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "board" ? "board" : "list";
+  } catch {
+    return "list";
+  }
+}
+
 // The organization's threads, in the main area: all of them, or a label's. A group's page is its label's threads, with
 // its members too, since a thread is in a group by having the group's label. Open threads by default, and you can
-// narrow by person (who owns it or is assigned it), by a group or label, and show closed ones.
+// narrow by person (who owns it or is assigned it), by a group or label, and show closed ones. Any of it shows as a
+// list or a board, and a group's page narrows to one of its sprints too.
 export function LabelView({
   label,
   group,
@@ -153,6 +173,10 @@ export function LabelView({
   nowMs,
   unreadIds,
   onUpdateGroup,
+  sprints,
+  onCreateSprint,
+  onUpdateSprint,
+  onSetStatus,
   onNewThread,
   onOpenThread,
   onOpenPerson,
@@ -167,17 +191,49 @@ export function LabelView({
   nowMs: number;
   unreadIds: Set<string>;
   onUpdateGroup: (changes: GroupChanges) => void;
-  onNewThread: () => void;
+  // The group's sprints (`sprintsOf`); none on a label's page or every thread.
+  sprints: Sprint[];
+  onCreateSprint: (
+    name: string,
+    dates: { startMs: number; endMs: number },
+    threadIds: string[],
+  ) => string;
+  onUpdateSprint: (sprintId: string, changes: SprintChanges) => void;
+  onSetStatus: (thread: Thread, status: Status) => void;
+  // From a sprint, the new thread goes in it.
+  onNewThread: (sprintId: string | null) => void;
   onOpenThread: (id: string) => void;
   onOpenPerson: (id: string) => void;
 }): React.JSX.Element {
   const openMenu = useThreadMenu();
   const [filter, setFilter] = useState<ThreadFilter>(NO_FILTER);
+  const [view, setView] = useState<"list" | "board">(savedView);
+  const [sprintId, setSprintId] = useState<string | null>(null);
+  const sprint = sprints.find((candidate) => candidate.id === sprintId);
   const labelId = label?.id ?? null;
-  const everything = threadsWithLabel(threads, labelId, { ...filter, includeDone: true });
-  const shown = threadsWithLabel(threads, labelId, filter);
+  // A sprint narrows the group's threads to its own; the other filters still apply.
+  const pool =
+    sprint === undefined || group === undefined
+      ? threads
+      : sprintThreads(sprint, threads, group.labelId);
+  const everything = threadsWithLabel(pool, labelId, { ...filter, includeDone: true });
+  // The board has a column for closed threads, so it always has them.
+  const shown = view === "board" ? everything : threadsWithLabel(pool, labelId, filter);
   const closedCount = everything.filter((thread) => isDone(thread.status)).length;
-  const inThese = threadsWithLabel(threads, labelId, { ...NO_FILTER, includeDone: true });
+  const inThese = threadsWithLabel(pool, labelId, { ...NO_FILTER, includeDone: true });
+  const isMember = group?.memberIds.includes(me.id) ?? false;
+  const chooseView = (next: "list" | "board"): void => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // Remembering it is a convenience.
+    }
+  };
+  const newSprint = (threadIds: string[]): void => {
+    const next = nextSprint(sprints, nowMs);
+    setSprintId(onCreateSprint(next.name, next, threadIds));
+  };
   const personOptions = people.filter((person) =>
     inThese.some(
       (thread) =>
@@ -187,7 +243,6 @@ export function LabelView({
   const labelOptions = labels.filter(
     (other) => other.id !== labelId && inThese.some((thread) => thread.labelIds.includes(other.id)),
   );
-  const isMember = group?.memberIds.includes(me.id) ?? false;
   const nameOf = (personId: string): string =>
     people.find((person) => person.id === personId)?.name ?? personId;
   const count = `${shown.length} ${shown.length === 1 ? "thread" : "threads"}`;
@@ -259,13 +314,67 @@ export function LabelView({
         </>
       )}
 
+      {sprint !== undefined && group !== undefined && (
+        <SprintPanel
+          key={sprint.id}
+          sprint={sprint}
+          threads={sprintThreads(sprint, threads, group.labelId)}
+          groupThreads={threads}
+          groupSprints={sprints}
+          labelId={group.labelId}
+          canEdit={isMember}
+          onUpdate={(changes) => onUpdateSprint(sprint.id, changes)}
+          // Only what isn't already in another open sprint can go in the next.
+          onStartNext={(threadIds) =>
+            newSprint(
+              threadIds.filter((threadId) => openSprintWith(sprints, threadId) === undefined),
+            )
+          }
+          onOpenPerson={onOpenPerson}
+        />
+      )}
+
       <div className="group-toolbar">
         {group?.archived !== true && (
-          <button type="button" className="group-new" onClick={onNewThread}>
+          <button
+            type="button"
+            className="group-new"
+            onClick={() => onNewThread(sprint !== undefined && !sprint.closed ? sprint.id : null)}
+          >
             New thread
           </button>
         )}
+        <span className="view-toggle" role="group" aria-label="View">
+          {(["list", "board"] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              className="view-toggle-option"
+              aria-pressed={view === option}
+              onClick={() => chooseView(option)}
+            >
+              {option === "list" ? "List" : "Board"}
+            </button>
+          ))}
+        </span>
         <span className="group-filters">
+          {group !== undefined && (sprints.length > 0 || (isMember && !group.archived)) && (
+            <MenuChip
+              label={sprint === undefined ? "Any sprint" : sprint.name}
+              tone={sprint === undefined ? "muted" : undefined}
+              options={[
+                { label: "Any sprint", value: null as string | null },
+                ...sprints.map((option) => ({
+                  label: `${option.name} · ${option.closed ? "Closed" : sprintDates(option)}`,
+                  value: option.id as string | null,
+                })),
+                ...(isMember && !group.archived
+                  ? [{ label: "New sprint", value: NEW_SPRINT }]
+                  : []),
+              ]}
+              onSelect={(value) => (value === NEW_SPRINT ? newSprint([]) : setSprintId(value))}
+            />
+          )}
           <MenuChip
             label={filter.personId === null ? "Anyone" : nameOf(filter.personId)}
             tone={filter.personId === null ? "muted" : undefined}
@@ -288,7 +397,7 @@ export function LabelView({
               onSelect={(labelId) => setFilter((current) => ({ ...current, labelId }))}
             />
           )}
-          {closedCount > 0 && (
+          {closedCount > 0 && view === "list" && (
             <button
               type="button"
               className="chip"
@@ -304,8 +413,18 @@ export function LabelView({
         </span>
       </div>
 
-      {shown.length === 0 ? (
-        <p className="group-empty">No threads here yet.</p>
+      {view === "board" ? (
+        <Board
+          threads={shown}
+          nowMs={nowMs}
+          unreadIds={unreadIds}
+          onOpenThread={onOpenThread}
+          onSetStatus={onSetStatus}
+        />
+      ) : shown.length === 0 ? (
+        <p className="group-empty">
+          {sprint === undefined ? "No threads here yet." : "Nothing in this sprint yet."}
+        </p>
       ) : (
         <ul className="list-page-items">
           {shown.map((thread) => {

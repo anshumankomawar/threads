@@ -11,6 +11,7 @@ import type {
   Organization,
   Person,
   Priority,
+  Sprint,
   Status,
   Thread,
   Triage,
@@ -63,6 +64,7 @@ export type ModelRecords = {
   Organization: Organization;
   Label: Label;
   Group: Group;
+  Sprint: Sprint;
 };
 
 export type ModelName = keyof ModelRecords;
@@ -75,6 +77,7 @@ export const MODEL_NAMES: ModelName[] = [
   "Organization",
   "Label",
   "Group",
+  "Sprint",
 ];
 
 // Each model's metadata, as in LSE's ModelRegistry: how it loads, and which properties reference other models.
@@ -96,10 +99,15 @@ export const ModelRegistry = {
     references: { threadId: "Thread", authorId: "Person", actorId: "Person" },
     referenceArrays: { sentToIds: "Person" },
   },
+  Sprint: {
+    loadStrategy: "instant",
+    references: { groupId: "Group", createdById: "Person" },
+    referenceArrays: { threadIds: "Thread" },
+  },
 } as const;
 
 // A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v19");
+export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v20");
 
 function fnv1a(text: string): string {
   let hash = 0x811c9dc5;
@@ -146,10 +154,12 @@ export type TransactionInput =
   | { id: string; type: "create"; modelName: "Entry"; data: EntryCreate }
   | { id: string; type: "create"; modelName: "Label"; data: LabelCreate }
   | { id: string; type: "create"; modelName: "Group"; data: GroupCreate }
+  | { id: string; type: "create"; modelName: "Sprint"; data: SprintCreate }
   | { id: string; type: "update"; modelName: "Thread"; modelId: string; changes: ThreadChanges }
   // People change only their own profile.
   | { id: string; type: "update"; modelName: "Person"; modelId: string; changes: PersonChanges }
   | { id: string; type: "update"; modelName: "Group"; modelId: string; changes: GroupChanges }
+  | { id: string; type: "update"; modelName: "Sprint"; modelId: string; changes: SprintChanges }
   | {
       id: string;
       type: "update";
@@ -179,6 +189,21 @@ export type LabelCreate = { id: string; name: string };
 export type GroupCreate = { id: string; name: string; memberIds: string[] };
 
 export type GroupChanges = Partial<Pick<Group, "name" | "memberIds" | "archived">>;
+
+// A sprint is made in a group, with its dates and any threads to start with.
+export type SprintCreate = {
+  id: string;
+  groupId: string;
+  name: string;
+  startMs: number;
+  endMs: number;
+  threadIds?: string[];
+};
+
+// Its threads are changed as a whole list, like a group's members.
+export type SprintChanges = Partial<
+  Pick<Sprint, "name" | "startMs" | "endMs" | "threadIds" | "closed">
+>;
 
 export type OrganizationChanges = Pick<Organization, "name">;
 
@@ -306,6 +331,21 @@ export function groupFromCreate(data: GroupCreate, actorId: string, nowMs: numbe
     createdById: actorId,
     archived: false,
     activity: [],
+    createdAtMs: nowMs,
+    updatedAtMs: nowMs,
+  };
+}
+
+export function sprintFromCreate(data: SprintCreate, actorId: string, nowMs: number): Sprint {
+  return {
+    id: data.id,
+    groupId: data.groupId,
+    name: data.name.trim(),
+    startMs: data.startMs,
+    endMs: data.endMs,
+    threadIds: [...new Set(data.threadIds ?? [])],
+    closed: false,
+    createdById: actorId,
     createdAtMs: nowMs,
     updatedAtMs: nowMs,
   };

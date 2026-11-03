@@ -64,6 +64,7 @@ import { LabelView } from "./components/LabelView";
 import { NewGroupPalette } from "./components/NewGroupPalette";
 import { OrganizationPrompt } from "./components/OrganizationPrompt";
 import { groupNoticesFor, groupsFor, selectableLabels } from "./groups";
+import { openSprintWith, sprintsOf } from "./sprints";
 import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { buildInbox } from "./inbox";
@@ -214,6 +215,7 @@ const App = observer(function App(): React.JSX.Element {
   const people = client.people;
   const labels = client.labels;
   const groups = client.groups;
+  const sprints = client.sprints;
   const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedSource()));
   const fallbackMe = useContext(MeContext);
   // You view the app as the chosen person, or the first person in the data until you pick one.
@@ -330,15 +332,30 @@ const App = observer(function App(): React.JSX.Element {
 
   // Starting a thread opens the new-thread panel.
   const [newThreadOpen, setNewThreadOpen] = useState(false);
-  const openNew = (): void => {
+  // The open sprint it was started from, which it goes into.
+  const [newThreadSprintId, setNewThreadSprintId] = useState<string | null>(null);
+  const openNew = (sprintId: string | null = null): void => {
     setSearchOpen(false);
+    setNewThreadSprintId(sprintId);
     setNewThreadOpen(true);
   };
 
   // The panel's title and description make the thread. It appears at once and syncs in the background.
   const createThread = (draft: NewThreadDraft): void => {
     setNewThreadOpen(false);
-    openThread(client.createThread(draft, me));
+    const threadId = client.createThread(draft, me);
+    // Made from a sprint, it goes in it in the same batch, as long as it kept the group's label: only the group's
+    // threads go in its sprints.
+    const sprint = sprints.find((candidate) => candidate.id === newThreadSprintId);
+    const group = groups.find((candidate) => candidate.id === sprint?.groupId);
+    if (
+      sprint !== undefined &&
+      !sprint.closed &&
+      group !== undefined &&
+      draft.labelNames.some((name) => labelSlug(name) === group.labelId)
+    )
+      client.updateSprint(sprint.id, { threadIds: [...sprint.threadIds, threadId] }, me);
+    openThread(threadId);
   };
 
   // ⌘⇧N: a new thread written as one message, drafted by the model (`ComposePanel`). The first person asked has it;
@@ -633,6 +650,34 @@ const App = observer(function App(): React.JSX.Element {
         items.push({ label: "Sort it for me", run: () => placeIn(thread.id, null) });
       items.push("separator");
     }
+    // The open sprints of your groups that it's in, or could join: only a group's threads go in its sprints, each in
+    // one open sprint of the group at a time.
+    const sprintItems: ContextMenuItem[] = groups.flatMap((group) => {
+      if (!group.memberIds.includes(me.id) || !thread.labelIds.includes(group.labelId)) return [];
+      const groupSprints = sprintsOf(sprints, group.id);
+      const current = openSprintWith(groupSprints, thread.id);
+      if (current !== undefined)
+        return [
+          {
+            label: `Remove from ${current.name}`,
+            run: () =>
+              client.updateSprint(
+                current.id,
+                { threadIds: current.threadIds.filter((id) => id !== thread.id) },
+                me,
+              ),
+          },
+        ];
+      if (isDone(thread.status)) return [];
+      return groupSprints
+        .filter((sprint) => !sprint.closed)
+        .map((sprint) => ({
+          label: `Add to ${sprint.name}${groups.length > 1 ? ` (${group.name})` : ""}`,
+          run: () =>
+            client.updateSprint(sprint.id, { threadIds: [...sprint.threadIds, thread.id] }, me),
+        }));
+    });
+    if (sprintItems.length > 0) items.push(...sprintItems, "separator");
     items.push(
       isDone(thread.status)
         ? { label: "Reopen", run: () => setStatus("open") }
@@ -954,7 +999,16 @@ const App = observer(function App(): React.JSX.Element {
                 onUpdateGroup={(changes) => {
                   if (shownGroup !== undefined) client.updateGroup(shownGroup.id, changes, me);
                 }}
-                onNewThread={() => openNew()}
+                sprints={shownGroup === undefined ? [] : sprintsOf(sprints, shownGroup.id)}
+                onCreateSprint={(name, dates, threadIds) =>
+                  shownGroup === undefined
+                    ? ""
+                    : client.createSprint(shownGroup.id, name, dates, threadIds, me)
+                }
+                onUpdateSprint={(sprintId, changes) => client.updateSprint(sprintId, changes, me)}
+                // Straight to the thread: from the board you stay on the board, rather than moving on through your inbox.
+                onSetStatus={(thread, status) => client.updateThread(thread.id, { status }, me)}
+                onNewThread={openNew}
                 onOpenThread={openThread}
                 onOpenPerson={openPerson}
               />

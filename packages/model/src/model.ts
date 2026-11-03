@@ -338,6 +338,23 @@ export type Group = {
   updatedAtMs: number;
 };
 
+// A stretch of a group's work, and the threads in it. Only a group has sprints, and only the group's threads (those with
+// its label) go in one, each in at most one open sprint of that group. The sprint lists its threads; the threads
+// themselves don't change, so a sprint is a way of looking at them. Closing it keeps it as a record of what was in it.
+export type Sprint = {
+  id: string;
+  groupId: string;
+  name: string;
+  // Midnight on its first day, and midnight after its last, in the local time of whoever set them.
+  startMs: number;
+  endMs: number;
+  threadIds: string[];
+  closed: boolean;
+  createdById: string;
+  createdAtMs: number;
+  updatedAtMs: number;
+};
+
 // A name's id: the same however it's capitalized or punctuated, so two people making "Back-end" and "back end" get one
 // label. Empty when the name has no letters or numbers.
 export function labelSlug(name: string): string {

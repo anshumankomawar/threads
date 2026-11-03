@@ -14,6 +14,8 @@ import {
   type Organization,
   type Person,
   type PersonChanges,
+  type Sprint,
+  type SprintChanges,
   type SyncAction,
   type SyncMessage,
   type Thread,
@@ -118,6 +120,7 @@ export class SyncClient {
       organization: computed,
       labels: computed,
       groups: computed,
+      sprints: computed,
     });
   }
 
@@ -146,6 +149,10 @@ export class SyncClient {
 
   get groups(): Group[] {
     return [...this.pool.maps.Group.values()];
+  }
+
+  get sprints(): Sprint[] {
+    return [...this.pool.maps.Sprint.values()];
   }
 
   // Starts (or restarts) syncing. Each run gets a token; a run that's been stopped or superseded bails at its next
@@ -358,6 +365,44 @@ export class SyncClient {
     this.#enqueue(
       new UpdateTransaction(
         { id: crypto.randomUUID(), type: "update", modelName: "Group", modelId: groupId, changes },
+        me.id,
+      ),
+    );
+  }
+
+  // Starts a sprint in a group, with any of its threads to begin with. Returns its id.
+  createSprint(
+    groupId: string,
+    name: string,
+    dates: { startMs: number; endMs: number },
+    threadIds: string[],
+    me: Person,
+  ): string {
+    const sprintId = crypto.randomUUID();
+    this.#enqueue(
+      new CreationTransaction(
+        {
+          id: crypto.randomUUID(),
+          type: "create",
+          modelName: "Sprint",
+          data: { id: sprintId, groupId, name: name.trim(), ...dates, threadIds },
+        },
+        me.id,
+      ),
+    );
+    return sprintId;
+  }
+
+  updateSprint(sprintId: string, changes: SprintChanges, me: Person): void {
+    this.#enqueue(
+      new UpdateTransaction(
+        {
+          id: crypto.randomUUID(),
+          type: "update",
+          modelName: "Sprint",
+          modelId: sprintId,
+          changes,
+        },
         me.id,
       ),
     );

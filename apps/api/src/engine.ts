@@ -10,6 +10,7 @@ import {
   entryFromCreate,
   groupFromCreate,
   labelFromCreate,
+  sprintFromCreate,
   formatEffort,
   fromThread,
   labelSlug,
@@ -37,6 +38,7 @@ import {
   type ModelName,
   type ModelRecords,
   type Person,
+  type Sprint,
   type SyncAction,
   type Thread,
   type ThreadChanges,
@@ -97,6 +99,7 @@ const emptyModels = (): Models => ({
   Organization: new Map(),
   Label: new Map(),
   Group: new Map(),
+  Sprint: new Map(),
 });
 
 // The writes of one batch, staged until the whole batch succeeds. Reads see staged writes first.
@@ -200,6 +203,29 @@ const groupChanges = z
   .strictObject({ name: labelName, memberIds: z.array(id), archived: z.boolean() })
   .partial();
 
+// A sprint's threads, each listed once. Its other rules need data (`checkSprint` in `#apply`).
+const DAY_MS = 24 * 60 * 60_000;
+const sprintThreadIds = z
+  .array(id)
+  .max(500)
+  .refine((ids) => new Set(ids).size === ids.length, "Each thread once");
+const sprintDates = { startMs: z.number().int(), endMs: z.number().int() };
+const sprintCreate = z.object({
+  id,
+  groupId: id,
+  name: labelName,
+  ...sprintDates,
+  threadIds: sprintThreadIds.optional(),
+});
+const sprintChanges = z
+  .strictObject({
+    name: labelName,
+    ...sprintDates,
+    threadIds: sprintThreadIds,
+    closed: z.boolean(),
+  })
+  .partial();
+
 const organizationChanges = z.strictObject({ name: z.string().trim().min(1).max(100) });
 
 const entryCreate = z.object({
@@ -219,6 +245,7 @@ export const transactionInput = z.union([
   z.object({ id, type: z.literal("create"), modelName: z.literal("Entry"), data: entryCreate }),
   z.object({ id, type: z.literal("create"), modelName: z.literal("Label"), data: labelCreate }),
   z.object({ id, type: z.literal("create"), modelName: z.literal("Group"), data: groupCreate }),
+  z.object({ id, type: z.literal("create"), modelName: z.literal("Sprint"), data: sprintCreate }),
   z.object({
     id,
     type: z.literal("update"),
@@ -239,6 +266,13 @@ export const transactionInput = z.union([
     modelName: z.literal("Group"),
     modelId: id,
     changes: groupChanges,
+  }),
+  z.object({
+    id,
+    type: z.literal("update"),
+    modelName: z.literal("Sprint"),
+    modelId: id,
+    changes: sprintChanges,
   }),
   z.object({
     id,
@@ -727,6 +761,70 @@ export class SyncEngine {
       return;
     }
 
+    // Sprints belong to a group: only its members plan them, only its threads (those with its label) go in them, and
+    // a thread is in one open sprint of a group at a time. `before` is the sprint as it was, for an update.
+    const checkSprint = (sprint: Sprint, before: Sprint | undefined): void => {
+      const group = batch.get("Group", sprint.groupId);
+      if (group === undefined) throw new EngineError(404, "Group not found");
+      if (!group.memberIds.includes(actor.id))
+        throw new EngineError(403, "Only a group's members plan its sprints");
+      if (before === undefined && group.archived)
+        throw new EngineError(400, "An archived group has no new sprints");
+      const length = sprint.endMs - sprint.startMs;
+      if (length < DAY_MS || length > 366 * DAY_MS)
+        throw new EngineError(400, "A sprint runs from a day to a year");
+      for (const threadId of sprint.threadIds) {
+        if (before?.threadIds.includes(threadId)) continue;
+        const thread = batch.get("Thread", threadId);
+        if (thread === undefined) throw new EngineError(404, "Thread not found");
+        if (!thread.labelIds.includes(group.labelId))
+          throw new EngineError(400, `Only ${group.name}'s threads go in its sprints`);
+      }
+      if (sprint.closed) return;
+      const others = batch
+        .all("Sprint")
+        .filter(
+          (other) => other.id !== sprint.id && other.groupId === sprint.groupId && !other.closed,
+        );
+      if (
+        sprint.threadIds.some((threadId) =>
+          others.some((other) => other.threadIds.includes(threadId)),
+        )
+      )
+        throw new EngineError(409, "A thread is in one open sprint of a group at a time");
+    };
+    // A line in the group's activity about one of its sprints.
+    const sprintLine = (groupId: string, text: string): void => {
+      const group = batch.get("Group", groupId);
+      if (group !== undefined)
+        batch.put("Group", {
+          ...group,
+          activity: [...group.activity, { actorId: actor.id, text, targetIds: [], atMs: nowMs }],
+        });
+    };
+
+    if (transaction.type === "create" && transaction.modelName === "Sprint") {
+      const { data } = transaction;
+      if (batch.get("Sprint", data.id) !== undefined)
+        throw new EngineError(409, `Sprint already exists: ${data.id}`);
+      const sprint = sprintFromCreate(data, actor.id, nowMs);
+      checkSprint(sprint, undefined);
+      batch.put("Sprint", sprint);
+      sprintLine(sprint.groupId, `started ${sprint.name}`);
+      return;
+    }
+
+    if (transaction.type === "update" && transaction.modelName === "Sprint") {
+      const before = batch.get("Sprint", transaction.modelId);
+      if (before === undefined) throw new EngineError(404, "Sprint not found");
+      const sprint = { ...before, ...transaction.changes, updatedAtMs: nowMs };
+      checkSprint(sprint, before);
+      batch.put("Sprint", sprint);
+      if (sprint.closed !== before.closed)
+        sprintLine(sprint.groupId, `${sprint.closed ? "closed" : "reopened"} ${sprint.name}`);
+      return;
+    }
+
     if (transaction.type === "create" && transaction.modelName === "Thread") {
       const { data } = transaction;
       if (batch.get("Thread", data.id) !== undefined)
@@ -902,6 +1000,24 @@ export class SyncEngine {
             ]),
           );
     batch.put("Thread", { ...current, ...edits, triage, updatedAtMs: nowMs });
+    // A thread taken out of a group leaves the group's open sprints, since only a group's threads are in them.
+    if (edits.labelIds !== undefined) {
+      const removed = current.labelIds.filter((labelId) => !edits.labelIds?.includes(labelId));
+      for (const sprint of batch.all("Sprint")) {
+        const labelId = batch.get("Group", sprint.groupId)?.labelId;
+        if (
+          !sprint.closed &&
+          labelId !== undefined &&
+          removed.includes(labelId) &&
+          sprint.threadIds.includes(thread.id)
+        )
+          batch.put("Sprint", {
+            ...sprint,
+            threadIds: sprint.threadIds.filter((threadId) => threadId !== thread.id),
+            updatedAtMs: nowMs,
+          });
+      }
+    }
     lines.forEach((text, index) =>
       batch.put("Entry", {
         id: `${transaction.id}:${index}`,

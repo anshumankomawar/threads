@@ -3114,3 +3114,195 @@ body * {
   gap: 6px;
   padding-left: 37px;
 }
+
+/* List or board, beside New thread. */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.view-toggle-option {
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.view-toggle-option[aria-pressed="true"] {
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+}
+
+/* The board: a column per status, cards you can drag between them. */
+.board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(150px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  overflow-x: auto;
+  /* The page is a flex column; scrolling sideways would otherwise let it shrink to nothing. */
+  flex-shrink: 0;
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background-color: var(--bg-quaternary);
+}
+
+.board-column[data-over="true"] {
+  border-color: var(--stroke-focused);
+}
+
+.board-heading {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin: 0 2px 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.board-count {
+  color: var(--text-tertiary);
+}
+
+.board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 6px;
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary);
+  cursor: grab;
+}
+
+.board-card:hover {
+  border-color: var(--stroke-focused);
+}
+
+.board-card[data-dragging="true"] {
+  opacity: 0.4;
+}
+
+.board-card-title {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.board-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.board-card-meta [data-overdue="true"],
+.board-card-meta [data-priority="urgent"] {
+  color: var(--urgent);
+}
+
+/* The sprint picked on a group's page. */
+.sprint {
+  flex-shrink: 0;
+  max-width: 640px;
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 8px;
+}
+
+.sprint-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.sprint-name {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  background: transparent;
+  outline: none;
+}
+
+.sprint-dates {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text-tertiary);
+}
+
+.sprint-dates input {
+  padding: 1px 4px;
+  border: 1px solid var(--stroke-tertiary);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  color-scheme: dark light;
+}
+
+.sprint-closed {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.sprint-summary {
+  margin: 6px 0 0;
+  color: var(--text-tertiary);
+}
+
+.sprint-load {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sprint-load li {
+  display: contents;
+}
+
+.sprint-load-detail {
+  color: var(--text-tertiary);
+}
+
+.sprint-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
+}

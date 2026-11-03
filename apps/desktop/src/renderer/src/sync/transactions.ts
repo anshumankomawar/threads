@@ -2,6 +2,7 @@ import {
   applyScopedChanges,
   entryFromCreate,
   groupFromCreate,
+  sprintFromCreate,
   labelFromCreate,
   threadFromCreate,
   type AnyRecord,
@@ -73,6 +74,7 @@ export class CreationTransaction extends BaseTransaction {
     if (input.modelName === "Thread") return threadFromCreate(input.data, this.actorId, nowMs);
     if (input.modelName === "Label") return labelFromCreate(input.data, this.actorId, nowMs);
     if (input.modelName === "Group") return groupFromCreate(input.data, this.actorId, nowMs);
+    if (input.modelName === "Sprint") return sprintFromCreate(input.data, this.actorId, nowMs);
     return entryFromCreate(input.data, this.actorId, nowMs);
   }
 

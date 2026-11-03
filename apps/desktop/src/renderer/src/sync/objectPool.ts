@@ -12,6 +12,7 @@ export class ObjectPool {
     Organization: observable.map(undefined, { deep: false }),
     Label: observable.map(undefined, { deep: false }),
     Group: observable.map(undefined, { deep: false }),
+    Sprint: observable.map(undefined, { deep: false }),
   };
 
   constructor() {

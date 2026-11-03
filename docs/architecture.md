@@ -70,6 +70,8 @@ Data is normalized into flat records linked by id, like database rows:
   see below). There are no kinds of thread.
 - **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`, `sentToIds`:
   who it was sent to, none for a note), `event` (activity line: `actorId`, `text`), `resolution`.
+- **Sprint**: a stretch of a group's work, referencing `groupId`, with `name`, `startMs`, `endMs`, `threadIds` (the
+  threads in it) and `closed`. It lists its threads; threads have nothing about sprints. See "Boards and sprints".
 - **A thread's description** is not a field: it's the message the thread was opened with, and it has the thread's
   own id (`descriptionOf`). The thread view shows it in the heading under the title; it's otherwise an ordinary
   message (a note: the thread reaches its assignees by their being assigned), and it counts as "opened" in notifications. The new-thread form asks for a
@@ -99,8 +101,9 @@ A **sync action** is `{ id, modelName, modelId, action: "I" | "U" | "D", data }`
 whole record.
 
 A **transaction** is a create of a `Thread` or `Entry`, an update of a `Thread` or of a `Person` (only your own:
-`PersonChanges`, today just `buckets`; anyone else's is refused with 403), or a `move` of messages into another
-thread (`MoveTransaction`; entries are otherwise append-only).
+`PersonChanges`, today just `buckets`; anyone else's is refused with 403), a create of a `Label`, a create or update of a
+`Group` or `Sprint`, an update of the `Organization`, or a `move` of messages into another thread (`MoveTransaction`; entries are otherwise
+append-only).
 Ids for new models are made on the client (`crypto.randomUUID()`), so later transactions in the same batch can refer to them.
 
 ## The write path
@@ -286,7 +289,30 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
 - **In the app**: the sidebar's Groups tab lists your groups, others', and plain labels; `LabelView` is the page for
   either. A thread made from one starts with its label. The new-thread palette's last step has the labels (⇧⇥), and a
   thread's label chip can find or make one.
-- **A wipe** (`#reset` in `worker.ts`) clears threads but keeps the organization, labels and groups.
+- **A wipe** (`#reset` in `worker.ts`) clears threads but keeps the organization, labels and groups. Sprints go with
+  the threads.
+
+## Boards and sprints
+
+A board and a sprint are ways of looking at threads; neither changes one.
+
+- **The board** is a layout of the global list (List or Board beside New thread, remembered on this device): whatever
+  the page and its filters show, in a column per status (Open, Blocked, Closed; `Board.tsx`, `boardColumns` in
+  `sprints.ts`). Dragging a card to another column is the same status change as in the thread, with the same activity
+  line, and leaves you on the board rather than moving on through your inbox.
+- **Sprints exist only in a group** (`Sprint`, `groupId`). The server enforces it (`checkSprint` in `#apply`): the group
+  must exist (and not be archived, to start one), only its members plan its sprints, only threads with the group's label
+  go in one, a thread is in at most one open sprint of a group at a time (reopening a sprint is checked too), and a
+  sprint runs from a day to a year. A thread taken out of the group (its label removed) leaves the group's open sprints
+  as a side effect; closed sprints keep their record. Threads go in a sprint by changing the sprint's `threadIds` (the
+  whole list, like a group's members), never by changing the thread, so a thread made and added in one batch works.
+- **In the app**: a group's page has a sprint filter beside the others. Picking one narrows the list or board to its
+  threads and shows `SprintPanel`: its name and dates, a summary ("3 threads · 1 blocked"), each assignee's load (open
+  threads and estimated hours; a shared thread counts in full for each of its assignees), adding the group's threads,
+  and closing or reopening it. A closed sprint with unfinished threads offers to start the next with them. "New sprint"
+  is numbered after the others and runs two weeks, from today or from where the latest ends (`nextSprint`). A thread
+  made from an open sprint goes in it, if it keeps the group's label. A thread's right-click menu adds it to, or takes
+  it out of, the open sprints of your groups it's in. Starting and closing sprints show in the group's activity.
 
 ## Profiles
 

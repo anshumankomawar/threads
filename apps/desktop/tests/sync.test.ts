@@ -66,6 +66,7 @@ class FakeServer implements Transport {
       Organization: [],
       Label: [],
       Group: [],
+      Sprint: [],
     } as Record<ModelName, AnyRecord[]>;
     for (const action of latest.values())
       if (action.data) models[action.modelName].push(action.data);
