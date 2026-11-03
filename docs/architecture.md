@@ -9,7 +9,7 @@ bundles in that repo (`code/*.js`); they are Linear's proprietary code.
 
 ## The product principle: the thread is the atomic unit
 
-Everything in the app is a thread: an issue (an ask of someone), a side discussion, a conversation. Don't invent new
+Everything in the app is a thread: an ask, a side discussion, a back-and-forth between people. Don't invent new
 kinds of objects or special thread types for a new use case; express it with what a thread already has (people,
 status, entries) or a small field on it, and keep the code and the UX consolidated around that one unit. Branching
 is the model: a side discussion is an ordinary thread with `branchedFromId`, linked from a message by
@@ -62,16 +62,15 @@ Data is normalized into flat records linked by id, like database rows:
 - **Person**: `id`, `name`, optional `level`, `role`, `managerId` (builds the org tree), and `buckets` (their inbox
   buckets, each `{ id, name, description }`; `bucketsOf` falls back to `DEFAULT_BUCKETS`). Seeds refresh who people
   are but keep their `buckets`.
-- **Thread**: an issue or a conversation (`kind`). References people by id: `requesterId`,
-  `assigneeId`, `attendeeIds` (a conversation's people). Has
-  `status` (`open`, `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`,
-  `effortHours`, `labelIds`, `triage` (its bucket for whoever it's waiting on; see below), `createdById`,
-  `createdAtMs`, `updatedAtMs`.
-- **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`),
-  `event` (activity line: `actorId`, `text`), `resolution`, `call` (`link`), `notes`.
+- **Thread**: one ask. References people by id: `requesterId`, `assigneeId`, `createdById`. Has `status` (`open`,
+  `blocked`, `closed`, `archived`; `isDone` is closed or archived), `priority`, `dueAtMs`, `effortHours`, `labelIds`,
+  `createdAtMs`, `updatedAtMs`, and per person, by id: `seenBy`, `doneBy`, `snoozedUntil` and `triage` (their bucket;
+  see below). There are no kinds of thread.
+- **Entry**: one item in a thread's log, referencing `threadId`. Kinds: `message` (`authorId`, `text`, `sentToIds`:
+  who it was sent to, none for a note), `event` (activity line: `actorId`, `text`), `resolution`.
 - **A thread's description** is not a field: it's the message the thread was opened with, and it has the thread's
   own id (`descriptionOf`). The thread view shows it in the heading under the title; it's otherwise an ordinary
-  message, so mentions in it ask people and it counts as "opened" in notifications. The new-thread form asks for a
+  message (a note: the thread reaches its assignee by being assigned), and it counts as "opened" in notifications. The new-thread form asks for a
   title, then an optional description (`createThread` sends the message with `id: threadId` only when there is one).
   The server lets only whoever made the thread (`createdById`) write it, only as a message, keeps it out of moves, and lets no entry take
   another thread's id.
@@ -173,44 +172,51 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
 - Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
 
-## Inbox, Tracking and conversations
+## Inbox, notes and sending (like email)
 
-- An issue is waiting on one person (`waitingOn` in `model.ts`, `Batch.waitingOn` on the server): its assignee,
-  or whoever asked while nobody's assigned. That person has it in their inbox; whoever asked (the requester) tracks it. Messages never move it: a thread is a worklog. It leaves both when it's closed, and a closed thread takes
-  no more replies. Closing one from your inbox opens the next.
-- Conversations: `@` in a reply mentions someone (`[[person:<id>]]` in the text, `mentionNode.ts`). Sending a reply
-  that mentions people in an ordinary thread starts a conversation with them instead of posting there: a thread of kind
-  `conversation`, branched off the thread it started in (`branchedFromId`), with whoever started it and everyone
-  mentioned as its `attendees`, and the reply as its first message (`onSend` in `App.tsx`). The server posts "Started a
-  conversation <link>" in the thread it's in, as a message from whoever started it. Mentioning someone inside a conversation brings them into it
-  ("added …"). A conversation has no assignee, due date or estimate, and isn't in the inbox or Tracking. It opens beside the thread it's in (the split view; `openThread` routes it there).
-  The sidebar's Conversations tab (Inbox, Conversations, Tracking) lists your open ones in two groups
-  (`conversationsFor` in `conversations.ts`): Unread, when someone else has written since you last opened it or
-  replied, and Read. Reading or replying never removes one; a new message from someone else moves it back to Unread.
-  Read state is the synced `seenBy`, set quietly by the `seen` change once you click off an open conversation (it stays
-  Unread while it's open, so it doesn't jump groups under you). A conversation closes by hand
-  (Open/Closed are its only statuses) or when the thread it's in is closed, archived or resolved
-  (`Batch.closeConversations`, which says "closed with <link>"). A message that mentions you also shows as a toast
-  (`MentionToasts`); several at once share one toast. When one needs real work, `/task` turns it into a task of your own: a new thread assigned to you, branched
-  from the conversation, with "Taking this on in <link>" posted there.
+The model is Superhuman's, for threads: a thread is a reply thread with a title and an owner.
+
+- **Sends and notes.** In the reply, Enter sends it (`ReplyBlock` in `ThreadView.tsx`) to whoever last sent you
+  something there, else the other side (`replyTo` in `model.ts`), plus anyone @mentioned (`mentionNode.ts`). The To
+  line only shows once someone's mentioned, to add or take people off. With nobody to send to, it's a note: in the
+  thread for anyone who opens it, but nobody is told (`sentToIds` empty). Sent messages show who they went to, notes say "Note". The server checks the people
+  exist and that only messages are sent. Who's on a thread is derived: whoever asked, whoever has it, and everyone
+  who's written in it or been sent something (`participants`).
+- **Your inbox** (`inboxReason` in `model.ts`, shared by the server's sorting and the app's `buildInbox`): an open
+  thread is in it when it's yours to finish (`waitingOn`: its assignee, or whoever asked while nobody's assigned;
+  `assigned`, until it's closed), or someone sent you something since you last marked it done (`sent`), and you
+  haven't snoozed it. Messages never move a thread between people: a thread is a worklog. Closing takes it out for
+  everyone, and a closed thread takes no more replies.
+- **Done and snooze are each person's own** (`doneBy`, `snoozedUntil`), set with the scoped changes `done` and
+  `snoozeUntilMs`. Scoped changes (also `seen` and `bucketId`) are about whoever sends them: `applyScopedChanges` in
+  `sync.ts` applies them on the server and, optimistically, in the app (`UpdateTransaction`), and they're quiet: no
+  activity line, and the thread doesn't count as updated.
+- **Keys** (`inboxKeysRef` in `App.tsx`; never while typing or with a dialog open): J/K open the next or previous
+  thread in your inbox, E marks the open one done (your own work closes, for everyone; anything else is done for you
+  until someone sends you something new) and opens the next, H snoozes it until 9 tomorrow, R puts the cursor in the
+  reply, and Escape leaves the reply. E and H offer Undo. A thread in your inbox opens at its top without taking the
+  cursor, so the keys work until you choose to reply.
+- **Sent** (the sidebar's Sent tab, beside Inbox and Groups): what you asked others for, messages you sent that
+  nobody has answered yet, and your blocked threads, by who has each. Each leaves when they answer or close it.
+- Something sent to you also shows as a toast (`MentionToasts`); several at once share one toast. When one needs real
+  work, `/task` turns it into a task of your own: a new thread assigned to you, branched from where you were asked,
+  with "Taking this on in <link>" sent back to whoever asked.
 - On behalf of: making a thread with `onBehalfOfId` makes that person its requester, so they track it and it counts
   as their ask, in the byline and the score. `createdById` keeps who really made it, shown as "via" in the byline, and
   the server adds "created this on behalf of ..." (`#apply`). Anyone can pick anyone, since there are no real identities
   yet (View As). Any requester can be changed later (`requesterId`, "made ... the requester"). The maker isn't part of
-  the thread: not in Tracking, and writing the description doesn't count towards notifications (`involves` in
+  the thread: not in Sent, and writing the description doesn't count towards notifications (`involves` in
   `activity.ts`); replying does. The details panel's Activity section lists a thread's activity lines as its audit log.
 - Notifications (`activityFor` in `activity.ts`, the bell in the sidebar's top bar, `Notifications.tsx`) list, per
   thread you're part of, the latest thing someone else did there in the past week: replies and the status lines worth
-  knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved). Conversations
-  (which have their own list), sorting and routine edits stay out. It's derived from entries, with nothing stored;
+  knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved). Sorting and routine edits stay out. It's derived from entries, with nothing stored;
   what's new counts against the same last-seen times as the unread dots, which live on this device ("Mark all read"
   moves them all to now).
 - `/blocked` (the `/` menu, `components/slashCommands.ts`, then `BlockedPalette`) makes a blocker: an ordinary
   response to the chosen person, with `blocksId` (and `branchedFromId`) set to the thread you're in. The server
   marks that thread Blocked and adds "is blocked on <link>". When its last open blocker closes, the server sets it
-  back to Open ("is unblocked, <link> is closed"). A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their Tracking.
-- `buildInbox` in `inbox.ts` lays this out: what's waiting on you, in your buckets; what you asked of others, and
-  your blocked threads, are Tracking.
+  back to Open ("is unblocked, <link> is closed"). A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their Sent.
+- `buildInbox` in `inbox.ts` lays this out: your inbox, in your buckets, and Sent.
 - Closing is a status change; nothing else closes a thread. Archiving is too: an archived thread is done like a closed
   one and also leaves every list and the notifications, but stays searchable. Right-clicking a thread in a list
   (`ThreadMenuContext` in `threadMenu.ts`) offers Open, Open beside, Close or Reopen, and Archive or Unarchive.
@@ -220,7 +226,7 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 - **The organization** (`Organization`, one record, `ORGANIZATION_ID`): one per workspace. Its name is empty until someone
   names it at first run (`OrganizationPrompt`, which can't be skipped); anyone can rename it from their profile, since
   there are no roles yet. `ensureOrganization` makes sure a workspace has it and the seeded labels.
-- **Labels** (`Label`): how threads are filed, on every kind but conversations. Names are unique across the
+- **Labels** (`Label`): how threads are filed. Names are unique across the
   organization; a label's id is `labelSlug(name)`, so "Back-end" and "back end" are one label, and making one that exists
   does nothing rather than refusing the batch (and any thread made in it). `SEEDED_LABELS` in `score.ts` are the only
   ones with a priority, so making a label can't move anything up an inbox. Labels aren't deleted.
@@ -234,7 +240,7 @@ Breaking any of these breaks sync. Agents: check your change against this list.
   it's news for (`groupNoticesFor`, shown in the notifications). Membership decides what's in your sidebar, not what you
   can see: everyone can see everything until there are real identities (see Sync groups).
 - **Inheriting**: a branch or blocker takes its parent's group labels on the server, so a project's blockers stay in the
-  project. Its other labels don't carry over, and conversations take none.
+  project. Its other labels don't carry over.
 - **In the app**: the sidebar's Groups tab lists your groups, others', and plain labels; `LabelView` is the page for
   either. A thread made from one starts with its label. The new-thread palette's last step has the labels (⇧⇥), and a
   thread's label chip can find or make one.
@@ -242,28 +248,28 @@ Breaking any of these breaks sync. Agents: check your change against this list.
 
 ## Buckets, sorting and scoring
 
-The inbox (the sidebar's Inbox tab) is every open issue waiting on you, grouped into your **buckets** and ordered
-within each by **score**. There's no schedule: the app helps you get through your work, not plan your hours.
+The inbox (the sidebar's Inbox tab) is grouped into your **buckets** and ordered within each by **score**. There's no schedule: the app helps you get through your work, not plan your hours.
 
 - **Buckets** are per person (`Person.buckets`, edited as a whole list with `PersonChanges`; `DEFAULT_BUCKETS` until
   you make your own): a name, and a plain-language description of what goes in it, which is what the model reads. The
   sidebar edits them (`BucketPalette`: name, then description; a bucket's menu moves or deletes it).
-- **Sorting** (`apps/api/src/triage.ts`): each issue's `triage` is `{ personId, bucketId, reason, manual, stale }`
-  for whoever it's waiting on. `SyncEngine.triageRequests` finds the threads that need it (`#needsTriage`: open, and
-  no triage for that person, a bucket they no longer have, or `stale`), grouped per person with their buckets, each
-  thread's title, requester and description, and the threads they placed by hand as examples. The `Triager` in the
+- **Sorting** (`apps/api/src/triage.ts`): a thread's `triage` holds `{ bucketId, reason, manual, stale }` for each
+  person whose inbox it's in. `SyncEngine.triageRequests` finds what needs it (`#needsTriage`: everyone in
+  `inboxPeople` with no bucket of theirs, a bucket they no longer have, or a `stale` one), grouped per person with
+  their buckets, each thread's title and description plus who last sent it to them and what, and the threads they
+  placed by hand as examples. The `Triager` in the
   `Workspace` Durable Object sends them to Workers AI (`TRIAGE_MODEL`, Llama 3.3 70B with a JSON schema) 20 at a time
   and saves the answers with `SyncEngine.applyTriage`, as their own batch through `write`, so they reach clients like
   any other change. It runs after every transaction batch and when the workspace loads; on a failure the threads wait
   a minute (`RETRY_MS`) and an alarm retries them. The AI binding (`bindings.ai`) always runs on Cloudflare, local
   dev included, within the account's free daily allocation (`THREADS_LOCAL_AI=off` leaves it out for anyone without
   access to the account, and threads wait under "Sorting"); threads are only sorted when they arrive, change hands,
-  are retitled or their owner's buckets change, so a team stays well inside it.
-- **Placing by hand**: dragging a thread to another bucket, its Bucket chip, or "Move to …" in its menu sends a
-  `triage` change with `manual: true` (only whoever it's waiting on, only into their own bucket). It sticks through
+  are sent to someone new, are retitled or their owner's buckets change, so a team stays well inside it.
+- **Placing by hand**: dragging a thread to another bucket, its Bucket chip, or "Move to …" in its menu sends the
+  scoped change `bucketId` (only for a thread in your inbox, only into your own bucket). It sticks through
   retitles and bucket edits, and `null` ("Sort it for me") hands it back to the model.
 - **Staying put**: retitling, or changing your buckets (other than reordering them), marks the model's choices
-  `stale` instead of clearing them, so threads stay where they are until the model has looked again. Only a thread
+  `stale` (for that person, or for everyone on a retitle) instead of clearing them, so threads stay where they are until the model has looked again. Only a thread
   whose bucket was deleted waits under "Sorting".
 - **The score** (`threadScore` in `packages/model/src/score.ts`) rates a thread from 1 to 100: its due date, priority,
   estimated effort, most important seeded label (`SEEDED_LABELS`) and the level of the person waiting on the answer

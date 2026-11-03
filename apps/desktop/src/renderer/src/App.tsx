@@ -584,7 +584,7 @@ const App = observer(function App(): React.JSX.Element {
   const actionsFor = (thread: Thread): ThreadActions => {
     const edit = (changes: ThreadChanges): void => client.updateThread(thread.id, changes, me);
     return {
-      // Enter: a note in the thread, nobody told. ⌘↵: sent to people, into their inbox.
+      // Enter sends to people, into their inbox; with nobody to send to, it's a note in the thread.
       onNote: (text) => client.addEntry(thread.id, "message", text, me),
       onSend: (text, to) => client.addEntry(thread.id, "message", text, me, undefined, to),
       onBlocked: () => setBlocking(thread),
@@ -644,7 +644,20 @@ const App = observer(function App(): React.JSX.Element {
   };
 
   inboxKeysRef.current = (event) => {
-    if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    const target = event.target as HTMLElement;
+    const typing = target.closest("input, textarea, select, [contenteditable='true']") !== null;
+    // Escape leaves the reply (once its own menus are closed), so the keys work again.
+    if (typing) {
+      if (
+        event.key === "Escape" &&
+        target.closest(".thread-panes") !== null &&
+        document.querySelector(".thread-menu") === null
+      )
+        target.blur();
+      return;
+    }
+    if (event.defaultPrevented) return;
     const dialogOpen =
       searchOpen ||
       newThreadOpen ||
@@ -658,11 +671,6 @@ const App = observer(function App(): React.JSX.Element {
       threadMenu !== null ||
       document.querySelector(".chip-menu, .context-menu, .thread-menu") !== null;
     if (dialogOpen) return;
-    const target = event.target as HTMLElement;
-    if (target.closest("input, textarea, select, [contenteditable='true']") !== null) {
-      if (event.key === "Escape" && target.closest(".thread-panes") !== null) target.blur();
-      return;
-    }
     const key = event.key.toLowerCase();
     const order = inbox.order;
     const at = order.findIndex((thread) => thread.id === activeThreadId);

@@ -8,7 +8,7 @@ const SHOW_MS = 6000;
 
 type Sent = { id: string; thread: Thread; author: Person; text: string; atMs: number };
 
-// Something sent to you (⌘↵), as a short toast in the top right: who, in which thread, and what they said. Clicking it
+// Something sent to you, as a short toast in the top right: who, in which thread, and what they said. Clicking it
 // opens the thread; it goes away on its own after a few seconds. Messages arriving together share one toast. Only
 // ones that arrive while the app is open show, never ones from before it loaded; notes never do.
 export function MentionToasts({

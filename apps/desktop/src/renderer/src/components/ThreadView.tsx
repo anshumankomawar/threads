@@ -624,9 +624,10 @@ function ReplyFocus({
   return null;
 }
 
-// The next message, written in place at the end of the thread. Enter adds it as a note: it's in the thread, but nobody
-// is told. ⌘↵ sends it to the people on its To line (whoever last sent you something here, to start with, plus anyone
-// you @mention), which puts the thread in their inbox. Shift+Enter breaks the line.
+// The next message, written in place at the end of the thread. Enter sends it to the other side (whoever last sent you
+// something here, else whoever's on the other end) plus anyone you @mention, which puts the thread in their inbox.
+// With nobody to send to, it's a note. The To line shows only once you've mentioned someone, to add or take people
+// off. Shift+Enter breaks the line.
 function ReplyBlock({
   placeholder,
   focusRef,
@@ -642,7 +643,7 @@ function ReplyBlock({
   threadId: string;
   placeholder: string;
   focusRef: React.RefObject<(() => void) | null>;
-  // Who ⌘↵ sends to until you change it.
+  // Who Enter sends to, before mentions.
   defaultTo: Person[];
   people: Person[];
   onNote: (text: string) => void;
@@ -653,16 +654,28 @@ function ReplyBlock({
   autoFocus: boolean;
 }): React.JSX.Element {
   const me = useMe();
-  const [to, setTo] = useState<Person[]>(defaultTo);
-  const addTo = (person: Person): void =>
-    setTo((current) =>
-      person.id === me.id || current.some((other) => other.id === person.id)
-        ? current
-        : [...current, person],
-    );
-  const handlersRef = useRef({ onNote, onSend, to });
+  // Who's @mentioned in the draft, read from the editor, and who's been added or taken off the To line by hand. Both
+  // clear once the message is sent.
+  const [mentionedIds, setMentionedIds] = useState<string[]>([]);
+  const [addedIds, setAddedIds] = useState<string[]>([]);
+  const [removedIds, setRemovedIds] = useState<string[]>([]);
+  const byId = new Map(people.map((person) => [person.id, person]));
+  const to = [
+    ...defaultTo,
+    ...[...mentionedIds, ...addedIds].flatMap((id) => byId.get(id) ?? []),
+  ].filter(
+    (person, index, all) =>
+      person.id !== me.id &&
+      !removedIds.includes(person.id) &&
+      all.findIndex((other) => other.id === person.id) === index,
+  );
+  const reset = (): void => {
+    setAddedIds([]);
+    setRemovedIds([]);
+  };
+  const handlersRef = useRef({ onNote, onSend, to, reset });
   useEffect(() => {
-    handlersRef.current = { onNote, onSend, to };
+    handlersRef.current = { onNote, onSend, to, reset };
   });
 
   const editor = useEditor({
@@ -675,14 +688,23 @@ function ReplyBlock({
       MentionNode,
       SlashCommands,
     ],
+    onUpdate: ({ editor: current }) => {
+      const ids: string[] = [];
+      current.state.doc.descendants((node) => {
+        if (node.type.name === "mention") ids.push(String(node.attrs.id));
+      });
+      setMentionedIds((previous) =>
+        previous.length === ids.length && previous.every((id, index) => id === ids[index])
+          ? previous
+          : ids,
+      );
+    },
     editorProps: {
       attributes: { class: "thread-text thread-reply-editor", "aria-label": "Reply" },
       handleKeyDown: (view, event) => {
         // The `#` and `/` menus, when open, get keys first.
         if (offerKey(view.dom, event)) return true;
         if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
-        // Escape-free way out: ⌘↵ sends, plain Enter is a note.
-        const sending = event.metaKey || event.ctrlKey;
         // Thread links go out as `[[thread:<id>]]`.
         const text = view.state.doc
           .textBetween(0, view.state.doc.content.size, "\n", (leaf) =>
@@ -694,10 +716,11 @@ function ReplyBlock({
           )
           .trim();
         if (text.length > 0) {
-          const { onNote, onSend, to } = handlersRef.current;
-          if (sending && to.length > 0) onSend(text, to);
+          const { onNote, onSend, to, reset } = handlersRef.current;
+          if (to.length > 0) onSend(text, to);
           else onNote(text);
           view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
+          reset();
         }
         return true;
       },
@@ -733,10 +756,9 @@ function ReplyBlock({
       commandMenu?.take();
       onCommand(option.name);
     } else if (option.kind === "person") {
-      // Mentioning someone puts them on the To line too.
+      // The mention puts them on the To line (read back from the editor).
       mentionMenu?.pick(option.person);
-      const person = people.find((candidate) => candidate.id === option.person.id);
-      if (person !== undefined) addTo(person);
+      setRemovedIds((current) => current.filter((id) => id !== option.person.id));
     } else if (menu === null) return;
     else if (option.kind === "link") menu.pick(option.link);
     else menu.pick({ id: onBranch(option.title), title: option.title });
@@ -797,49 +819,43 @@ function ReplyBlock({
           <span className="thread-author">{me.name}</span>
         </div>
         <EditorContent editor={editor} className="thread-reply" />
-        <div className="reply-to" onClick={(event) => event.stopPropagation()}>
-          <span className="reply-to-label">To</span>
-          {to.map((person) => (
-            <span key={person.id} className="reply-to-person">
-              <Identicon seed={person.id} size={12} />
-              {person.name.split(" ")[0]}
-              <button
-                type="button"
-                className="reply-to-remove"
-                aria-label={`Don't send to ${person.name}`}
-                onClick={() =>
-                  setTo((current) => current.filter((other) => other.id !== person.id))
-                }
-              >
-                <HugeiconsIcon icon={Cancel01Icon} size={10} aria-hidden />
-              </button>
-            </span>
-          ))}
-          <MenuChip
-            label={to.length === 0 ? "Add someone" : "Add"}
-            icon={<HugeiconsIcon icon={Add01Icon} size={11} aria-hidden />}
-            tone="muted"
-            options={people
-              .filter(
-                (person) => person.id !== me.id && !to.some((other) => other.id === person.id),
-              )
-              .map((person) => ({
-                label: person.name,
-                value: person,
-                icon: <Identicon seed={person.id} size={14} />,
-              }))}
-            onSelect={addTo}
-          />
-          <span className="reply-to-keys">
-            <kbd>↵</kbd> note
-            {to.length > 0 && (
-              <>
-                {" · "}
-                <kbd>⌘↵</kbd> send
-              </>
-            )}
-          </span>
-        </div>
+        {mentionedIds.length > 0 && (
+          <div className="reply-to" onClick={(event) => event.stopPropagation()}>
+            <span className="reply-to-label">To</span>
+            {to.map((person) => (
+              <span key={person.id} className="reply-to-person">
+                <Identicon seed={person.id} size={12} />
+                {person.name.split(" ")[0]}
+                <button
+                  type="button"
+                  className="reply-to-remove"
+                  aria-label={`Don't send to ${person.name}`}
+                  onClick={() => setRemovedIds((current) => [...current, person.id])}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} size={10} aria-hidden />
+                </button>
+              </span>
+            ))}
+            <MenuChip
+              label={to.length === 0 ? "Add someone" : "Add"}
+              icon={<HugeiconsIcon icon={Add01Icon} size={11} aria-hidden />}
+              tone="muted"
+              options={people
+                .filter(
+                  (person) => person.id !== me.id && !to.some((other) => other.id === person.id),
+                )
+                .map((person) => ({
+                  label: person.name,
+                  value: person,
+                  icon: <Identicon seed={person.id} size={14} />,
+                }))}
+              onSelect={(person) => {
+                setAddedIds((current) => [...current, person.id]);
+                setRemovedIds((current) => current.filter((id) => id !== person.id));
+              }}
+            />
+          </div>
+        )}
       </div>
       {open !== null && options.length > 0 && (
         <ThreadMenu
@@ -1113,7 +1129,7 @@ export function ThreadView({
   const placeholder =
     defaultTo.length === 0
       ? "Write a note…"
-      : `Write a note, or ⌘↵ to send to ${defaultTo.map((person) => person.name.split(" ")[0]).join(", ")}…`;
+      : `Reply to ${defaultTo.map((person) => person.name.split(" ")[0]).join(", ")}…`;
 
   // Clicking empty space in the thread, including below the last block, puts the cursor in the reply.
   const onBackgroundMouseDown = (event: React.MouseEvent): void => {

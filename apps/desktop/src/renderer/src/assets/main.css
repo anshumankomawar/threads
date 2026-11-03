@@ -2748,7 +2748,7 @@ body * {
   line-height: 15px;
 }
 
-/* The reply's To line: who ⌘↵ sends to, and the keys. Enter alone adds a note. */
+/* The reply's To line, once someone's mentioned: who Enter sends to. */
 .reply-to {
   display: flex;
   flex-wrap: wrap;
@@ -2785,20 +2785,6 @@ body * {
 
 .reply-to-remove:hover {
   color: var(--text-primary);
-}
-
-.reply-to-keys {
-  margin-left: auto;
-  font-size: 11px;
-}
-
-.reply-to-keys kbd {
-  padding: 0 4px;
-  border: 1px solid var(--stroke-focused);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 10px;
 }
 
 .undo-toast {
