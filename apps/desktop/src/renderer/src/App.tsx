@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
 import { ComposePanel } from "./components/ComposePanel";
+import { DraftView } from "./components/DraftView";
 import { useDrafts, type SavedDraft } from "./drafts";
 import { BucketPalette } from "./components/BucketPalette";
 import { CommandPalette } from "./components/CommandPalette";
@@ -272,6 +273,7 @@ const App = observer(function App(): React.JSX.Element {
       ...(id === null ? {} : { [id]: now }),
     }));
     setActiveThreadId(id);
+    setDraftId(null);
     setProfileOpen(false);
     setPage(null);
     // A thread opened as the main one leaves the split view.
@@ -342,9 +344,17 @@ const App = observer(function App(): React.JSX.Element {
     drafts.save(draft);
     setComposeOpen(false);
   };
-  const composeThread = (draft: ComposeDraft): void => {
+  // A draft opened from the sidebar takes the thread's place in the main area (`DraftView`).
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const openDraft = (draft: SavedDraft): void => {
+    openThread(null);
+    setDraftId(draft.id);
+  };
+  const shownDraft = drafts.drafts.find((draft) => draft.id === draftId);
+  // Sends a draft, from the panel or a draft's page, and drops it from the drafts.
+  const composeThread = (draft: ComposeDraft, fromDraftId: string | null): void => {
     setComposeOpen(false);
-    if (composing !== null) drafts.remove(composing.id);
+    if (fromDraftId !== null) drafts.remove(fromDraftId);
     const byId = new Map(people.map((person) => [person.id, person]));
     const asked = (ask: ComposeDraft["asks"][number]): Person[] =>
       ask.personIds.flatMap((id) => byId.get(id) ?? []);
@@ -792,8 +802,12 @@ const App = observer(function App(): React.JSX.Element {
             <Sidebar
               inbox={inbox}
               drafts={drafts.drafts}
-              onOpenDraft={openCompose}
-              onDeleteDraft={drafts.remove}
+              activeDraftId={shownDraft?.id ?? null}
+              onOpenDraft={openDraft}
+              onDeleteDraft={(id) => {
+                drafts.remove(id);
+                if (id === draftId) setDraftId(null);
+              }}
               bucketActions={bucketActions}
               activity={activityFor(threads, me, seenAt, nowMs)}
               groupNotices={groupNoticesFor(
@@ -842,7 +856,9 @@ const App = observer(function App(): React.JSX.Element {
                   ? me.name
                   : page === "settings"
                     ? "Settings"
-                    : (shownLabel?.name ?? activeThread?.title)}
+                    : (shownLabel?.name ??
+                      activeThread?.title ??
+                      (shownDraft === undefined ? undefined : shownDraft.draft?.title || "Draft"))}
               </span>
               <span className="topbar-end">
                 <button
@@ -911,6 +927,19 @@ const App = observer(function App(): React.JSX.Element {
                 }}
                 onNewThread={() => openNew()}
                 onOpenThread={openThread}
+              />
+            ) : shownDraft !== undefined ? (
+              <DraftView
+                key={shownDraft.id}
+                saved={shownDraft}
+                people={people}
+                nowMs={nowMs}
+                onChange={drafts.save}
+                onSend={(draft) => composeThread(draft, shownDraft.id)}
+                onDelete={() => {
+                  drafts.remove(shownDraft.id);
+                  setDraftId(null);
+                }}
               />
             ) : activeThread === undefined ? null : (
               <div className="thread-panes">
@@ -982,7 +1011,7 @@ const App = observer(function App(): React.JSX.Element {
               me={me}
               initial={composing}
               draftWith={(request, signal) => composeDraft(source, request, signal)}
-              onCreate={composeThread}
+              onCreate={(draft) => composeThread(draft, composing?.id ?? null)}
               onSaveDraft={saveDraft}
               onClose={() => setComposeOpen(false)}
             />

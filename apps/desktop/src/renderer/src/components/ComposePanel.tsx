@@ -1,5 +1,6 @@
 import type { ComposeDraft, ComposeRequest, Person } from "model";
 import { useEffect, useRef, useState } from "react";
+import { handle, mentionedPeople, plainDraft } from "../compose";
 import type { SavedDraft } from "../drafts";
 import { Identicon } from "./Identicon";
 
@@ -10,45 +11,6 @@ const MENTION_MATCHES = 6;
 function mentionQuery(text: string, caret: number): { start: number; query: string } | null {
   const match = /(^|\s)@([\p{L}\p{N}_-]*)$/u.exec(text.slice(0, caret));
   return match === null ? null : { start: caret - match[2].length - 1, query: match[2] };
-}
-
-// How a person is written after `@`: their first name.
-const handle = (person: Person): string => person.name.split(" ")[0];
-
-// Everyone `@`mentioned in the text, by first name or full name without spaces, in order.
-function mentionedPeople(text: string, people: Person[]): Person[] {
-  const found: Person[] = [];
-  for (const [, name] of text.matchAll(/@([\p{L}\p{N}_-]+)/gu)) {
-    const key = name.toLowerCase();
-    const person = people.find(
-      (candidate) =>
-        handle(candidate).toLowerCase() === key ||
-        candidate.name.replaceAll(" ", "").toLowerCase() === key ||
-        candidate.id === key,
-    );
-    if (person !== undefined && !found.includes(person)) found.push(person);
-  }
-  return found;
-}
-
-// Without the model: the first sentence, mentions taken out, as the title, and one ask for everyone mentioned.
-function plainDraft(text: string, people: Person[], me: Person): ComposeDraft {
-  const withoutMentions = text
-    .replaceAll(/@[\p{L}\p{N}_-]+/gu, "")
-    .replaceAll(/\s+/g, " ")
-    .trim();
-  const title = (withoutMentions.split(/(?<=[.?!])\s/)[0] ?? "")
-    .replace(/[.?!]+$/, "")
-    .slice(0, 80);
-  const asked = mentionedPeople(text, people).filter((person) => person.id !== me.id);
-  return {
-    title,
-    context: "",
-    asks:
-      asked.length === 0
-        ? []
-        : [{ personIds: asked.map((person) => person.id), text: withoutMentions }],
-  };
 }
 
 // A new thread in one message (⌘⇧N): write it as you'd say it, "@Anshu @Arjun can you review this CR. @Ganesh can

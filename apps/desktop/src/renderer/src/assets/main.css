@@ -3008,3 +3008,77 @@ body * {
   opacity: 0.5;
   cursor: default;
 }
+
+/* A draft's page (`DraftView`): a thread as it will look once sent, editing in place. A quiet "Draft" says what it is. */
+.draft-label {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+/* Fields that look like the text they hold. */
+.draft-field {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  font-family: inherit;
+  background: transparent;
+  outline: none;
+  resize: none;
+  field-sizing: content;
+}
+
+.draft-field::placeholder {
+  color: var(--text-tertiary);
+}
+
+.draft-ask {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  align-items: baseline;
+}
+
+.draft-ask-text {
+  flex: 1;
+  width: auto;
+  min-width: 160px;
+}
+
+.draft-mention {
+  display: inline-flex;
+  gap: 2px;
+  align-items: baseline;
+  color: var(--accent);
+}
+
+.draft-mention-remove {
+  padding: 0;
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 11px;
+  background: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.draft-mention:hover .draft-mention-remove {
+  opacity: 1;
+}
+
+.draft-empty {
+  margin: 0 0 0 37px;
+  color: var(--text-tertiary);
+}
+
+.draft-actions {
+  display: flex;
+  gap: 6px;
+  padding-left: 37px;
+}

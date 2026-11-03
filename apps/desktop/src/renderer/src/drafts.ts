@@ -31,7 +31,7 @@ function store(source: string, drafts: SavedDraft[]): void {
   }
 }
 
-// Your drafts for a data source, newest first, with saving (adding or replacing by id) and deleting.
+// Your drafts for a data source, newest first, with saving (adding or replacing by id, as of now) and deleting.
 export function useDrafts(source: string): {
   drafts: SavedDraft[];
   save: (draft: SavedDraft) => void;
@@ -45,7 +45,12 @@ export function useDrafts(source: string): {
   };
   return {
     drafts: state.drafts,
-    save: (draft) => update([draft, ...state.drafts.filter((other) => other.id !== draft.id)]),
+    // Stamped with now, so the newest edit is first.
+    save: (draft) =>
+      update([
+        { ...draft, savedAtMs: Date.now() },
+        ...state.drafts.filter((other) => other.id !== draft.id),
+      ]),
     remove: (id) => update(state.drafts.filter((draft) => draft.id !== id)),
   };
 }

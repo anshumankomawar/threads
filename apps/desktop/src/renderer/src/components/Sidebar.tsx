@@ -516,15 +516,17 @@ function GroupList({
   );
 }
 
-// Threads written in the new-message panel and kept for later, newest first. Opening one carries on in the panel;
-// right-click deletes it.
+// Threads written in the new-message panel and kept for later, newest first. Opening one shows it in the main area,
+// like a thread, to edit and send; right-click deletes it.
 function Drafts({
   drafts,
+  activeDraftId,
   nowMs,
   onOpen,
   onDelete,
 }: {
   drafts: SavedDraft[];
+  activeDraftId: string | null;
   nowMs: number;
   onOpen: (draft: SavedDraft) => void;
   onDelete: (id: string) => void;
@@ -543,6 +545,7 @@ function Drafts({
           <li key={draft.id} className="thread-item">
             <div
               className="sidebar-row"
+              data-active={draft.id === activeDraftId}
               role="button"
               tabIndex={0}
               title={draft.text}
@@ -672,6 +675,7 @@ export type SidebarPage = "settings" | { label: string };
 export function Sidebar({
   inbox,
   drafts,
+  activeDraftId,
   onOpenDraft,
   onDeleteDraft,
   bucketActions,
@@ -698,6 +702,8 @@ export function Sidebar({
   inbox: Inbox;
   // Threads written but not sent (`drafts.ts`).
   drafts: SavedDraft[];
+  // The draft open in the main area, if any.
+  activeDraftId: string | null;
   onOpenDraft: (draft: SavedDraft) => void;
   onDeleteDraft: (id: string) => void;
   bucketActions: BucketActions;
@@ -801,7 +807,13 @@ export function Sidebar({
           />
         )}
         {tab === "drafts" && (
-          <Drafts drafts={drafts} nowMs={nowMs} onOpen={onOpenDraft} onDelete={onDeleteDraft} />
+          <Drafts
+            drafts={drafts}
+            activeDraftId={activeDraftId}
+            nowMs={nowMs}
+            onOpen={onOpenDraft}
+            onDelete={onDeleteDraft}
+          />
         )}
         {tab === "sent" && (
           <Sent
