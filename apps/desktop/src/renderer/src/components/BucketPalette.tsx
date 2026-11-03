@@ -71,7 +71,7 @@ export function BucketPalette({
             className="palette-input"
             placeholder={
               step === "name"
-                ? "Name the bucket… (Customer requests)"
+                ? "Name the bucket… (Follow-ups)"
                 : "What goes in it? (anything a customer asked for or reported)"
             }
             spellCheck={false}

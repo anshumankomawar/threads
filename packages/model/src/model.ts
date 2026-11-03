@@ -17,33 +17,16 @@ export type Bucket = { id: string; name: string; description: string };
 // Everyone's buckets until they make their own. The last one catches whatever fits nowhere else.
 export const DEFAULT_BUCKETS: Bucket[] = [
   {
-    id: "customers",
-    name: "Customer requests",
+    id: "action",
+    name: "Messages that require action",
     description:
-      "Anything a customer or account asked for or reported: support questions, escalations, renewals, feature requests from a named customer.",
+      "Someone needs you to do something: answer a question, make a decision, review or approve, fix, build or deliver.",
   },
   {
-    id: "bugs",
-    name: "Bugs & incidents",
+    id: "read",
+    name: "Messages to read",
     description:
-      "Something is broken or degraded: production errors, outages, regressions, flaky tests, security issues.",
-  },
-  {
-    id: "coding",
-    name: "Coding",
-    description:
-      "Building or changing code that isn't a bug fix: features, refactors, migrations, performance work, tooling.",
-  },
-  {
-    id: "reviews",
-    name: "Reviews & approvals",
-    description:
-      "Someone is waiting on your sign-off or feedback: code reviews, design or doc reviews, plans, budgets, access requests.",
-  },
-  {
-    id: "other",
-    name: "Everything else",
-    description: "Planning, writing, admin and anything that doesn't clearly fit another bucket.",
+      "Nothing to do but read: updates, announcements, answers to your questions, and anything that doesn't clearly need action from you.",
   },
 ];
 

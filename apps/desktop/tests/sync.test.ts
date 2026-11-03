@@ -166,12 +166,12 @@ test("a change shows at once, goes out in one batch per tick, and completes when
 test("done, snoozed and bucket changes show at once, on whoever made them", async () => {
   const { client } = await started();
   const threadId = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
-  client.updateThread(threadId, { done: true, snoozeUntilMs: 5, bucketId: "coding" }, arjun);
+  client.updateThread(threadId, { done: true, snoozeUntilMs: 5, bucketId: "action" }, arjun);
   const thread = client.threads.find((candidate) => candidate.id === threadId);
   expect(thread?.doneBy).toEqual({ arjun: expect.any(Number) });
   expect(thread?.snoozedUntil).toEqual({ arjun: 5 });
   expect(thread?.triage).toEqual({
-    arjun: { bucketId: "coding", reason: "", manual: true, stale: false },
+    arjun: { bucketId: "action", reason: "", manual: true, stale: false },
   });
   // None of them are fields of the thread itself.
   expect(thread).not.toHaveProperty("done");

@@ -59,14 +59,14 @@ const inBucket = (threads: Thread[], bucketId: string, person = me): string[] =>
     ?.items.map((item) => item.thread.id) ?? [];
 
 test("each thread in your inbox is in the bucket it was sorted into for you, your buckets in your order", () => {
-  const customer = thread({ triage: { me: sorted("customers"), other: sorted("bugs") } });
-  const bug = thread({ triage: { me: sorted("bugs") } });
+  const customer = thread({ triage: { me: sorted("action"), other: sorted("read") } });
+  const bug = thread({ triage: { me: sorted("read") } });
   const inbox = buildInbox([customer, bug], me, [], NOW);
   expect(inbox.buckets.map((group) => group.bucket.id)).toEqual(
     DEFAULT_BUCKETS.map((bucket) => bucket.id),
   );
-  expect(inBucket([customer, bug], "customers")).toEqual([customer.id]);
-  expect(inBucket([customer, bug], "bugs")).toEqual([bug.id]);
+  expect(inBucket([customer, bug], "action")).toEqual([customer.id]);
+  expect(inBucket([customer, bug], "read")).toEqual([bug.id]);
   expect(inbox.order).toEqual([customer, bug]);
 });
 
@@ -111,7 +111,7 @@ test("snoozing takes a thread out of your inbox until then", () => {
 
 test("a thread is unsorted until it's sorted for you, in a bucket you still have", () => {
   const fresh = thread();
-  const forSomeoneElse = thread({ triage: { other: sorted("bugs") } });
+  const forSomeoneElse = thread({ triage: { other: sorted("read") } });
   const gone = thread({ triage: { me: sorted("deleted") } });
   const inbox = buildInbox([fresh, forSomeoneElse, gone], me, [], NOW);
   expect(inbox.unsorted.map((item) => item.thread)).toEqual([fresh, forSomeoneElse, gone]);
@@ -120,18 +120,18 @@ test("a thread is unsorted until it's sorted for you, in a bucket you still have
 });
 
 test("a thread waiting to be sorted again stays in its bucket meanwhile", () => {
-  const stale = thread({ triage: { me: { ...sorted("bugs"), stale: true } } });
-  expect(inBucket([stale], "bugs")).toEqual([stale.id]);
+  const stale = thread({ triage: { me: { ...sorted("read"), stale: true } } });
+  expect(inBucket([stale], "read")).toEqual([stale.id]);
 });
 
 test("within a bucket, threads needing an assignee lead, blocked ones trail, the rest by score", () => {
-  const coding = { me: sorted("coding") };
+  const coding = { me: sorted("action") };
   const low = thread({ priority: "low", triage: coding });
   const urgent = thread({ priority: "urgent", triage: coding });
   const dueSoon = thread({ dueAtMs: NOW + HOUR, triage: coding });
   const blocked = thread({ status: "blocked", priority: "urgent", triage: coding });
   const unassigned = thread({ requester: me, assignee: null, triage: coding });
-  expect(inBucket([low, blocked, dueSoon, urgent, unassigned], "coding")).toEqual([
+  expect(inBucket([low, blocked, dueSoon, urgent, unassigned], "action")).toEqual([
     unassigned.id,
     urgent.id,
     dueSoon.id,
@@ -169,7 +169,7 @@ test("Sent is what you asked of others, what you sent that's unanswered, and you
     assignee: kim,
     entries: [message(me, [kim], NOW - 2 * HOUR), message(kim, [me], NOW - HOUR)],
   });
-  const blocked = thread({ status: "blocked", triage: { me: sorted("bugs") } });
+  const blocked = thread({ status: "blocked", triage: { me: sorted("read") } });
   const blocker = thread({ requester: me, assignee: kim, blocksId: blocked.id });
   const inbox = buildInbox([asked, awaiting, answered, blocked, blocker], me, [], NOW);
   expect(inbox.sent.map((item) => [item.thread.id, item.from?.id])).toEqual([
@@ -180,7 +180,7 @@ test("Sent is what you asked of others, what you sent that's unanswered, and you
   ]);
   // Answered, it's back in your inbox instead.
   expect(inbox.unsorted.map((item) => item.thread)).toEqual([answered]);
-  const [item] = inbox.buckets.find((group) => group.bucket.id === "bugs")!.items;
+  const [item] = inbox.buckets.find((group) => group.bucket.id === "read")!.items;
   expect([item.reason, item.dueLabel]).toEqual(["Blocked on Kim Park", "Blocked"]);
 });
 

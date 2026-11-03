@@ -341,7 +341,13 @@ test("records stored by older versions load in today's shape", () => {
           kind: "response",
           tagIds: ["bug"],
           attendeeIds: [],
-          triage: { personId: "arjun", bucketId: "bugs", reason: "", manual: false, stale: false },
+          triage: {
+            personId: "arjun",
+            bucketId: "action",
+            reason: "",
+            manual: false,
+            stale: false,
+          },
         } as never,
       },
       {
@@ -382,7 +388,7 @@ test("records stored by older versions load in today's shape", () => {
   const stored = engine.models.Thread.get("t1");
   expect(stored).toMatchObject({
     labelIds: ["bug"],
-    triage: { arjun: { bucketId: "bugs", reason: "", manual: false, stale: false } },
+    triage: { arjun: { bucketId: "action", reason: "", manual: false, stale: false } },
     doneBy: {},
     snoozedUntil: {},
   });
