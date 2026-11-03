@@ -1,6 +1,7 @@
 import { useContext, useEffect, useRef, useState } from "react";
 import { NewThreadPalette, type NewThreadDraft } from "./components/NewThreadPalette";
 import { ComposePanel } from "./components/ComposePanel";
+import { useDrafts, type SavedDraft } from "./drafts";
 import { BucketPalette } from "./components/BucketPalette";
 import { CommandPalette } from "./components/CommandPalette";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -327,9 +328,23 @@ const App = observer(function App(): React.JSX.Element {
 
   // ⌘⇧N: a new thread written as one message, drafted by the model (`ComposePanel`). The first person asked has it;
   // each ask is a message sent to its people, which puts the thread in their inboxes, sorted by what they were asked.
+  // A saved draft opens in the same panel, and leaves the drafts once it's sent.
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composing, setComposing] = useState<SavedDraft | null>(null);
+  const drafts = useDrafts(source);
+  const openCompose = (draft: SavedDraft | null): void => {
+    setSearchOpen(false);
+    setNewThreadOpen(false);
+    setComposing(draft);
+    setComposeOpen(true);
+  };
+  const saveDraft = (draft: SavedDraft): void => {
+    drafts.save(draft);
+    setComposeOpen(false);
+  };
   const composeThread = (draft: ComposeDraft): void => {
     setComposeOpen(false);
+    if (composing !== null) drafts.remove(composing.id);
     const byId = new Map(people.map((person) => [person.id, person]));
     const asked = (ask: ComposeDraft["asks"][number]): Person[] =>
       ask.personIds.flatMap((id) => byId.get(id) ?? []);
@@ -406,9 +421,7 @@ const App = observer(function App(): React.JSX.Element {
       }
       if (event.shiftKey && key === "n") {
         event.preventDefault();
-        setSearchOpen(false);
-        setNewThreadOpen(false);
-        setComposeOpen(true);
+        openCompose(null);
         return;
       }
       if (event.shiftKey) return;
@@ -781,6 +794,9 @@ const App = observer(function App(): React.JSX.Element {
           {sidebarOpen && (
             <Sidebar
               inbox={inbox}
+              drafts={drafts.drafts}
+              onOpenDraft={openCompose}
+              onDeleteDraft={drafts.remove}
               bucketActions={bucketActions}
               activity={activityFor(threads, me, seenAt, nowMs)}
               groupNotices={groupNoticesFor(
@@ -964,10 +980,13 @@ const App = observer(function App(): React.JSX.Element {
           )}
           {composeOpen && (
             <ComposePanel
+              key={composing?.id ?? "new"}
               people={people}
               me={me}
+              initial={composing}
               draftWith={(request, signal) => composeDraft(source, request, signal)}
               onCreate={composeThread}
+              onSaveDraft={saveDraft}
               onClose={() => setComposeOpen(false)}
             />
           )}

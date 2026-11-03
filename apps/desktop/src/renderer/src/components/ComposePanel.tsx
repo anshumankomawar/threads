@@ -1,5 +1,6 @@
 import type { ComposeDraft, ComposeRequest, Person } from "model";
 import { useEffect, useRef, useState } from "react";
+import type { SavedDraft } from "../drafts";
 import { Identicon } from "./Identicon";
 
 const DRAFT_DELAY_MS = 500;
@@ -52,27 +53,38 @@ function plainDraft(text: string, people: Person[], me: Person): ComposeDraft {
 
 // A new thread in one message (⌘⇧N): write it as you'd say it, "@Anshu @Arjun can you review this CR. @Ganesh can
 // you also track this", and the model drafts the thread while you type: its title, any shared context, and each
-// person's own ask. Enter makes it. Each ask is sent to its people, so the thread is in each of their inboxes, sorted
-// by what was asked of them.
+// person's own ask. Anything it got wrong can be edited in the preview, which then stays as you left it (Redraft hands
+// it back to the model). Enter sends it: each ask goes to its people, so the thread is in each of their inboxes,
+// sorted by what was asked of them. ⌘S, or closing with something written, keeps it as a draft for later instead.
 export function ComposePanel({
   people,
   me,
+  initial,
   draftWith,
   onCreate,
+  onSaveDraft,
   onClose,
 }: {
   people: Person[];
   me: Person;
+  // A saved draft to carry on with.
+  initial: SavedDraft | null;
   draftWith: (request: ComposeRequest, signal: AbortSignal) => Promise<ComposeDraft>;
   onCreate: (draft: ComposeDraft) => void;
+  onSaveDraft: (saved: SavedDraft) => void;
   onClose: () => void;
 }): React.JSX.Element {
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [text, setText] = useState("");
+  const [draftId] = useState(() => initial?.id ?? crypto.randomUUID());
+  const [text, setText] = useState(initial?.text ?? "");
   const [caret, setCaret] = useState(0);
   const [selected, setSelected] = useState(0);
+  // Escape hides the @ menu until you type again.
+  const [menuHidden, setMenuHidden] = useState(false);
   // The model's latest draft and the text it was made from; a draft for older text still shows, faded.
   const [drafted, setDrafted] = useState<{ text: string; draft: ComposeDraft } | null>(null);
+  // The preview as you've edited it, which the model no longer changes. A saved draft opens as it was left.
+  const [edited, setEdited] = useState<ComposeDraft | null>(initial?.draft ?? null);
   const [failed, setFailed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -115,11 +127,20 @@ export function ComposePanel({
 
   const current = drafted !== null && drafted.text === trimmed;
   const shown: ComposeDraft | null =
-    trimmed === "" ? null : (drafted?.draft ?? plainDraft(trimmed, people, me));
+    edited ?? (trimmed === "" ? null : (drafted?.draft ?? plainDraft(trimmed, people, me)));
+  const change = (next: Partial<ComposeDraft>): void => {
+    if (shown !== null) setEdited({ ...shown, ...next });
+  };
+  const changeAsk = (index: number, next: ComposeDraft["asks"][number] | null): void =>
+    change({
+      asks: (shown?.asks ?? []).flatMap((ask, at) =>
+        at !== index ? [ask] : next === null || next.personIds.length === 0 ? [] : [next],
+      ),
+    });
 
   const mention = mentionQuery(text, caret);
   const matches =
-    mention === null
+    mention === null || menuHidden
       ? []
       : others
           .filter(
@@ -141,20 +162,46 @@ export function ComposePanel({
     requestAnimationFrame(() => inputRef.current?.setSelectionRange(at, at));
   };
 
-  // Makes the thread from the model's draft of exactly this text, asking for one first if needed, or from the plain
+  // Sends it as you edited it, or the model's draft of exactly this text, asking for one first if needed, or the plain
   // draft if the model can't be reached.
   const submit = (): void => {
-    if (trimmed === "" || submitting) return;
+    if ((trimmed === "" && edited === null) || submitting) return;
     const create = (draft: ComposeDraft): void =>
       onCreate({
         ...draft,
-        title: draft.title || plainDraft(trimmed, people, me).title || "New thread",
+        title: draft.title.trim() || plainDraft(trimmed, people, me).title || "New thread",
       });
-    if (drafted !== null && drafted.text === trimmed) return create(drafted.draft);
+    if (edited !== null) return create(edited);
+    if (current) return create(drafted.draft);
     setSubmitting(true);
     draftWith(request(trimmed), new AbortController().signal).then(create, () =>
       create(plainDraft(trimmed, people, me)),
     );
+  };
+
+  // Keeps it for later, as you left it.
+  const saveDraft = (): void => {
+    if (trimmed === "" && edited === null) return onClose();
+    onSaveDraft({
+      id: draftId,
+      text,
+      draft: edited ?? (current ? drafted.draft : null),
+      savedAtMs: Date.now(),
+    });
+  };
+
+  const onPanelKeyDown = (event: React.KeyboardEvent): void => {
+    if (event.key === "Escape" && matches.length === 0) {
+      // Closing with something written keeps it, as an email client does.
+      event.preventDefault();
+      saveDraft();
+    } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      saveDraft();
+    } else if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      submit();
+    }
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -170,11 +217,19 @@ export function ComposePanel({
         pick(matches[selectedIndex]);
         return;
       }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuHidden(true);
+        return;
+      }
     }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      onClose();
-    } else if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.nativeEvent.isComposing
+    ) {
       event.preventDefault();
       submit();
     }
@@ -183,11 +238,12 @@ export function ComposePanel({
   const byId = new Map(people.map((person) => [person.id, person]));
 
   return (
-    <div className="palette-overlay" onMouseDown={onClose}>
+    <div className="palette-overlay" onMouseDown={saveDraft}>
       <div
         className="palette compose"
         role="dialog"
         aria-label="New message"
+        onKeyDown={onPanelKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <textarea
@@ -201,6 +257,7 @@ export function ComposePanel({
             setText(event.target.value);
             setCaret(event.target.selectionStart);
             setSelected(0);
+            setMenuHidden(false);
           }}
           onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
           onKeyDown={onKeyDown}
@@ -225,18 +282,39 @@ export function ComposePanel({
           </div>
         )}
         {shown !== null && (
-          <div className="compose-preview" data-current={current}>
-            <div className="palette-section-label">
+          <div className="compose-preview" data-current={edited !== null || current}>
+            <div className="palette-section-label compose-preview-label">
               {submitting
                 ? "Making the thread…"
-                : current
-                  ? "Preview"
-                  : failed
-                    ? "Preview (the model couldn't be reached)"
-                    : "Drafting…"}
+                : edited !== null
+                  ? "Preview, edited"
+                  : current
+                    ? "Preview · click to edit"
+                    : failed
+                      ? "Preview (the model couldn't be reached)"
+                      : "Drafting…"}
+              {edited !== null && trimmed !== "" && (
+                <button type="button" className="compose-redraft" onClick={() => setEdited(null)}>
+                  Redraft
+                </button>
+              )}
             </div>
-            <div className="compose-title">{shown.title || "Untitled"}</div>
-            {shown.context !== "" && <p className="compose-context">{shown.context}</p>}
+            <input
+              className="compose-title"
+              aria-label="Title"
+              placeholder="Untitled"
+              spellCheck={false}
+              value={shown.title}
+              onChange={(event) => change({ title: event.target.value })}
+            />
+            <textarea
+              className="compose-context"
+              aria-label="Context"
+              placeholder="Add context…"
+              rows={shown.context === "" ? 1 : 2}
+              value={shown.context}
+              onChange={(event) => change({ context: event.target.value })}
+            />
             {shown.asks.length === 0 ? (
               <p className="compose-empty">
                 Nobody's asked yet: @mention who it's for, or it's a note to yourself.
@@ -252,10 +330,29 @@ export function ComposePanel({
                           <span key={person.id} className="compose-ask-person">
                             <Identicon seed={person.id} size={14} />
                             {handle(person)}
+                            <button
+                              type="button"
+                              className="compose-ask-remove"
+                              aria-label={`Don't ask ${person.name}`}
+                              onClick={() =>
+                                changeAsk(index, {
+                                  ...ask,
+                                  personIds: ask.personIds.filter((id) => id !== person.id),
+                                })
+                              }
+                            >
+                              ×
+                            </button>
                           </span>
                         ))}
                     </span>
-                    <span className="compose-ask-text">{ask.text}</span>
+                    <textarea
+                      className="compose-ask-text"
+                      aria-label="Ask"
+                      rows={1}
+                      value={ask.text}
+                      onChange={(event) => changeAsk(index, { ...ask, text: event.target.value })}
+                    />
                   </li>
                 ))}
               </ul>
@@ -264,7 +361,21 @@ export function ComposePanel({
         )}
         <div className="compose-footer">
           <span>
-            <kbd>↵</kbd> create · <kbd>⇧↵</kbd> new line · <kbd>esc</kbd> close
+            <kbd>⇧↵</kbd> new line · <kbd>esc</kbd> keeps a draft
+          </span>
+          <span className="compose-actions">
+            <button type="button" className="compose-button" onClick={saveDraft}>
+              Save draft <kbd>⌘S</kbd>
+            </button>
+            <button
+              type="button"
+              className="compose-button"
+              data-primary
+              disabled={shown === null || submitting}
+              onClick={submit}
+            >
+              Send <kbd>↵</kbd>
+            </button>
           </span>
         </div>
       </div>

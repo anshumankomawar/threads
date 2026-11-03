@@ -186,6 +186,12 @@ say "to …"). So it's still one thread, in each person's inbox and sorted for t
 asked (the triage prompt reads the latest message sent to them). Without the model it falls back to the first
 sentence as the title and one ask for everyone mentioned.
 
+The preview edits in place (title, context, each ask's text and people); once edited, the model leaves it alone until
+Redraft. ⌘S, Save draft, or closing with something written keeps it as a draft instead of sending: what you typed and
+the preview as you left it (`SavedDraft` in `drafts.ts`). Drafts are unsent, so they aren't threads or sync data: they
+live in this device's localStorage, per data source, and show in the sidebar's Drafts tab. Opening one carries on in
+the panel; sending it removes it.
+
 ## Inbox, notes and sending (like email)
 
 The model is Superhuman's, for threads: a thread is a reply thread with a title and an owner.

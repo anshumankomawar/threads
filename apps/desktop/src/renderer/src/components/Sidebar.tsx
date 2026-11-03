@@ -4,6 +4,7 @@ import {
   ArrowRight01Icon,
   InboxIcon,
   MoreHorizontalIcon,
+  NoteEditIcon,
   PanelLeftIcon,
   PanelRightIcon,
   PencilEdit02Icon,
@@ -30,6 +31,8 @@ import { filterLabels, threadsWithLabel, type GroupLists, type GroupNotice } fro
 import { THREAD_ICON } from "../threadIcon";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import type { ActivityItem } from "../activity";
+import type { SavedDraft } from "../drafts";
+import { formatRelativeTime } from "../format";
 import { NotificationsButton } from "./Notifications";
 
 // Marks the element with data-overflowing when its text is clipped, which turns on the fade mask.
@@ -513,14 +516,73 @@ function GroupList({
   );
 }
 
+// Threads written in the new-message panel and kept for later, newest first. Opening one carries on in the panel;
+// right-click deletes it.
+function Drafts({
+  drafts,
+  nowMs,
+  onOpen,
+  onDelete,
+}: {
+  drafts: SavedDraft[];
+  nowMs: number;
+  onOpen: (draft: SavedDraft) => void;
+  onDelete: (id: string) => void;
+}): React.JSX.Element {
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  return (
+    <ul className="thread-list" aria-label="Drafts">
+      {drafts.length === 0 && (
+        <li className="conversation-empty">No drafts. ⌘⇧N, then ⌘S, keeps one for later</li>
+      )}
+      {drafts.map((draft) => {
+        const title =
+          draft.draft?.title.trim() || draft.text.trim().split("\n")[0] || "Untitled draft";
+        const open = (): void => onOpen(draft);
+        return (
+          <li key={draft.id} className="thread-item">
+            <div
+              className="sidebar-row"
+              role="button"
+              tabIndex={0}
+              title={draft.text}
+              onClick={open}
+              onKeyDown={(event) => activateOnKey(event, open)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({ x: event.clientX, y: event.clientY, id: draft.id });
+              }}
+            >
+              <span className="sidebar-row-icon" aria-hidden>
+                <HugeiconsIcon icon={NoteEditIcon} size={12} />
+              </span>
+              <span className="sidebar-row-label">{title}</span>
+              <span className="sidebar-row-meta">{formatRelativeTime(draft.savedAtMs, nowMs)}</span>
+            </div>
+          </li>
+        );
+      })}
+      {menu !== null && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={[{ label: "Delete draft", run: () => onDelete(menu.id) }]}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </ul>
+  );
+}
+
 // The sidebar shows one list at a time, picked by the icon tabs under its top bar, like Obsidian's side panes.
-type SidebarTab = "inbox" | "sent" | "groups";
+type SidebarTab = "inbox" | "sent" | "drafts" | "groups";
 
 const TAB_KEY = "sidebar-tab";
 
 const TABS: { tab: SidebarTab; label: string; icon: IconSvgElement }[] = [
   { tab: "inbox", label: "Inbox", icon: InboxIcon },
   { tab: "sent", label: "Sent", icon: SentIcon },
+  { tab: "drafts", label: "Drafts", icon: NoteEditIcon },
   { tab: "groups", label: "Groups", icon: UserGroupIcon },
 ];
 
@@ -534,12 +596,13 @@ function savedTab(): SidebarTab {
 }
 
 // The tab strip, as in Notion: the chosen tab opens out to show its name, the others fold back to their icon, with a
-// count beside the Inbox and Sent while they have anything. Your avatar at the far end opens your profile and
+// count beside the Inbox, Sent and Drafts while they have anything. Your avatar at the far end opens your profile and
 // the org (in the main area, like a thread).
 function SidebarTabs({
   tab,
   inboxCount,
   sentCount,
+  draftCount,
   profileOpen,
   onTab,
   onToggleProfile,
@@ -547,6 +610,7 @@ function SidebarTabs({
   tab: SidebarTab;
   inboxCount: number;
   sentCount: number;
+  draftCount: number;
   profileOpen: boolean;
   onTab: (tab: SidebarTab) => void;
   onToggleProfile: () => void;
@@ -555,6 +619,7 @@ function SidebarTabs({
   const counts: Record<SidebarTab, number> = {
     inbox: inboxCount,
     sent: sentCount,
+    drafts: draftCount,
     groups: 0,
   };
   // Each name's own width, so the chosen tab grows to exactly fit it (animating to a guessed maximum finishes early
@@ -606,6 +671,9 @@ export type SidebarPage = "settings" | { label: string };
 
 export function Sidebar({
   inbox,
+  drafts,
+  onOpenDraft,
+  onDeleteDraft,
   bucketActions,
   activity,
   groupNotices,
@@ -628,6 +696,10 @@ export function Sidebar({
   onSearch,
 }: {
   inbox: Inbox;
+  // Threads written but not sent (`drafts.ts`).
+  drafts: SavedDraft[];
+  onOpenDraft: (draft: SavedDraft) => void;
+  onDeleteDraft: (id: string) => void;
   bucketActions: BucketActions;
   // What changed on your threads, for the notifications bell.
   activity: ActivityItem[];
@@ -703,6 +775,7 @@ export function Sidebar({
         tab={tab}
         inboxCount={inbox.order.length}
         sentCount={inbox.sent.length}
+        draftCount={drafts.length}
         profileOpen={profileOpen}
         onTab={chooseTab}
         onToggleProfile={onToggleProfile}
@@ -726,6 +799,9 @@ export function Sidebar({
             onOpenLabel={onOpenLabel}
             onNewGroup={onNewGroup}
           />
+        )}
+        {tab === "drafts" && (
+          <Drafts drafts={drafts} nowMs={nowMs} onOpen={onOpenDraft} onDelete={onDeleteDraft} />
         )}
         {tab === "sent" && (
           <Sent
