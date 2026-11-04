@@ -6,20 +6,33 @@ import {
   type BootstrapResponse,
   type BuiltInTransaction,
   type DeltasResponse,
+  type Ephemeral,
+  type LoadRequest,
+  type LoadResponse,
   type ModelName,
   type Models,
+  type ModelSet,
   type SyncAction,
   type SyncMessage,
   type SyncPosition,
   type TransactionBatch,
   type TransactionEnvelope,
 } from "../protocol";
-import { modelNames, schemaHash, syncGroupsOf, WORKSPACE_GROUP, type SyncSchema } from "../schema";
+import {
+  groupDependents,
+  loadStrategy,
+  modelNames,
+  schemaHash,
+  syncGroupsOf,
+  WORKSPACE_GROUP,
+  type Lookup,
+  type SyncSchema,
+} from "../schema";
 import { Batch, emptyModels, type ModelMaps } from "./batch";
 import { memoryStorage, type LoggedAction, type SyncStorage } from "./storage";
 
-// Who's asking. A user's session sees their sync groups and acts only as them. An admin session (an operator's
-// token, or local development with no auth) sees everything and may act as anyone.
+// Who's asking. A user's session sees their sync groups and acts only as them. An admin session (an operator's token,
+// or local development with no auth) sees everything and may act as anyone.
 export type Session = { userId: string } | { admin: true };
 
 export const isAdmin = (session: Session): session is { admin: true } => "admin" in session;
@@ -41,11 +54,23 @@ export type ApplyContext = {
   session: Session;
 };
 
+// What the server reports as it works, for logs and metrics.
+export type ServerEvent =
+  | {
+      type: "committed";
+      fromSyncId: number;
+      lastSyncId: number;
+      actions: number;
+      transactions: number;
+    }
+  | { type: "refused"; status: number; message: string; transactions: number }
+  | { type: "compacted"; throughSyncId: number };
+
 export type ServerOptions<M extends Models, T extends TransactionEnvelope> = {
   schema: SyncSchema<M>;
   // Runs one transaction of a batch: checks it, and stages its writes and side effects. Throwing a `SyncError` refuses
   // the batch. It's also handed the built-in delete, archive and unarchive transactions, to allow or refuse; the engine
-  // has already checked the target exists and that the session can see it.
+  // has already checked the target exists, that the session can see it, and that it's in a state to change.
   apply: (batch: Batch<M>, transaction: T | BuiltInTransaction<M>, context: ApplyContext) => void;
   storage?: SyncStorage<M>;
   now?: () => number;
@@ -55,11 +80,15 @@ export type ServerOptions<M extends Models, T extends TransactionEnvelope> = {
   upgrade?: (modelName: ModelName<M>, data: AnyRecord<M>) => AnyRecord<M> | null;
   // After each committed batch, with its actions and the sync id before them: broadcast them (`broadcast`).
   onCommit?: (actions: LoggedAction<M>[], fromSyncId: number) => void;
+  onEvent?: (event: ServerEvent) => void;
   // The most transactions a batch may hold.
   maxBatch?: number;
 };
 
 const DAY_MS = 24 * 60 * 60_000;
+
+const sameGroups = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((group) => b.includes(group));
 
 // The server half of the sync engine: one per workspace, and the only thing that writes its data. Every change is a
 // batch: staged (`Batch`), checked, then numbered with the next sync ids, saved, applied in memory and handed to
@@ -70,11 +99,12 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
   readonly models: ModelMaps<M>;
   lastSyncId = 0;
   minSyncId = 0;
-  epoch: string;
+  readonly epoch: string;
   onCommit: ServerOptions<M, T>["onCommit"];
   readonly #options: ServerOptions<M, T>;
   readonly #storage: SyncStorage<M>;
   readonly #now: () => number;
+  readonly #lookup: Lookup<M> = (modelName, id) => this.models[modelName]?.get(id);
 
   constructor(options: ServerOptions<M, T>) {
     this.#options = options;
@@ -112,20 +142,56 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
     const batch = new Batch(this.models, this.schema);
     stage(batch);
     const fromSyncId = this.lastSyncId;
+    const after: Lookup<M> = (modelName, id) => batch.get(modelName, id);
+    const groups = (
+      modelName: ModelName<M>,
+      record: AnyRecord<M> | undefined,
+      lookup: Lookup<M>,
+    ) => (record === undefined ? [] : syncGroupsOf(this.schema, modelName, record, lookup));
     const actions: LoggedAction<M>[] = [];
+    const logged = new Set<string>();
     let syncId = fromSyncId;
     for (const { modelName, id, data, action } of batch.writes.values()) {
       const before = this.models[modelName].get(id) as AnyRecord<M> | undefined;
       if (data === null && before === undefined) continue;
+      logged.add(`${modelName}:${id}`);
       actions.push({
         id: ++syncId,
         modelName,
         modelId: id,
         action: data === null ? "D" : (action ?? (before === undefined ? "I" : "U")),
         data,
-        groups: data === null ? [] : syncGroupsOf(this.schema, modelName, data),
-        previousGroups: before === undefined ? [] : syncGroupsOf(this.schema, modelName, before),
+        groups: groups(modelName, data ?? undefined, after),
+        previousGroups: groups(modelName, before, this.#lookup),
       });
+    }
+    // Records whose groups come from one whose groups just changed move with it. Those the batch doesn't otherwise
+    // touch are logged again, unchanged, so sessions see them arrive or leave along with it.
+    const moved = actions.filter((action) => !sameGroups(action.groups, action.previousGroups));
+    while (moved.length > 0) {
+      const parent = moved.shift() as LoggedAction<M>;
+      for (const { modelName, key } of groupDependents(this.schema, parent.modelName))
+        for (const record of this.models[modelName].values()) {
+          const id = record.id;
+          if (
+            logged.has(`${modelName}:${id}`) ||
+            (record as Record<string, unknown>)[key] !== parent.modelId
+          )
+            continue;
+          const data = after(modelName, id) as AnyRecord<M>;
+          const dependent: LoggedAction<M> = {
+            id: ++syncId,
+            modelName,
+            modelId: id,
+            action: "U",
+            data,
+            groups: groups(modelName, data, after),
+            previousGroups: groups(modelName, record as AnyRecord<M>, this.#lookup),
+          };
+          logged.add(`${modelName}:${id}`);
+          actions.push(dependent);
+          if (!sameGroups(dependent.groups, dependent.previousGroups)) moved.push(dependent);
+        }
     }
     // Persist first, then apply in memory, then tell clients.
     this.#storage.commit(actions, transactionIds, this.#now());
@@ -135,52 +201,79 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
       else models.set(action.modelId, action.data);
     }
     this.lastSyncId = syncId;
-    if (actions.length > 0) this.onCommit?.(actions, fromSyncId);
+    if (actions.length > 0) {
+      this.#options.onEvent?.({
+        type: "committed",
+        fromSyncId,
+        lastSyncId: syncId,
+        actions: actions.length,
+        transactions: transactionIds.length,
+      });
+      this.onCommit?.(actions, fromSyncId);
+    }
     return actions;
   }
 
-  // Executes a client's batch, all or nothing, skipping transactions it has already executed (a client resending
-  // after it lost the response).
+  // Executes a client's batch, all or nothing, skipping transactions it has already executed (a client resending after
+  // it lost the response).
   execute(input: TransactionBatch<T | BuiltInTransaction<M>>, session: Session): LoggedAction<M>[] {
-    if (!isAdmin(session) && input.actorId !== session.userId)
-      throw new SyncError(403, "You can only act as yourself");
-    if (input.transactions.length > (this.#options.maxBatch ?? 200))
-      throw new SyncError(413, "Too many transactions in one batch");
-    const fresh = input.transactions.filter(
-      (transaction) => !this.#storage.hasTransaction(transaction.id),
-    );
-    if (fresh.length === 0) return [];
-    const groups = this.groupsOf(session);
-    const context: ApplyContext = {
-      actorId: input.actorId,
-      nowMs: this.#now(),
-      utcOffsetMinutes: input.utcOffsetMinutes ?? 0,
-      session,
-    };
-    return this.write(
-      (batch) => {
-        for (const transaction of fresh) {
-          if (isBuiltIn(transaction)) this.#checkBuiltIn(batch, transaction, groups);
-          this.#options.apply(batch, transaction, context);
-        }
-      },
-      fresh.map((transaction) => transaction.id),
-    );
+    try {
+      if (!isAdmin(session) && input.actorId !== session.userId)
+        throw new SyncError(403, "You can only act as yourself");
+      if (input.transactions.length > (this.#options.maxBatch ?? 200))
+        throw new SyncError(413, "Too many transactions in one batch");
+      const fresh = input.transactions.filter(
+        (transaction) => !this.#storage.hasTransaction(transaction.id),
+      );
+      if (fresh.length === 0) return [];
+      const groups = this.groupsOf(session);
+      const context: ApplyContext = {
+        actorId: input.actorId,
+        nowMs: this.#now(),
+        utcOffsetMinutes: input.utcOffsetMinutes ?? 0,
+        session,
+      };
+      return this.write(
+        (batch) => {
+          for (const transaction of fresh) {
+            if (isBuiltIn(transaction)) this.#checkBuiltIn(batch, transaction, groups);
+            this.#options.apply(batch, transaction, context);
+          }
+        },
+        fresh.map((transaction) => transaction.id),
+      );
+    } catch (error) {
+      if (error instanceof SyncError)
+        this.#options.onEvent?.({
+          type: "refused",
+          status: error.status,
+          message: error.message,
+          transactions: input.transactions.length,
+        });
+      throw error;
+    }
   }
 
   // A delete, archive or unarchive needs a target this session can see, in the right state.
   #checkBuiltIn(batch: Batch<M>, transaction: BuiltInTransaction, groups: string[]): void {
     const { modelName, modelId, type } = transaction;
     if (!(modelName in this.models)) throw new SyncError(400, `Unknown model: ${modelName}`);
-    const record = batch.get(modelName as ModelName<M>, modelId);
-    if (
-      record === undefined ||
-      !visibleIn(syncGroupsOf(this.schema, modelName as ModelName<M>, record), groups)
-    )
+    const name = modelName as ModelName<M>;
+    const record = batch.get(name, modelId);
+    if (record === undefined || !this.#visible(name, record, groups, (n, id) => batch.get(n, id)))
       throw new SyncError(404, `${modelName} not found`);
     const archived = record.archivedAtMs !== undefined && record.archivedAtMs !== null;
     if (type === "archive" && archived) throw new SyncError(409, `${modelName} is archived`);
     if (type === "unarchive" && !archived) throw new SyncError(409, `${modelName} isn't archived`);
+  }
+
+  #visible(
+    modelName: ModelName<M>,
+    record: AnyRecord<M>,
+    groups: string[],
+    lookup: Lookup<M> = this.#lookup,
+  ): boolean {
+    return visibleIn(syncGroupsOf(this.schema, modelName, record, lookup), groups);
   }
 
   // --- Reading ---
@@ -199,22 +292,42 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
     return { type: "handshake", minSyncId: this.minSyncId, ...this.position(session) };
   }
 
-  // The models a session sees, all of them or only those in `onlyGroups` (a partial bootstrap, when it joins groups).
+  // The models that load at start (`instant`) that a session sees: all of them, or only those in `onlyGroups` (a
+  // partial bootstrap, when it joins groups).
   bootstrap(session: Session, onlyGroups?: string[]): BootstrapResponse<M> {
     const groups = this.groupsOf(session);
     const wanted =
       onlyGroups === undefined
         ? groups
         : onlyGroups.filter((group) => group !== ALL_GROUPS && visibleIn([group], groups));
-    const models = Object.fromEntries(
-      modelNames(this.schema).map((name) => [
-        name,
-        [...this.models[name].values()].filter((record) =>
-          visibleIn(syncGroupsOf(this.schema, name, record as AnyRecord<M>), wanted),
-        ),
-      ]),
-    ) as BootstrapResponse<M>["models"];
+    const models: ModelSet<M> = {};
+    for (const name of modelNames(this.schema))
+      if (loadStrategy(this.schema, name) === "instant")
+        models[name] = [...this.models[name].values()].filter((record) =>
+          this.#visible(name, record as AnyRecord<M>, wanted),
+        );
     return { ...this.position(session), schemaHash: this.schemaHash, models };
+  }
+
+  // Models that don't load at start, as LSE's batch loader asks for them: all of a lazy model, or a partial model's
+  // records by one of its partial indexes. Only what the session sees.
+  load(session: Session, requests: LoadRequest[]): LoadResponse<M> {
+    const groups = this.groupsOf(session);
+    const models: ModelSet<M> = {};
+    for (const { modelName, key, value } of requests) {
+      if (!(modelName in this.models)) throw new SyncError(400, `Unknown model: ${modelName}`);
+      const name = modelName as ModelName<M>;
+      if (key !== undefined && !(this.schema.models[name].partialIndexes ?? []).includes(key))
+        throw new SyncError(400, `${modelName} isn't loaded by ${key}`);
+      const found = [...this.models[name].values()].filter(
+        (record) =>
+          (key === undefined || (record as Record<string, unknown>)[key] === value) &&
+          this.#visible(name, record as AnyRecord<M>, groups),
+      );
+      const list = (models[name] ??= []);
+      for (const record of found) if (!list.includes(record)) list.push(record);
+    }
+    return { ...this.position(session), models };
   }
 
   // The actions after `after` that a session sees, or a request to bootstrap afresh once the log doesn't reach back.
@@ -227,6 +340,25 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
     };
   }
 
+  // An ephemeral value from a session, as the message for everyone who can see its record, or undefined when the session
+  // can't see it.
+  ephemeral(session: Session, value: Ephemeral): SyncMessage<M> | undefined {
+    if (!(value.modelName in this.models)) return undefined;
+    const name = value.modelName as ModelName<M>;
+    const record = this.models[name].get(value.modelId) as AnyRecord<M> | undefined;
+    if (record === undefined || !this.#visible(name, record, this.groupsOf(session)))
+      return undefined;
+    return { type: "ephemeral", userId: isAdmin(session) ? null : session.userId, ...value };
+  }
+
+  // Whether a session sees a record, for deciding who an ephemeral value reaches.
+  sees(session: Session, modelName: string, modelId: string): boolean {
+    if (!(modelName in this.models)) return false;
+    const name = modelName as ModelName<M>;
+    const record = this.models[name].get(modelId) as AnyRecord<M> | undefined;
+    return record !== undefined && this.#visible(name, record, this.groupsOf(session));
+  }
+
   // Trims the log to its last `keepActions` actions, and forgets executed transaction ids older than
   // `keepTransactionsMs` (clients resending after that long get their batch refused rather than run twice).
   compact({
@@ -237,6 +369,7 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
     if (through <= this.minSyncId) return;
     this.#storage.compact(through, this.#now() - keepTransactionsMs);
     this.minSyncId = through;
+    this.#options.onEvent?.({ type: "compacted", throughSyncId: through });
   }
 }
 

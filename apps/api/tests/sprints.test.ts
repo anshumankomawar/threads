@@ -1,3 +1,4 @@
+import { decodeBootstrap } from "sync";
 import type { Group, Sprint, SprintChanges, ThreadRecord, TransactionInput } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
@@ -22,7 +23,7 @@ type Models = { Thread: ThreadRecord[]; Group: Group[]; Sprint: Sprint[] };
 
 async function models(): Promise<Models> {
   const response = await app.request("/sync/bootstrap", { headers: { "X-Workspace": "local" } });
-  return ((await response.json()) as { models: Models }).models;
+  return (decodeBootstrap(await response.text()) as never as { models: Models }).models;
 }
 
 const sprintOf = async (id: string): Promise<Sprint | undefined> =>

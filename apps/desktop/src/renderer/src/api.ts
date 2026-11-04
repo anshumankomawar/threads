@@ -6,6 +6,7 @@ import type {
   SyncMessage,
   TransactionInput,
 } from "model";
+import { decodeBootstrap, type BootstrapResponse } from "sync";
 import { openIndexedDb, RejectedError, UnauthorizedError } from "sync/client";
 import { ThreadsClient, type ThreadsTransport } from "./sync/syncClient";
 
@@ -74,6 +75,7 @@ function httpTransport(server: Server, viewerId: string | null): ThreadsTranspor
     path: string,
     body?: unknown,
     retried = false,
+    read: (response: Response) => Promise<T> = (response) => response.json() as Promise<T>,
   ): Promise<T> => {
     const token = await session.token();
     const response = await fetch(`${server.url}${path}`, {
@@ -90,7 +92,7 @@ function httpTransport(server: Server, viewerId: string | null): ThreadsTranspor
     });
     if (response.status === 401) {
       session.renew();
-      if (!retried) return request(method, path, body, true);
+      if (!retried) return request(method, path, body, true, read);
       throw new UnauthorizedError("Signed out");
     }
     if (!response.ok) {
@@ -99,15 +101,21 @@ function httpTransport(server: Server, viewerId: string | null): ThreadsTranspor
       // A refusal is final; a server error may pass, so it's retried like being offline.
       throw response.status < 500 ? new RejectedError(message) : new Error(message);
     }
-    return response.json() as Promise<T>;
+    return read(response);
   };
 
   return {
+    // Bootstraps stream as lines (`decodeBootstrap` checks none were cut off).
     bootstrap: (onlyGroups) =>
       request(
         "GET",
         `/sync/bootstrap${onlyGroups === undefined ? "" : `?groups=${encodeURIComponent(onlyGroups.join(","))}`}`,
+        undefined,
+        false,
+        async (response) =>
+          decodeBootstrap(await response.text()) as BootstrapResponse<ModelRecords>,
       ),
+    load: (requests) => request("POST", "/sync/batch", { requests }),
     deltas: (after) => request("GET", `/sync/deltas?after=${after}`),
     send: (batch) => request("POST", "/sync/transactions", batch),
     // Wiping is an operator's tool, so it goes as the admin session.
@@ -146,6 +154,9 @@ function httpTransport(server: Server, viewerId: string | null): ThreadsTranspor
         close: () => {
           closed = true;
           socket?.close();
+        },
+        send: (message) => {
+          if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
         },
       };
     },

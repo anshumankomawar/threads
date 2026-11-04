@@ -717,8 +717,8 @@ What the prototype leaves out on purpose, roughly in the order production needs 
 5. **Deletes.**
    - The engine has delete, archive and unarchive with cascades, but Threads only lets you delete your own messages.
      Threads, labels, people, groups and sprints aren't deleted, and assignees can't be removed.
-6. **Concurrency on lists.** `memberIds`, `threadIds` and `labelIds` are replaced whole, so concurrent edits lose one side. Consider add/remove operations instead.
-7. **Undo and redo** at the transaction level (LSE's undo queue). Today only Done and Snooze have an Undo toast.
+6. **Concurrency on lists.** Solved: `memberIds`, `threadIds` and `labelIds` change by add/remove ops, so concurrent edits merge.
+7. **Undo and redo.** The engine has LSE's transaction-level undo queue (`ThreadsClient.undoQueue`), but no key is bound yet; only Done and Snooze have an Undo toast.
 8. **AI operations.**
    - Sorting depends on Workers AI. Its costs and limits need watching.
    - Production also needs a fallback when the AI is down, prompt and model versioning, and an evaluation set.

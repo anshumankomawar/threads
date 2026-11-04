@@ -20,7 +20,8 @@ import {
   type ThreadChanges,
   type TransactionInput,
 } from "model";
-import { SyncClient, type SyncDatabase, type Transport } from "sync/client";
+import { listsAsOps } from "sync";
+import { SyncClient, type ClientEvent, type SyncDatabase, type Transport } from "sync/client";
 
 // How the app reaches its server: the sync engine's transport, plus wiping the workspace (a development tool).
 export type ThreadsTransport = Transport<ModelRecords, TransactionInput> & {
@@ -53,8 +54,9 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
   constructor(
     transport: ThreadsTransport,
     openDatabase: () => Promise<SyncDatabase<ModelRecords, TransactionInput | BuiltIn>>,
+    onEvent?: (event: ClientEvent) => void,
   ) {
-    super({ schema: threadsSchema, mutations: threadsMutations, transport, openDatabase });
+    super({ schema: threadsSchema, mutations: threadsMutations, transport, openDatabase, onEvent });
     this.#transport = transport;
     makeObservable(this, {
       threads: computed,
@@ -136,9 +138,16 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
     return groupId;
   }
 
+  // Lists given whole go as the ops that make them (`listsAsOps`), so they merge with anyone else's edits to the same list.
   updateGroup(groupId: string, changes: GroupChanges, me: Person): void {
     this.#enqueue(
-      { id: crypto.randomUUID(), type: "update", modelName: "Group", modelId: groupId, changes },
+      {
+        id: crypto.randomUUID(),
+        type: "update",
+        modelName: "Group",
+        modelId: groupId,
+        changes: listsAsOps(this.pool.get("Group", groupId), changes),
+      },
       me,
     );
   }
@@ -171,7 +180,7 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
         type: "update",
         modelName: "Sprint",
         modelId: sprintId,
-        changes,
+        changes: listsAsOps(this.pool.get("Sprint", sprintId), changes),
       },
       me,
     );
@@ -238,7 +247,7 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
         type: "update",
         modelName: "Thread",
         modelId: threadId,
-        changes,
+        changes: listsAsOps(this.pool.get("Thread", threadId), changes),
       },
       me,
     );

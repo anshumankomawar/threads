@@ -1,3 +1,4 @@
+import { decodeBootstrap } from "sync";
 import {
   threadScore,
   labelSlug,
@@ -39,7 +40,7 @@ type Models = {
 
 async function models(workspace = "local"): Promise<Models> {
   const response = await app.request("/sync/bootstrap", { headers: { "X-Workspace": workspace } });
-  return ((await response.json()) as { models: Models }).models;
+  return (decodeBootstrap(await response.text()) as never as { models: Models }).models;
 }
 
 const groupOf = async (id: string): Promise<Group> => {
@@ -170,9 +171,9 @@ test("a thread's label changes are logged, in words that fit a label or a group"
   await transact("anshu", [updateThread("t1", { labelIds: [] })]);
   const {
     models: { Entry },
-  } = (await (
-    await app.request("/sync/bootstrap", { headers: { "X-Workspace": "local" } })
-  ).json()) as { models: { Entry: { threadId: string; kind: string; text: string }[] } };
+  } = decodeBootstrap(
+    await (await app.request("/sync/bootstrap", { headers: { "X-Workspace": "local" } })).text(),
+  ) as never as { models: { Entry: { threadId: string; kind: string; text: string }[] } };
   expect(
     Entry.filter((entry) => entry.threadId === "t1" && entry.kind === "event").map((e) => e.text),
   ).toEqual([
@@ -434,4 +435,18 @@ test("restoring puts back what a wipe keeps", () => {
   const engine = new SyncEngine({ now: () => NOW });
   engine.restore([{ modelName: "Organization", data: { id: ORGANIZATION_ID, name: "Acme" } }]);
   expect(engine.models.Organization.get(ORGANIZATION_ID)?.name).toBe("Acme");
+});
+
+test("two people changing a group's members at once both keep their change", async () => {
+  await transact("anshu", [createGroup("g1", "Payments", ["arjun"])]);
+  // Each sends only what they changed, as the app does (`listsAsOps`), so neither undoes the other.
+  await transact("anshu", [updateGroup("g1", { memberIds: { $add: ["kk"] } })]);
+  await transact("arjun", [updateGroup("g1", { memberIds: { $remove: ["anshu"] } })]);
+  expect((await groupOf("g1")).memberIds.toSorted()).toEqual(["arjun", "kk"]);
+  // A whole list still works, and an op that would empty the group is refused like a whole empty list.
+  await transact("arjun", [updateGroup("g1", { memberIds: ["arjun"] })]);
+  expect((await groupOf("g1")).memberIds).toEqual(["arjun"]);
+  expect(
+    (await transact("arjun", [updateGroup("g1", { memberIds: { $remove: ["arjun"] } })])).status,
+  ).toBe(400);
 });

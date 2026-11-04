@@ -6,6 +6,7 @@ import type { AnyRecord, ModelName, ModelRecords } from "model";
 import {
   broadcast,
   isAdmin,
+  receive,
   signSession,
   sqliteStorage,
   verifySession,
@@ -77,7 +78,11 @@ export class Workspace extends DurableObject<Env> {
       "INSERT OR REPLACE INTO meta (key, value) VALUES ('workspace', ?)",
       name,
     );
-    const engine = new SyncEngine({ storage });
+    // The engine's events go to the Worker's logs (observability is on), one JSON line each.
+    const engine = new SyncEngine({
+      storage,
+      onEvent: (event) => console.log(JSON.stringify({ workspace: name, ...event })),
+    });
     engine.onCommit = (actions, fromSyncId) =>
       broadcast(engine, this.#sockets(), actions, fromSyncId);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME);
@@ -99,12 +104,13 @@ export class Workspace extends DurableObject<Env> {
   }
 
   // The connected clients, as the engine's broadcast needs them.
-  #sockets(): HubSocket[] {
+  #sockets(): (HubSocket & { raw: WebSocket })[] {
     return this.ctx.getWebSockets().flatMap((socket) => {
       const attachment = socket.deserializeAttachment() as SocketAttachment | null;
       if (attachment === null) return [];
       return [
         {
+          raw: socket,
           session: attachment.session,
           groups: attachment.groups,
           setGroups: (groups) => socket.serializeAttachment({ ...attachment, groups }),
@@ -118,15 +124,20 @@ export class Workspace extends DurableObject<Env> {
     if (this.#triager !== undefined) this.ctx.waitUntil(this.#triager.kick());
   }
 
-  // Retries sorting after the model failed.
-  async alarm(): Promise<void> {
+  // The workspace this object is, as recorded when it first loaded, for work that arrives without a request: the retry
+  // alarm, and socket messages after hibernation.
+  #stored(): SyncEngine | undefined {
+    if (this.#engine !== undefined) return this.#engine;
     const [row] = this.ctx.storage.sql
       .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'workspace'")
       .toArray();
-    if (row === undefined || !isWorkspaceName(row.value)) return;
+    return row === undefined || !isWorkspaceName(row.value) ? undefined : this.#load(row.value);
+  }
+
+  // Retries sorting after the model failed.
+  async alarm(): Promise<void> {
     const loaded = this.#engine !== undefined;
-    this.#load(row.value);
-    if (loaded) this.#sort();
+    if (this.#stored() !== undefined && loaded) this.#sort();
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -172,9 +183,15 @@ export class Workspace extends DurableObject<Env> {
     return response;
   }
 
-  // Clients ping to keep the connection alive through proxies.
+  // Clients ping to keep the connection alive through proxies, and send ephemeral values (who's looking at what), which
+  // go to every other client that can see the record and are never stored.
   webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
-    if (message === "ping") socket.send("pong");
+    if (message === "ping") return socket.send("pong");
+    const engine = this.#stored();
+    if (engine === undefined || typeof message !== "string") return;
+    const sockets = this.#sockets();
+    const from = sockets.find((candidate) => candidate.raw === socket);
+    if (from !== undefined) receive(engine, sockets, from, message);
   }
 
   webSocketClose(socket: WebSocket, code: number): void {

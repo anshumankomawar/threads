@@ -5,6 +5,8 @@ export type StoredTransaction<T = TransactionEnvelope> = {
   id: string;
   batchIndex: number;
   actorId: string;
+  // When it was made, so replaying it after a restart stamps what it changes as it did then.
+  createdAtMs: number;
   input: T;
 };
 
@@ -24,22 +26,34 @@ export type StoredModel<M extends Models = Models> = {
 };
 
 // The client's local database, as in LSE: models exactly as the server confirmed them (never local edits), where the
-// cache stands, and transactions not yet accepted.
+// cache stands, which lazy and partial loads it holds (`loadKey`, LSE's partial index store), and transactions not yet
+// accepted.
 export type SyncDatabase<M extends Models = Models, T = TransactionEnvelope> = {
   meta(): Promise<StoredMeta | undefined>;
-  models(): Promise<StoredModel<M>[]>;
+  // Every stored model, or one model's.
+  models(modelName?: ModelName<M>): Promise<StoredModel<M>[]>;
+  model(modelName: ModelName<M>, id: string): Promise<StoredModel<M> | undefined>;
+  loaded(): Promise<string[]>;
   transactions(): Promise<StoredTransaction<T>[]>;
-  // Replaces every model after a full bootstrap.
+  // Replaces every model after a full bootstrap, forgetting what was loaded.
   reset(models: StoredModel<M>[], meta: StoredMeta): Promise<void>;
   // Writes actions (inserts, updates, archives and deletes) and the new position, together.
   applyActions(actions: SyncAction<M>[], meta: StoredMeta): Promise<void>;
+  // Stores models a lazy or partial load returned, and that those loads are held.
+  putLoaded(models: StoredModel<M>[], keys: string[]): Promise<void>;
   putTransactions(transactions: StoredTransaction<T>[]): Promise<void>;
   deleteTransactions(ids: string[]): Promise<void>;
   close(): void;
 };
 
+// What identifies a load: a whole lazy model, or a partial model's records by one key's value.
+export function loadKey(modelName: string, key?: string, value?: string): string {
+  return key === undefined ? modelName : `${modelName}|${key}|${value}`;
+}
+
 const META = "meta";
 const MODELS = "models";
+const LOADED = "loaded";
 const TRANSACTIONS = "__transactions";
 
 function promised<R>(request: IDBRequest<R>): Promise<R> {
@@ -61,12 +75,14 @@ function done(transaction: IDBTransaction): Promise<void> {
 export async function openIndexedDb<M extends Models, T = TransactionEnvelope>(
   name: string,
 ): Promise<SyncDatabase<M, T>> {
-  const open = indexedDB.open(name, 1);
+  const open = indexedDB.open(name, 2);
   open.onupgradeneeded = () => {
     const db = open.result;
-    db.createObjectStore(META);
-    db.createObjectStore(MODELS, { keyPath: ["modelName", "id"] });
-    db.createObjectStore(TRANSACTIONS, { keyPath: "id" });
+    const has = (store: string): boolean => db.objectStoreNames.contains(store);
+    if (!has(META)) db.createObjectStore(META);
+    if (!has(MODELS)) db.createObjectStore(MODELS, { keyPath: ["modelName", "id"] });
+    if (!has(TRANSACTIONS)) db.createObjectStore(TRANSACTIONS, { keyPath: "id" });
+    if (!has(LOADED)) db.createObjectStore(LOADED);
   };
   const db = await promised(open);
 
@@ -81,8 +97,23 @@ export async function openIndexedDb<M extends Models, T = TransactionEnvelope>(
       promised(
         db.transaction(META).objectStore(META).get("meta") as IDBRequest<StoredMeta | undefined>,
       ),
-    models: () =>
-      promised(db.transaction(MODELS).objectStore(MODELS).getAll() as IDBRequest<StoredModel<M>[]>),
+    models: (modelName) =>
+      promised(
+        db
+          .transaction(MODELS)
+          .objectStore(MODELS)
+          .getAll(
+            modelName === undefined ? undefined : IDBKeyRange.bound([modelName], [modelName, []]),
+          ) as IDBRequest<StoredModel<M>[]>,
+      ),
+    model: (modelName, id) =>
+      promised(
+        db.transaction(MODELS).objectStore(MODELS).get([modelName, id]) as IDBRequest<
+          StoredModel<M> | undefined
+        >,
+      ),
+    loaded: async () =>
+      (await promised(db.transaction(LOADED).objectStore(LOADED).getAllKeys())).map(String),
     transactions: async () =>
       (
         await promised(
@@ -92,9 +123,10 @@ export async function openIndexedDb<M extends Models, T = TransactionEnvelope>(
         )
       ).sort((a, b) => a.batchIndex - b.batchIndex),
     reset: (models, meta) =>
-      write([META, MODELS], (tx) => {
+      write([META, MODELS, LOADED], (tx) => {
         const store = tx.objectStore(MODELS);
         store.clear();
+        tx.objectStore(LOADED).clear();
         for (const model of models) store.put(model);
         tx.objectStore(META).put(meta, "meta");
       }),
@@ -106,6 +138,12 @@ export async function openIndexedDb<M extends Models, T = TransactionEnvelope>(
           else store.put({ modelName: action.modelName, id: action.modelId, data: action.data });
         }
         tx.objectStore(META).put(meta, "meta");
+      }),
+    putLoaded: (models, keys) =>
+      write([MODELS, LOADED], (tx) => {
+        const store = tx.objectStore(MODELS);
+        for (const model of models) store.put(model);
+        for (const loaded of keys) tx.objectStore(LOADED).put(true, loaded);
       }),
     putTransactions: (transactions) =>
       write([TRANSACTIONS], (tx) => {
@@ -124,29 +162,40 @@ export async function openIndexedDb<M extends Models, T = TransactionEnvelope>(
 export function memoryDatabase<M extends Models, T = TransactionEnvelope>(): SyncDatabase<M, T> {
   let meta: StoredMeta | undefined;
   const models = new Map<string, StoredModel<M>>();
+  const loaded = new Set<string>();
   const transactions = new Map<string, StoredTransaction<T>>();
   const key = (modelName: string, id: string): string => `${modelName}:${id}`;
+  const put = (model: StoredModel<M>): void =>
+    void models.set(key(model.modelName, model.id), structuredClone(model));
   return {
     meta: async () => meta,
-    models: async () => [...models.values()],
+    models: async (modelName) =>
+      [...models.values()].filter(
+        (model) => modelName === undefined || model.modelName === modelName,
+      ),
+    model: async (modelName, id) => {
+      const stored = models.get(key(modelName, id));
+      return stored === undefined ? undefined : structuredClone(stored);
+    },
+    loaded: async () => [...loaded],
     transactions: async () =>
       [...transactions.values()].sort((a, b) => a.batchIndex - b.batchIndex),
     reset: async (next, nextMeta) => {
       models.clear();
-      for (const model of next) models.set(key(model.modelName, model.id), structuredClone(model));
+      loaded.clear();
+      for (const model of next) put(model);
       meta = structuredClone(nextMeta);
     },
     applyActions: async (actions, nextMeta) => {
       for (const action of actions) {
         if (action.data === null) models.delete(key(action.modelName, action.modelId));
-        else
-          models.set(key(action.modelName, action.modelId), {
-            modelName: action.modelName,
-            id: action.modelId,
-            data: structuredClone(action.data),
-          });
+        else put({ modelName: action.modelName, id: action.modelId, data: action.data });
       }
       meta = structuredClone(nextMeta);
+    },
+    putLoaded: async (next, keys) => {
+      for (const model of next) put(model);
+      for (const held of keys) loaded.add(held);
     },
     putTransactions: async (list) => {
       for (const transaction of list)

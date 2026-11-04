@@ -47,13 +47,14 @@ import {
   type Triage,
   type TransactionInput,
 } from "model";
-import { WORKSPACE_GROUP } from "sync";
+import { resolvePatch, WORKSPACE_GROUP, type ResolvedPatch } from "sync";
 import {
   SyncError,
   SyncServer,
   type ApplyContext,
   type Batch,
   type LoggedAction,
+  type ServerEvent,
   type SyncStorage,
 } from "sync/server";
 import { z } from "zod";
@@ -88,6 +89,19 @@ const threadCreate = z.object({
   labelIds: z.array(id).optional(),
 });
 
+// A list in an update: the whole list, each id once, or ids to add and remove (`ArrayOp`).
+const listChange = (max: number) =>
+  z.union([
+    z
+      .array(id)
+      .max(max)
+      .refine((ids) => new Set(ids).size === ids.length, "Each one once"),
+    z.strictObject({
+      $add: z.array(id).max(max).optional(),
+      $remove: z.array(id).max(max).optional(),
+    }),
+  ]);
+
 const threadChanges = z
   .strictObject({
     title: z.string().trim().min(1).max(200),
@@ -95,9 +109,7 @@ const threadChanges = z
     priority: z.enum(["none", "low", "medium", "high", "urgent"]),
     dueAtMs: z.number().int().nullable(),
     effortHours: z.number().min(MIN_EFFORT_HOURS).multipleOf(MIN_EFFORT_HOURS).nullable(),
-    labelIds: z
-      .array(id)
-      .refine((labels) => new Set(labels).size === labels.length, "Labels must be unique"),
+    labelIds: listChange(100),
     // Scoped to whoever sends them (`applyScopedChanges`).
     seen: z.literal(true),
     done: z.boolean(),
@@ -133,7 +145,7 @@ const labelCreate = z.object({ id, name: labelName });
 const groupCreate = z.object({ id, name: labelName, memberIds: z.array(id) });
 
 const groupChanges = z
-  .strictObject({ name: labelName, memberIds: z.array(id), archived: z.boolean() })
+  .strictObject({ name: labelName, memberIds: listChange(1000), archived: z.boolean() })
   .partial();
 
 // A sprint's threads, each listed once. Its other rules need data (`checkSprint` in `#apply`).
@@ -154,7 +166,7 @@ const sprintChanges = z
   .strictObject({
     name: labelName,
     ...sprintDates,
-    threadIds: sprintThreadIds,
+    threadIds: listChange(500),
     closed: z.boolean(),
   })
   .partial();
@@ -257,7 +269,7 @@ function localTime(ms: number, offsetMinutes: number, options: Intl.DateTimeForm
 // The activity line for each field an update actually changes, phrased from the actor's point of view.
 function describeChanges(
   thread: ThreadRecord,
-  changes: ThreadChanges,
+  changes: ResolvedPatch<ThreadChanges>,
   labelOf: (id: string) => Label | undefined,
   offsetMinutes: number,
 ): string[] {
@@ -368,6 +380,8 @@ export type EngineOptions = {
   storage?: SyncStorage<ModelRecords>;
   // After each committed batch, with its actions and the sync id before them: broadcast them.
   onCommit?: (actions: LoggedAction<ModelRecords>[], fromSyncId: number) => void;
+  // What the engine reports as it works (commits, refusals, compaction), for logs.
+  onEvent?: (event: ServerEvent) => void;
 };
 
 // What the model needs to sort one person's inbox: their buckets, the threads in their inbox that aren't sorted
@@ -387,13 +401,14 @@ export type TriageResult = { threadId: string; bucketId: string; reason: string 
 //
 // Every member of the workspace sees everything (its one sync group); someone who isn't a member sees nothing.
 export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
-  constructor({ now = Date.now, storage, onCommit }: EngineOptions = {}) {
+  constructor({ now = Date.now, storage, onCommit, onEvent }: EngineOptions = {}) {
     const self: { engine?: SyncEngine } = {};
     super({
       schema: threadsSchema,
       now,
       storage,
       onCommit,
+      onEvent,
       upgrade,
       groupsFor: (userId, models) => (models.Person.has(userId) ? [WORKSPACE_GROUP] : []),
       apply: (batch, transaction, context) => {
@@ -610,7 +625,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     if (transaction.type === "update" && transaction.modelName === "Group") {
       const group = batch.get("Group", transaction.modelId);
       if (group === undefined) throw new SyncError(404, "Group not found");
-      const { changes } = transaction;
+      const changes = resolvePatch(group, transaction.changes);
       const memberIds = changes.memberIds;
       if (memberIds !== undefined) {
         if (new Set(memberIds).size !== memberIds.length)
@@ -724,7 +739,11 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     if (transaction.type === "update" && transaction.modelName === "Sprint") {
       const before = batch.get("Sprint", transaction.modelId);
       if (before === undefined) throw new SyncError(404, "Sprint not found");
-      const sprint = { ...before, ...transaction.changes, updatedAtMs: nowMs };
+      const sprint = {
+        ...before,
+        ...resolvePatch(before, transaction.changes),
+        updatedAtMs: nowMs,
+      };
       checkSprint(sprint, before);
       batch.put("Sprint", sprint);
       if (sprint.closed !== before.closed)
@@ -874,7 +893,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     }
     const thread = batch.get("Thread", transaction.modelId);
     if (thread === undefined) throw new SyncError(404, "Thread not found");
-    const { changes } = transaction;
+    const changes = resolvePatch(thread, transaction.changes);
     if (changes.labelIds !== undefined) requireLabels(changes.labelIds);
     // Changes that are only about you (seen, done, snoozed, placed in one of your buckets) are quiet: no activity
     // line, and they don't count as an update. You place only what's in your inbox, into a bucket of yours.

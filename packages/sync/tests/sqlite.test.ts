@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "vite-plus/test";
 import { sqliteStorage, type SqlStorageLike } from "../src/server";
-import { createServer, seedUsers, txId, type TestModels } from "./harness";
+import { createServer, note, seedUsers, type TestModels } from "./harness";
 
 // A Durable Object's storage API over Node's SQLite.
 function nodeSql(db = new DatabaseSync(":memory:")): SqlStorageLike & { db: DatabaseSync } {
@@ -35,12 +35,7 @@ test("a server restarted from SQLite has its models, log, epoch and executed tra
   const storage = nodeSql();
   const first = createServer(sqliteStorage<TestModels>(storage));
   seedUsers(first, "ann");
-  const create = {
-    id: txId(),
-    type: "create",
-    modelName: "Note",
-    data: { id: "n", text: "Kept", teamId: null },
-  } as const;
+  const create = note("n", "Kept");
   first.execute({ actorId: "ann", transactions: [create] }, { userId: "ann" });
 
   const second = createServer(sqliteStorage<TestModels>(storage));

@@ -1,3 +1,4 @@
+import { decodeBootstrap } from "sync";
 import type { BuiltIn, DeltasResponse, TransactionInput } from "model";
 import { expect, test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
@@ -21,7 +22,7 @@ function as(app: ReturnType<typeof createApp>, userId?: string) {
     transact: (actorId: string, transactions: (TransactionInput | BuiltIn)[]) =>
       send("POST", "/sync/transactions", { actorId, transactions }),
     bootstrap: async () =>
-      (await (await send("GET", "/sync/bootstrap")).json()) as {
+      decodeBootstrap(await (await send("GET", "/sync/bootstrap")).text()) as never as {
         syncGroups: string[];
         epoch: string;
         models: { Thread: { id: string }[]; Entry: { id: string }[]; Person: unknown[] };

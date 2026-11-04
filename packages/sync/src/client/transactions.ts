@@ -1,3 +1,4 @@
+import type { ClientMutations } from "../mutations";
 import {
   isBuiltIn,
   type AnyRecord,
@@ -8,7 +9,6 @@ import {
   type TransactionBatchResponse,
   type TransactionEnvelope,
 } from "../protocol";
-import type { ClientMutations } from "../mutations";
 import type { StoredTransaction, SyncDatabase } from "./database";
 import type { ObjectPool } from "./pool";
 
@@ -31,19 +31,21 @@ const KINDS: Record<string, TransactionKind> = {
 const key = (modelName: string, id: string): string => `${modelName}:${id}`;
 
 // One change made on this client. It's applied to the pool at once and kept until the server has executed it and its
-// sync id has come back. `original` holds, per model it touched, the fields it replaced, so a refusal can put them
-// back; rebasing onto newer server data replaces them, and the local change stays on top (last writer wins).
+// sync id has come back. While it's pending, every model it touches is shown as the server's copy with the pending
+// changes replayed on top, oldest first (`replay`): so newer server data lands underneath it (last writer wins, LSE's
+// rebase), and if the server refuses it, rebuilding without it takes it out, whatever else is pending. `before` holds
+// each model as it was when the change was made, for undoing it.
 export class Transaction<M extends Models, T extends TransactionEnvelope> {
   readonly id: string;
   readonly actorId: string;
   readonly input: T | BuiltInTransaction<M>;
   readonly kind: TransactionKind;
+  readonly createdAtMs: number;
   batchIndex = 0;
   // The sync id that completes this transaction, once the server accepts it.
   syncIdNeededForCompletion: number | undefined;
-  readonly original = new Map<string, Record<string, unknown> | null>();
+  readonly before = new Map<string, AnyRecord<M> | undefined>();
   readonly #mutations: ClientMutations<M, T>;
-  readonly #createdAtMs: number;
 
   constructor(
     input: T | BuiltInTransaction<M>,
@@ -55,8 +57,22 @@ export class Transaction<M extends Models, T extends TransactionEnvelope> {
     this.input = input;
     this.actorId = actorId;
     this.kind = KINDS[input.type] ?? "update";
+    this.createdAtMs = createdAtMs;
     this.#mutations = mutations;
-    this.#createdAtMs = createdAtMs;
+  }
+
+  static restore<M extends Models, T extends TransactionEnvelope>(
+    stored: StoredTransaction<T | BuiltInTransaction<M>>,
+    mutations: ClientMutations<M, T>,
+  ): Transaction<M, T> {
+    const transaction = new Transaction(
+      stored.input,
+      stored.actorId,
+      mutations,
+      stored.createdAtMs,
+    );
+    transaction.batchIndex = stored.batchIndex;
+    return transaction;
   }
 
   touches(): { modelName: ModelName<M>; id: string }[] {
@@ -81,66 +97,72 @@ export class Transaction<M extends Models, T extends TransactionEnvelope> {
       if (record === undefined) return undefined;
       return {
         ...record,
-        archivedAtMs: input.type === "archive" ? this.#createdAtMs : null,
+        archivedAtMs: input.type === "archive" ? this.createdAtMs : null,
       } as AnyRecord<M>;
     }
     return this.#mutations.change(input as T, modelName, record, {
       actorId: this.actorId,
-      nowMs: this.#createdAtMs,
+      nowMs: this.createdAtMs,
     });
   }
 
+  // Shows the change: applied to the pool as it is now.
   apply(pool: ObjectPool<M>): void {
     for (const { modelName, id } of this.touches()) {
-      const before = pool.get(modelName, id) as AnyRecord<M> | undefined;
-      const after = this.#changed(modelName, before);
-      if (after === undefined) continue;
-      this.original.set(key(modelName, id), replaced(before, after));
-      if (after === null) pool.delete(modelName, id);
+      const was = pool.get(modelName, id) as AnyRecord<M> | undefined;
+      if (!this.before.has(key(modelName, id))) this.before.set(key(modelName, id), was);
+      const after = this.replay(modelName, was);
+      if (after === undefined) pool.delete(modelName, id);
       else pool.set(modelName, after);
     }
   }
 
-  rollback(pool: ObjectPool<M>): void {
-    for (const { modelName, id } of this.touches()) {
-      const was = this.original.get(key(modelName, id));
-      if (was === undefined) continue;
-      const current = pool.get(modelName, id) as AnyRecord<M> | undefined;
-      // A model this created goes; one it deleted comes back; otherwise the replaced fields go back.
-      if (was === null) pool.delete(modelName, id);
-      else pool.set(modelName, { ...current, ...was } as AnyRecord<M>);
-    }
+  // One of its models with this change on top: undefined when that leaves no record. A creation leaves a record the
+  // server already has as the server has it.
+  replay(modelName: ModelName<M>, record: AnyRecord<M> | undefined): AnyRecord<M> | undefined {
+    if (this.kind === "creation" && record !== undefined) return record;
+    const after = this.#changed(modelName, record);
+    if (after === null) return undefined;
+    return after ?? record;
   }
 
-  // This change on top of a newer server copy of one of its models. A creation leaves the server's copy as it is.
-  rebase(modelName: ModelName<M>, record: AnyRecord<M>): AnyRecord<M> | null {
-    if (this.kind === "creation") return record;
-    const after = this.#changed(modelName, record);
-    if (after === undefined) return record;
-    this.original.set(key(modelName, record.id), replaced(record, after));
-    return after;
+  // The transaction that undoes this one (LSE's `undoTransaction`), or null when it can't be undone. Archiving and
+  // unarchiving undo each other; otherwise the product says (`ClientMutations.inverse`), and without it a creation of
+  // one model undoes by deleting it.
+  undoTransaction(): Transaction<M, T> | null {
+    const { input } = this;
+    const id = crypto.randomUUID();
+    const inverse = ((): Omit<T, "id"> | Omit<BuiltInTransaction<M>, "id"> | null => {
+      if (isBuiltIn(input)) {
+        if (input.type === "delete") return null;
+        return { ...input, type: input.type === "archive" ? "unarchive" : "archive" };
+      }
+      if (this.#mutations.inverse !== undefined)
+        return this.#mutations.inverse(input as T, this.before, {
+          actorId: this.actorId,
+          nowMs: this.createdAtMs,
+        });
+      const [only, ...rest] = this.touches();
+      if (this.kind !== "creation" || only === undefined || rest.length > 0) return null;
+      return { type: "delete", modelName: only.modelName, modelId: only.id };
+    })();
+    if (inverse === null) return null;
+    return new Transaction<M, T>(
+      { ...inverse, id } as T | BuiltInTransaction<M>,
+      this.actorId,
+      this.#mutations,
+    );
   }
 
   serialize(): StoredTransaction<T | BuiltInTransaction<M>> {
-    return { id: this.id, batchIndex: this.batchIndex, actorId: this.actorId, input: this.input };
+    return {
+      id: this.id,
+      batchIndex: this.batchIndex,
+      actorId: this.actorId,
+      createdAtMs: this.createdAtMs,
+      input: this.input,
+    };
   }
-}
-
-// What a change replaced: the fields it changed (with their old values), the whole record when it removed it, or
-// null when it made it.
-function replaced(
-  before: object | undefined,
-  after: object | null,
-): Record<string, unknown> | null {
-  if (before === undefined) return null;
-  if (after === null) return { ...before };
-  const was = before as Record<string, unknown>;
-  const now = after as Record<string, unknown>;
-  return Object.fromEntries(
-    Object.keys(now)
-      .filter((field) => now[field] !== was[field])
-      .map((field) => [field, was[field]]),
-  );
 }
 
 export type QueueOptions<M extends Models, T extends TransactionEnvelope> = {
@@ -150,8 +172,10 @@ export type QueueOptions<M extends Models, T extends TransactionEnvelope> = {
     "putTransactions" | "deleteTransactions"
   >;
   send: (batch: TransactionBatch<T | BuiltInTransaction<M>>) => Promise<TransactionBatchResponse>;
-  // Called when the server refuses a batch, after it's rolled back.
-  onRejected: (error: Error) => void;
+  // Called when the server refuses a batch, now out of the queue: what it touched needs rebuilding without it.
+  onRejected: (error: Error, batch: Transaction<M, T>[]) => void;
+  // Called with transactions whose sync id has arrived: what they changed is now as the server confirmed it.
+  onCompleted: (transactions: Transaction<M, T>[]) => void;
   utcOffsetMinutes: () => number;
   // The client's sync position. A batch's delta packet can arrive before the response that accepts it.
   lastSyncId: () => number;
@@ -162,8 +186,8 @@ const MAX_BATCH = 100;
 const MAX_BATCH_BYTES = 500_000;
 const RETRY_MS = 2000;
 
-// Takes transactions from creation to completion, through LSE's stages: created (this tick), queued (saved, waiting
-// to send), executing (sent), and completed but unsynced (accepted, waiting for its sync id to arrive).
+// Takes transactions from creation to completion, through LSE's stages: created (this tick), queued (saved, waiting to
+// send), executing (sent), and completed but unsynced (accepted, waiting for its sync id to arrive).
 export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
   createdTransactions: Transaction<M, T>[] = [];
   queuedTransactions: Transaction<M, T>[] = [];
@@ -172,6 +196,8 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
   batchIndex = 0;
   online = false;
   readonly #options: QueueOptions<M, T>;
+  // Told of every transaction enqueued (LSE's transactionQueuedSignal), for the undo queue.
+  readonly #listeners = new Set<(transaction: Transaction<M, T>) => void>();
   #commitScheduled = false;
   #retry: ReturnType<typeof setTimeout> | undefined;
   #stopped = false;
@@ -189,10 +215,16 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
     ];
   }
 
+  onEnqueued(listener: (transaction: Transaction<M, T>) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
   // Applies a new transaction to the pool and schedules it. Transactions made in the same tick share a batch.
   enqueue(transaction: Transaction<M, T>): void {
     transaction.apply(this.#options.pool);
     this.createdTransactions.push(transaction);
+    for (const listener of this.#listeners) listener(transaction);
     if (this.#commitScheduled) return;
     this.#commitScheduled = true;
     queueMicrotask(() => void this.commitCreatedTransactions());
@@ -253,14 +285,7 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
   }
 
   async executeTransactionBatch(batch: Transaction<M, T>[]): Promise<void> {
-    const {
-      send,
-      database,
-      pool,
-      onRejected,
-      utcOffsetMinutes,
-      lastSyncId: synced,
-    } = this.#options;
+    const { send, database, onRejected, utcOffsetMinutes, lastSyncId: synced } = this.#options;
     try {
       const { lastSyncId } = await send({
         actorId: batch[0].actorId,
@@ -275,10 +300,8 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
     } catch (error) {
       this.executingTransactions = [];
       if (error instanceof RejectedError) {
-        // Undo newest first, so each restores the value the one before it saw.
-        for (const transaction of [...batch].reverse()) transaction.rollback(pool);
         await database.deleteTransactions(batch.map((transaction) => transaction.id));
-        onRejected(error);
+        onRejected(error, batch);
       } else {
         // Offline, the server is down, or signed out: keep the batch first in line and try again.
         this.queuedTransactions = [...batch, ...this.queuedTransactions];
@@ -292,13 +315,18 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
 
   // Completes transactions whose sync id has arrived.
   progressQueue(lastSyncId: number): void {
+    const done = (transaction: Transaction<M, T>): boolean =>
+      (transaction.syncIdNeededForCompletion ?? Infinity) <= lastSyncId;
+    const completed = this.completedButUnsyncedTransactions.filter(done);
+    if (completed.length === 0) return;
     this.completedButUnsyncedTransactions = this.completedButUnsyncedTransactions.filter(
-      (transaction) => (transaction.syncIdNeededForCompletion ?? Infinity) > lastSyncId,
+      (transaction) => !done(transaction),
     );
+    this.#options.onCompleted(completed);
   }
 
-  // Pending transactions touching a model that a server action numbered `syncId` doesn't already include, oldest
-  // first, for rebasing onto it.
+  // Pending transactions touching a model that a server action numbered `syncId` doesn't already include, oldest first,
+  // for rebasing onto it.
   pendingFor(modelName: string, id: string, syncId: number): Transaction<M, T>[] {
     return this.pending.filter(
       (transaction) =>

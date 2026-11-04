@@ -39,7 +39,8 @@ export type SyncStorage<M extends Models = Models> = {
   compact(throughSyncId: number, transactionsBeforeMs: number): void;
 };
 
-// Storage in memory, for tests. It can start with models already stored, as if written by an older version.
+// Storage in memory, for tests. It can start with models already stored, as if written by an older version, with a log
+// that starts after `lastSyncId`.
 export function memoryStorage<M extends Models>(
   initial: { models?: StoredModel<M>[]; lastSyncId?: number } = {},
 ): SyncStorage<M> {

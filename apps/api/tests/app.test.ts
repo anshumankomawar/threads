@@ -1,3 +1,4 @@
+import { decodeBootstrap } from "sync";
 import type { SyncAction, Thread, TransactionInput } from "model";
 import { localPeople, toThreads } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
@@ -29,7 +30,9 @@ function send(method: string, path: string, body?: unknown, workspace = "local")
 }
 
 const bootstrap = async (workspace = "local"): Promise<Bootstrap> =>
-  (await send("GET", "/sync/bootstrap", undefined, workspace)).json() as Promise<Bootstrap>;
+  decodeBootstrap(
+    await (await send("GET", "/sync/bootstrap", undefined, workspace)).text(),
+  ) as never as Bootstrap;
 
 const deltas = async (after: number): Promise<SyncAction[]> =>
   ((await (await send("GET", `/sync/deltas?after=${after}`)).json()) as { actions: SyncAction[] })
@@ -41,7 +44,9 @@ const transact = (actorId: string, transactions: TransactionInput[], utcOffsetMi
 
 // The workspace's threads as the app renders them, rebuilt from a bootstrap.
 async function threads(): Promise<Thread[]> {
-  const { models } = (await (await send("GET", "/sync/bootstrap")).json()) as {
+  const { models } = decodeBootstrap(
+    await (await send("GET", "/sync/bootstrap")).text(),
+  ) as never as {
     models: { Person: []; Thread: []; Entry: [] };
   };
   return toThreads(

@@ -13,7 +13,7 @@ import {
   type TransactionInput,
 } from "model";
 import { memoryDatabase, RejectedError, type SyncDatabase } from "sync/client";
-import { broadcast, SyncError, SyncServer, type HubSocket } from "sync/server";
+import { broadcast, receive, SyncError, SyncServer, type HubSocket } from "sync/server";
 import { expect, test } from "vite-plus/test";
 import { ThreadsClient, type ThreadsTransport } from "../src/renderer/src/sync/syncClient";
 
@@ -84,6 +84,7 @@ class TestServer {
         copy(this.engine.bootstrap(session, onlyGroups))
       ),
       deltas: async (after) => (offline(), copy(this.engine.deltas(session, after))),
+      load: async (requests) => (offline(), copy(this.engine.load(session, requests))),
       send: async (batch) => {
         offline();
         try {
@@ -114,7 +115,10 @@ class TestServer {
           handlers.onOpen();
           handlers.onMessage(copy(this.engine.handshake(session)));
         });
-        return { close: () => void this.#sockets.delete(socket) };
+        return {
+          close: () => void this.#sockets.delete(socket),
+          send: (message) => receive(this.engine, this.#sockets, socket, JSON.stringify(message)),
+        };
       },
     };
   }
@@ -316,4 +320,72 @@ test("deleting your message takes it out at once, and the server's delete confir
   expect(server.engine.models.Entry.has("oops")).toBe(false);
   expect(has()).toBe(false);
   expect(client.queue.pending).toEqual([]);
+});
+
+test("a whole list goes as the ops that make it, so it merges with someone else's edit", async () => {
+  const { client, server } = await started();
+  const threadId = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
+  for (const id of ["bug", "infra", "urgent"])
+    server.change("Label", { id, name: id, groupId: null, createdById: null, createdAtMs: 1 });
+  await settle();
+  client.updateThread(threadId, { labelIds: ["bug", "infra"] }, anshu);
+  await settle();
+  // Arjun adds a label the app hasn't heard of yet; Anshu's next whole list doesn't drop it.
+  const thread = server.engine.models.Thread.get(threadId) as ThreadRecord;
+  server.online = false;
+  client.updateThread(threadId, { labelIds: ["bug"] }, anshu);
+  server.change("Thread", { ...thread, labelIds: [...thread.labelIds, "urgent"] });
+  server.online = true;
+  client.queue.dequeue();
+  await settle();
+  expect(server.sent.at(-1)?.transactions[0]).toMatchObject({
+    changes: { labelIds: { $add: [], $remove: ["infra"] } },
+  });
+  expect(server.engine.models.Thread.get(threadId)?.labelIds).toEqual(["bug", "urgent"]);
+});
+
+test("undo puts a thread's fields, labels and your own done back, and redo does them again", async () => {
+  const { client, server } = await started();
+  const threadId = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
+  server.change("Label", {
+    id: "bug",
+    name: "Bug",
+    groupId: null,
+    createdById: null,
+    createdAtMs: 1,
+  });
+  await settle();
+  client.undoQueue.addOperation("Triage", () =>
+    client.updateThread(threadId, { priority: "high", labelIds: ["bug"], done: true }, anshu),
+  );
+  await settle();
+  expect(server.engine.models.Thread.get(threadId)).toMatchObject({
+    priority: "high",
+    labelIds: ["bug"],
+    doneBy: { anshu: expect.any(Number) },
+  });
+  client.undoQueue.undo();
+  await settle();
+  expect(server.engine.models.Thread.get(threadId)).toMatchObject({
+    priority: "none",
+    labelIds: [],
+    doneBy: {},
+  });
+  client.undoQueue.redo();
+  await settle();
+  expect(server.engine.models.Thread.get(threadId)).toMatchObject({
+    priority: "high",
+    labelIds: ["bug"],
+  });
+  // Making a thread can't be undone (threads aren't deleted); sending a message is, by deleting it.
+  client.undoQueue.addOperation("Thread", () =>
+    client.createThread({ ...draft, title: "Another" }, anshu),
+  );
+  client.undoQueue.addOperation("Reply", () =>
+    client.addEntry(threadId, "message", "Oops", anshu, "oops"),
+  );
+  await settle();
+  client.undoQueue.undo();
+  await settle();
+  expect(server.engine.models.Entry.has("oops")).toBe(false);
 });

@@ -1,28 +1,29 @@
 # sync
 
-A sync engine after Linear's (LSE). Clients change data by sending **transactions**. One **server** per workspace runs
-them, numbers every resulting change with a **sync id**, logs it, and pushes it to every client as a **delta packet**.
-Clients apply packets in order, so everyone converges. Your own edits show immediately and are reconciled when the
-server's version arrives.
+A sync engine built after Linear's (LSE), as described in
+[the reverse-engineering study](https://github.com/wzhudev/reverse-linear-sync-engine). Clients change data by
+sending **transactions**. One **server** per workspace runs them, numbers every resulting change with a **sync id**,
+logs it, and pushes it to every client as a **delta packet**. Clients apply packets in order, so everyone converges.
+Your own edits show immediately and are reconciled when the server's version arrives.
 
 It knows nothing about any product. A product gives it:
 
-1. **A schema** (`defineSchema`): its models, their references, and which **sync groups** each record is in.
+1. **A schema** (`defineSchema`): its models, their references, how each loads, and which **sync groups** each record
+   is in.
 2. **Server rules** (`apply`): for each transaction, check it and stage the writes and side effects.
-3. **Client predictions** (`ClientMutations`): how each transaction changes models, to show it before the server
-   confirms.
-4. **Wiring**: storage for the server (SQLite in a Durable Object, or memory), sockets, and an HTTP transport for the
-   client.
+3. **Client predictions** (`ClientMutations`): how each transaction changes models, so it shows before the server
+   confirms it, and how to undo it.
+4. **Wiring**: storage for the server (SQLite in a Durable Object, or memory), sockets, and a transport for the client.
 
 Everything else is the engine's.
 
 ## The pieces
 
-| Import        | What                                                                                                                |
-| ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `sync`        | The wire protocol (`SyncAction`, `SyncMessage`, …), `defineSchema`, `ClientMutations`                               |
-| `sync/server` | `SyncServer`, `Batch`, storage (`memoryStorage`, `sqliteStorage`), `broadcast`, `handleSyncRequest`, session tokens |
-| `sync/client` | `SyncClient`, `ObjectPool`, `TransactionQueue`, the local database (`openIndexedDb`, `memoryDatabase`)              |
+| Import        | What                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sync`        | The wire protocol (`SyncAction`, `SyncMessage`, …), `defineSchema`, patches (`applyPatch`, `ArrayOp`, …), `ClientMutations`, the bootstrap stream |
+| `sync/server` | `SyncServer`, `Batch`, storage (`memoryStorage`, `sqliteStorage`), `broadcast` and `receive` for sockets, `handleSyncRequest`, session tokens     |
+| `sync/client` | `SyncClient`, `ObjectPool`, `TransactionQueue`, `UndoQueue`, the local database (`openIndexedDb`, `memoryDatabase`)                               |
 
 ## What it guarantees
 
@@ -30,23 +31,40 @@ Everything else is the engine's.
   then broadcast, in that order. A batch is all or nothing.
 - **Exactly once.** The server remembers executed transaction ids (for 30 days, then they're compacted away), so a
   client resending after a lost response doesn't run anything twice.
-- **Optimistic, then confirmed.** A client applies its change at once. If newer server data for that model arrives while
-  the change is pending, the change is rebased on top of it (last writer wins). If the server refuses the batch, it's
-  rolled back. If the server deletes a model, unsent changes to it are dropped.
-- **Survives restarts.** The client's cache holds only server-confirmed data, plus unsent transactions, which are
-  replayed on start.
-- **Never stuck.** A packet that skips ahead triggers a catch-up from the log. If the log no longer reaches back that
-  far (compacted), or the server's data started over (a new `epoch`), the client bootstraps afresh and replays its
-  unsent changes on top.
-- **Who sees what.** Every record is in sync groups (`syncGroupsOf`); every session sees its groups (`groupsFor`).
-  Bootstrap, catch-up and packets are filtered per session. A record that moves out of your groups arrives as a delete,
-  and one that moves in as an insert. When your groups change, the client loads the new groups' records (a partial
-  bootstrap) and drops the ones you no longer see.
+- **Optimistic, then confirmed.** A client shows its change at once. Every model a pending change touches is shown as
+  the server's confirmed copy with the pending changes replayed on top, oldest first. So newer server data lands under
+  your change (last writer wins), a refused change simply drops out, however many others were stacked on it, and a
+  change whose result the server never sends you (say, a record you made somewhere you can't see) settles to what you
+  can see once it completes. If the server deletes a model, unsent changes to it are dropped.
+- **Lists merge.** An update can change an id list by adding and removing (`{ $add, $remove }`) instead of replacing
+  it, so two people editing the same list at once both keep their change. `listsAsOps` turns a whole new list into
+  that.
+- **Survives restarts.** The client's cache holds only server-confirmed data, plus unsent transactions (with when they
+  were made), which are replayed on start.
+- **Never stuck.** A packet that skips ahead triggers a catch-up from the log. If the log no longer reaches back that far
+  (compacted), or the server's data started over (a new `epoch`), the client bootstraps afresh and replays its unsent
+  changes on top. If anything fails mid-way (the server unreachable during a catch-up, say), the client reconnects and
+  starts again from the handshake, so no change or group change is ever skipped.
+- **Who sees what.** Every record is in sync groups (`syncGroupsOf`, or its parent's through `syncGroupsFrom`); every
+  session sees its groups (`groupsFor`). Bootstrap, catch-up, loads and packets are filtered per session. A record that
+  moves out of your groups arrives as a delete, and one that moves in as an insert, and records whose groups come from
+  it move with it. When your groups change, the client loads the new groups' records (a partial bootstrap) and drops
+  the ones you no longer see.
 - **Who's acting.** A user's session acts only as that user. An admin session sees everything and may act as anyone.
   `signSession` / `verifySession` make and check signed session tokens; whatever signs people in mints them.
+- **Loading on demand.** A model loads `instant` (at bootstrap), `lazy` (all at once, the first time it's asked for) or
+  `partial` (a slice at a time by one of its `partialIndexes`, such as a thread's entries by `threadId`).
+  `client.hydrate(...)` loads from the local database when it holds the slice, else from the server, batching a tick's
+  requests into one. A loaded slice stays current; records outside loaded slices stay in the database, not the pool.
 - **Delete, archive, unarchive** work on any model. Deleting cascades to the records that belong to it (its
   `backReferences`), nulls references to it, and takes it out of reference arrays. The product's `apply` decides who may.
-- **Bounded growth.** `compact` trims the log; a client behind the trimmed point bootstraps afresh.
+- **Undo and redo.** `client.undoQueue.addOperation(label, edit)` records the transactions an edit makes as one step.
+  Undoing queues each one's undo as a new transaction, so it syncs like any other change.
+- **Ephemeral values.** `client.setEphemeral(...)` tells everyone who can see a record something that's never stored,
+  such as that you're looking at it.
+- **Bounded and observable.** `compact` trims the log; batches are capped by count and size; a bootstrap streams as
+  lines and is checked for completeness. `onEvent` on both sides reports commits, refusals, compaction, bootstraps,
+  catch-ups, gaps, group changes and loads.
 
 ## What a product must respect
 
@@ -54,17 +72,16 @@ Everything else is the engine's.
   directly.
 - Make side effects in `apply`, staged on the batch, with ids derived from the transaction (`${transaction.id}:…`), so
   a resend can't duplicate them.
-- A record's sync groups must come from its own fields: changing one record doesn't revisit others.
+- A record's sync groups come from its own fields, or its parent's through `syncGroupsFrom`.
 - Bump the schema's `version` when a record's shape changes, so clients discard caches built under the old one.
-- `ClientMutations.change` must work from any starting record, since rebasing reruns it on newer server data.
-
-## Not here yet
-
-Lazy and partial loading of models (every model loads at bootstrap), undo and redo, streaming large bootstraps, and
-ephemeral data such as presence. See `docs/architecture.md` in the repo.
+- `ClientMutations.change` must work from any starting record, since pending changes are replayed on newer server data.
+- A transport's `connect` calls its handlers only after it returns, as a WebSocket's events do.
 
 ## Tests
 
-`vp test` here runs the engine end to end with a small product (private notes, teams, comments): groups, joining and
-leaving, sessions, deletes and cascades, archiving, refusals, rebasing, gaps, compaction, resets, restarts, session
-tokens, and the SQLite storage over Node's SQLite.
+`vp test` here runs the engine end to end with a small product: private notes, teams, comments (partial, seen by
+whoever sees their note), stickers (lazy) and tags (a list). It covers groups, joining and leaving, sessions, deletes and
+cascades, archiving, refusals, rebasing, list merges, loading, undo, ephemeral values, gaps, compaction, resets,
+restarts, the bootstrap stream, events, session tokens and the SQLite storage over Node's SQLite. `convergence.test.ts`
+runs several clients making random conflicting changes while packets are lost, clients go offline and restart, undo, and
+the log is compacted under them, and checks every client ends up exactly where the server says it should.

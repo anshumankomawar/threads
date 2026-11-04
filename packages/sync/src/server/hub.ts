@@ -1,4 +1,4 @@
-import type { Models, SyncMessage, TransactionEnvelope } from "../protocol";
+import type { ClientMessage, Models, SyncMessage, TransactionEnvelope } from "../protocol";
 import { visibleActions, type Session, type SyncServer } from "./server";
 import type { LoggedAction } from "./storage";
 
@@ -14,9 +14,17 @@ export type HubSocket = {
 const sameGroups = (a: string[], b: string[]): boolean =>
   a.length === b.length && a.every((group) => b.includes(group));
 
-// Sends a committed batch to every connected client, each seeing only its groups. Every client gets a packet, even
-// an empty one, so its sync position keeps up. A client whose groups changed (it joined or left something) is told
-// on the same packet, and loads or drops what that changes.
+function send(socket: HubSocket, message: unknown): void {
+  try {
+    socket.send(JSON.stringify(message));
+  } catch {
+    // A socket closing mid-send reconnects and catches up by sync id.
+  }
+}
+
+// Sends a committed batch to every connected client, each seeing only its groups. Every client gets a packet, even an
+// empty one, so its sync position keeps up. A client whose groups changed (it joined or left something) is told on the
+// same packet, and loads or drops what that changes.
 export function broadcast<M extends Models, T extends TransactionEnvelope>(
   server: SyncServer<M, T>,
   sockets: Iterable<HubSocket>,
@@ -28,17 +36,34 @@ export function broadcast<M extends Models, T extends TransactionEnvelope>(
     const groups = server.groupsOf(socket.session);
     const changed = !sameGroups(groups, socket.groups);
     if (changed) socket.setGroups(groups);
-    const packet: SyncMessage<M> = {
+    send(socket, {
       type: "delta",
       fromSyncId,
       lastSyncId,
       actions: visibleActions(actions, groups),
       ...(changed ? { syncGroups: groups } : {}),
-    };
-    try {
-      socket.send(JSON.stringify(packet));
-    } catch {
-      // A socket closing mid-send reconnects and catches up by sync id.
-    }
+    } satisfies SyncMessage<M>);
   }
+}
+
+// Handles a message a client sent on its socket: an ephemeral value goes to every other client that can see its
+// record, and nowhere else. Anything else is ignored.
+export function receive<M extends Models, T extends TransactionEnvelope>(
+  server: SyncServer<M, T>,
+  sockets: Iterable<HubSocket>,
+  from: HubSocket,
+  text: string,
+): void {
+  let message: ClientMessage;
+  try {
+    message = JSON.parse(text) as ClientMessage;
+  } catch {
+    return;
+  }
+  if (message?.type !== "ephemeral" || typeof message.key !== "string") return;
+  const { modelName, modelId, key, value } = message;
+  const outgoing = server.ephemeral(from.session, { modelName, modelId, key, value });
+  if (outgoing === undefined) return;
+  for (const socket of sockets)
+    if (socket !== from && server.sees(socket.session, modelName, modelId)) send(socket, outgoing);
 }

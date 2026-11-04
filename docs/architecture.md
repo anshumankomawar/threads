@@ -42,12 +42,12 @@ IndexedDB ◀─ SyncClient ◀────── delta packets (WebSocket) ◀�
 The engine is its own package and knows nothing about threads. **Read `packages/sync/README.md`** for what it
 guarantees and what a product must respect. It has three parts:
 
-- `sync`: the wire protocol and `defineSchema`.
-- `sync/server`: `SyncServer` (batches, sync ids, the log, groups, deletes, compaction), storage (`sqliteStorage` for
-  the Durable Object, `memoryStorage` for tests), `broadcast` to sockets, the HTTP routes (`handleSyncRequest`) and
-  session tokens.
-- `sync/client`: `SyncClient` (bootstrap, socket, applying deltas, following groups, gaps), the `TransactionQueue`,
-  the `ObjectPool` and the local database.
+- `sync`: the wire protocol, `defineSchema`, patches (list ops) and the streamed bootstrap.
+- `sync/server`: `SyncServer` (batches, sync ids, the log, groups, deletes, loading, compaction, events), storage
+  (`sqliteStorage` for the Durable Object, `memoryStorage` for tests), `broadcast` and `receive` for sockets, the HTTP
+  routes (`handleSyncRequest`) and session tokens.
+- `sync/client`: `SyncClient` (bootstrap, socket, applying deltas, following groups, gaps, loading, ephemeral values),
+  the `TransactionQueue`, the `UndoQueue`, the `ObjectPool` and the local database.
 
 Threads plugs into it in three places, and product work happens only there:
 
@@ -112,17 +112,19 @@ bootstrap.
 
 All routes take the workspace in `X-Workspace` (`local` or `sample`; the socket uses `?workspace=`).
 
-| Route                      | Purpose                                                                                                                       |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `GET /sync/bootstrap`      | Every model the session sees, with `epoch`, `lastSyncId` and `syncGroups`; `?groups=a,b` for only those (a partial bootstrap) |
-| `GET /sync/deltas?after=N` | The actions after N the session sees, or `fullBootstrapRequired` once the log no longer reaches back to N                     |
-| `POST /sync/transactions`  | `{ actorId, utcOffsetMinutes, transactions }`, executed all or nothing; answers `{ lastSyncId }`                              |
-| `GET /sync/ws` (WebSocket) | A handshake (`epoch`, `lastSyncId`, `minSyncId`, `syncGroups`), then one packet per committed batch                           |
-| `POST /auth/session`       | An admin mints a person's session token (hosted only)                                                                         |
-| `POST /sync/reset`         | Admin only: wipe the workspace's threads (a development tool)                                                                 |
+| Route                      | Purpose                                                                                                                             |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /sync/bootstrap`      | The `instant` models the session sees, streamed as lines, with `epoch`, `lastSyncId` and `syncGroups`; `?groups=a,b` for only those |
+| `POST /sync/batch`         | `{ requests }`: lazy models whole, or partial models by an index (LSE's batch loader)                                               |
+| `GET /sync/deltas?after=N` | The actions after N the session sees, or `fullBootstrapRequired` once the log no longer reaches back to N                           |
+| `POST /sync/transactions`  | `{ actorId, utcOffsetMinutes, transactions }`, executed all or nothing; answers `{ lastSyncId }`                                    |
+| `GET /sync/ws` (WebSocket) | A handshake (`epoch`, `lastSyncId`, `minSyncId`, `syncGroups`), then one packet per committed batch                                 |
+| `POST /auth/session`       | An admin mints a person's session token (hosted only)                                                                               |
+| `POST /sync/reset`         | Admin only: wipe the workspace's threads (a development tool)                                                                       |
 
 A **sync action** is `{ id, modelName, modelId, action: "I" | "U" | "D" | "A" | "V", data }`. All but deletes carry the
-whole record. A **delta packet** is `{ fromSyncId, lastSyncId, actions, syncGroups? }`: it covers the sync ids after
+whole record. On the socket the client can also send, and receive, **ephemeral values** (never stored or logged).
+A **delta packet** is `{ fromSyncId, lastSyncId, actions, syncGroups? }`: it covers the sync ids after
 `fromSyncId`, holding only the actions this session may see (possibly none, so its position keeps up), and
 `syncGroups` when the session's groups just changed.
 
@@ -130,6 +132,9 @@ A **transaction** is a create of a `Thread`, `Entry`, `Label`, `Group` or `Sprin
 `Sprint`, the `Organization` or a `Person` (only your own: `PersonChanges`; anyone else's is refused with 403), a
 `move` of messages into another thread, or one of the engine's own: `delete`, `archive`,
 `unarchive`. Threads allows only deleting your own messages (not a description); a thread is archived with its status.
+Lists in updates (a group's `memberIds`, a sprint's `threadIds`, a thread's `labelIds`) go as `{ $add, $remove }`
+(`listsAsOps` in `ThreadsClient`), so concurrent edits to one list merge; the server resolves them (`resolvePatch`)
+before its rules look.
 Ids for new models are made on the client (`crypto.randomUUID()`), so later transactions in the same batch can refer
 to them.
 
@@ -159,8 +164,8 @@ whose groups change loads the new ones' records and drops the rest.
 
 1. The UI calls a `ThreadsClient` method (`createThread`, `addEntry`, `deleteMessage`, …), which calls
    `SyncClient.transact`.
-2. The queue applies the transaction to the `ObjectPool` straight away, through `threadsMutations`, and remembers the
-   fields it replaced (`original`).
+2. The queue applies the transaction to the `ObjectPool` straight away, through `threadsMutations`, and remembers each
+   model as it was (`before`, for undo).
 3. Transactions made in the same tick share a `batchIndex`. At the end of the tick they move from
    `createdTransactions` to `queuedTransactions` and are saved to IndexedDB's `__transactions`.
 4. `dequeue` sends the next batch (same `batchIndex` and `actorId`, at most 100 transactions and about 500 KB) to
@@ -171,22 +176,28 @@ whose groups change loads the new ones' records and drops the rest.
    applies them in memory, and broadcasts a packet to each socket.
 6. On success the client moves the batch to `completedButUnsyncedTransactions` with `syncIdNeededForCompletion =
    lastSyncId` and deletes it from `__transactions`. When the client's position reaches that id, it's done.
-7. On a refusal (4xx → `RejectedError`) the batch rolls back, newest first. On a network or 5xx error, or a 401 (signed
-   out; the transport renews the session first), it goes back to the front of the queue and is retried.
+7. On a refusal (4xx → `RejectedError`) the batch leaves the queue. On a network or 5xx error, or a 401 (signed out; the
+   transport renews the session first), it goes back to the front of the queue and is retried.
+8. Whenever transactions leave the queue (done or refused), the models they touched are rebuilt: the server-confirmed
+   copy from IndexedDB with whatever is still pending replayed on top. That's how a refusal is undone, however many
+   changes were stacked on it.
 
 ## The read path
 
 - **Delta packets** are applied one at a time. If the packet's `lastSyncId` is already applied, it's skipped. If its
   `fromSyncId` is past the client's position, a packet was missed: the client catches up with `/sync/deltas`. Otherwise
-  each action is written to IndexedDB, then set in the pool with any pending transactions for that model rebased on
-  top (their `original` becomes the server's value; their change stays visible). A delete also drops unsent changes to
-  that model. Then the position advances and waiting transactions complete.
+  each action is written to IndexedDB, then set in the pool with any pending transactions for that model replayed on
+  top (last writer wins). A delete also drops unsent changes to that model. Then the position advances and waiting
+  transactions complete. If any step fails (the server unreachable mid catch-up), the client reconnects and starts
+  again from the handshake.
 - **Startup**: with a cache under the current schema hash, load models from IndexedDB, replay saved transactions,
   connect. The handshake then decides: another `epoch` (the server's data started over), a server behind the cache,
   or a cache behind the log's start (`minSyncId`, after compaction) → full bootstrap, keeping unsent changes on top;
   changed groups → load or drop what that changes; server ahead → catch up. Without a usable cache → full bootstrap
   first.
 - **A gap that can't be filled** (`fullBootstrapRequired`) is a full bootstrap too: a client is never stuck.
+- **Loading**: every Threads model loads `instant` today. The engine also loads `lazy` and `partial` models on demand
+  (`client.hydrate`), keeping a slice current once loaded; see `packages/sync/README.md`.
 - **Reconnect**: the socket reconnects with backoff (1s doubling to 10s); each reconnect handshakes and catches up.
 - **Compaction**: past 12,000 actions the server trims its log to the last 10,000 and forgets executed transaction ids
   older than 30 days.
@@ -217,8 +228,11 @@ itself; the rest are yours.
     The exceptions are stateless AI helpers that read and write no data, such as `POST /ai/compose` (they run in the
     Worker entry, outside any workspace, and whatever they produce reaches the data as ordinary transactions), and
     `POST /auth/session`, which signs people in.
-12. **A record's sync groups come from its own fields**, and the client must be able to predict every transaction
-    from any starting record (`threadsMutations`), since rebasing reruns it.
+12. **A record's sync groups come from its own fields** (or its parent's, through `syncGroupsFrom`), and the client must
+    be able to predict every transaction from any starting record (`threadsMutations`), since pending changes are
+    replayed on newer server data.
+13. **Lists change by ops.** Send a list as `{ $add, $remove }` (or let `ThreadsClient` turn a whole list into one), so
+    concurrent edits merge; never read a list change on the server without `resolvePatch`.
 
 ## Thread links and branching
 
@@ -483,28 +497,34 @@ bundles, their proprietary code.
 
 ### How our names map to LSE
 
-| LSE                                                                                                                | Ours (`packages/sync`)                                         | Notes                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `ModelRegistry`, `__schemaHash`                                                                                    | `defineSchema`, `schemaHash` (`threadsSchema`, `SCHEMA_HASH`)  | Plain records plus a schema instead of decorators; same metadata                      |
-| `backReference`, `referenceArray`                                                                                  | `backReferences`, `referenceArrays`                            | Deleting cascades to back references, nulls references and filters arrays             |
-| Object pool                                                                                                        | `ObjectPool`                                                   | Records are replaced whole, so only the maps are observable                           |
-| `SyncClient`, `applyDelta`, `updateLock`                                                                           | `SyncClient`, `applyDelta`, `#updateLock`                      | Same role                                                                             |
-| `TransactionQueue` and its four stages                                                                             | Same names                                                     | Batching by microtask, persisted in `__transactions`, capped by count and size        |
-| `CreationTransaction`, `UpdatingTransaction`, `DeletionTransaction`, `ArchivalTransaction`, `UnarchiveTransaction` | One `Transaction` with a `kind` of the same names              | Its effect comes from the product's `ClientMutations`; creations don't rebase         |
-| GraphQL mutations returning `lastSyncId`                                                                           | `POST /sync/transactions` with JSON transactions               | One endpoint, all or nothing per batch                                                |
-| Sync actions `I U A D C G S V`                                                                                     | `I U D A V`                                                    | Group changes ride on the packet (`syncGroups`) instead of `G`/`S`; no covering (`C`) |
-| `lastSyncId` global across all of Linear                                                                           | `lastSyncId` per workspace (one Durable Object each)           | Packets carry `fromSyncId`, so gaps are detected even with filtering                  |
-| `databaseVersion`                                                                                                  | `epoch`                                                        | Changes when a workspace's data starts over                                           |
-| `userSyncGroups`, partial bootstrap on joining a group                                                             | `syncGroups`, `groupsFor`, `bootstrap(session, onlyGroups)`    | Leaving drops what's no longer visible                                                |
-| `firstSyncId`                                                                                                      | `minSyncId` (the log's start, after compaction)                |                                                                                       |
-| `TransactionQueue.modelUpserted`                                                                                   | `TransactionQueue.modelDeleted`                                | Ids are UUIDs, so we only need to drop changes to deleted models                      |
-| Server side effects (e.g. `IssueHistory`) in delta packets                                                         | Activity `Entry`s, status changes added by `SyncEngine.#apply` | Same principle: the delta can carry more than the transaction                         |
-| Last-writer-wins rebase of `UpdateTransaction`s                                                                    | `Transaction.rebase` called from `applyDelta`                  | Same                                                                                  |
+| LSE                                                                                                                | Ours (`packages/sync`)                                                                           | Notes                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `ModelRegistry`, `__schemaHash`                                                                                    | `defineSchema`, `schemaHash` (`threadsSchema`, `SCHEMA_HASH`)                                    | Plain records plus a schema instead of decorators; same metadata                                             |
+| `loadStrategy` (`instant`, `lazy`, `partial`), partial indexes                                                     | `loadStrategy`, `partialIndexes`                                                                 | `explicitlyRequested` and `local` aren't needed                                                              |
+| `backReference`, `referenceArray`                                                                                  | `backReferences`, `referenceArrays`                                                              | Deleting cascades to back references, nulls references and filters arrays                                    |
+| `ephemeralProperty`                                                                                                | `setEphemeral` / `ephemeralOf`                                                                   | Relayed over the socket to sessions that see the record; never stored                                        |
+| Object pool, `hydrate`, `BatchModelLoader`, the partial index store                                                | `ObjectPool`, `SyncClient.hydrate`, a tick's loads in one `POST /sync/batch`, the `loaded` store | Loaded slices stay current through deltas                                                                    |
+| `SyncClient`, `applyDelta`, `updateLock`                                                                           | `SyncClient`, `applyDelta`, `#updateLock`                                                        | Same role                                                                                                    |
+| `TransactionQueue` and its four stages, `transactionQueuedSignal`                                                  | Same names, `onEnqueued`                                                                         | Batching by microtask, persisted in `__transactions`, capped by count and size                               |
+| `CreationTransaction`, `UpdatingTransaction`, `DeletionTransaction`, `ArchivalTransaction`, `UnarchiveTransaction` | One `Transaction` with a `kind` of the same names                                                | Its effect comes from the product's `ClientMutations`; creations don't replay over a server copy             |
+| `rebase`, `rollback`                                                                                               | Replaying pending changes on the confirmed copy (`#put`, `#rebuild`)                             | Same last-writer-wins result; a refusal deep in a stack of changes undoes cleanly                            |
+| `undoTransaction`, `UndoQueue.addOperation`                                                                        | `Transaction.undoTransaction`, `UndoQueue.addOperation`                                          | The product's `inverse` says how its transactions undo                                                       |
+| GraphQL mutations returning `lastSyncId`                                                                           | `POST /sync/transactions` with JSON transactions                                                 | One endpoint, all or nothing per batch                                                                       |
+| Streamed bootstrap with `returnedModelsCount`                                                                      | `encodeBootstrap` / `decodeBootstrap` (counts on the last line)                                  |                                                                                                              |
+| Sync actions `I U A D C G S V`                                                                                     | `I U D A V`                                                                                      | Group changes ride on the packet (`syncGroups`) instead of `G`/`S`; dependents are re-logged rather than `C` |
+| `lastSyncId` global across all of Linear                                                                           | `lastSyncId` per workspace (one Durable Object each)                                             | Packets carry `fromSyncId`, so gaps are detected even with filtering                                         |
+| `databaseVersion`                                                                                                  | `epoch`                                                                                          | Changes when a workspace's data starts over                                                                  |
+| `userSyncGroups`, partial bootstrap on joining a group, `DependentsLoader`                                         | `syncGroups`, `groupsFor`, `bootstrap(session, onlyGroups)`, `syncGroupsFrom`                    | Joining reloads held slices too; leaving drops what's no longer visible                                      |
+| `firstSyncId`                                                                                                      | `minSyncId` (the log's start, after compaction)                                                  |                                                                                                              |
+| `TransactionQueue.modelUpserted`                                                                                   | `TransactionQueue.modelDeleted`                                                                  | Ids are UUIDs, so we only need to drop changes to deleted models                                             |
+| Server side effects (e.g. `IssueHistory`) in delta packets                                                         | Activity `Entry`s, status changes added by `SyncEngine.#apply`                                   | Same principle: the delta can carry more than the transaction                                                |
+
+Where we differ on purpose: lists merge by ops (LSE replaces arrays), and a schema replaces LSE's property types and
+decorators.
 
 ## Not built yet
 
-Each of these is left out until there's a need. To add one, follow its steps, keep the invariants above, and update
-this document in the same change. Engine work goes in `packages/sync`, with tests there.
+These are outside the engine. To add one, keep the invariants above and update this document in the same change.
 
 ### Sign-in
 
@@ -513,27 +533,18 @@ whoever it views as. To add sign-in: put an identity provider (Cloudflare Access
 route that maps the verified identity to a `Person` and mints their token with `signSession`; give the app only that
 token, never the API token; and drop View As outside development.
 
-### Undo and redo
+### Using the engine's newer features in the app
 
-LSE (write-up, Chapter 5 "Undo & Redo"): undo is transaction-based. The UI registers an undoable operation; the
-transactions queued while it runs go on an undo stack, and undoing one sends its inverse as a new transaction.
+- **Undo**: `ThreadsClient.undoQueue` works (`threadsMutations.inverse` undoes updates, moves and new messages), but no
+  key is bound: wrap the app's edits in `undoQueue.addOperation` and bind ⌘Z / ⇧⌘Z (the Done and Snooze toasts can use
+  it too).
+- **Partial loading**: mark `Entry` `partial` by `threadId` once bootstraps get slow. The inbox, notifications and
+  profiles read every thread's entries today, so they'd need what they show (latest message, who sent what) kept on the
+  thread first.
+- **Presence**: `setEphemeral` / `ephemeralOf` can show who's viewing a thread.
 
-Here: give `Transaction` an inverse built from its `original` (an update's replaced fields; a deletion's whole record,
-which needs a create-from-record transaction), add an `UndoQueue` on `SyncClient` that records the transactions an
-operation enqueues, wrap the undoable actions in `App.tsx`, and bind ⌘Z / ⇧⌘Z. Test it in `packages/sync`.
+### Schema migrations
 
-### Lazy and partial loading
-
-LSE (Chapter 2, "Bootstrapping", "Lazy Hydration"): models load `instant`, `lazy` or `partial` (by index, such as
-entries by `threadId`). Here every model loads at bootstrap. When bootstraps get slow: mark large models (likely
-`Entry`) partial in the schema, leave them out of bootstrap, add a route that returns them by index, track loaded
-indexes in the client's database, and let the UI handle a thread whose entries are still loading. Streaming large
-bootstraps (LSE sends one model per line) belongs with this.
-
-### Smaller gaps
-
-- **Ephemeral properties** (LSE's `ephemeralProperty`, not persisted): useful for presence such as "who's viewing".
-  Send those over the socket as their own messages; don't put them in the sync log.
-- **Schema migrations**: a schema change makes clients rebuild their caches from the server, which is fine at this
-  size. Records the server stored under an older shape are brought up to date as it loads them (`upgrade` in
-  `engine.ts`). LSE migrates IndexedDB in place; add that only if rebuilding gets slow.
+A schema change makes clients rebuild their caches from the server, which is fine at this size. Records the server
+stored under an older shape are brought up to date as it loads them (`upgrade` in `engine.ts`). LSE migrates IndexedDB
+in place; add that only if rebuilding gets slow.

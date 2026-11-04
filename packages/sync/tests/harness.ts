@@ -1,10 +1,14 @@
-// A small product to test the engine with: notes, private to their owner unless they're in a team, with comments
-// that belong to a note, and teams whose members see the team's notes.
+// A small product to test the engine with: notes, private to their owner unless they're in a team, with tags (a list,
+// patched with add and remove), comments that belong to a note and are seen by whoever sees it (loaded a note at a time,
+// partially), stickers (a lazy model), and teams whose members see the team's notes.
 import {
+  applyPatch,
   defineSchema,
+  invertPatch,
   WORKSPACE_GROUP,
   type BuiltInTransaction,
   type ClientMutations,
+  type Patch,
   type SyncMessage,
 } from "../src";
 import {
@@ -12,13 +16,17 @@ import {
   RejectedError,
   SyncClient,
   UnauthorizedError,
+  type ClientEvent,
+  type SyncDatabase,
   type Transport,
 } from "../src/client";
 import {
   broadcast,
+  receive,
   SyncError,
   SyncServer,
   type HubSocket,
+  type ServerEvent,
   type Session,
   type SyncStorage,
 } from "../src/server";
@@ -28,18 +36,26 @@ export type Note = {
   ownerId: string;
   teamId: string | null;
   text: string;
+  tagIds: string[];
   archivedAtMs?: number | null;
 };
 export type Comment = { id: string; noteId: string; text: string };
+export type Sticker = { id: string; name: string };
 export type Team = { id: string; memberIds: string[] };
 export type User = { id: string; name: string };
-export type TestModels = { User: User; Note: Note; Comment: Comment; Team: Team };
+export type TestModels = {
+  User: User;
+  Note: Note;
+  Comment: Comment;
+  Sticker: Sticker;
+  Team: Team;
+};
 
 export type TestTransaction =
   | { id: string; type: "create"; modelName: "Note"; data: Omit<Note, "ownerId"> }
   | { id: string; type: "create"; modelName: "Comment"; data: Comment }
-  | { id: string; type: "update"; modelName: "Note"; modelId: string; changes: Partial<Note> }
-  | { id: string; type: "update"; modelName: "Team"; modelId: string; changes: Partial<Team> };
+  | { id: string; type: "update"; modelName: "Note"; modelId: string; changes: Patch<Note> }
+  | { id: string; type: "update"; modelName: "Team"; modelId: string; changes: Patch<Team> };
 
 export const schema = defineSchema<TestModels>({
   version: "test:v1",
@@ -47,9 +63,16 @@ export const schema = defineSchema<TestModels>({
     User: {},
     Note: {
       references: { ownerId: "User", teamId: "Team" },
+      referenceArrays: { tagIds: "Sticker" },
       backReferences: { comments: { model: "Comment", key: "noteId" } },
     },
-    Comment: { references: { noteId: "Note" } },
+    Comment: {
+      loadStrategy: "partial",
+      partialIndexes: ["noteId"],
+      references: { noteId: "Note" },
+      syncGroupsFrom: "noteId",
+    },
+    Sticker: { loadStrategy: "lazy" },
     Team: { referenceArrays: { memberIds: "User" } },
   },
   syncGroupsOf: (modelName, record) => {
@@ -70,15 +93,32 @@ export const mutations: ClientMutations<TestModels, TestTransaction> = {
       return (
         record ?? (input.modelName === "Note" ? { ...input.data, ownerId: actorId } : input.data)
       );
-    return record === undefined ? undefined : { ...record, ...input.changes };
+    return record === undefined
+      ? undefined
+      : applyPatch(record as Note & Team, input.changes as Patch<Note & Team>);
+  },
+  inverse: (input, before) => {
+    if (input.type === "create")
+      return { type: "delete", modelName: input.modelName, modelId: input.data.id };
+    const was = before.get(`${input.modelName}:${input.modelId}`);
+    if (was === undefined) return null;
+    return {
+      ...input,
+      changes: invertPatch(was as Note & Team, input.changes as Patch<Note & Team>),
+    };
   },
 };
 
-export function createServer(storage?: SyncStorage<TestModels>, now = () => 1_000) {
+export function createServer(
+  storage?: SyncStorage<TestModels>,
+  now = () => 1_000,
+  onEvent?: (event: ServerEvent) => void,
+) {
   return new SyncServer<TestModels, TestTransaction>({
     schema,
     storage,
     now,
+    onEvent,
     groupsFor: (userId, models) => [
       WORKSPACE_GROUP,
       `user:${userId}`,
@@ -88,6 +128,8 @@ export function createServer(storage?: SyncStorage<TestModels>, now = () => 1_00
     ],
     apply: (batch, transaction, { actorId, nowMs }) => {
       if (transaction.type === "delete") {
+        if (transaction.modelName === "Comment")
+          return batch.delete("Comment", transaction.modelId);
         const note = batch.get("Note", transaction.modelId);
         if (note?.ownerId !== actorId) throw new SyncError(403, "Only its owner deletes a note");
         return batch.delete("Note", transaction.modelId);
@@ -107,27 +149,33 @@ export function createServer(storage?: SyncStorage<TestModels>, now = () => 1_00
       if (transaction.modelName === "Team") {
         const team = batch.get("Team", transaction.modelId);
         if (team === undefined) throw new SyncError(404, "Team not found");
-        return batch.put("Team", { ...team, ...transaction.changes });
+        return batch.put("Team", applyPatch(team, transaction.changes));
       }
       const note = batch.get("Note", transaction.modelId);
       if (note === undefined) throw new SyncError(404, "Note not found");
-      batch.put("Note", { ...note, ...transaction.changes });
+      batch.put("Note", applyPatch(note, transaction.changes));
     },
   });
 }
 
-type TestServer = ReturnType<typeof createServer>;
+export type TestServer = ReturnType<typeof createServer>;
+export type TestClient = SyncClient<TestModels, TestTransaction>;
+export type TestDatabase = SyncDatabase<
+  TestModels,
+  TestTransaction | BuiltInTransaction<TestModels>
+>;
 
-// Wires clients to a server in memory, with what the Durable Object does: a socket per client, each packet filtered
-// for its session. Sockets can be paused to lose packets, and the server swapped to simulate a reset.
+type Socket = HubSocket & {
+  paused: boolean;
+  handlers: Parameters<Transport<TestModels, TestTransaction>["connect"]>[0];
+};
+
+// Wires clients to a server in memory, as the Durable Object does: a socket per client, each packet filtered for its
+// session. Sockets can be paused to lose packets, clients taken offline, and the server swapped to simulate a reset.
 export class Hub {
   server: TestServer;
-  readonly sockets = new Set<
-    HubSocket & {
-      paused: boolean;
-      handlers: Parameters<Transport<TestModels, TestTransaction>["connect"]>[0];
-    }
-  >();
+  readonly sockets = new Set<Socket>();
+  readonly offline = new Set<string>();
 
   constructor(server: TestServer = createServer()) {
     this.server = server;
@@ -148,12 +196,34 @@ export class Hub {
     for (const socket of dropped) socket.handlers.onClose();
   }
 
+  socketOf(userId: string): Socket {
+    const socket = Array.from(this.sockets).find(
+      (candidate) => "userId" in candidate.session && candidate.session.userId === userId,
+    );
+    if (socket === undefined) throw new Error(`${userId} isn't connected`);
+    return socket;
+  }
+
   transport(session: Session): Transport<TestModels, TestTransaction> {
     const copy = <V>(value: V): V => JSON.parse(JSON.stringify(value)) as V;
+    const reachable = (): void => {
+      if ("userId" in session && this.offline.has(session.userId)) throw new Error("offline");
+    };
     return {
-      bootstrap: async (onlyGroups) => copy(this.server.bootstrap(session, onlyGroups)),
-      deltas: async (after) => copy(this.server.deltas(session, after)),
+      bootstrap: async (onlyGroups) => {
+        reachable();
+        return copy(this.server.bootstrap(session, onlyGroups));
+      },
+      deltas: async (after) => {
+        reachable();
+        return copy(this.server.deltas(session, after));
+      },
+      load: async (requests) => {
+        reachable();
+        return copy(this.server.load(session, requests));
+      },
       send: async (batch) => {
+        reachable();
         try {
           this.server.execute(copy(batch), session);
         } catch (error) {
@@ -166,15 +236,15 @@ export class Hub {
         return { lastSyncId: this.server.lastSyncId };
       },
       connect: (handlers) => {
-        const socket = {
+        const socket: Socket = {
           session,
           groups: this.server.groupsOf(session),
           paused: false,
           handlers,
-          setGroups(groups: string[]) {
+          setGroups(groups) {
             socket.groups = groups;
           },
-          send(message: string) {
+          send(message) {
             if (!socket.paused) handlers.onMessage(JSON.parse(message) as SyncMessage<TestModels>);
           },
         };
@@ -184,9 +254,8 @@ export class Hub {
           handlers.onMessage(copy(this.server.handshake(session)));
         });
         return {
-          close: () => {
-            this.sockets.delete(socket);
-          },
+          close: () => void this.sockets.delete(socket),
+          send: (message) => receive(this.server, this.sockets, socket, JSON.stringify(message)),
         };
       },
     };
@@ -194,13 +263,17 @@ export class Hub {
 
   client(
     userId: string,
-    database = memoryDatabase<TestModels, TestTransaction | BuiltInTransaction<TestModels>>(),
-  ) {
+    database: TestDatabase = memoryDatabase(),
+    onEvent?: (event: ClientEvent) => void,
+  ): TestClient {
     return new SyncClient<TestModels, TestTransaction>({
       schema,
       mutations,
       transport: this.transport({ userId }),
       openDatabase: async () => database,
+      onEvent,
+      // Quick reconnects, so tests don't wait out a real backoff.
+      reconnect: { minMs: 5, maxMs: 20 },
     });
   }
 }
@@ -218,3 +291,29 @@ export function seedUsers(server: TestServer, ...ids: string[]): void {
     for (const id of ids) batch.put("User", { id, name: id });
   });
 }
+
+export const note = (
+  id: string,
+  text = "Hello",
+  teamId: string | null = null,
+): TestTransaction => ({
+  id: txId(),
+  type: "create",
+  modelName: "Note",
+  data: { id, text, teamId, tagIds: [] },
+});
+
+export const editNote = (id: string, changes: Patch<Note>): TestTransaction => ({
+  id: txId(),
+  type: "update",
+  modelName: "Note",
+  modelId: id,
+  changes,
+});
+
+export const comment = (id: string, noteId: string, text = "Hi"): TestTransaction => ({
+  id: txId(),
+  type: "create",
+  modelName: "Comment",
+  data: { id, noteId, text },
+});
