@@ -7,7 +7,13 @@ import type {
   TransactionInput,
 } from "model";
 import { decodeBootstrap, type BootstrapResponse } from "sync";
-import { openIndexedDb, RejectedError, UnauthorizedError } from "sync/client";
+import {
+  openIndexedDb,
+  OutdatedError,
+  RejectedError,
+  ServerError,
+  UnauthorizedError,
+} from "sync/client";
 import { ThreadsClient, type ThreadsTransport } from "./sync/syncClient";
 
 // Where the app's data comes from: the shared workspace on the hosted API, or your local Worker (apps/api) with
@@ -98,8 +104,10 @@ function httpTransport(server: Server, viewerId: string | null): ThreadsTranspor
     if (!response.ok) {
       const { error } = (await response.json().catch(() => ({}))) as { error?: string };
       const message = error ?? `${method} ${path} failed with ${response.status}`;
-      // A refusal is final; a server error may pass, so it's retried like being offline.
-      throw response.status < 500 ? new RejectedError(message) : new Error(message);
+      // Out of date stops syncing; a refusal is final; a server error may pass, so it's retried, and reported as stuck
+      // if it keeps happening.
+      if (response.status === 426) throw new OutdatedError(message);
+      throw response.status < 500 ? new RejectedError(message) : new ServerError(message);
     }
     return read(response);
   };

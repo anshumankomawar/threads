@@ -45,24 +45,29 @@ export const isBuiltIn = (transaction: TransactionEnvelope): transaction is Buil
 export type TransactionBatch<T extends TransactionEnvelope = TransactionEnvelope> = {
   actorId: string;
   utcOffsetMinutes?: number;
+  // The schema the client was built with. The server refuses a batch from another one (426): the client is out of date.
+  schemaHash?: string;
   transactions: T[];
 };
 
 export type TransactionBatchResponse = { lastSyncId: number };
 
 // Where a session stands: the server data's identity (`epoch`, new whenever the data starts over), its sync position,
-// and the sync groups the session sees (`"*"` for all of them).
-export type SyncPosition = { epoch: string; lastSyncId: number; syncGroups: string[] };
+// the sync groups the session sees (`"*"` for all of them), and the schema the server runs, so a client built for
+// another one knows it's out of date.
+export type SyncPosition = {
+  epoch: string;
+  lastSyncId: number;
+  syncGroups: string[];
+  schemaHash: string;
+};
 
 // Records by model.
 export type ModelSet<M extends Models> = { [Name in ModelName<M>]?: M[Name][] };
 
 // Everything a client loads at start (the models that load `instant`), in the groups it asked for (all of its groups
 // when it asked for none).
-export type BootstrapResponse<M extends Models = Models> = SyncPosition & {
-  schemaHash: string;
-  models: ModelSet<M>;
-};
+export type BootstrapResponse<M extends Models = Models> = SyncPosition & { models: ModelSet<M> };
 
 // The actions after a client's sync id, for catching up, or, once the log no longer reaches back that far (it's
 // compacted), a request to bootstrap afresh.

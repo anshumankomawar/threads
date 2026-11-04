@@ -2452,6 +2452,21 @@ body * {
   color: var(--urgent);
 }
 
+.save-error-action {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--stroke-focused);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.save-error-action:hover {
+  background-color: var(--bg-tertiary);
+}
+
 .save-error-dismiss {
   display: flex;
   flex-shrink: 0;

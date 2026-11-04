@@ -1,10 +1,7 @@
 // Randomized: several clients make conflicting changes while connections drop, clients go offline, restart, undo, and
 // the log is compacted under them. However it goes, once everyone's back every client must hold exactly what the server
 // says it may see, with nothing left pending.
-//
-// One thing is left out on purpose: changing a note this client made that the server hasn't accepted yet. If that
-// creation is refused, rolling back a later delete of it (LSE's per-transaction rollback) puts back a note the server
-// never had. That's how LSE behaves; this test checks everything else converges.
+
 import { expect, test } from "vite-plus/test";
 import { memoryDatabase } from "../src/client";
 import {
@@ -59,13 +56,7 @@ async function run(seed: number, steps: number): Promise<void> {
   for (let step = 0; step < steps; step++) {
     const user = pick(USERS);
     const client = clients.get(user) as TestClient;
-    const visible = [...client.pool.maps.Note.values()].filter(
-      (candidate) =>
-        !client.queue.pending.some(
-          (transaction) =>
-            transaction.kind === "creation" && transaction.touchesModel("Note", candidate.id),
-        ),
-    );
+    const visible = [...client.pool.maps.Note.values()];
     const target = visible.length > 0 ? pick(visible) : undefined;
     const roll = next();
     if (roll < 0.15)

@@ -1,3 +1,4 @@
+import { SCHEMA_HASH } from "model";
 import { decodeBootstrap } from "sync";
 import type { SyncAction, Thread, TransactionInput } from "model";
 import { localPeople, toThreads } from "model";
@@ -40,7 +41,12 @@ const deltas = async (after: number): Promise<SyncAction[]> =>
 
 // Runs a batch as `actorId` and returns the response.
 const transact = (actorId: string, transactions: TransactionInput[], utcOffsetMinutes?: number) =>
-  send("POST", "/sync/transactions", { actorId, utcOffsetMinutes, transactions });
+  send("POST", "/sync/transactions", {
+    actorId,
+    utcOffsetMinutes,
+    schemaHash: SCHEMA_HASH,
+    transactions,
+  });
 
 // The workspace's threads as the app renders them, rebuilt from a bootstrap.
 async function threads(): Promise<Thread[]> {

@@ -177,8 +177,11 @@ whose groups change loads the new ones' records and drops the rest.
    lastSyncId` and deletes it from `__transactions`. When the client's position reaches that id, it's done.
 7. On a refusal (4xx → `RejectedError`) the batch rolls back, newest first, and then what it touched is checked against
    the server's copy in IndexedDB (with other pending changes on top), which settles the rare case rollback alone
-   can't. On a network or 5xx error, or a 401 (signed out; the transport renews the session first), it goes back to the
-   front of the queue and is retried.
+   can't, and changes still waiting on a refused creation are dropped with it. On a network or 5xx error, or a 401
+   (signed out; the transport renews the session first), it goes back to the front of the queue and is retried, backing
+   off with jitter; after five 5xx in a row it's **stuck**, and the app shows Retry and Discard (`client.stuck`,
+   `retryStuck`, `discardStuck`). A 426 means the app is out of date: syncing stops and the app says so
+   (`status: "outdated"`). A rule that crashes is refused with a 422 rather than failing the request.
 
 ## The read path
 
@@ -211,7 +214,8 @@ itself; the rest are yours.
 2. **Every change gets a sync id and lands in the log.** No out-of-band updates. If clients need to see it, it's a
    sync action.
 3. **Persist first.** `write` saves to storage before applying in memory or broadcasting.
-4. **Batches are atomic.** Validation errors throw `SyncError` before anything is written. Don't write in `#apply`;
+4. **Batches are atomic.** Validation errors throw `SyncError` before anything is written. In `#apply`, look up whatever
+   a transaction names with `batch.find` (only what the actor can see), not `batch.get`. Don't write in `#apply`;
    stage with `batch.put` / `batch.delete` and let `write` commit.
 5. **Side effects live on the server.** Activity lines, closing a thread on resolution, assigning whoever's
    @mentioned, bumping `updatedAtMs`: all in `SyncEngine.#apply`. Clients don't send them and don't predict them.

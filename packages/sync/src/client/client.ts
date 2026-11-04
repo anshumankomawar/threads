@@ -29,7 +29,7 @@ import {
 } from "../schema";
 import { loadKey, type StoredMeta, type StoredModel, type SyncDatabase } from "./database";
 import { ObjectPool } from "./pool";
-import { Transaction, TransactionQueue } from "./transactions";
+import { jittered, Transaction, TransactionQueue } from "./transactions";
 import { UndoQueue } from "./undo";
 
 // How a client reaches its server: HTTP for bootstrapping, catching up, loading and transactions, and a socket for delta
@@ -54,7 +54,9 @@ export type ClientEvent =
   | { type: "caughtUp"; actions: number }
   | { type: "groupsChanged"; added: string[]; removed: string[] }
   | { type: "loaded"; keys: string[]; models: number }
-  | { type: "rejected"; message: string; transactions: number };
+  | { type: "rejected"; message: string; transactions: number }
+  | { type: "stuck"; message: string }
+  | { type: "outdated" };
 
 export type ClientOptions<M extends Models, T extends TransactionEnvelope> = {
   schema: SyncSchema<M>;
@@ -64,12 +66,15 @@ export type ClientOptions<M extends Models, T extends TransactionEnvelope> = {
   onEvent?: (event: ClientEvent) => void;
   // How long to wait before reconnecting, doubling from `minMs` up to `maxMs` while it keeps failing.
   reconnect?: { minMs: number; maxMs: number };
+  // How long to wait before resending changes after a failure, likewise.
+  retry?: { minMs: number; maxMs: number };
 };
 
 // An ephemeral value as this client last heard it: from whom (null for an admin session) and when.
 export type EphemeralValue = { userId: string | null; value: unknown; receivedAtMs: number };
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const OUTDATED = "This version of the app is out of date. Update it to keep syncing.";
 const RECONNECT = { minMs: 1000, maxMs: 10_000 };
 const key = (modelName: string, id: string): string => `${modelName}:${id}`;
 
@@ -80,13 +85,17 @@ type PendingLoad = { request: LoadRequest; resolve: () => void; reject: (error: 
 // session's sync groups as they change, loads lazy and partial models when asked (`hydrate`), sends this client's
 // changes through the TransactionQueue, and keeps an undo queue of them.
 export class SyncClient<M extends Models, T extends TransactionEnvelope = TransactionEnvelope> {
-  // "bootstrapping" until the pool is loaded, "waiting" while the server can't be reached for a first load.
-  status: "bootstrapping" | "waiting" | "ready" = "bootstrapping";
+  // "bootstrapping" until the pool is loaded, "waiting" while the server can't be reached for a first load, and
+  // "outdated" once the server says it runs a newer schema: this client stops syncing until it's updated.
+  status: "bootstrapping" | "waiting" | "ready" | "outdated" = "bootstrapping";
   connected = false;
   lastSyncId = 0;
   // When the pool first loaded.
   readyAtMs = 0;
   error: string | null = null;
+  // Why the change at the front of the queue is stuck (the server keeps failing on it), until it's retried or discarded
+  // (`retryStuck`, `discardStuck`); everything after it waits.
+  stuck: string | null = null;
   syncGroups: string[] = [];
   epoch = "";
   // Ephemeral values by `modelName:modelId:key`, then by who set them.
@@ -132,11 +141,22 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         deleteTransactions: (ids) => this.#db().deleteTransactions(ids),
       },
       send: (batch) => options.transport.send(batch),
-      onRejected: (error, batch) => {
+      schemaHash: this.schemaHash,
+      retry: options.retry,
+      onRejected: (error, transactions) => {
         runInAction(() => (this.error = error.message));
-        this.#event({ type: "rejected", message: error.message, transactions: batch.length });
-        void this.#locked(() => this.#confirm(batch));
+        this.#event({
+          type: "rejected",
+          message: error.message,
+          transactions: transactions.length,
+        });
+        void this.#locked(() => this.#confirm(transactions));
       },
+      onStuck: (message) => {
+        runInAction(() => (this.stuck = message));
+        if (message !== null) this.#event({ type: "stuck", message });
+      },
+      onOutdated: () => this.#outdated(),
       utcOffsetMinutes: () => -new Date().getTimezoneOffset(),
       lastSyncId: () => this.lastSyncId,
     });
@@ -147,6 +167,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       lastSyncId: observable,
       readyAtMs: observable,
       error: observable,
+      stuck: observable,
       syncGroups: observable,
     });
   }
@@ -229,10 +250,12 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
   async #fullBootstrap(run = this.#run): Promise<void> {
     // What was loaded lazily or partially, to load again once the rest is in, however many tries that takes.
     const reload = [...this.#loaded];
+    let waitMs = 1000;
     while (run === this.#run) {
       try {
         const response = await this.#options.transport.bootstrap();
         if (run !== this.#run) return;
+        if (response.schemaHash !== this.schemaHash) return this.#outdated();
         const models = this.#modelsOf(response.models);
         runInAction(() => {
           this.lastSyncId = response.lastSyncId;
@@ -259,7 +282,9 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
           if (this.status !== "ready") this.status = "waiting";
           this.error = String(error);
         });
-        await sleep(1000);
+        // Waiting longer each time, and not in step with every other client waiting on the same server.
+        await sleep(jittered(waitMs));
+        waitMs = Math.min(waitMs * 2, 30_000);
       }
     }
   }
@@ -331,7 +356,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     this.queue.online = false;
     if (this.#stopped) return;
     clearTimeout(this.#reconnect);
-    this.#reconnect = setTimeout(() => this.#connect(), this.#reconnectMs);
+    this.#reconnect = setTimeout(() => this.#connect(), jittered(this.#reconnectMs));
     this.#reconnectMs = Math.min(
       this.#reconnectMs * 2,
       (this.#options.reconnect ?? RECONNECT).maxMs,
@@ -347,6 +372,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
 
   async #handle(message: Exclude<SyncMessage<M>, { type: "ephemeral" }>): Promise<void> {
     if (message.type === "handshake") {
+      if (message.schemaHash !== this.schemaHash) return this.#outdated();
       // Another life of the server's data (it was reset), a server behind this cache, or a log that no longer reaches
       // back to where this cache is: start over from the server.
       if (
@@ -370,6 +396,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
   // or its data started over, that's a full bootstrap instead: a gap that can't be filled never leaves a client stuck.
   async #catchUp(): Promise<void> {
     const response = await this.#options.transport.deltas(this.lastSyncId);
+    if (response.schemaHash !== this.schemaHash) return this.#outdated();
     if ("fullBootstrapRequired" in response || response.epoch !== this.epoch)
       return this.#fullBootstrap();
     await this.#followGroups(response.syncGroups);
@@ -512,6 +539,33 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     });
   }
 
+  // The server runs another schema than this client was built with: sending or applying anything more could misread
+  // records, so syncing stops. What's on screen stays readable, and unsent changes stay saved for the updated app.
+  #outdated(): void {
+    this.#stopped = true;
+    clearTimeout(this.#reconnect);
+    this.queue.stop();
+    const socket = this.#socket;
+    this.#socket = undefined;
+    socket?.close();
+    runInAction(() => {
+      this.status = "outdated";
+      this.connected = false;
+      this.error = OUTDATED;
+    });
+    this.#event({ type: "outdated" });
+  }
+
+  // Sends the stuck change again.
+  retryStuck(): void {
+    this.queue.retryStuck();
+  }
+
+  // Gives up on the stuck change, as if the server had refused it, and carries on with the rest.
+  discardStuck(): Promise<void> {
+    return this.queue.discardStuck();
+  }
+
   dismissError(): void {
     runInAction(() => (this.error = null));
   }
@@ -558,6 +612,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         );
     if (wanted.length === 0) return;
     const response = await this.#options.transport.load(wanted);
+    if (response.schemaHash !== this.schemaHash) return this.#outdated();
     if (response.epoch !== this.epoch) return this.#fullBootstrap();
     const models = this.#modelsOf(response.models);
     const keys = wanted.map((request) => loadKey(request.modelName, request.key, request.value));

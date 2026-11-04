@@ -862,7 +862,15 @@ const App = observer(function App(): React.JSX.Element {
       <>
         <div aria-hidden className="titlebar" />
         <div className="app-status">
-          {client.status === "waiting" ? (
+          {client.status === "outdated" ? (
+            <div className="app-status-body">
+              {/* The server runs a newer schema; nothing syncs until the app is updated. */}
+              <div>
+                This version of Threads is out of date. Pull the latest code and restart to keep
+                syncing.
+              </div>
+            </div>
+          ) : client.status === "waiting" ? (
             <div className="app-status-body">
               <div>
                 Waiting for the {SOURCE_LABELS[source]} API at {serverFor(source).url}
@@ -990,6 +998,29 @@ const App = observer(function App(): React.JSX.Element {
                 />
               </span>
             </div>
+            {/* A change the server keeps failing on holds up everything after it: retry it, or give it up. */}
+            {client.stuck !== null && (
+              <div className="save-error" role="alert">
+                <span>
+                  A change couldn't be saved ({client.stuck}), and later changes are waiting behind
+                  it.
+                </span>
+                <button
+                  type="button"
+                  className="save-error-action"
+                  onClick={() => client.retryStuck()}
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  className="save-error-action"
+                  onClick={() => void client.discardStuck()}
+                >
+                  Discard
+                </button>
+              </div>
+            )}
             {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
             {client.error !== null && (
               <div className="save-error" role="alert">

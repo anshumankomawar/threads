@@ -1,3 +1,4 @@
+import { SCHEMA_HASH } from "model";
 import { decodeBootstrap } from "sync";
 import {
   threadScore,
@@ -28,7 +29,7 @@ const transact = (actorId: string, transactions: TransactionInput[], workspace =
   app.request("/sync/transactions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Workspace": workspace },
-    body: JSON.stringify({ actorId, transactions }),
+    body: JSON.stringify({ actorId, schemaHash: SCHEMA_HASH, transactions }),
   });
 
 type Models = {

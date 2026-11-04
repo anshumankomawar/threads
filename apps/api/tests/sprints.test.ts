@@ -1,3 +1,4 @@
+import { SCHEMA_HASH } from "model";
 import { decodeBootstrap } from "sync";
 import type { Group, Sprint, SprintChanges, ThreadRecord, TransactionInput } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
@@ -16,7 +17,7 @@ const transact = (actorId: string, transactions: TransactionInput[]) =>
   app.request("/sync/transactions", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Workspace": "local" },
-    body: JSON.stringify({ actorId, transactions }),
+    body: JSON.stringify({ actorId, schemaHash: SCHEMA_HASH, transactions }),
   });
 
 type Models = { Thread: ThreadRecord[]; Group: Group[]; Sprint: Sprint[] };

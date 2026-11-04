@@ -1,3 +1,4 @@
+import { SCHEMA_HASH } from "model";
 import { decodeBootstrap } from "sync";
 import type { BuiltIn, DeltasResponse, TransactionInput } from "model";
 import { expect, test } from "vite-plus/test";
@@ -20,7 +21,7 @@ function as(app: ReturnType<typeof createApp>, userId?: string) {
   return {
     send,
     transact: (actorId: string, transactions: (TransactionInput | BuiltIn)[]) =>
-      send("POST", "/sync/transactions", { actorId, transactions }),
+      send("POST", "/sync/transactions", { actorId, schemaHash: SCHEMA_HASH, transactions }),
     bootstrap: async () =>
       decodeBootstrap(await (await send("GET", "/sync/bootstrap")).text()) as never as {
         syncGroups: string[];
@@ -103,10 +104,24 @@ test("you can delete your own messages, but not someone else's, a description, o
   ).toBe(400);
 });
 
+test("an app built for another schema is told it's out of date", async () => {
+  const app = createApp({ now: () => NOW });
+  const send = (schemaHash?: string) =>
+    as(app, "anshu").send("POST", "/sync/transactions", {
+      actorId: "anshu",
+      ...(schemaHash === undefined ? {} : { schemaHash }),
+      transactions: [thread("t1")],
+    });
+  expect((await send("old")).status).toBe(426);
+  expect((await send()).status).toBe(426);
+  expect((await send(SCHEMA_HASH)).status).toBe(200);
+});
+
 test("a malformed batch is refused before anything runs", async () => {
   const app = createApp({ now: () => NOW });
   const response = await as(app, "anshu").send("POST", "/sync/transactions", {
     actorId: "anshu",
+    schemaHash: SCHEMA_HASH,
     transactions: [{ id: "x", type: "delete", modelName: "Nope", modelId: "y" }],
   });
   expect(response.status).toBe(400);

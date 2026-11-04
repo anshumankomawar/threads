@@ -241,6 +241,8 @@ export const transactionInput = z.union([
 export const transactionBatch = z.object({
   actorId: id,
   utcOffsetMinutes: z.number().int().min(-1440).max(1440).optional(),
+  // The schema the app was built with; the engine refuses one from another (426).
+  schemaHash: z.string().max(100).optional(),
   transactions: z.array(transactionInput).min(1).max(200),
 });
 
@@ -527,9 +529,11 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     transaction: TransactionInput | BuiltIn,
     { actorId, nowMs, utcOffsetMinutes: offsetMinutes }: ApplyContext,
   ): void {
+    // Whatever a transaction names is looked up with `find`, so only what the actor can see counts as there (`get` is
+    // for checking an id isn't taken, and for side effects the server makes on its own account).
     const actor = batch.get("Person", actorId);
     if (actor === undefined) throw missingUser(actorId);
-    const person = (personId: string): Person | undefined => batch.get("Person", personId);
+    const person = (personId: string): Person | undefined => batch.find("Person", personId);
     const requirePerson = (personId: string): void => {
       if (person(personId) === undefined) throw missingUser(personId);
     };
@@ -550,7 +554,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     // activity line. Archiving is a thread's status, not the engine's archive.
     if (transaction.type === "delete") {
       const entry =
-        transaction.modelName === "Entry" ? batch.get("Entry", transaction.modelId) : undefined;
+        transaction.modelName === "Entry" ? batch.find("Entry", transaction.modelId) : undefined;
       if (entry === undefined)
         throw new SyncError(400, `A ${transaction.modelName.toLowerCase()} can't be deleted`);
       if (entry.kind !== "message" || entry.authorId !== actor.id)
@@ -610,14 +614,14 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     }
 
     if (transaction.type === "update" && transaction.modelName === "Organization") {
-      const organization = batch.get("Organization", transaction.modelId);
+      const organization = batch.find("Organization", transaction.modelId);
       if (organization === undefined) throw new SyncError(404, "Organization not found");
       batch.put("Organization", { ...organization, ...transaction.changes });
       return;
     }
 
     if (transaction.type === "update" && transaction.modelName === "Group") {
-      const group = batch.get("Group", transaction.modelId);
+      const group = batch.find("Group", transaction.modelId);
       if (group === undefined) throw new SyncError(404, "Group not found");
       const { changes } = transaction;
       const memberIds = changes.memberIds;
@@ -680,7 +684,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     // Sprints belong to a group: only its members plan them, only its threads (those with its label) go in them, and
     // a thread is in one open sprint of a group at a time. `before` is the sprint as it was, for an update.
     const checkSprint = (sprint: Sprint, before: Sprint | undefined): void => {
-      const group = batch.get("Group", sprint.groupId);
+      const group = batch.find("Group", sprint.groupId);
       if (group === undefined) throw new SyncError(404, "Group not found");
       if (!group.memberIds.includes(actor.id))
         throw new SyncError(403, "Only a group's members plan its sprints");
@@ -691,7 +695,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
         throw new SyncError(400, "A sprint runs from a day to a year");
       for (const threadId of sprint.threadIds) {
         if (before?.threadIds.includes(threadId)) continue;
-        const thread = batch.get("Thread", threadId);
+        const thread = batch.find("Thread", threadId);
         if (thread === undefined) throw new SyncError(404, "Thread not found");
         if (!thread.labelIds.includes(group.labelId))
           throw new SyncError(400, `Only ${group.name}'s threads go in its sprints`);
@@ -731,7 +735,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     }
 
     if (transaction.type === "update" && transaction.modelName === "Sprint") {
-      const before = batch.get("Sprint", transaction.modelId);
+      const before = batch.find("Sprint", transaction.modelId);
       if (before === undefined) throw new SyncError(404, "Sprint not found");
       const sprint = {
         ...before,
@@ -750,9 +754,9 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
       if (batch.get("Thread", data.id) !== undefined)
         throw new SyncError(409, `Thread already exists: ${data.id}`);
       for (const personId of data.assigneeIds ?? []) requirePerson(personId);
-      const parent = data.branchedFromId ? batch.get("Thread", data.branchedFromId) : undefined;
+      const parent = data.branchedFromId ? batch.find("Thread", data.branchedFromId) : undefined;
       if (data.branchedFromId && parent === undefined) throw new SyncError(404, "Thread not found");
-      const blocked = data.blocksId ? batch.get("Thread", data.blocksId) : undefined;
+      const blocked = data.blocksId ? batch.find("Thread", data.blocksId) : undefined;
       if (data.blocksId && (blocked === undefined || isDone(blocked.status)))
         throw new SyncError(404, "Thread not found");
       requireLabels(data.labelIds ?? []);
@@ -781,9 +785,9 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
     }
 
     if (transaction.type === "move") {
-      const destination = batch.get("Thread", transaction.threadId);
+      const destination = batch.find("Thread", transaction.threadId);
       if (destination === undefined) throw new SyncError(404, "Thread not found");
-      const entries = transaction.entryIds.map((entryId) => batch.get("Entry", entryId));
+      const entries = transaction.entryIds.map((entryId) => batch.find("Entry", entryId));
       const messages = entries.filter((entry) => entry?.kind === "message");
       if (messages.length !== entries.length) throw new SyncError(404, "Message not found");
       const sourceId = messages[0].threadId;
@@ -796,7 +800,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
       // A message linking a thread is the way into it from here; moved inside, it would only link to itself.
       if (messages.some((entry) => entry.text.includes(threadLink(destination.id))))
         throw new SyncError(400, "A message can't move into the thread it links to");
-      const source = batch.get("Thread", sourceId);
+      const source = batch.find("Thread", sourceId);
       if (source === undefined) throw new SyncError(404, "Thread not found");
       for (const entry of messages) batch.put("Entry", { ...entry, threadId: destination.id });
       // The activity line sits where the first moved message was.
@@ -816,7 +820,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
 
     if (transaction.type === "create") {
       const { data } = transaction;
-      const thread = batch.get("Thread", data.threadId);
+      const thread = batch.find("Thread", data.threadId);
       if (thread === undefined) throw new SyncError(404, "Thread not found");
       if (batch.get("Entry", data.id) !== undefined)
         throw new SyncError(409, `Entry already exists: ${data.id}`);
@@ -885,7 +889,7 @@ export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
         }
       return;
     }
-    const thread = batch.get("Thread", transaction.modelId);
+    const thread = batch.find("Thread", transaction.modelId);
     if (thread === undefined) throw new SyncError(404, "Thread not found");
     const { changes } = transaction;
     if (changes.labelIds !== undefined) requireLabels(changes.labelIds);
