@@ -1,11 +1,12 @@
 # Threads: components, APIs and schemas
 
 A reference for rebuilding Threads by hand. It describes what the prototype on `prototype` does today (as of commit
-`62fa901`): the data model and its schemas, every mutation and the rules and side effects the server applies, the HTTP
+`62fa901`, with the sync engine package and sessions added since): the data model and its schemas, every mutation and the rules and side effects the server applies, the HTTP
 API, the logic the app derives from the data, the UI components, and the file structure. Section 11 lists what the
 prototype leaves out that production needs.
 
-**The sync engine is a black box here.** Build it from Linear's sync engine as described in
+**The sync engine is a black box here.** The prototype now has it as its own package, `packages/sync` (its README
+says what it guarantees). To rebuild it, build it from Linear's sync engine as described in
 [the reverse-engineering summary](https://github.com/wzhudev/reverse-linear-sync-engine/blob/main/SUMMARY.md) (object
 pool, transactions, sync ids, delta packets, bootstrapping, rebasing, IndexedDB cache). Section 4 only states what
 Threads needs from it: which models it syncs, which mutations clients send, and where the server's rules and side
@@ -67,12 +68,13 @@ threads/
 │   ├── component.md             this file
 │   └── future-plans.md          parked ideas (empty today)
 ├── packages/
+│   ├── sync/                    the sync engine (black box): protocol, schema, server, client; knows nothing of threads
 │   ├── model/                   shared by API and app: types, schemas' TS shapes, pure logic, seed data
 │   │   └── src/
 │   │       ├── index.ts         re-exports everything below
 │   │       ├── model.ts         domain types (Person, Thread, Entry, Label, Group, Sprint, ...) and inbox rules
-│   │       ├── sync.ts          records, ModelRegistry, SCHEMA_HASH, mutation (TransactionInput) types,
-│   │       │                    record <-> Thread conversion, xFromCreate builders
+│   │       ├── sync.ts          records, threadsSchema, SCHEMA_HASH, mutation (TransactionInput) types,
+│   │       │                    threadsMutations (client predictions), record <-> Thread conversion
 │   │       ├── score.ts         SEEDED_LABELS, EFFORT_OPTIONS, threadScore, levelPositions
 │   │       ├── compose.ts       ComposeRequest / ComposeDraft (AI drafting types)
 │   │       └── sample.ts        seed people (local + sample team), sample threads, sample group
@@ -82,13 +84,14 @@ threads/
 │   │   ├── cloudflare.config.ts account, Worker name, Durable Object export, bindings (API_TOKEN, AI, ...)
 │   │   ├── vite.config.ts       Cloudflare Vite plugin; dev server 127.0.0.1:3030
 │   │   ├── src/
-│   │   │   ├── worker.ts        Worker entry: CORS, bearer auth, /ai/compose, routing to Workspace DO;
-│   │   │   │                    Workspace DO: SQLite storage, WebSocket, broadcast, reset, triage alarm
-│   │   │   ├── app.ts           per-workspace Hono routes (bootstrap, deltas, transactions); createApp for tests
-│   │   │   ├── engine.ts        SyncEngine: zod schemas, rules and side effects (#apply), seeding, upgrades
+│   │   │   ├── worker.ts        Worker entry: CORS, sessions (authenticate, /auth/session), /ai/compose, routing;
+│   │   │   │                    Workspace DO: the engine's SQLite storage and broadcast, sockets, reset, triage alarm
+│   │   │   ├── app.ts           one workspace's sync routes (the engine's), local sessions; createApp for tests
+│   │   │   ├── engine.ts        SyncEngine (extends the engine's SyncServer): zod schemas, rules and side effects
+│   │   │   │                    (#apply), sync groups, seeding, upgrades
 │   │   │   ├── triage.ts        Triager + Workers AI classifier (inbox sorting)
 │   │   │   └── compose.ts       Workers AI composer (drafting a thread from one message)
-│   │   └── tests/               app, assignees, groups, sprints, triage, compose
+│   │   └── tests/               app, access, assignees, groups, sprints, triage, compose
 │   ├── desktop/                 Electron + React 19 + MobX + Tiptap
 │   │   ├── electron.vite.config.ts, electron-builder.yml, build/ (mac entitlements)
 │   │   ├── src/main/index.ts    window (vibrancy, hidden title bar, 110% zoom), menus, dev DevTools port 9333
@@ -96,7 +99,7 @@ threads/
 │   │   ├── src/renderer/src/
 │   │   │   ├── main.tsx, App.tsx    root: state, routing between pages, actions, keyboard shortcuts
 │   │   │   ├── api.ts           data sources (Cloudflare / Local / Sample), HTTP + WebSocket transport, composeDraft
-│   │   │   ├── sync/            client sync engine (black box): syncClient, transactions, objectPool, database
+│   │   │   ├── sync/            syncClient.ts: ThreadsClient, the engine's client with the app's reads and changes
 │   │   │   ├── components/      UI (section 9)
 │   │   │   ├── inbox.ts         buildInbox, scoreOf
 │   │   │   ├── activity.ts      notifications (activityFor)
@@ -218,12 +221,12 @@ debt 20, Housekeeping 10. Labels people make have no priority. Labels are never 
 
 ### 3.2 References (for the sync engine's model registry)
 
-| Model  | References                                                    | Reference arrays                           | Back references   |
-| ------ | ------------------------------------------------------------- | ------------------------------------------ | ----------------- |
-| Person | `managerId` → Person                                          |                                            |                   |
-| Thread | `createdById` → Person, `branchedFromId`, `blocksId` → Thread | `assigneeIds` → Person, `labelIds` → Label | `entries` → Entry |
-| Entry  | `threadId` → Thread, `authorId`/`actorId` → Person            | `sentToIds` → Person                       |                   |
-| Sprint | `groupId` → Group, `createdById` → Person                     | `threadIds` → Thread                       |                   |
+| Model  | References                                                    | Reference arrays                           | Back references                                 |
+| ------ | ------------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------- |
+| Person | `managerId` → Person                                          |                                            |                                                 |
+| Thread | `createdById` → Person, `branchedFromId`, `blocksId` → Thread | `assigneeIds` → Person, `labelIds` → Label | `entries` → Entry (`threadId`): deleted with it |
+| Entry  | `threadId` → Thread, `authorId`/`actorId` → Person            | `sentToIds` → Person                       |                                                 |
+| Sprint | `groupId` → Group, `createdById` → Person                     | `threadIds` → Thread                       |                                                 |
 
 Organization, Label and Group have no registered references in the prototype (Group's `labelId`/`memberIds` could be).
 
@@ -259,11 +262,15 @@ Use LSE as the engine. Threads needs exactly this from it:
   "scoped" fields (section 5.4) to the actor's own key exactly as the server does (`applyScopedChanges` is shared code).
   Creates are built with the same `threadFromCreate` / `entryFromCreate` / `labelFromCreate` / `groupFromCreate` /
   `sprintFromCreate` functions on both sides.
-- **Schema versioning.** A hash of the registry plus a version suffix (`SCHEMA_HASH`, now `records:v20`). A client whose
+- **Schema versioning.** A hash of the schema plus its version (`SCHEMA_HASH`, now `records:v21`). A client whose
   cache was built under another hash rebuilds it. The server upgrades older stored records on load (`upgrade` in
   `engine.ts`).
-- **Reset.** `POST /sync/reset` wipes a workspace (keeping Organization, Labels and Groups) and reseeds; clients see the
-  server behind their cache and rebuild.
+- **Reset.** `POST /sync/reset` (admin only) wipes a workspace (keeping Organization, Labels and Groups) and reseeds with a
+  new `epoch`; clients see the new epoch and rebuild, keeping their unsent changes.
+- **Sessions and sync groups.** Every request runs as a person's session (acts only as them, sees their sync groups) or the
+  admin session (sees everything). Every Threads record is in the workspace's one group, which every `Person` in it is in.
+- **Engine-provided transactions.** `delete`, `archive` and `unarchive` on any model; Threads allows only deleting your own
+  messages (section 5.12).
 - **Asynchronous server writes.** The AI sorter writes triage results later, as its own batch, through the same writer.
 
 ---
@@ -432,8 +439,15 @@ OrganizationChanges = { name: string }; // trimmed 1–100
 
 ### 5.11 Errors
 
-`EngineError(status, message)` with 400 (bad input or rule), 403 (not allowed), 404 (missing), 409 (conflict). Shape
-errors from zod are 400 with a readable message. The whole batch is refused on the first error.
+`SyncError(status, message)` with 400 (bad input or rule), 403 (not allowed, or acting as someone else), 404 (missing),
+409 (conflict), 413 (batch too large). Shape errors from zod are 400 with a readable message. The whole batch is refused on
+the first error.
+
+### 5.12 Delete a message (the engine's `delete`)
+
+`{ id, type: "delete", modelName: "Entry", modelId }`. Only your own message, and not a thread's description (its id is
+the thread's); anything else is refused (400/403). No activity line. Other models can't be deleted, and `archive` /
+`unarchive` are refused: a thread is archived with its status.
 
 ---
 
@@ -441,22 +455,24 @@ errors from zod are 400 with a readable message. The whole batch is refused on t
 
 Base: local `http://127.0.0.1:3030`; hosted `https://threads-api.threads-app.workers.dev`.
 
-| Header / param                                  | Meaning                                                          |
-| ----------------------------------------------- | ---------------------------------------------------------------- |
-| `X-Workspace` (`?workspace=` on the socket)     | `local` (the real workspace) or `sample` (demo team, local only) |
-| `Authorization: Bearer <API_TOKEN>` (`?token=`) | required when the `API_TOKEN` secret is set (hosted)             |
-| `X-UTC-Offset` (`?utcOffset=`)                  | minutes; used when seeding a fresh workspace                     |
+| Header / param                              | Meaning                                                           |
+| ------------------------------------------- | ----------------------------------------------------------------- |
+| `X-Workspace` (`?workspace=` on the socket) | `local` (the real workspace) or `sample` (demo team, local only)  |
+| `Authorization: Bearer <token>` (`?token=`) | hosted: the API token (admin session) or a person's session token |
+| `X-User` (`?user=`)                         | local only: whose session; none is the admin session              |
+| `X-UTC-Offset` (`?utcOffset=`)              | minutes; used when seeding a fresh workspace                      |
 
-| Route                      | Body / query                                     | Response                                                                                                |
-| -------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `GET /sync/bootstrap`      |                                                  | `{ lastSyncId, schemaHash, models: { [ModelName]: Record[] } }`                                         |
-| `GET /sync/deltas`         | `?after=<syncId>`                                | `{ lastSyncId, actions: SyncAction[] }`                                                                 |
-| `POST /sync/transactions`  | `{ actorId, utcOffsetMinutes?, transactions[] }` | `{ lastSyncId }`, or `{ error }` with 400/403/404/409                                                   |
-| `GET /sync/ws` (WebSocket) | query params above                               | `{ type: "handshake", lastSyncId }`, then `{ type: "delta", lastSyncId, actions }`; `"ping"` → `"pong"` |
-| `POST /sync/reset`         |                                                  | `{ lastSyncId }`; wipes threads, keeps org/labels/groups, reseeds                                       |
-| `POST /ai/compose`         | `ComposeRequest`                                 | `ComposeDraft`; 503 without AI, 502 if the model fails                                                  |
+| Route                      | Body / query                                     | Response                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /sync/bootstrap`      | `?groups=a,b` for a partial bootstrap            | `{ epoch, lastSyncId, syncGroups, schemaHash, models: { [ModelName]: Record[] } }` (what the session sees)                                                     |
+| `GET /sync/deltas`         | `?after=<syncId>`                                | `{ epoch, lastSyncId, syncGroups, actions }`, or `fullBootstrapRequired: true` once the log is compacted                                                       |
+| `POST /sync/transactions`  | `{ actorId, utcOffsetMinutes?, transactions[] }` | `{ lastSyncId }`, or `{ error }` with 400/403/404/409                                                                                                          |
+| `GET /sync/ws` (WebSocket) | query params above                               | `{ type: "handshake", epoch, lastSyncId, minSyncId, syncGroups }`, then `{ type: "delta", fromSyncId, lastSyncId, actions, syncGroups? }`; `"ping"` → `"pong"` |
+| `POST /sync/reset`         | admin only                                       | `{ lastSyncId }`; wipes threads, keeps org/labels/groups, reseeds                                                                                              |
+| `POST /auth/session`       | `{ workspace, personId }`, admin only            | `{ token, expiresAtMs }`: that person's session token (30 days)                                                                                                |
+| `POST /ai/compose`         | `ComposeRequest`                                 | `ComposeDraft`; 503 without AI, 502 if the model fails                                                                                                         |
 
-`SyncAction = { id, modelName, modelId, action: "I" | "U" | "D", data: Record | null }` (whole records).
+`SyncAction = { id, modelName, modelId, action: "I" | "U" | "D" | "A" | "V", data: Record | null }` (whole records).
 
 `ComposeRequest = { author: {id,name}, people: {id,name}[] /* ≤ 500, only those @mentioned */, text /* 1–4000 */ }`
 `ComposeDraft = { title, context, asks: { personIds: string[], text }[] }`
@@ -685,33 +701,35 @@ The window uses native macOS vibrancy and is zoomed to 110%.
 What the prototype leaves out on purpose, roughly in the order production needs it:
 
 1. **Identity and auth.**
-   - Today one shared bearer token admits everyone, and `actorId` in each batch is trusted. View As is how you switch user.
-   - Production needs real accounts, for example Cloudflare Access, OAuth, or a session per user.
-   - The server should take the actor from the session, not the request body.
+   - Sessions exist: a person's session acts only as them. But nothing signs people in: the app holds the API token and
+     mints a session for whoever it views as (View As).
+   - Production needs real accounts, for example Cloudflare Access or OAuth, minting the same session tokens, and the
+     app must never hold the API token.
    - People should come from accounts or an invite flow rather than seed data, with a way to create, deactivate and edit them.
 2. **Authorization.**
    - Every rule today is "anyone can do anything", except a few: only the owner writes a description, people edit only themselves, only members change groups, and only members plan sprints.
    - Decide per mutation: who may close or assign threads, edit others' threads, or rename the org.
 3. **Who sees what (LSE sync groups).**
-   - Every client receives every thread. Profile and group pages are display filters, not privacy.
-   - Partition by organization (one Durable Object per org) and, if needed, by team or private thread.
+   - The engine filters by sync group, but Threads has one group per workspace, so every member receives every thread.
+     Profile and group pages are display filters, not privacy.
+   - Partition by organization (one Durable Object per org) and, if needed, by team or private thread (a schema change).
 4. **Multi-tenancy.** Workspaces are a fixed list (`local`, `sample`). Production needs organizations created at signup, routed by id.
 5. **Deletes.**
-   - Nothing is deleted today: no threads, labels, people, groups or sprints. Assignees can't be removed.
-   - Add delete or archive transactions, LSE's `D`/`A`, with cascades.
+   - The engine has delete, archive and unarchive with cascades, but Threads only lets you delete your own messages.
+     Threads, labels, people, groups and sprints aren't deleted, and assignees can't be removed.
 6. **Concurrency on lists.** `memberIds`, `threadIds` and `labelIds` are replaced whole, so concurrent edits lose one side. Consider add/remove operations instead.
 7. **Undo and redo** at the transaction level (LSE's undo queue). Today only Done and Snooze have an Undo toast.
 8. **AI operations.**
    - Sorting depends on Workers AI. Its costs and limits need watching.
    - Production also needs a fallback when the AI is down, prompt and model versioning, and an evaluation set.
    - Compose sends message text to the model, so check that's acceptable for customer data.
-9. **Data lifecycle.** Backups or exports of each workspace's SQLite, retention for the sync log (it grows forever), and a migration strategy beyond `upgrade()` plus a cache rebuild.
+9. **Data lifecycle.** Backups or exports of each workspace's SQLite, and a migration strategy beyond `upgrade()` plus a cache rebuild. (The sync log is compacted to its last 10,000 actions.)
 10. **Observability.**
     - Structured logs, metrics and alerts: refused batches, AI failures, socket counts, Durable Object errors.
     - Client error reporting. The save-error banner is the only signal today.
 11. **Client.**
     - Code signing and notarisation, auto-update (`electron-updater` is a dependency but not set up), and crash reporting.
-    - Light mode, accessibility, and replacing the dev-only remote-debugging port.
+    - Accessibility, and replacing the dev-only remote-debugging port.
     - `apps/web` and `packages/ui` are unused templates.
 12. **Settings.** `SettingsView` is a preview, and working hours and notification preferences aren't stored anywhere.
-13. **Rate limits and input limits.** Batches are capped at 200 transactions, but nothing limits requests per user, message size beyond the compose cap, or total model counts.
+13. **Rate limits and input limits.** Batches are capped at 200 transactions and 1 MB, but nothing limits requests per user, message size beyond the compose cap, or total model counts.
