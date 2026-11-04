@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, Menu, nativeTheme, systemPreferences } from "electron";
+import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, systemPreferences } from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
@@ -68,8 +68,18 @@ void app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId("com.electron");
 
-  // Dark mode only for now, so the vibrancy material renders dark.
+  // Dark until the renderer says otherwise (it sends its saved theme as it starts), so the vibrancy material matches.
   nativeTheme.themeSource = "dark";
+  // The renderer's theme (⌘K): the vibrancy material follows it, under a black tint in dark mode and none in light.
+  ipcMain.on("set-theme", (event, theme: unknown) => {
+    const light = theme === "light";
+    nativeTheme.themeSource = light ? "light" : "dark";
+    if (process.platform === "darwin") {
+      BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(
+        light ? "#00ffffff" : "#40000000",
+      );
+    }
+  });
 
   // Stop the text caret blinking: Chromium reads these macOS defaults and treats an "on" period
   // over 60s as always visible. registerDefaults applies to this app only and isn't persisted.

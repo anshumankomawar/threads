@@ -42,6 +42,8 @@ export function Identicon({ seed, size = 22 }: { seed: string; size?: number }):
             fill={`hsl(${hue} 55% 52%)`}
           />
         ))}
+        {/* An edge, so the pale background doesn't melt into a light page; clipped to its inner half. */}
+        <circle className="identicon-ring" cx="2.5" cy="2.5" r="3" fill="none" />
       </g>
     </svg>
   );

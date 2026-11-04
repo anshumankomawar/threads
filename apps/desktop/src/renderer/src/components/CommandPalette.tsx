@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Label, Person, Thread } from "model";
 import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
 import { orgDetails } from "../org";
+import type { Theme } from "../theme";
 
 type Tab = "all" | "threads" | "groups" | "people";
 
@@ -31,6 +32,8 @@ export function CommandPalette({
   source,
   me,
   onSwitchSource,
+  theme,
+  onToggleTheme,
   onViewAs,
   onOpenProfile,
   people,
@@ -48,6 +51,8 @@ export function CommandPalette({
   source: DataSource;
   me: Person;
   onSwitchSource: (source: DataSource) => void;
+  theme: Theme;
+  onToggleTheme: () => void;
   onViewAs: () => void;
   onOpenProfile: () => void;
   people: Person[];
@@ -125,6 +130,12 @@ export function CommandPalette({
             items: [
               { id: "profile", label: "Profile and organization", run: run(onOpenProfile) },
               { id: "new-group", label: "New Group", run: onNewGroup },
+              {
+                id: "theme",
+                label: theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
+                keywords: "theme appearance light dark mode",
+                run: run(onToggleTheme),
+              },
             ],
           },
           peopleSection,

@@ -33,6 +33,50 @@
   --status-blocked: var(--urgent);
   --status-closed: oklch(0.713 0.094 155.438);
   --urgent: oklch(0.712 0.177 12.651);
+
+  /* The window's glass tint, the dim behind palettes, floating panels' edge, and text on an accent fill. */
+  --glass: rgb(0 0 0 / 62%);
+  --overlay: rgb(0 0 0 / 45%);
+  --float-border: rgb(255 255 255 / 8%);
+  --on-accent: #0f141a;
+  /* Avatars' edge: none on dark, where their pale background stands out already. */
+  --avatar-ring: transparent;
+  color-scheme: dark;
+}
+
+/* Light mode (⌘K › Light Mode): the same tokens, inverted. The main process switches the window's vibrancy to light too. */
+:root[data-theme="light"] {
+  --base: oklch(0.21 0 0);
+  --sidebar: oklch(0.965 0 0);
+  --chrome: oklch(0.985 0 0);
+  --sidebar-solid: #f4f4f3;
+  --titlebar-solid: #f0efee;
+
+  --text-secondary: color-mix(in srgb, var(--base) 72%, transparent);
+  --text-tertiary: color-mix(in srgb, var(--base) 55%, transparent);
+  --bg-tertiary: color-mix(in srgb, var(--base) 8%, transparent);
+  --bg-quaternary: color-mix(in srgb, var(--base) 4%, transparent);
+  --icon-tertiary: color-mix(in srgb, var(--base) 50%, transparent);
+  --stroke-tertiary: color-mix(in srgb, var(--base) 10%, transparent);
+  --stroke-focused: color-mix(in srgb, var(--base) 20%, transparent);
+
+  --panel: #ffffff;
+  --panel-border: #e4e4e2;
+  --panel-divider: #ededeb;
+  --panel-selected: #efefed;
+  --accent: #2f6fb7;
+  --accent-fill: #e2ecf7;
+
+  --status-waiting: oklch(0.55 0.15 252.629);
+  --status-closed: oklch(0.55 0.11 155.438);
+  --urgent: oklch(0.58 0.2 12.651);
+
+  --glass: rgb(255 255 255 / 72%);
+  --overlay: rgb(0 0 0 / 18%);
+  --float-border: rgb(0 0 0 / 8%);
+  --on-accent: #ffffff;
+  --avatar-ring: rgb(0 0 0 / 14%);
+  color-scheme: light;
 }
 
 *,
@@ -48,7 +92,7 @@ body {
   user-select: none;
   color: var(--text-primary);
   /* Dark glass surface over the window vibrancy (darker than Cursor's 42%). */
-  background: rgb(0 0 0 / 62%);
+  background: var(--glass);
   font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 12px;
   line-height: 16px;
@@ -271,7 +315,7 @@ body * {
   position: fixed;
   inset: 0;
   z-index: 20;
-  background-color: rgb(0 0 0 / 45%);
+  background-color: var(--overlay);
 }
 
 .palette {
@@ -1767,7 +1811,7 @@ body * {
   gap: 10px;
   align-items: flex-start;
   padding: 10px 10px 10px 12px;
-  border: 1px solid rgb(255 255 255 / 8%);
+  border: 1px solid var(--float-border);
   border-radius: 8px;
   background-color: var(--panel);
   box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
@@ -1790,6 +1834,12 @@ body * {
 }
 
 /* Centered between the first two lines: who asked and where, then what they said. */
+/* About 1px wide at the usual sizes: half of the stroke is outside the clip. */
+.identicon-ring {
+  stroke: var(--avatar-ring);
+  stroke-width: 0.5;
+}
+
 .toast > .identicon {
   flex-shrink: 0;
   margin-top: 7.5px;
@@ -2028,7 +2078,7 @@ body * {
   width: 340px;
   max-height: min(480px, 70vh);
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 8%);
+  border: 1px solid var(--float-border);
   border-radius: 8px;
   background-color: var(--panel);
   box-shadow: 0 6px 16px rgb(0 0 0 / 35%);
@@ -2629,7 +2679,7 @@ body * {
 
 .palette-check[data-checked="true"] {
   border-color: var(--accent);
-  color: #0f141a;
+  color: var(--on-accent);
   background-color: var(--accent);
 }
 

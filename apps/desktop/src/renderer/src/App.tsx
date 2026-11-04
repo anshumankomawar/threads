@@ -6,6 +6,7 @@ import { useDrafts, type SavedDraft } from "./drafts";
 import { recipientsOf, targetsFor } from "./compose";
 import { BucketPalette } from "./components/BucketPalette";
 import { CommandPalette } from "./components/CommandPalette";
+import { applyTheme, savedTheme } from "./theme";
 import { DetailsPanel } from "./components/DetailsPanel";
 import {
   DetailsToggle,
@@ -224,6 +225,9 @@ const App = observer(function App(): React.JSX.Element {
   const me = people.find((person) => person.id === viewerId) ?? people[0] ?? fallbackMe;
   const [viewAsOpen, setViewAsOpen] = useState(false);
   const [contentZoom, setContentZoom] = useState(savedContentZoom);
+  const [theme, setTheme] = useState(savedTheme);
+
+  useEffect(() => applyTheme(theme), [theme]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--content-zoom", String(contentZoom));
@@ -1214,6 +1218,8 @@ const App = observer(function App(): React.JSX.Element {
               source={source}
               me={me}
               onSwitchSource={switchSource}
+              theme={theme}
+              onToggleTheme={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}
               onViewAs={() => {
                 setSearchOpen(false);
                 setViewAsOpen(true);
