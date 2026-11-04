@@ -79,14 +79,13 @@ export type LoadResponse<M extends Models = Models> = SyncPosition & { models: M
 // sessions that can see the record, and is gone when they disconnect.
 export type Ephemeral = { modelName: string; modelId: string; key: string; value: unknown };
 
-// Messages from the server on the socket. The handshake says where the server is; each delta packet covers the sync
-// ids after `fromSyncId` up to `lastSyncId`, holding the actions in them this session may see (possibly none).
-// `syncGroups` is set on the packet where the session's groups change.
+// Messages from the server on the socket. The handshake says where the server is, so a client can tell what it missed
+// while away; each delta packet holds the actions of one committed batch that this session may see (possibly none),
+// with the batch's last sync id. `syncGroups` is set on the packet where the session's groups change.
 export type SyncMessage<M extends Models = Models> =
   | ({ type: "handshake"; minSyncId: number } & SyncPosition)
   | {
       type: "delta";
-      fromSyncId: number;
       lastSyncId: number;
       actions: SyncAction<M>[];
       syncGroups?: string[];

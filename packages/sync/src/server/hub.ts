@@ -29,7 +29,6 @@ export function broadcast<M extends Models, T extends TransactionEnvelope>(
   server: SyncServer<M, T>,
   sockets: Iterable<HubSocket>,
   actions: LoggedAction<M>[],
-  fromSyncId: number,
 ): void {
   const lastSyncId = actions.at(-1)?.id ?? server.lastSyncId;
   for (const socket of sockets) {
@@ -38,7 +37,6 @@ export function broadcast<M extends Models, T extends TransactionEnvelope>(
     if (changed) socket.setGroups(groups);
     send(socket, {
       type: "delta",
-      fromSyncId,
       lastSyncId,
       actions: visibleActions(actions, groups),
       ...(changed ? { syncGroups: groups } : {}),

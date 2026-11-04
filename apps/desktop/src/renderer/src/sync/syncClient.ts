@@ -20,7 +20,6 @@ import {
   type ThreadChanges,
   type TransactionInput,
 } from "model";
-import { listsAsOps } from "sync";
 import { SyncClient, type ClientEvent, type SyncDatabase, type Transport } from "sync/client";
 
 // How the app reaches its server: the sync engine's transport, plus wiping the workspace (a development tool).
@@ -138,7 +137,6 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
     return groupId;
   }
 
-  // Lists given whole go as the ops that make them (`listsAsOps`), so they merge with anyone else's edits to the same list.
   updateGroup(groupId: string, changes: GroupChanges, me: Person): void {
     this.#enqueue(
       {
@@ -146,7 +144,7 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
         type: "update",
         modelName: "Group",
         modelId: groupId,
-        changes: listsAsOps(this.pool.get("Group", groupId), changes),
+        changes,
       },
       me,
     );
@@ -180,7 +178,7 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
         type: "update",
         modelName: "Sprint",
         modelId: sprintId,
-        changes: listsAsOps(this.pool.get("Sprint", sprintId), changes),
+        changes,
       },
       me,
     );
@@ -247,7 +245,7 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
         type: "update",
         modelName: "Thread",
         modelId: threadId,
-        changes: listsAsOps(this.pool.get("Thread", threadId), changes),
+        changes,
       },
       me,
     );

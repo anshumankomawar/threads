@@ -51,7 +51,7 @@ class TestServer {
           else if (next !== undefined) batch.put(modelName, next);
         }
       },
-      onCommit: (actions, fromSyncId) => broadcast(engine, this.#sockets, actions, fromSyncId),
+      onCommit: (actions) => broadcast(engine, this.#sockets, actions),
     });
     engine.write((batch) => {
       batch.put("Person", anshu);
@@ -250,17 +250,17 @@ test("offline edits are kept, survive a restart, and send once the server is bac
   second.stop();
 });
 
-test("a gap in sync ids is filled from the server's log", async () => {
-  const { client, server } = await started();
-  server.holdDeltas = true;
-  const missed = server.change("Person", { id: "kk", name: "KK" });
-  // That packet is lost; the next one shows the gap.
-  server.held = [];
-  server.holdDeltas = false;
+test("what a client missed while away is caught up when it connects again", async () => {
+  const server = new TestServer();
+  const database: Database = memoryDatabase();
+  const first = await started(server, database);
+  first.client.stop();
+  server.change("Person", { id: "kk", name: "KK" });
   server.change("Person", { id: "sam", name: "Sam" });
-  await settle();
-  expect(missed).toBeLessThan(server.engine.lastSyncId);
+  // Back from its local cache, it hears where the server is at the handshake and fetches what it missed.
+  const { client } = await started(server, database);
   expect(client.people.map((person) => person.id)).toEqual(["anshu", "arjun", "kk", "sam"]);
+  expect(client.lastSyncId).toBe(server.engine.lastSyncId);
 });
 
 test("moving messages shows at once, and is undone if the server refuses it", async () => {
@@ -322,26 +322,20 @@ test("deleting your message takes it out at once, and the server's delete confir
   expect(client.queue.pending).toEqual([]);
 });
 
-test("a whole list goes as the ops that make it, so it merges with someone else's edit", async () => {
+test("a list is sent whole, and the later change wins", async () => {
   const { client, server } = await started();
   const threadId = client.createThread({ ...draft, title: "Plan the offsite" }, anshu);
-  for (const id of ["bug", "infra", "urgent"])
+  for (const id of ["bug", "infra"])
     server.change("Label", { id, name: id, groupId: null, createdById: null, createdAtMs: 1 });
   await settle();
   client.updateThread(threadId, { labelIds: ["bug", "infra"] }, anshu);
   await settle();
-  // Arjun adds a label the app hasn't heard of yet; Anshu's next whole list doesn't drop it.
-  const thread = server.engine.models.Thread.get(threadId) as ThreadRecord;
-  server.online = false;
-  client.updateThread(threadId, { labelIds: ["bug"] }, anshu);
-  server.change("Thread", { ...thread, labelIds: [...thread.labelIds, "urgent"] });
-  server.online = true;
-  client.queue.dequeue();
-  await settle();
   expect(server.sent.at(-1)?.transactions[0]).toMatchObject({
-    changes: { labelIds: { $add: [], $remove: ["infra"] } },
+    changes: { labelIds: ["bug", "infra"] },
   });
-  expect(server.engine.models.Thread.get(threadId)?.labelIds).toEqual(["bug", "urgent"]);
+  client.updateThread(threadId, { labelIds: ["bug"] }, anshu);
+  await settle();
+  expect(server.engine.models.Thread.get(threadId)?.labelIds).toEqual(["bug"]);
 });
 
 test("undo puts a thread's fields, labels and your own done back, and redo does them again", async () => {

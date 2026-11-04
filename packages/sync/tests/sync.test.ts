@@ -66,18 +66,14 @@ test("a refused batch rolls back, and changes to a model the server deleted are 
   expect(bob.pool.get("Note", "n")?.text).toBe("Shared");
   expect(bob.error).toContain("Only its owner");
 
-  // Bob edits offline; meanwhile Ann deletes it. His edit is dropped rather than sent and refused.
-  hub.socketOf("bob").paused = true;
+  // Bob edits while he can't reach the server; meanwhile Ann deletes it, and the delete reaches him. His edit is dropped
+  // rather than sent and refused.
   hub.offline.add("bob");
   bob.dismissError();
   bob.transact(editNote("n", { text: "Mine" }), "bob");
   ann.delete("Note", "n", "ann");
   await settle();
-  hub.socketOf("bob").paused = false;
   hub.offline.delete("bob");
-  // The next packet shows Bob a gap; catching up brings the delete.
-  ann.transact(note("next", "Next", "t"), "ann");
-  await settle();
   bob.queue.dequeue();
   await settle();
   expect(bob.pool.get("Note", "n")).toBeUndefined();
@@ -101,30 +97,26 @@ test("a newer server change is rebased under a pending edit, and the pending edi
   expect(ann.pool.get("Note", "n")?.text).toBe("Bob's");
 });
 
-// --- Patches: concurrent list edits merge ---
+// --- Last writer wins ---
 
-test("two people changing the same list at once both keep their change", async () => {
+test("a list is set whole, and when two people set it at once the later one wins", async () => {
   const { hub, server } = setUp("ann", "bob");
   const [ann, bob] = await started(hub, "ann", "bob");
   ann.transact(note("n", "Shared", "t"), "ann");
   await settle();
-  ann.transact(editNote("n", { tagIds: { $add: ["red", "blue"] } }), "ann");
-  await settle();
-
-  // Both edit before either hears of the other.
   hub.offline.add("ann");
   hub.offline.add("bob");
-  ann.transact(editNote("n", { tagIds: { $add: ["green"] } }), "ann");
-  bob.transact(editNote("n", { tagIds: { $remove: ["red"], $add: ["gold"] } }), "bob");
+  ann.transact(editNote("n", { tagIds: ["red", "blue"] }), "ann");
+  bob.transact(editNote("n", { tagIds: ["gold"] }), "bob");
   await settle();
   hub.offline.clear();
   ann.queue.dequeue();
+  await settle();
   bob.queue.dequeue();
   await settle();
-  const tags = ["blue", "green", "gold"];
-  expect([...(server.models.Note.get("n")?.tagIds ?? [])].sort()).toEqual(tags.sort());
-  expect([...(ann.pool.get("Note", "n")?.tagIds ?? [])].sort()).toEqual(tags);
-  expect([...(bob.pool.get("Note", "n")?.tagIds ?? [])].sort()).toEqual(tags);
+  expect(server.models.Note.get("n")?.tagIds).toEqual(["gold"]);
+  expect(ann.pool.get("Note", "n")?.tagIds).toEqual(["gold"]);
+  expect(bob.pool.get("Note", "n")?.tagIds).toEqual(["gold"]);
 });
 
 // --- Sync groups ---
@@ -334,7 +326,7 @@ test("undo sends the inverse as a new transaction, and redo undoes the undo", as
   await settle();
 
   ann.undoQueue.addOperation("Edit note", () => {
-    ann.transact(editNote("n", { text: "Second", tagIds: { $add: ["red"] } }), "ann");
+    ann.transact(editNote("n", { text: "Second", tagIds: ["red"] }), "ann");
   });
   await settle();
   expect(server.models.Note.get("n")).toMatchObject({ text: "Second", tagIds: ["red"] });
@@ -360,20 +352,19 @@ test("undo sends the inverse as a new transaction, and redo undoes the undo", as
 
 // --- Gaps, compaction, resets and restarts ---
 
-test("a missed packet is fetched, and a gap the log can't fill is a fresh bootstrap", async () => {
+test("what a client missed while disconnected is caught up at the handshake, or by a fresh bootstrap once the log can't reach back", async () => {
   const { hub, server } = setUp("ann", "bob");
   const [ann, bob] = await started(hub, "ann", "bob");
-  const bobSocket = hub.socketOf("bob");
-  bobSocket.paused = true;
+  hub.disconnect("bob");
   ann.transact(note("one", "1", "t"), "ann");
-  await settle();
-  bobSocket.paused = false;
   ann.transact(note("two", "2", "t"), "ann");
+  await new Promise((resolve) => setTimeout(resolve, 20));
   await settle();
   expect(bob.pool.get("Note", "one")?.text).toBe("1");
   expect(bob.pool.get("Note", "two")?.text).toBe("2");
 
-  bobSocket.paused = true;
+  hub.offline.add("bob");
+  hub.disconnect("bob");
   ann.transact(note("three", "3", "t"), "ann");
   ann.transact(editNote("one", { text: "uno" }), "ann");
   await settle();
@@ -382,8 +373,9 @@ test("a missed packet is fetched, and a gap the log can't fill is a fresh bootst
     "fullBootstrapRequired",
     true,
   );
-  bobSocket.paused = false;
-  ann.transact(note("four", "4", "t"), "ann");
+  hub.offline.delete("bob");
+  hub.disconnect("bob");
+  await new Promise((resolve) => setTimeout(resolve, 30));
   await settle();
   expect(bob.pool.get("Note", "three")?.text).toBe("3");
   expect(bob.pool.get("Note", "one")?.text).toBe("uno");

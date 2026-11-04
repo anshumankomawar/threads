@@ -78,8 +78,8 @@ export type ServerOptions<M extends Models, T extends TransactionEnvelope> = {
   groupsFor?: (userId: string, models: ModelMaps<M>) => string[];
   // A record stored by an older version, in today's shape, or null to drop it.
   upgrade?: (modelName: ModelName<M>, data: AnyRecord<M>) => AnyRecord<M> | null;
-  // After each committed batch, with its actions and the sync id before them: broadcast them (`broadcast`).
-  onCommit?: (actions: LoggedAction<M>[], fromSyncId: number) => void;
+  // After each committed batch, with its actions: broadcast them (`broadcast`).
+  onCommit?: (actions: LoggedAction<M>[]) => void;
   onEvent?: (event: ServerEvent) => void;
   // The most transactions a batch may hold.
   maxBatch?: number;
@@ -209,7 +209,7 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
         actions: actions.length,
         transactions: transactionIds.length,
       });
-      this.onCommit?.(actions, fromSyncId);
+      this.onCommit?.(actions);
     }
     return actions;
   }

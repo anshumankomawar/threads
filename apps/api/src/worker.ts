@@ -83,8 +83,7 @@ export class Workspace extends DurableObject<Env> {
       storage,
       onEvent: (event) => console.log(JSON.stringify({ workspace: name, ...event })),
     });
-    engine.onCommit = (actions, fromSyncId) =>
-      broadcast(engine, this.#sockets(), actions, fromSyncId);
+    engine.onCommit = (actions) => broadcast(engine, this.#sockets(), actions);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME);
     refreshSeedPeople(engine, name, SAMPLE_ME);
     ensureOrganization(engine, name);

@@ -30,10 +30,27 @@ const KINDS: Record<string, TransactionKind> = {
 
 const key = (modelName: string, id: string): string => `${modelName}:${id}`;
 
-// One change made on this client. It's applied to the pool at once and kept until the server has executed it and its
-// sync id has come back. While it's pending, every model it touches is shown as the server's copy with the pending
-// changes replayed on top, oldest first (`replay`): so newer server data lands underneath it (last writer wins, LSE's
-// rebase), and if the server refuses it, rebuilding without it takes it out, whatever else is pending. `before` holds
+// What a change replaced: the fields it changed (with their old values), the whole record when it removed it, or null
+// when it made it.
+function replaced(
+  before: object | undefined,
+  after: object | null,
+): Record<string, unknown> | null {
+  if (before === undefined) return null;
+  if (after === null) return { ...before };
+  const was = before as Record<string, unknown>;
+  const now = after as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.keys(now)
+      .filter((field) => now[field] !== was[field])
+      .map((field) => [field, was[field]]),
+  );
+}
+
+// One change made on this client, as in LSE. It's applied to the pool at once and kept until the server has executed it
+// and its sync id has come back. `original` holds, per model it touched, the values it replaced, so a refusal can put
+// them back (`rollback`); when newer server data for one of its models arrives first, the change is rebased onto it
+// (`rebase`): `original` becomes the server's values and the change stays on top (last writer wins). `before` holds
 // each model as it was when the change was made, for undoing it.
 export class Transaction<M extends Models, T extends TransactionEnvelope> {
   readonly id: string;
@@ -44,6 +61,7 @@ export class Transaction<M extends Models, T extends TransactionEnvelope> {
   batchIndex = 0;
   // The sync id that completes this transaction, once the server accepts it.
   syncIdNeededForCompletion: number | undefined;
+  readonly original = new Map<string, Record<string, unknown> | null>();
   readonly before = new Map<string, AnyRecord<M> | undefined>();
   readonly #mutations: ClientMutations<M, T>;
 
@@ -111,19 +129,39 @@ export class Transaction<M extends Models, T extends TransactionEnvelope> {
     for (const { modelName, id } of this.touches()) {
       const was = pool.get(modelName, id) as AnyRecord<M> | undefined;
       if (!this.before.has(key(modelName, id))) this.before.set(key(modelName, id), was);
-      const after = this.replay(modelName, was);
-      if (after === undefined) pool.delete(modelName, id);
+      const after = this.#changed(modelName, was);
+      if (after === undefined) continue;
+      this.original.set(key(modelName, id), replaced(was, after));
+      if (after === null) pool.delete(modelName, id);
       else pool.set(modelName, after);
     }
   }
 
-  // One of its models with this change on top: undefined when that leaves no record. A creation leaves a record the
-  // server already has as the server has it.
-  replay(modelName: ModelName<M>, record: AnyRecord<M> | undefined): AnyRecord<M> | undefined {
+  // Undoes the change in the pool after the server refused it: a model it made goes, one it deleted comes back, and
+  // otherwise the values it replaced go back (unless the model is gone meanwhile, when there's nothing to put them on).
+  rollback(pool: ObjectPool<M>): void {
+    for (const { modelName, id } of this.touches()) {
+      const was = this.original.get(key(modelName, id));
+      if (was === undefined) continue;
+      const current = pool.get(modelName, id) as AnyRecord<M> | undefined;
+      if (was === null) pool.delete(modelName, id);
+      else if (current !== undefined) pool.set(modelName, { ...current, ...was } as AnyRecord<M>);
+      else if (this.kind === "deletion") pool.set(modelName, was as AnyRecord<M>);
+    }
+  }
+
+  // This change on top of a newer server copy of one of its models (or none), its `original` now that copy's values;
+  // undefined when that leaves no record. A creation leaves a server copy as it is.
+  rebase(
+    modelName: ModelName<M>,
+    id: string,
+    record: AnyRecord<M> | undefined,
+  ): AnyRecord<M> | undefined {
     if (this.kind === "creation" && record !== undefined) return record;
     const after = this.#changed(modelName, record);
-    if (after === null) return undefined;
-    return after ?? record;
+    if (after === undefined) return record;
+    this.original.set(key(modelName, id), replaced(record, after));
+    return after ?? undefined;
   }
 
   // The transaction that undoes this one (LSE's `undoTransaction`), or null when it can't be undone. Archiving and
@@ -154,6 +192,11 @@ export class Transaction<M extends Models, T extends TransactionEnvelope> {
     );
   }
 
+  // The server deleted one of its models: there's nothing of it left for a rollback to put back.
+  rebaseDeleted(modelName: ModelName<M>, id: string): void {
+    if (this.original.has(key(modelName, id))) this.original.set(key(modelName, id), null);
+  }
+
   serialize(): StoredTransaction<T | BuiltInTransaction<M>> {
     return {
       id: this.id,
@@ -172,10 +215,8 @@ export type QueueOptions<M extends Models, T extends TransactionEnvelope> = {
     "putTransactions" | "deleteTransactions"
   >;
   send: (batch: TransactionBatch<T | BuiltInTransaction<M>>) => Promise<TransactionBatchResponse>;
-  // Called when the server refuses a batch, now out of the queue: what it touched needs rebuilding without it.
+  // Called when the server refuses a batch, after it's rolled back.
   onRejected: (error: Error, batch: Transaction<M, T>[]) => void;
-  // Called with transactions whose sync id has arrived: what they changed is now as the server confirmed it.
-  onCompleted: (transactions: Transaction<M, T>[]) => void;
   utcOffsetMinutes: () => number;
   // The client's sync position. A batch's delta packet can arrive before the response that accepts it.
   lastSyncId: () => number;
@@ -285,7 +326,14 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
   }
 
   async executeTransactionBatch(batch: Transaction<M, T>[]): Promise<void> {
-    const { send, database, onRejected, utcOffsetMinutes, lastSyncId: synced } = this.#options;
+    const {
+      send,
+      database,
+      pool,
+      onRejected,
+      utcOffsetMinutes,
+      lastSyncId: synced,
+    } = this.#options;
     try {
       const { lastSyncId } = await send({
         actorId: batch[0].actorId,
@@ -300,6 +348,8 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
     } catch (error) {
       this.executingTransactions = [];
       if (error instanceof RejectedError) {
+        // Undo newest first, so each restores the value the one before it saw.
+        for (const transaction of [...batch].reverse()) transaction.rollback(pool);
         await database.deleteTransactions(batch.map((transaction) => transaction.id));
         onRejected(error, batch);
       } else {
@@ -313,16 +363,11 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
     this.dequeue();
   }
 
-  // Completes transactions whose sync id has arrived.
+  // Completes transactions whose sync id has arrived (LSE's `progressQueue`).
   progressQueue(lastSyncId: number): void {
-    const done = (transaction: Transaction<M, T>): boolean =>
-      (transaction.syncIdNeededForCompletion ?? Infinity) <= lastSyncId;
-    const completed = this.completedButUnsyncedTransactions.filter(done);
-    if (completed.length === 0) return;
     this.completedButUnsyncedTransactions = this.completedButUnsyncedTransactions.filter(
-      (transaction) => !done(transaction),
+      (transaction) => (transaction.syncIdNeededForCompletion ?? Infinity) > lastSyncId,
     );
-    this.#options.onCompleted(completed);
   }
 
   // Pending transactions touching a model that a server action numbered `syncId` doesn't already include, oldest first,
@@ -333,6 +378,20 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
         (transaction.syncIdNeededForCompletion ?? Infinity) > syncId &&
         transaction.touchesModel(modelName, id),
     );
+  }
+
+  // The server inserted a model: a creation of this client's with the same id that hasn't been sent is no longer valid,
+  // and is cancelled (LSE's `modelUpserted`). Ids are UUIDs, so this guards against a collision rather than being routine.
+  async modelUpserted(modelName: string, id: string): Promise<void> {
+    const stale = (transaction: Transaction<M, T>): boolean =>
+      transaction.kind === "creation" && transaction.touchesModel(modelName, id);
+    const dropped = [...this.createdTransactions, ...this.queuedTransactions].filter(stale);
+    if (dropped.length === 0) return;
+    this.createdTransactions = this.createdTransactions.filter(
+      (transaction) => !stale(transaction),
+    );
+    this.queuedTransactions = this.queuedTransactions.filter((transaction) => !stale(transaction));
+    await this.#options.database.deleteTransactions(dropped.map((transaction) => transaction.id));
   }
 
   // The server deleted a model: changes to it that haven't been sent can only be refused, so they're dropped rather

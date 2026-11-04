@@ -52,7 +52,6 @@ export type Transport<M extends Models, T extends TransactionEnvelope> = {
 export type ClientEvent =
   | { type: "bootstrapped"; kind: "local" | "full"; models: number }
   | { type: "caughtUp"; actions: number }
-  | { type: "gap"; fromSyncId: number; lastSyncId: number }
   | { type: "groupsChanged"; added: string[]; removed: string[] }
   | { type: "loaded"; keys: string[]; models: number }
   | { type: "rejected"; message: string; transactions: number };
@@ -136,9 +135,8 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       onRejected: (error, batch) => {
         runInAction(() => (this.error = error.message));
         this.#event({ type: "rejected", message: error.message, transactions: batch.length });
-        void this.#locked(() => this.#rebuild(batch));
+        void this.#locked(() => this.#confirm(batch));
       },
-      onCompleted: (completed) => void this.#locked(() => this.#rebuild(completed)),
       utcOffsetMinutes: () => -new Date().getTimezoneOffset(),
       lastSyncId: () => this.lastSyncId,
     });
@@ -307,7 +305,11 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         if (message.type === "ephemeral") return this.#receiveEphemeral(message);
         // A step that fails (the server unreachable mid catch-up, say) can't just be dropped: the packet's changes, or
         // a change of groups, would be lost. Reconnecting starts again from a handshake, which settles everything.
-        this.#locked(() => this.#handle(message)).catch(() => {
+        // Checked again when its turn comes: once a step has failed and the socket is abandoned, the packets queued
+        // behind it are skipped too (the handshake after reconnecting covers them), never applied out of turn.
+        this.#locked(async () => {
+          if (this.#socket === socket) await this.#handle(message);
+        }).catch(() => {
           socket.close();
           this.#lost(socket);
         });
@@ -357,13 +359,9 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       if (message.lastSyncId > this.lastSyncId) await this.#catchUp();
       return;
     }
-    // Already applied, for example caught up past it.
+    // Already applied, for example caught up past it. A socket delivers packets in order and can't lose one without
+    // closing, and every reconnect handshakes, so anything missed is caught up there.
     if (message.lastSyncId <= this.lastSyncId) return;
-    // A gap: a packet went missing, so fetch everything since the last one applied instead.
-    if (message.fromSyncId > this.lastSyncId) {
-      this.#event({ type: "gap", fromSyncId: this.lastSyncId, lastSyncId: message.fromSyncId });
-      return this.#catchUp();
-    }
     if (message.syncGroups !== undefined) await this.#followGroups(message.syncGroups);
     await this.applyDelta(message.actions, message.lastSyncId);
   }
@@ -396,20 +394,25 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       loadedAt = response.lastSyncId;
       loaded = this.#modelsOf(response.models);
     }
+    // The models of groups it left go (LSE removes them on leaving), from the database and the pool alike. Each is judged
+    // by the server's copy where there is one (a pending change of this client's mustn't decide it), else by the pool's:
+    // the pool can hold this client's own new records there that the database never got.
     const dropped: SyncAction<M>[] = [];
     if (removed.length > 0) {
-      const stored = await this.#db().models();
-      const byKey = new Map(stored.map((model) => [key(model.modelName, model.id), model.data]));
-      const lookup: Lookup<M> = (modelName, id) => byKey.get(key(modelName, id));
-      for (const model of stored)
-        if (!visibleIn(syncGroupsOf(this.schema, model.modelName, model.data, lookup), next))
-          dropped.push({
-            id: 0,
-            modelName: model.modelName,
-            modelId: model.id,
-            action: "D",
-            data: null,
-          });
+      const records = new Map<string, { modelName: ModelName<M>; data: AnyRecord<M> }>();
+      for (const model of await this.#db().models())
+        records.set(key(model.modelName, model.id), {
+          modelName: model.modelName,
+          data: model.data,
+        });
+      for (const modelName of modelNames(this.schema))
+        for (const data of this.pool.maps[modelName].values())
+          if (!records.has(key(modelName, data.id)))
+            records.set(key(modelName, data.id), { modelName, data: data as AnyRecord<M> });
+      const lookup: Lookup<M> = (modelName, id) => records.get(key(modelName, id))?.data;
+      for (const { modelName, data } of records.values())
+        if (!visibleIn(syncGroupsOf(this.schema, modelName, data, lookup), next))
+          dropped.push({ id: 0, modelName, modelId: data.id, action: "D", data: null });
     }
     runInAction(() => (this.syncGroups = next));
     await this.#db().applyActions(
@@ -437,27 +440,26 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       await this.#fetch([...this.#loaded].map(requestOf), true);
   }
 
-  // Puts a model in the pool as the server confirmed it (null or undefined for none) with this client's pending changes
-  // to it replayed on top. A new record that isn't covered (a partial model whose slice isn't loaded) stays only in the
-  // database; one already in the pool stays current, so nothing on screen disappears.
-  #put(
-    modelName: ModelName<M>,
-    id: string,
-    confirmed: AnyRecord<M> | null | undefined,
-    syncId: number,
-  ): void {
-    if (confirmed === null) void this.queue.modelDeleted(modelName, id);
+  // Puts a server record in the pool with this client's pending changes to it rebased on top (LSE's rebase); null
+  // removes it. A new record that isn't covered (a partial model whose slice isn't loaded) stays only in the database;
+  // one already in the pool stays current, so nothing on screen disappears.
+  #put(modelName: ModelName<M>, id: string, data: AnyRecord<M> | null, syncId: number): void {
     const pending = this.queue.pendingFor(modelName, id, syncId);
+    if (data === null) {
+      // Rebased onto the deletion: a refusal of any of them won't bring the model back.
+      for (const transaction of pending) transaction.rebaseDeleted(modelName, id);
+      this.pool.delete(modelName, id);
+      void this.queue.modelDeleted(modelName, id);
+      return;
+    }
     if (
-      confirmed !== null &&
-      confirmed !== undefined &&
       pending.length === 0 &&
       this.pool.get(modelName, id) === undefined &&
-      !this.#covered(modelName, confirmed)
+      !this.#covered(modelName, data)
     )
       return;
-    let record = confirmed ?? undefined;
-    for (const transaction of pending) record = transaction.replay(modelName, record);
+    let record: AnyRecord<M> | undefined = data;
+    for (const transaction of pending) record = transaction.rebase(modelName, id, record);
     if (record === undefined) this.pool.delete(modelName, id);
     else this.pool.set(modelName, record);
   }
@@ -473,8 +475,10 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     });
     await this.#db().applyActions(fresh, this.#meta(lastSyncId));
     runInAction(() => {
-      for (const action of fresh)
+      for (const action of fresh) {
+        if (action.action === "I") void this.queue.modelUpserted(action.modelName, action.modelId);
         this.#put(action.modelName, action.modelId, action.data, action.id);
+      }
       this.lastSyncId = lastSyncId;
     });
     for (const [model, loadedAt] of this.#fresher)
@@ -482,12 +486,12 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     this.queue.progressQueue(lastSyncId);
   }
 
-  // Rebuilds the models some transactions touched from what the server confirmed, once they've left the queue (completed
-  // or refused). Usually that changes nothing; it matters when a refused change was under others, or when the server's
-  // version of a change never reached this client (a record it made that it isn't allowed to see).
-  async #rebuild(transactions: Transaction<M, T>[]): Promise<void> {
+  // After a refused batch has rolled back, checks what it touched against the server's copy, with this client's other
+  // pending changes rebased on top. Usually the rollback already left exactly that. It differs only when rollback alone
+  // can't tell, such as when the record left this client's view while the change was out; the server's copy decides.
+  async #confirm(refused: Transaction<M, T>[]): Promise<void> {
     const touched = new Map<string, { modelName: ModelName<M>; id: string }>();
-    for (const transaction of transactions)
+    for (const transaction of refused)
       for (const model of transaction.touches()) touched.set(key(model.modelName, model.id), model);
     const confirmed = await Promise.all(
       [...touched.values()].map(async ({ modelName, id }) => ({
@@ -497,8 +501,14 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       })),
     );
     runInAction(() => {
-      for (const { modelName, id, stored } of confirmed)
-        this.#put(modelName, id, stored?.data, this.lastSyncId);
+      for (const { modelName, id, stored } of confirmed) {
+        let record = stored?.data;
+        for (const transaction of this.queue.pendingFor(modelName, id, this.lastSyncId))
+          record = transaction.rebase(modelName, id, record);
+        if (record === undefined) this.pool.delete(modelName, id);
+        else if (stored !== undefined || this.pool.get(modelName, id) !== undefined)
+          this.pool.set(modelName, record);
+      }
     });
   }
 

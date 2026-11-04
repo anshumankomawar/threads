@@ -1,14 +1,11 @@
-// A small product to test the engine with: notes, private to their owner unless they're in a team, with tags (a list,
-// patched with add and remove), comments that belong to a note and are seen by whoever sees it (loaded a note at a time,
+// A small product to test the engine with: notes, private to their owner unless they're in a team, with tags (a list),
+// comments that belong to a note and are seen by whoever sees it (loaded a note at a time,
 // partially), stickers (a lazy model), and teams whose members see the team's notes.
 import {
-  applyPatch,
   defineSchema,
-  invertPatch,
   WORKSPACE_GROUP,
   type BuiltInTransaction,
   type ClientMutations,
-  type Patch,
   type SyncMessage,
 } from "../src";
 import {
@@ -54,8 +51,8 @@ export type TestModels = {
 export type TestTransaction =
   | { id: string; type: "create"; modelName: "Note"; data: Omit<Note, "ownerId"> }
   | { id: string; type: "create"; modelName: "Comment"; data: Comment }
-  | { id: string; type: "update"; modelName: "Note"; modelId: string; changes: Patch<Note> }
-  | { id: string; type: "update"; modelName: "Team"; modelId: string; changes: Patch<Team> };
+  | { id: string; type: "update"; modelName: "Note"; modelId: string; changes: Partial<Note> }
+  | { id: string; type: "update"; modelName: "Team"; modelId: string; changes: Partial<Team> };
 
 export const schema = defineSchema<TestModels>({
   version: "test:v1",
@@ -93,18 +90,19 @@ export const mutations: ClientMutations<TestModels, TestTransaction> = {
       return (
         record ?? (input.modelName === "Note" ? { ...input.data, ownerId: actorId } : input.data)
       );
-    return record === undefined
-      ? undefined
-      : applyPatch(record as Note & Team, input.changes as Patch<Note & Team>);
+    return record === undefined ? undefined : { ...record, ...input.changes };
   },
   inverse: (input, before) => {
     if (input.type === "create")
       return { type: "delete", modelName: input.modelName, modelId: input.data.id };
-    const was = before.get(`${input.modelName}:${input.modelId}`);
+    const was = before.get(`${input.modelName}:${input.modelId}`) as
+      | Record<string, unknown>
+      | undefined;
     if (was === undefined) return null;
+    // An update undoes by setting back what it changed.
     return {
       ...input,
-      changes: invertPatch(was as Note & Team, input.changes as Patch<Note & Team>),
+      changes: Object.fromEntries(Object.keys(input.changes).map((field) => [field, was[field]])),
     };
   },
 };
@@ -127,6 +125,11 @@ export function createServer(
         .map((team) => `team:${team.id}`),
     ],
     apply: (batch, transaction, { actorId, nowMs }) => {
+      // A note goes only into a team you're in.
+      const intoTeam = (teamId: string | null | undefined): void => {
+        if (teamId && !batch.get("Team", teamId)?.memberIds.includes(actorId))
+          throw new SyncError(403, "Only a team's members put notes in it");
+      };
       if (transaction.type === "delete") {
         if (transaction.modelName === "Comment")
           return batch.delete("Comment", transaction.modelId);
@@ -140,20 +143,29 @@ export function createServer(
         return batch.unarchive(transaction.modelName, transaction.modelId);
       if (transaction.type === "create") {
         if (transaction.modelName === "Comment") {
-          if (batch.get("Note", transaction.data.noteId) === undefined)
-            throw new SyncError(404, "Note not found");
+          // Only on a note you can see.
+          const parent = batch.get("Note", transaction.data.noteId);
+          const sees =
+            parent !== undefined &&
+            (parent.teamId === null
+              ? parent.ownerId === actorId
+              : (batch.get("Team", parent.teamId)?.memberIds.includes(actorId) ?? false));
+          if (!sees) throw new SyncError(404, "Note not found");
           return batch.put("Comment", transaction.data);
         }
+        intoTeam(transaction.data.teamId);
         return batch.put("Note", { ...transaction.data, ownerId: actorId });
       }
       if (transaction.modelName === "Team") {
         const team = batch.get("Team", transaction.modelId);
         if (team === undefined) throw new SyncError(404, "Team not found");
-        return batch.put("Team", applyPatch(team, transaction.changes));
+        return batch.put("Team", { ...team, ...transaction.changes });
       }
       const note = batch.get("Note", transaction.modelId);
       if (note === undefined) throw new SyncError(404, "Note not found");
-      batch.put("Note", applyPatch(note, transaction.changes));
+      if ("teamId" in transaction.changes && transaction.changes.teamId !== note.teamId)
+        intoTeam(transaction.changes.teamId);
+      batch.put("Note", { ...note, ...transaction.changes });
     },
   });
 }
@@ -166,12 +178,12 @@ export type TestDatabase = SyncDatabase<
 >;
 
 type Socket = HubSocket & {
-  paused: boolean;
   handlers: Parameters<Transport<TestModels, TestTransaction>["connect"]>[0];
 };
 
 // Wires clients to a server in memory, as the Durable Object does: a socket per client, each packet filtered for its
-// session. Sockets can be paused to lose packets, clients taken offline, and the server swapped to simulate a reset.
+// session. Clients can be disconnected (they reconnect on their own) or taken offline, and the server swapped to
+// simulate a reset.
 export class Hub {
   server: TestServer;
   readonly sockets = new Set<Socket>();
@@ -183,8 +195,7 @@ export class Hub {
   }
 
   #listen(): void {
-    this.server.onCommit = (actions, fromSyncId) =>
-      broadcast(this.server, this.sockets, actions, fromSyncId);
+    this.server.onCommit = (actions) => broadcast(this.server, this.sockets, actions);
   }
 
   // Replaces the server (a reset, or a restart from the same storage), dropping every socket.
@@ -196,12 +207,13 @@ export class Hub {
     for (const socket of dropped) socket.handlers.onClose();
   }
 
-  socketOf(userId: string): Socket {
-    const socket = Array.from(this.sockets).find(
-      (candidate) => "userId" in candidate.session && candidate.session.userId === userId,
-    );
-    if (socket === undefined) throw new Error(`${userId} isn't connected`);
-    return socket;
+  // Drops a client's socket, as a network blip does; it reconnects after its backoff.
+  disconnect(userId: string): void {
+    for (const socket of Array.from(this.sockets))
+      if ("userId" in socket.session && socket.session.userId === userId) {
+        this.sockets.delete(socket);
+        socket.handlers.onClose();
+      }
   }
 
   transport(session: Session): Transport<TestModels, TestTransaction> {
@@ -236,22 +248,29 @@ export class Hub {
         return { lastSyncId: this.server.lastSyncId };
       },
       connect: (handlers) => {
+        // As a Durable Object does: the handshake goes first, and packets committed before it's delivered wait behind it.
+        const waiting: string[] = [];
+        let open = false;
         const socket: Socket = {
           session,
           groups: this.server.groupsOf(session),
-          paused: false,
           handlers,
           setGroups(groups) {
             socket.groups = groups;
           },
           send(message) {
-            if (!socket.paused) handlers.onMessage(JSON.parse(message) as SyncMessage<TestModels>);
+            if (open) handlers.onMessage(JSON.parse(message) as SyncMessage<TestModels>);
+            else waiting.push(message);
           },
         };
         this.sockets.add(socket);
+        const handshake = copy(this.server.handshake(session));
         queueMicrotask(() => {
           handlers.onOpen();
-          handlers.onMessage(copy(this.server.handshake(session)));
+          handlers.onMessage(handshake);
+          open = true;
+          for (const message of waiting.splice(0))
+            handlers.onMessage(JSON.parse(message) as SyncMessage<TestModels>);
         });
         return {
           close: () => void this.sockets.delete(socket),
@@ -303,7 +322,7 @@ export const note = (
   data: { id, text, teamId, tagIds: [] },
 });
 
-export const editNote = (id: string, changes: Patch<Note>): TestTransaction => ({
+export const editNote = (id: string, changes: Partial<Note>): TestTransaction => ({
   id: txId(),
   type: "update",
   modelName: "Note",

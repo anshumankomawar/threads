@@ -437,16 +437,10 @@ test("restoring puts back what a wipe keeps", () => {
   expect(engine.models.Organization.get(ORGANIZATION_ID)?.name).toBe("Acme");
 });
 
-test("two people changing a group's members at once both keep their change", async () => {
+test("a group's members are set whole, and the later change wins", async () => {
   await transact("anshu", [createGroup("g1", "Payments", ["arjun"])]);
-  // Each sends only what they changed, as the app does (`listsAsOps`), so neither undoes the other.
-  await transact("anshu", [updateGroup("g1", { memberIds: { $add: ["kk"] } })]);
-  await transact("arjun", [updateGroup("g1", { memberIds: { $remove: ["anshu"] } })]);
-  expect((await groupOf("g1")).memberIds.toSorted()).toEqual(["arjun", "kk"]);
-  // A whole list still works, and an op that would empty the group is refused like a whole empty list.
+  await transact("anshu", [updateGroup("g1", { memberIds: ["anshu", "arjun", "kk"] })]);
   await transact("arjun", [updateGroup("g1", { memberIds: ["arjun"] })]);
   expect((await groupOf("g1")).memberIds).toEqual(["arjun"]);
-  expect(
-    (await transact("arjun", [updateGroup("g1", { memberIds: { $remove: ["arjun"] } })])).status,
-  ).toBe(400);
+  expect((await transact("arjun", [updateGroup("g1", { memberIds: [] })])).status).toBe(400);
 });

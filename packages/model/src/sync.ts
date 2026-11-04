@@ -3,14 +3,10 @@
 // engine itself (sync ids, the log, delta packets, sync groups, the client's queue and cache) knows none of this.
 
 import {
-  applyPatch,
-  arrayOp,
   defineSchema,
-  isArrayOp,
   modelNames,
   schemaHash,
   type BootstrapResponse as SyncBootstrapResponse,
-  type ArrayOp,
   type BuiltInTransaction,
   type ClientMutations,
   type DeltasResponse as SyncDeltasResponse,
@@ -173,11 +169,8 @@ export type LabelCreate = { id: string; name: string };
 
 export type GroupCreate = { id: string; name: string; memberIds: string[] };
 
-// Lists (members, a sprint's threads, a thread's labels) go as add/remove ops (`ArrayOp`), so two people changing the
-// same list at once both keep their change. The app passes whole lists; `ThreadsClient` turns them into ops.
-export type GroupChanges = Partial<Pick<Group, "name" | "archived">> & {
-  memberIds?: string[] | ArrayOp;
-};
+// Lists (members, a sprint's threads, a thread's labels) are set whole; the last change wins, as in LSE.
+export type GroupChanges = Partial<Pick<Group, "name" | "memberIds" | "archived">>;
 
 // A sprint is made in a group, with its dates and any threads to start with.
 export type SprintCreate = {
@@ -190,9 +183,9 @@ export type SprintCreate = {
 };
 
 // Its threads are changed as a whole list, like a group's members.
-export type SprintChanges = Partial<Pick<Sprint, "name" | "startMs" | "endMs" | "closed">> & {
-  threadIds?: string[] | ArrayOp;
-};
+export type SprintChanges = Partial<
+  Pick<Sprint, "name" | "startMs" | "endMs" | "threadIds" | "closed">
+>;
 
 export type OrganizationChanges = Pick<Organization, "name">;
 
@@ -200,8 +193,9 @@ export type OrganizationChanges = Pick<Organization, "name">;
 export type PersonChanges = { buckets?: Bucket[] };
 
 export type ThreadChanges = Partial<
-  Pick<ThreadRecord, "title" | "status" | "priority" | "dueAtMs" | "effortHours">
-> & { labelIds?: string[] | ArrayOp } & ScopedChanges;
+  Pick<ThreadRecord, "title" | "status" | "priority" | "dueAtMs" | "effortHours" | "labelIds">
+> &
+  ScopedChanges;
 
 // Changes that are only about whoever sends them, applied by `applyScopedChanges` on the server and, optimistically,
 // in the app. They're quiet: no activity line, and the thread doesn't count as updated.
@@ -297,7 +291,7 @@ export const threadsMutations: ClientMutations<ModelRecords, TransactionInput> =
     }
     if (record === undefined) return undefined;
     if (input.type === "move") return { ...(record as EntryRecord), threadId: input.threadId };
-    if (input.modelName !== "Thread") return applyPatch(record as never, input.changes as never);
+    if (input.modelName !== "Thread") return { ...record, ...input.changes } as AnyRecord;
     // On a thread, changes only about whoever made them (seen, done, snoozed, placed in a bucket) land on their
     // entry, as the server puts them.
     const { record: scoped, rest } = applyScopedChanges(
@@ -306,10 +300,9 @@ export const threadsMutations: ClientMutations<ModelRecords, TransactionInput> =
       actorId,
       nowMs,
     );
-    return applyPatch(scoped, rest);
+    return { ...scoped, ...rest };
   },
-  // An update undoes by setting back what it changed (a list by the opposite op, your own done, snooze and bucket as
-  // they were); a move by moving the messages back; making a message by deleting it. Nothing else is undone: the server
+  // An update undoes by setting back what it changed (your own done, snooze and bucket as they were); a move by moving the messages back; making a message by deleting it. Nothing else is undone: the server
   // doesn't delete threads, labels, groups or sprints.
   inverse: (input, before, { actorId }) => {
     if (input.type === "create")
@@ -328,7 +321,7 @@ export const threadsMutations: ClientMutations<ModelRecords, TransactionInput> =
       | undefined;
     if (was === undefined) return null;
     const changes: Record<string, unknown> = {};
-    for (const [field, value] of Object.entries(input.changes as Record<string, unknown>)) {
+    for (const field of Object.keys(input.changes as Record<string, unknown>)) {
       if (field === "seen") continue;
       if (field === "done")
         changes.done = (was.doneBy as Record<string, number>)[actorId] !== undefined;
@@ -337,12 +330,6 @@ export const threadsMutations: ClientMutations<ModelRecords, TransactionInput> =
       else if (field === "bucketId") {
         const mine = (was.triage as Record<string, Triage>)[actorId];
         changes.bucketId = mine?.manual ? mine.bucketId : null;
-      } else if (isArrayOp(value)) {
-        const current = (was[field] as string[] | undefined) ?? [];
-        changes[field] = arrayOp(
-          applyPatch({ [field]: current }, { [field]: value })[field],
-          current,
-        );
       } else changes[field] = was[field] ?? null;
     }
     return Object.keys(changes).length === 0 ? null : ({ ...input, changes } as never);

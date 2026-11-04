@@ -462,15 +462,15 @@ Base: local `http://127.0.0.1:3030`; hosted `https://threads-api.threads-app.wor
 | `X-User` (`?user=`)                         | local only: whose session; none is the admin session              |
 | `X-UTC-Offset` (`?utcOffset=`)              | minutes; used when seeding a fresh workspace                      |
 
-| Route                      | Body / query                                     | Response                                                                                                                                                       |
-| -------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /sync/bootstrap`      | `?groups=a,b` for a partial bootstrap            | `{ epoch, lastSyncId, syncGroups, schemaHash, models: { [ModelName]: Record[] } }` (what the session sees)                                                     |
-| `GET /sync/deltas`         | `?after=<syncId>`                                | `{ epoch, lastSyncId, syncGroups, actions }`, or `fullBootstrapRequired: true` once the log is compacted                                                       |
-| `POST /sync/transactions`  | `{ actorId, utcOffsetMinutes?, transactions[] }` | `{ lastSyncId }`, or `{ error }` with 400/403/404/409                                                                                                          |
-| `GET /sync/ws` (WebSocket) | query params above                               | `{ type: "handshake", epoch, lastSyncId, minSyncId, syncGroups }`, then `{ type: "delta", fromSyncId, lastSyncId, actions, syncGroups? }`; `"ping"` → `"pong"` |
-| `POST /sync/reset`         | admin only                                       | `{ lastSyncId }`; wipes threads, keeps org/labels/groups, reseeds                                                                                              |
-| `POST /auth/session`       | `{ workspace, personId }`, admin only            | `{ token, expiresAtMs }`: that person's session token (30 days)                                                                                                |
-| `POST /ai/compose`         | `ComposeRequest`                                 | `ComposeDraft`; 503 without AI, 502 if the model fails                                                                                                         |
+| Route                      | Body / query                                     | Response                                                                                                                                           |
+| -------------------------- | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /sync/bootstrap`      | `?groups=a,b` for a partial bootstrap            | `{ epoch, lastSyncId, syncGroups, schemaHash, models: { [ModelName]: Record[] } }` (what the session sees)                                         |
+| `GET /sync/deltas`         | `?after=<syncId>`                                | `{ epoch, lastSyncId, syncGroups, actions }`, or `fullBootstrapRequired: true` once the log is compacted                                           |
+| `POST /sync/transactions`  | `{ actorId, utcOffsetMinutes?, transactions[] }` | `{ lastSyncId }`, or `{ error }` with 400/403/404/409                                                                                              |
+| `GET /sync/ws` (WebSocket) | query params above                               | `{ type: "handshake", epoch, lastSyncId, minSyncId, syncGroups }`, then `{ type: "delta", lastSyncId, actions, syncGroups? }`; `"ping"` → `"pong"` |
+| `POST /sync/reset`         | admin only                                       | `{ lastSyncId }`; wipes threads, keeps org/labels/groups, reseeds                                                                                  |
+| `POST /auth/session`       | `{ workspace, personId }`, admin only            | `{ token, expiresAtMs }`: that person's session token (30 days)                                                                                    |
+| `POST /ai/compose`         | `ComposeRequest`                                 | `ComposeDraft`; 503 without AI, 502 if the model fails                                                                                             |
 
 `SyncAction = { id, modelName, modelId, action: "I" | "U" | "D" | "A" | "V", data: Record | null }` (whole records).
 
@@ -717,7 +717,7 @@ What the prototype leaves out on purpose, roughly in the order production needs 
 5. **Deletes.**
    - The engine has delete, archive and unarchive with cascades, but Threads only lets you delete your own messages.
      Threads, labels, people, groups and sprints aren't deleted, and assignees can't be removed.
-6. **Concurrency on lists.** Solved: `memberIds`, `threadIds` and `labelIds` change by add/remove ops, so concurrent edits merge.
+6. **Concurrency on lists.** `memberIds`, `threadIds` and `labelIds` are set whole and the last change wins, as in Linear's engine, so two people editing one list at once keep only the later edit.
 7. **Undo and redo.** The engine has LSE's transaction-level undo queue (`ThreadsClient.undoQueue`), but no key is bound yet; only Done and Snooze have an Undo toast.
 8. **AI operations.**
    - Sorting depends on Workers AI. Its costs and limits need watching.
