@@ -48,7 +48,7 @@ import {
   SOURCE_LABELS,
   type DataSource,
 } from "./api";
-import type { SyncClient } from "./sync/syncClient";
+import type { ThreadsClient } from "./sync/syncClient";
 import { ThreadView, type MessageEntry, type ThreadActions } from "./components/ThreadView";
 import { MovePalette, type MoveTarget } from "./components/MovePalette";
 import { BlockedPalette } from "./components/BlockedPalette";
@@ -161,6 +161,14 @@ function savedViewer(source: DataSource): string | null {
   }
 }
 
+function forget(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Nothing remembered to forget.
+  }
+}
+
 function remember(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
@@ -169,10 +177,16 @@ function remember(key: string, value: string): void {
   }
 }
 
-// One sync client per data source, made when the source is picked and running while it's on screen.
-function useSyncClient(source: DataSource): SyncClient {
-  const [current, setCurrent] = useState(() => ({ source, client: createSyncClient(source) }));
-  if (current.source !== source) setCurrent({ source, client: createSyncClient(source) });
+// One sync client per data source and person you view it as (each its own session and local cache, as the server
+// treats you as them), made when either changes and running while it's on screen.
+function useSyncClient(source: DataSource, viewerId: string | null): ThreadsClient {
+  const [current, setCurrent] = useState(() => ({
+    source,
+    viewerId,
+    client: createSyncClient(source, viewerId),
+  }));
+  if (current.source !== source || current.viewerId !== viewerId)
+    setCurrent({ source, viewerId, client: createSyncClient(source, viewerId) });
   const { client } = current;
   useEffect(() => {
     void client.start();
@@ -213,16 +227,29 @@ function WipeButton({ onWipe }: { onWipe: () => Promise<void> }): React.JSX.Elem
 
 const App = observer(function App(): React.JSX.Element {
   const [source, setSource] = useState<DataSource>(savedSource);
-  const client = useSyncClient(source);
+  const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedSource()));
+  const client = useSyncClient(source, viewerId);
   const threads = client.threads;
   const people = client.people;
   const labels = client.labels;
   const groups = client.groups;
   const sprints = client.sprints;
-  const [viewerId, setViewerId] = useState<string | null>(() => savedViewer(savedSource()));
   const fallbackMe = useContext(MeContext);
   // You view the app as the chosen person, or the first person in the data until you pick one.
   const me = people.find((person) => person.id === viewerId) ?? people[0] ?? fallbackMe;
+  // The first load is as the admin session, to find who's here; then the app signs in as the person it shows, so the
+  // server treats it as them. Someone who isn't in this workspace sees nobody, so that goes back to the admin session.
+  const firstPersonId = people[0]?.id;
+  useEffect(() => {
+    if (client.status !== "ready") return;
+    if (viewerId === null && firstPersonId !== undefined) {
+      remember(viewerKey(source), firstPersonId);
+      setViewerId(firstPersonId);
+    } else if (viewerId !== null && firstPersonId === undefined && client.connected) {
+      forget(viewerKey(source));
+      setViewerId(null);
+    }
+  }, [client.status, client.connected, viewerId, firstPersonId, source]);
   const [viewAsOpen, setViewAsOpen] = useState(false);
   const [contentZoom, setContentZoom] = useState(savedContentZoom);
   const [theme, setTheme] = useState(savedTheme);
@@ -770,6 +797,7 @@ const App = observer(function App(): React.JSX.Element {
       onSetBucket: (bucketId) => placeIn(thread.id, bucketId),
       onBranch: (title) => createBranch(thread, title),
       onMoveMessages: (messages) => setMoving({ from: thread, messages }),
+      onDeleteMessage: (message) => client.deleteMessage(message.id, me),
     };
   };
 

@@ -111,6 +111,8 @@ export type ThreadActions = {
   onBranch: (title: string) => string;
   // Moves messages out of this thread, into another or a new branch; asks where.
   onMoveMessages: (messages: MessageEntry[]) => void;
+  // Deletes one of your own messages.
+  onDeleteMessage: (message: MessageEntry) => void;
 };
 
 // A thread link as a chip with the linked thread's current title; clicking opens it beside this one.
@@ -1130,6 +1132,13 @@ export function ThreadView({
         run: () =>
           void navigator.clipboard.writeText(plainThreadLinks(message.text, titleOf, nameOf)),
       },
+      // Your own messages, other than the description, can be deleted.
+      ...(message.author.id === me.id && message.id !== thread.id
+        ? [
+            "separator" as const,
+            { label: "Delete message", run: () => actions.onDeleteMessage(message) },
+          ]
+        : []),
     ];
   };
 

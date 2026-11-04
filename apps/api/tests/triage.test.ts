@@ -35,8 +35,9 @@ beforeEach(() => {
 });
 
 let counter = 0;
+// Runs transactions as `actorId`, in their own session.
 const run = (actorId: string, ...transactions: TransactionInput[]) =>
-  engine.execute(actorId, transactions);
+  engine.execute({ actorId, transactions }, { userId: actorId });
 const create = (
   id: string,
   title: string,
@@ -190,7 +191,7 @@ test("buckets need names and unique ids, and only you change yours", () => {
     modelId: "kk",
     changes: { buckets: DEFAULT_BUCKETS },
   } as TransactionInput;
-  expect(() => engine.execute("arjun", [theirs])).toThrow("People change only their own profile");
+  expect(() => run("arjun", theirs)).toThrow("People change only their own profile");
 });
 
 test("a failing model leaves threads unsorted and waits before trying them again", async () => {
@@ -232,14 +233,12 @@ test("a thread is sorted for everyone whose inbox it's in, but not once it's clo
 
 test("the prompt numbers buckets and threads, and answers map back to them", () => {
   run("anshu", create("t1", "Customer can't log in"));
-  engine.execute("anshu", [
-    {
-      id: "tx-desc",
-      type: "create",
-      modelName: "Entry",
-      data: { id: "t1", threadId: "t1", kind: "message", text: "Since Tuesday's deploy" },
-    },
-  ]);
+  run("anshu", {
+    id: "tx-desc",
+    type: "create",
+    modelName: "Entry",
+    data: { id: "t1", threadId: "t1", kind: "message", text: "Since Tuesday's deploy" },
+  });
   const [request] = engine.triageRequests();
   expect(request.threads[0]).toEqual({
     id: "t1",

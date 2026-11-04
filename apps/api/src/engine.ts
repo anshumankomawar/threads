@@ -31,7 +31,9 @@ import {
   isDone,
   toThread,
   toThreads,
+  threadsSchema,
   type AnyRecord,
+  type BuiltIn,
   type EntryRecord,
   type Bucket,
   type Label,
@@ -39,13 +41,21 @@ import {
   type ModelRecords,
   type Person,
   type Sprint,
-  type SyncAction,
   type Thread,
   type ThreadChanges,
   type ThreadRecord,
   type Triage,
   type TransactionInput,
 } from "model";
+import { WORKSPACE_GROUP } from "sync";
+import {
+  SyncError,
+  SyncServer,
+  type ApplyContext,
+  type Batch,
+  type LoggedAction,
+  type SyncStorage,
+} from "sync/server";
 import { z } from "zod";
 
 // Each workspace is its own sync group: its own people, threads and sync ids. "local" starts with a few people
@@ -56,90 +66,13 @@ export type WorkspaceName = (typeof WORKSPACES)[number];
 export const isWorkspaceName = (name: string): name is WorkspaceName =>
   (WORKSPACES as readonly string[]).includes(name);
 
-// A failed request: the status to answer with, and why.
-export class EngineError extends Error {
-  readonly status: 400 | 403 | 404 | 409;
+const missingUser = (id: string): SyncError => new SyncError(404, `User not found: ${id}`);
 
-  constructor(status: 400 | 403 | 404 | 409, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
-
-const missingUser = (id: string): EngineError => new EngineError(404, `User not found: ${id}`);
-
-// Where an engine keeps its sync log. The Durable Object stores it in SQLite; tests keep it in memory.
-export type EngineStorage = {
-  // Saves a batch's sync actions, the models they leave behind, and the transactions that made them, all or nothing.
-  commit(actions: SyncAction[], transactionIds: string[]): void;
-  actionsAfter(syncId: number): SyncAction[];
-  // A transaction already executed, for example one a client resent after losing the response.
-  hasTransaction(id: string): boolean;
-};
-
-export function memoryStorage(): EngineStorage {
-  const log: SyncAction[] = [];
-  const transactions = new Set<string>();
-  return {
-    commit(actions, transactionIds) {
-      log.push(...actions);
-      for (const id of transactionIds) transactions.add(id);
-    },
-    actionsAfter: (syncId) => log.filter((action) => action.id > syncId),
-    hasTransaction: (id) => transactions.has(id),
-  };
-}
-
-type Models = { [Name in ModelName]: Map<string, ModelRecords[Name]> };
-
-const emptyModels = (): Models => ({
-  Person: new Map(),
-  Thread: new Map(),
-  Entry: new Map(),
-  Organization: new Map(),
-  Label: new Map(),
-  Group: new Map(),
-  Sprint: new Map(),
-});
-
-// The writes of one batch, staged until the whole batch succeeds. Reads see staged writes first.
-class Batch {
-  readonly writes = new Map<string, { modelName: ModelName; id: string; data: AnyRecord | null }>();
-  readonly #models: Models;
-
-  constructor(models: Models) {
-    this.#models = models;
-  }
-
-  get<Name extends ModelName>(modelName: Name, id: string): ModelRecords[Name] | undefined {
-    const staged = this.writes.get(`${modelName}:${id}`);
-    if (staged !== undefined) return (staged.data ?? undefined) as ModelRecords[Name] | undefined;
-    return this.#models[modelName].get(id);
-  }
-
-  put<Name extends ModelName>(modelName: Name, record: ModelRecords[Name]): void {
-    this.writes.set(`${modelName}:${record.id}`, { modelName, id: record.id, data: record });
-  }
-
-  // Every record of a model, counting staged writes.
-  all<Name extends ModelName>(modelName: Name): ModelRecords[Name][] {
-    const records: ModelRecords[Name][] = [];
-    for (const id of this.#models[modelName].keys()) {
-      const record = this.get(modelName, id);
-      if (record !== undefined) records.push(record);
-    }
-    for (const { modelName: name, id, data } of this.writes.values())
-      if (name === modelName && data !== null && !this.#models[modelName].has(id))
-        records.push(data as ModelRecords[Name]);
-    return records;
-  }
-
-  // The open threads still blocking a thread.
-  openBlockers(threadId: string): ThreadRecord[] {
-    return this.all("Thread").filter(
-      (thread) => thread.blocksId === threadId && !isDone(thread.status),
-    );
-  }
+// The open threads still blocking a thread.
+function openBlockers(batch: Batch<ModelRecords>, threadId: string): ThreadRecord[] {
+  return batch
+    .all("Thread")
+    .filter((thread) => thread.blocksId === threadId && !isDone(thread.status));
 }
 
 // --- Validation -------------------------------------------------------------------------------------------
@@ -240,7 +173,16 @@ const entryCreate = z.object({
     .optional(),
 });
 
+// The engine's own transactions, on any model; `#apply` decides which are allowed.
+const builtIn = z.object({
+  id,
+  type: z.enum(["delete", "archive", "unarchive"]),
+  modelName: z.enum(MODEL_NAMES as [ModelName, ...ModelName[]]),
+  modelId: id,
+});
+
 export const transactionInput = z.union([
+  builtIn,
   z.object({ id, type: z.literal("create"), modelName: z.literal("Thread"), data: threadCreate }),
   z.object({ id, type: z.literal("create"), modelName: z.literal("Entry"), data: entryCreate }),
   z.object({ id, type: z.literal("create"), modelName: z.literal("Label"), data: labelCreate }),
@@ -295,6 +237,12 @@ export const transactionBatch = z.object({
   utcOffsetMinutes: z.number().int().min(-1440).max(1440).optional(),
   transactions: z.array(transactionInput).min(1).max(200),
 });
+
+// A request body as a batch, or why it isn't one.
+export function parseBatch(body: unknown): z.infer<typeof transactionBatch> | { error: string } {
+  const result = transactionBatch.safeParse(body);
+  return result.success ? result.data : { error: z.prettifyError(result.error) };
+}
 
 // --- Side effects -----------------------------------------------------------------------------------------
 
@@ -417,9 +365,9 @@ function upgrade(modelName: ModelName, data: AnyRecord): AnyRecord | null {
 
 export type EngineOptions = {
   now?: () => number;
-  storage?: EngineStorage;
-  // Called after each committed batch with its sync actions, to broadcast them as a delta packet.
-  onActions?: (actions: SyncAction[]) => void;
+  storage?: SyncStorage<ModelRecords>;
+  // After each committed batch, with its actions and the sync id before them: broadcast them.
+  onCommit?: (actions: LoggedAction<ModelRecords>[], fromSyncId: number) => void;
 };
 
 // What the model needs to sort one person's inbox: their buckets, the threads in their inbox that aren't sorted
@@ -433,85 +381,27 @@ export type TriageRequest = {
 
 export type TriageResult = { threadId: string; bucketId: string; reason: string };
 
-// One workspace's models and sync log. Every change, whether a client transaction, a REST call or a seed, runs as
-// a batch: it's validated and staged, its side effects added, then each write is numbered with the next sync id,
-// saved, applied, and broadcast. Batches run one at a time, so sync ids give every change a total order.
-export class SyncEngine {
-  readonly models = emptyModels();
-  lastSyncId = 0;
-  readonly #now: () => number;
-  readonly #storage: EngineStorage;
-  onActions: ((actions: SyncAction[]) => void) | undefined;
-
-  constructor({ now = Date.now, storage = memoryStorage(), onActions }: EngineOptions = {}) {
-    this.#now = now;
-    this.#storage = storage;
-    this.onActions = onActions;
-  }
-
-  // Restores models and the sync position from storage, bringing older records up to date.
-  load(records: { modelName: ModelName; data: AnyRecord }[], lastSyncId: number): void {
-    for (const { modelName, data } of records) {
-      const record = upgrade(modelName, data);
-      if (record !== null)
-        (this.models[modelName] as Map<string, AnyRecord>).set(record.id, record);
-    }
-    this.lastSyncId = lastSyncId;
-  }
-
-  get nowMs(): number {
-    return this.#now();
-  }
-
-  get isEmpty(): boolean {
-    return MODEL_NAMES.every((name) => this.models[name].size === 0);
-  }
-
-  // Runs `stage` as one batch. Nothing is saved or applied if it throws.
-  write(stage: (batch: Batch) => void, transactionIds: string[] = []): SyncAction[] {
-    const batch = new Batch(this.models);
-    stage(batch);
-    const actions: SyncAction[] = [];
-    let syncId = this.lastSyncId;
-    for (const { modelName, id, data } of batch.writes.values()) {
-      const exists = this.models[modelName].has(id);
-      if (data === null && !exists) continue;
-      actions.push({
-        id: ++syncId,
-        modelName,
-        modelId: id,
-        action: data === null ? "D" : exists ? "U" : "I",
-        data,
-      });
-    }
-    // Persist first, then apply in memory.
-    this.#storage.commit(actions, transactionIds);
-    for (const action of actions) {
-      const models = this.models[action.modelName] as Map<string, AnyRecord>;
-      if (action.data === null) models.delete(action.modelId);
-      else models.set(action.modelId, action.data);
-    }
-    this.lastSyncId = syncId;
-    if (actions.length > 0) this.onActions?.(actions);
-    return actions;
-  }
-
-  // Executes a client's transactions as one batch, skipping any it already executed.
-  execute(actorId: string, transactions: TransactionInput[], utcOffsetMinutes = 0): SyncAction[] {
-    const fresh = transactions.filter(
-      (transaction) => !this.#storage.hasTransaction(transaction.id),
-    );
-    if (fresh.length === 0) return [];
-    const actor = this.models.Person.get(actorId);
-    if (actor === undefined) throw missingUser(actorId);
-    const nowMs = this.#now();
-    return this.write(
-      (batch) => {
-        for (const transaction of fresh)
-          this.#apply(batch, actor, transaction, nowMs, utcOffsetMinutes);
+// One workspace: the sync engine's server (`SyncServer` in packages/sync, which numbers, saves, logs and broadcasts
+// every change) running Threads' rules. `#apply` checks each transaction and stages its side effects; the rest of the
+// class is what the API needs on top: sorting inboxes, and the threads as the app sees them.
+//
+// Every member of the workspace sees everything (its one sync group); someone who isn't a member sees nothing.
+export class SyncEngine extends SyncServer<ModelRecords, TransactionInput> {
+  constructor({ now = Date.now, storage, onCommit }: EngineOptions = {}) {
+    const self: { engine?: SyncEngine } = {};
+    super({
+      schema: threadsSchema,
+      now,
+      storage,
+      onCommit,
+      upgrade,
+      groupsFor: (userId, models) => (models.Person.has(userId) ? [WORKSPACE_GROUP] : []),
+      apply: (batch, transaction, context) => {
+        // Set as soon as the constructor returns, before anything can run a batch.
+        if (self.engine !== undefined) self.engine.#apply(batch, transaction, context);
       },
-      fresh.map((transaction) => transaction.id),
-    );
+    });
+    self.engine = this;
   }
 
   // A thread as the app sees it, with its entries and people resolved.
@@ -591,7 +481,7 @@ export class SyncEngine {
 
   // Saves the model's choices for one person's threads. Any thread that left their inbox, or that they placed by hand,
   // while the model was thinking keeps what it has; a bucket that's gone is ignored.
-  applyTriage(personId: string, results: TriageResult[]): SyncAction[] {
+  applyTriage(personId: string, results: TriageResult[]): LoggedAction<ModelRecords>[] {
     return this.write((batch) => {
       const buckets = bucketsOf(batch.get("Person", personId));
       for (const { threadId, bucketId, reason } of results) {
@@ -624,12 +514,12 @@ export class SyncEngine {
   }
 
   #apply(
-    batch: Batch,
-    actor: Person,
-    transaction: TransactionInput,
-    nowMs: number,
-    offsetMinutes: number,
+    batch: Batch<ModelRecords>,
+    transaction: TransactionInput | BuiltIn,
+    { actorId, nowMs, utcOffsetMinutes: offsetMinutes }: ApplyContext,
   ): void {
+    const actor = batch.get("Person", actorId);
+    if (actor === undefined) throw missingUser(actorId);
     const person = (personId: string): Person | undefined => batch.get("Person", personId);
     const requirePerson = (personId: string): void => {
       if (person(personId) === undefined) throw missingUser(personId);
@@ -637,7 +527,7 @@ export class SyncEngine {
     const requireLabels = (labelIds: string[]): void => {
       for (const labelId of labelIds)
         if (batch.get("Label", labelId) === undefined)
-          throw new EngineError(404, `Label not found: ${labelId}`);
+          throw new SyncError(404, `Label not found: ${labelId}`);
     };
     // Whether a label other than `exceptId` already has this name, however it's capitalized or punctuated.
     const nameTaken = (slug: string, exceptId?: string): boolean =>
@@ -647,15 +537,32 @@ export class SyncEngine {
           (label) => label.id !== exceptId && (label.id === slug || labelSlug(label.name) === slug),
         );
 
+    // Only your own messages can be deleted, and not a thread's description. A deleted message just goes: there's no
+    // activity line. Archiving is a thread's status, not the engine's archive.
+    if (transaction.type === "delete") {
+      const entry =
+        transaction.modelName === "Entry" ? batch.get("Entry", transaction.modelId) : undefined;
+      if (entry === undefined)
+        throw new SyncError(400, `A ${transaction.modelName.toLowerCase()} can't be deleted`);
+      if (entry.kind !== "message" || entry.authorId !== actor.id)
+        throw new SyncError(403, "You can only delete your own messages");
+      if (entry.id === entry.threadId)
+        throw new SyncError(400, "A thread's description stays with it");
+      batch.delete("Entry", entry.id);
+      return;
+    }
+    if (transaction.type === "archive" || transaction.type === "unarchive")
+      throw new SyncError(400, "Archive a thread with its status");
+
     // Making a label that exists does nothing, so a thread made with it in the same batch isn't refused along with it.
     if (transaction.type === "create" && transaction.modelName === "Label") {
       const { data } = transaction;
       const slug = labelSlug(data.name);
       if (slug === "" || data.id !== slug)
-        throw new EngineError(400, "A label's id comes from its name");
+        throw new SyncError(400, "A label's id comes from its name");
       const existing = batch.get("Label", slug);
       if (existing !== undefined && labelSlug(existing.name) === slug) return;
-      if (nameTaken(slug)) throw new EngineError(409, `That label name is taken: ${data.name}`);
+      if (nameTaken(slug)) throw new SyncError(409, `That label name is taken: ${data.name}`);
       batch.put("Label", labelFromCreate(data, actor.id, nowMs));
       return;
     }
@@ -663,10 +570,10 @@ export class SyncEngine {
     if (transaction.type === "create" && transaction.modelName === "Group") {
       const { data } = transaction;
       if (batch.get("Group", data.id) !== undefined)
-        throw new EngineError(409, `Group already exists: ${data.id}`);
+        throw new SyncError(409, `Group already exists: ${data.id}`);
       const slug = labelSlug(data.name);
-      if (slug === "") throw new EngineError(400, "A group's name needs a letter or number");
-      if (nameTaken(slug)) throw new EngineError(409, `That name is taken: ${data.name}`);
+      if (slug === "") throw new SyncError(400, "A group's name needs a letter or number");
+      if (nameTaken(slug)) throw new SyncError(409, `That name is taken: ${data.name}`);
       for (const member of data.memberIds) requirePerson(member);
       const group = groupFromCreate(data, actor.id, nowMs);
       const others = group.memberIds.filter((member) => member !== actor.id);
@@ -695,21 +602,21 @@ export class SyncEngine {
 
     if (transaction.type === "update" && transaction.modelName === "Organization") {
       const organization = batch.get("Organization", transaction.modelId);
-      if (organization === undefined) throw new EngineError(404, "Organization not found");
+      if (organization === undefined) throw new SyncError(404, "Organization not found");
       batch.put("Organization", { ...organization, ...transaction.changes });
       return;
     }
 
     if (transaction.type === "update" && transaction.modelName === "Group") {
       const group = batch.get("Group", transaction.modelId);
-      if (group === undefined) throw new EngineError(404, "Group not found");
+      if (group === undefined) throw new SyncError(404, "Group not found");
       const { changes } = transaction;
       const memberIds = changes.memberIds;
       if (memberIds !== undefined) {
         if (new Set(memberIds).size !== memberIds.length)
-          throw new EngineError(400, "Members must be unique");
+          throw new SyncError(400, "Members must be unique");
         if (memberIds.length === 0)
-          throw new EngineError(400, "A group needs a member; archive it instead");
+          throw new SyncError(400, "A group needs a member; archive it instead");
         for (const member of memberIds) requirePerson(member);
       }
       const added = (memberIds ?? []).filter((member) => !group.memberIds.includes(member));
@@ -724,7 +631,7 @@ export class SyncEngine {
         added[0] === actor.id &&
         removed.length === 0;
       if (!group.memberIds.includes(actor.id) && !joining)
-        throw new EngineError(403, "Only a group's members can change it");
+        throw new SyncError(403, "Only a group's members can change it");
 
       const names = (ids: string[]): string =>
         ids.map((member) => person(member)?.name ?? member).join(", ");
@@ -739,9 +646,9 @@ export class SyncEngine {
         lines.push({ text: `removed ${names(removedOthers)}`, targetIds: [] });
       if (changes.name !== undefined && changes.name !== group.name) {
         const slug = labelSlug(changes.name);
-        if (slug === "") throw new EngineError(400, "A group's name needs a letter or number");
+        if (slug === "") throw new SyncError(400, "A group's name needs a letter or number");
         if (nameTaken(slug, group.labelId))
-          throw new EngineError(409, `That name is taken: ${changes.name}`);
+          throw new SyncError(409, `That name is taken: ${changes.name}`);
         const label = batch.get("Label", group.labelId);
         if (label !== undefined) batch.put("Label", { ...label, name: changes.name });
         lines.push({ text: `renamed this to “${changes.name}”`, targetIds: [] });
@@ -765,20 +672,20 @@ export class SyncEngine {
     // a thread is in one open sprint of a group at a time. `before` is the sprint as it was, for an update.
     const checkSprint = (sprint: Sprint, before: Sprint | undefined): void => {
       const group = batch.get("Group", sprint.groupId);
-      if (group === undefined) throw new EngineError(404, "Group not found");
+      if (group === undefined) throw new SyncError(404, "Group not found");
       if (!group.memberIds.includes(actor.id))
-        throw new EngineError(403, "Only a group's members plan its sprints");
+        throw new SyncError(403, "Only a group's members plan its sprints");
       if (before === undefined && group.archived)
-        throw new EngineError(400, "An archived group has no new sprints");
+        throw new SyncError(400, "An archived group has no new sprints");
       const length = sprint.endMs - sprint.startMs;
       if (length < DAY_MS || length > 366 * DAY_MS)
-        throw new EngineError(400, "A sprint runs from a day to a year");
+        throw new SyncError(400, "A sprint runs from a day to a year");
       for (const threadId of sprint.threadIds) {
         if (before?.threadIds.includes(threadId)) continue;
         const thread = batch.get("Thread", threadId);
-        if (thread === undefined) throw new EngineError(404, "Thread not found");
+        if (thread === undefined) throw new SyncError(404, "Thread not found");
         if (!thread.labelIds.includes(group.labelId))
-          throw new EngineError(400, `Only ${group.name}'s threads go in its sprints`);
+          throw new SyncError(400, `Only ${group.name}'s threads go in its sprints`);
       }
       if (sprint.closed) return;
       const others = batch
@@ -791,7 +698,7 @@ export class SyncEngine {
           others.some((other) => other.threadIds.includes(threadId)),
         )
       )
-        throw new EngineError(409, "A thread is in one open sprint of a group at a time");
+        throw new SyncError(409, "A thread is in one open sprint of a group at a time");
     };
     // A line in the group's activity about one of its sprints.
     const sprintLine = (groupId: string, text: string): void => {
@@ -806,7 +713,7 @@ export class SyncEngine {
     if (transaction.type === "create" && transaction.modelName === "Sprint") {
       const { data } = transaction;
       if (batch.get("Sprint", data.id) !== undefined)
-        throw new EngineError(409, `Sprint already exists: ${data.id}`);
+        throw new SyncError(409, `Sprint already exists: ${data.id}`);
       const sprint = sprintFromCreate(data, actor.id, nowMs);
       checkSprint(sprint, undefined);
       batch.put("Sprint", sprint);
@@ -816,7 +723,7 @@ export class SyncEngine {
 
     if (transaction.type === "update" && transaction.modelName === "Sprint") {
       const before = batch.get("Sprint", transaction.modelId);
-      if (before === undefined) throw new EngineError(404, "Sprint not found");
+      if (before === undefined) throw new SyncError(404, "Sprint not found");
       const sprint = { ...before, ...transaction.changes, updatedAtMs: nowMs };
       checkSprint(sprint, before);
       batch.put("Sprint", sprint);
@@ -828,14 +735,13 @@ export class SyncEngine {
     if (transaction.type === "create" && transaction.modelName === "Thread") {
       const { data } = transaction;
       if (batch.get("Thread", data.id) !== undefined)
-        throw new EngineError(409, `Thread already exists: ${data.id}`);
+        throw new SyncError(409, `Thread already exists: ${data.id}`);
       for (const personId of data.assigneeIds ?? []) requirePerson(personId);
       const parent = data.branchedFromId ? batch.get("Thread", data.branchedFromId) : undefined;
-      if (data.branchedFromId && parent === undefined)
-        throw new EngineError(404, "Thread not found");
+      if (data.branchedFromId && parent === undefined) throw new SyncError(404, "Thread not found");
       const blocked = data.blocksId ? batch.get("Thread", data.blocksId) : undefined;
       if (data.blocksId && (blocked === undefined || isDone(blocked.status)))
-        throw new EngineError(404, "Thread not found");
+        throw new SyncError(404, "Thread not found");
       requireLabels(data.labelIds ?? []);
       // A branch or blocker stays in its parent's groups, so a project's blockers don't fall out of the project.
       const inherited = [...(parent?.labelIds ?? []), ...(blocked?.labelIds ?? [])].filter(
@@ -863,22 +769,22 @@ export class SyncEngine {
 
     if (transaction.type === "move") {
       const destination = batch.get("Thread", transaction.threadId);
-      if (destination === undefined) throw new EngineError(404, "Thread not found");
+      if (destination === undefined) throw new SyncError(404, "Thread not found");
       const entries = transaction.entryIds.map((entryId) => batch.get("Entry", entryId));
       const messages = entries.filter((entry) => entry?.kind === "message");
-      if (messages.length !== entries.length) throw new EngineError(404, "Message not found");
+      if (messages.length !== entries.length) throw new SyncError(404, "Message not found");
       const sourceId = messages[0].threadId;
       if (messages.some((entry) => entry.threadId !== sourceId))
-        throw new EngineError(400, "Messages must come from one thread");
+        throw new SyncError(400, "Messages must come from one thread");
       if (sourceId === destination.id)
-        throw new EngineError(400, "Messages are already in that thread");
+        throw new SyncError(400, "Messages are already in that thread");
       if (messages.some((entry) => entry.id === entry.threadId))
-        throw new EngineError(400, "A thread's description stays with it");
+        throw new SyncError(400, "A thread's description stays with it");
       // A message linking a thread is the way into it from here; moved inside, it would only link to itself.
       if (messages.some((entry) => entry.text.includes(threadLink(destination.id))))
-        throw new EngineError(400, "A message can't move into the thread it links to");
+        throw new SyncError(400, "A message can't move into the thread it links to");
       const source = batch.get("Thread", sourceId);
-      if (source === undefined) throw new EngineError(404, "Thread not found");
+      if (source === undefined) throw new SyncError(404, "Thread not found");
       for (const entry of messages) batch.put("Entry", { ...entry, threadId: destination.id });
       // The activity line sits where the first moved message was.
       const count = messages.length;
@@ -898,22 +804,22 @@ export class SyncEngine {
     if (transaction.type === "create") {
       const { data } = transaction;
       const thread = batch.get("Thread", data.threadId);
-      if (thread === undefined) throw new EngineError(404, "Thread not found");
+      if (thread === undefined) throw new SyncError(404, "Thread not found");
       if (batch.get("Entry", data.id) !== undefined)
-        throw new EngineError(409, `Entry already exists: ${data.id}`);
+        throw new SyncError(409, `Entry already exists: ${data.id}`);
       // An entry with its thread's id is the thread's description (`descriptionOf`): a message, written by whoever
       // made the thread. No entry takes another thread's id.
       if (data.id === thread.id) {
         if (data.kind !== "message")
-          throw new EngineError(400, "A thread's description is a message");
+          throw new SyncError(400, "A thread's description is a message");
         if (actor.id !== thread.createdById)
-          throw new EngineError(403, "Only whoever opened a thread writes its description");
+          throw new SyncError(403, "Only whoever opened a thread writes its description");
       } else if (batch.get("Thread", data.id) !== undefined)
-        throw new EngineError(400, "An entry can't take another thread's id");
+        throw new SyncError(400, "An entry can't take another thread's id");
       // Sending is to real people, and only a message is sent; anything else is a note in the thread.
       const sentTo = data.sentToIds ?? [];
       if (sentTo.length > 0 && data.kind !== "message")
-        throw new EngineError(400, "Only a message is sent to people");
+        throw new SyncError(400, "Only a message is sent to people");
       for (const personId of sentTo) requirePerson(personId);
       batch.put("Entry", entryFromCreate(data, actor.id, nowMs));
       // Whoever a message @mentions is assigned the thread, and a group @mentioned through its label. Mentions of
@@ -944,8 +850,7 @@ export class SyncEngine {
     if (transaction.modelName === "Person") {
       const target = person(transaction.modelId);
       if (target === undefined) throw missingUser(transaction.modelId);
-      if (target.id !== actor.id)
-        throw new EngineError(403, "People change only their own profile");
+      if (target.id !== actor.id) throw new SyncError(403, "People change only their own profile");
       // No activity line: a profile isn't a thread.
       batch.put("Person", { ...target, ...transaction.changes });
       // New buckets mean sorting their inbox again, keeping what they placed by hand in buckets that are still there.
@@ -968,16 +873,16 @@ export class SyncEngine {
       return;
     }
     const thread = batch.get("Thread", transaction.modelId);
-    if (thread === undefined) throw new EngineError(404, "Thread not found");
+    if (thread === undefined) throw new SyncError(404, "Thread not found");
     const { changes } = transaction;
     if (changes.labelIds !== undefined) requireLabels(changes.labelIds);
     // Changes that are only about you (seen, done, snoozed, placed in one of your buckets) are quiet: no activity
     // line, and they don't count as an update. You place only what's in your inbox, into a bucket of yours.
     if (changes.bucketId !== undefined && changes.bucketId !== null) {
       if (!inboxPeople(this.#view(thread)).includes(actor.id))
-        throw new EngineError(400, "Only a thread in your inbox goes in your buckets");
+        throw new SyncError(400, "Only a thread in your inbox goes in your buckets");
       if (!bucketsOf(actor).some((bucket) => bucket.id === changes.bucketId))
-        throw new EngineError(404, "Bucket not found");
+        throw new SyncError(404, "Bucket not found");
     }
     const { record: scoped, rest: edits } = applyScopedChanges(thread, changes, actor.id, nowMs);
     if (scoped !== thread) batch.put("Thread", scoped);
@@ -1035,7 +940,7 @@ export class SyncEngine {
       changes.status !== undefined &&
       isDone(changes.status) &&
       blocked?.status === "blocked" &&
-      batch.openBlockers(blocked.id).length === 0
+      openBlockers(batch, blocked.id).length === 0
     ) {
       batch.put("Thread", { ...blocked, status: "open", updatedAtMs: nowMs });
       // Mirrors "is blocked on …", in its owner's name.
@@ -1051,10 +956,6 @@ export class SyncEngine {
   }
 
   // --- Reads ---
-
-  actionsAfter(syncId: number): SyncAction[] {
-    return this.#storage.actionsAfter(syncId);
-  }
 
   thread(threadId: string): Thread | undefined {
     const record = this.models.Thread.get(threadId);

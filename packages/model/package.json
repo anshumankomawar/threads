@@ -10,6 +10,9 @@
   "scripts": {
     "check": "vp check"
   },
+  "dependencies": {
+    "sync": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2",

@@ -1,27 +1,39 @@
-import type { AnyRecord, ModelName, SyncAction, TransactionInput } from "model";
+import type { AnyRecord, ModelName, Models, SyncAction, TransactionEnvelope } from "../protocol";
 
-// A transaction waiting to reach the server, as kept in the __transactions table so it survives a restart.
-export type StoredTransaction = {
+// A transaction waiting to reach the server, as kept in `__transactions` so it survives a restart.
+export type StoredTransaction<T = TransactionEnvelope> = {
   id: string;
   batchIndex: number;
   actorId: string;
-  input: TransactionInput;
+  input: T;
 };
 
-export type StoredMeta = { lastSyncId: number; schemaHash: string };
+// Where this cache stands: the server data it's a copy of (`epoch`), how far it has applied (`lastSyncId`), which
+// groups it holds, and the schema it was built under.
+export type StoredMeta = {
+  lastSyncId: number;
+  schemaHash: string;
+  epoch: string;
+  syncGroups: string[];
+};
 
-export type StoredModel = { modelName: ModelName; id: string; data: AnyRecord };
+export type StoredModel<M extends Models = Models> = {
+  modelName: ModelName<M>;
+  id: string;
+  data: AnyRecord<M>;
+};
 
-// The client's local database, as in LSE: models exactly as the server confirmed them (never local edits), the
-// sync position, and transactions not yet accepted.
-export type SyncDatabase = {
+// The client's local database, as in LSE: models exactly as the server confirmed them (never local edits), where the
+// cache stands, and transactions not yet accepted.
+export type SyncDatabase<M extends Models = Models, T = TransactionEnvelope> = {
   meta(): Promise<StoredMeta | undefined>;
-  models(): Promise<StoredModel[]>;
-  transactions(): Promise<StoredTransaction[]>;
-  // Replaces everything after a full bootstrap.
-  reset(models: StoredModel[], meta: StoredMeta): Promise<void>;
-  applyActions(actions: SyncAction[], meta: StoredMeta): Promise<void>;
-  putTransactions(transactions: StoredTransaction[]): Promise<void>;
+  models(): Promise<StoredModel<M>[]>;
+  transactions(): Promise<StoredTransaction<T>[]>;
+  // Replaces every model after a full bootstrap.
+  reset(models: StoredModel<M>[], meta: StoredMeta): Promise<void>;
+  // Writes actions (inserts, updates, archives and deletes) and the new position, together.
+  applyActions(actions: SyncAction<M>[], meta: StoredMeta): Promise<void>;
+  putTransactions(transactions: StoredTransaction<T>[]): Promise<void>;
   deleteTransactions(ids: string[]): Promise<void>;
   close(): void;
 };
@@ -30,7 +42,7 @@ const META = "meta";
 const MODELS = "models";
 const TRANSACTIONS = "__transactions";
 
-function promised<T>(request: IDBRequest<T>): Promise<T> {
+function promised<R>(request: IDBRequest<R>): Promise<R> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -45,8 +57,10 @@ function done(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-// One IndexedDB database per data source, like Linear's one per workspace.
-export async function openIndexedDb(name: string): Promise<SyncDatabase> {
+// One IndexedDB database per workspace and user, like Linear's.
+export async function openIndexedDb<M extends Models, T = TransactionEnvelope>(
+  name: string,
+): Promise<SyncDatabase<M, T>> {
   const open = indexedDB.open(name, 1);
   open.onupgradeneeded = () => {
     const db = open.result;
@@ -68,12 +82,12 @@ export async function openIndexedDb(name: string): Promise<SyncDatabase> {
         db.transaction(META).objectStore(META).get("meta") as IDBRequest<StoredMeta | undefined>,
       ),
     models: () =>
-      promised(db.transaction(MODELS).objectStore(MODELS).getAll() as IDBRequest<StoredModel[]>),
+      promised(db.transaction(MODELS).objectStore(MODELS).getAll() as IDBRequest<StoredModel<M>[]>),
     transactions: async () =>
       (
         await promised(
           db.transaction(TRANSACTIONS).objectStore(TRANSACTIONS).getAll() as IDBRequest<
-            StoredTransaction[]
+            StoredTransaction<T>[]
           >,
         )
       ).sort((a, b) => a.batchIndex - b.batchIndex),
@@ -105,12 +119,13 @@ export async function openIndexedDb(name: string): Promise<SyncDatabase> {
   };
 }
 
-// The same database in memory, for tests.
-export function memoryDatabase(): SyncDatabase {
+// The same database in memory, for tests. It copies what it stores with the structured clone IndexedDB uses, so
+// something IndexedDB can't store (an observable, a function) fails here too.
+export function memoryDatabase<M extends Models, T = TransactionEnvelope>(): SyncDatabase<M, T> {
   let meta: StoredMeta | undefined;
-  const models = new Map<string, StoredModel>();
-  const transactions = new Map<string, StoredTransaction>();
-  const key = (modelName: ModelName, id: string): string => `${modelName}:${id}`;
+  const models = new Map<string, StoredModel<M>>();
+  const transactions = new Map<string, StoredTransaction<T>>();
+  const key = (modelName: string, id: string): string => `${modelName}:${id}`;
   return {
     meta: async () => meta,
     models: async () => [...models.values()],
@@ -118,8 +133,8 @@ export function memoryDatabase(): SyncDatabase {
       [...transactions.values()].sort((a, b) => a.batchIndex - b.batchIndex),
     reset: async (next, nextMeta) => {
       models.clear();
-      for (const model of next) models.set(key(model.modelName, model.id), model);
-      meta = nextMeta;
+      for (const model of next) models.set(key(model.modelName, model.id), structuredClone(model));
+      meta = structuredClone(nextMeta);
     },
     applyActions: async (actions, nextMeta) => {
       for (const action of actions) {
@@ -128,13 +143,14 @@ export function memoryDatabase(): SyncDatabase {
           models.set(key(action.modelName, action.modelId), {
             modelName: action.modelName,
             id: action.modelId,
-            data: action.data,
+            data: structuredClone(action.data),
           });
       }
-      meta = nextMeta;
+      meta = structuredClone(nextMeta);
     },
     putTransactions: async (list) => {
-      for (const transaction of list) transactions.set(transaction.id, transaction);
+      for (const transaction of list)
+        transactions.set(transaction.id, structuredClone(transaction));
     },
     deleteTransactions: async (ids) => {
       for (const id of ids) transactions.delete(id);

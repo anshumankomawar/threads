@@ -5,12 +5,14 @@ import {
   SEEDED_LABELS,
   type Group,
   type Label,
+  type ModelRecords,
   type Organization,
   type ThreadRecord,
   type TransactionInput,
 } from "model";
 import { beforeEach, expect, test } from "vite-plus/test";
 import { createApp } from "../src/app.ts";
+import { memoryStorage } from "sync/server";
 import { SyncEngine } from "../src/engine.ts";
 
 const NOW = Date.UTC(2026, 10, 2, 8);
@@ -303,7 +305,6 @@ test("the sample workspace has a group with threads in it", async () => {
 });
 
 test("records stored by older versions load in today's shape", () => {
-  const engine = new SyncEngine({ now: () => NOW });
   const {
     labelIds: _labels,
     triage: _triage,
@@ -337,61 +338,64 @@ test("records stored by older versions load in today's shape", () => {
     requesterId: "anshu",
     assigneeId: "arjun",
   };
-  engine.load(
-    [
-      {
-        modelName: "Thread",
-        data: {
-          ...unassigned,
-          ...old,
-          kind: "response",
-          tagIds: ["bug"],
-          attendeeIds: [],
-          triage: {
-            personId: "arjun",
-            bucketId: "action",
-            reason: "",
-            manual: false,
-            stale: false,
-          },
-        } as never,
-      },
-      {
-        modelName: "Thread",
-        data: {
-          ...unassigned,
-          ...old,
-          assigneeId: null,
-          id: "m1",
-          kind: "meeting",
-          attendeeIds: ["anshu", "kk"],
-          triage: null,
-        } as never,
-      },
-      {
-        modelName: "Entry",
-        data: {
-          id: "m1:call",
-          threadId: "m1",
-          kind: "call",
-          link: "zoom",
-          createdAtMs: NOW,
-        } as never,
-      },
-      {
-        modelName: "Entry",
-        data: {
-          id: "e1",
-          threadId: "t1",
-          kind: "message",
-          authorId: "anshu",
-          text: "Hi",
-          createdAtMs: NOW,
-        } as never,
-      },
-    ],
-    1,
-  );
+  const engine = new SyncEngine({
+    now: () => NOW,
+    storage: memoryStorage<ModelRecords>({
+      lastSyncId: 1,
+      models: [
+        {
+          modelName: "Thread",
+          data: {
+            ...unassigned,
+            ...old,
+            kind: "response",
+            tagIds: ["bug"],
+            attendeeIds: [],
+            triage: {
+              personId: "arjun",
+              bucketId: "action",
+              reason: "",
+              manual: false,
+              stale: false,
+            },
+          } as never,
+        },
+        {
+          modelName: "Thread",
+          data: {
+            ...unassigned,
+            ...old,
+            assigneeId: null,
+            id: "m1",
+            kind: "meeting",
+            attendeeIds: ["anshu", "kk"],
+            triage: null,
+          } as never,
+        },
+        {
+          modelName: "Entry",
+          data: {
+            id: "m1:call",
+            threadId: "m1",
+            kind: "call",
+            link: "zoom",
+            createdAtMs: NOW,
+          } as never,
+        },
+        {
+          modelName: "Entry",
+          data: {
+            id: "e1",
+            threadId: "t1",
+            kind: "message",
+            authorId: "anshu",
+            text: "Hi",
+            createdAtMs: NOW,
+          } as never,
+        },
+      ],
+    }),
+  });
   const stored = engine.models.Thread.get("t1");
   expect(stored).toMatchObject({
     createdById: "anshu",

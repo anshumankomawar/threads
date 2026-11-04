@@ -12,8 +12,9 @@ beforeEach(() => {
   seed(engine, "local", { id: "you", name: "You" }, NOW);
 });
 
+// Runs transactions as `actorId`, in their own session.
 const run = (actorId: string, ...transactions: TransactionInput[]) =>
-  engine.execute(actorId, transactions);
+  engine.execute({ actorId, transactions }, { userId: actorId });
 const create = (id: string, assigneeIds: string[] = []): TransactionInput => ({
   id: `tx-${++counter}`,
   type: "create",

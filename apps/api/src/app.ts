@@ -1,34 +1,17 @@
-import { zValidator } from "@hono/zod-validator";
-import { Hono, type Context } from "hono";
+import { Hono } from "hono";
 import { cors } from "hono/cors";
-import {
-  MODEL_NAMES,
-  SCHEMA_HASH,
-  type BootstrapResponse,
-  type DeltasResponse,
-  type Person,
-  type TransactionBatchResponse,
-} from "model";
+import type { Person } from "model";
+import { handleSyncRequest, type Session } from "sync/server";
 import { z } from "zod";
 import {
-  EngineError,
   ensureOrganization,
   isWorkspaceName,
+  parseBatch,
   seed,
   SyncEngine,
-  transactionBatch,
   WORKSPACES,
   type WorkspaceName,
 } from "./engine.ts";
-
-function validate<Target extends "json" | "query", Schema extends z.ZodType>(
-  target: Target,
-  schema: Schema,
-) {
-  return zValidator(target, schema, (result, c) => {
-    if (!result.success) return c.json({ error: z.prettifyError(result.error) }, 400);
-  });
-}
 
 // What the app sends to draft a thread (POST /ai/compose, in src/worker.ts).
 export const composeRequest = z.object({
@@ -37,53 +20,25 @@ export const composeRequest = z.object({
   text: z.string().min(1).max(4000),
 });
 
-// Answers an engine error with its status, and rethrows anything else.
-function fail(c: Context, error: unknown): Response {
-  if (error instanceof EngineError) return c.json({ error: error.message }, error.status);
-  throw error;
+// Who a request is from where there's no auth (local development, tests): the person in `X-User` (`user` on the
+// socket, which can't send headers), or an admin session that sees everything and acts as anyone.
+export function openSession(request: Request): Session {
+  const userId =
+    request.headers.get("X-User") ?? new URL(request.url).searchParams.get("user") ?? "";
+  return userId === "" ? { admin: true } : { userId };
 }
 
-// The sync protocol for one workspace: bootstrap, catch-up deltas and transactions. The WebSocket that pushes
-// delta packets lives with the Durable Object (src/worker.ts).
-export function createWorkspaceApp(engine: SyncEngine) {
-  const app = new Hono();
-
-  // Everything a client needs to start: all models and the sync id they're current to.
-  app.get("/sync/bootstrap", (c) => {
-    const models = Object.fromEntries(
-      MODEL_NAMES.map((name) => [name, [...engine.models[name].values()]]),
-    ) as BootstrapResponse["models"];
-    return c.json({
-      lastSyncId: engine.lastSyncId,
-      schemaHash: SCHEMA_HASH,
-      models,
-    } satisfies BootstrapResponse);
-  });
-
-  // The sync actions after a client's lastSyncId, for catching up.
-  app.get(
-    "/sync/deltas",
-    validate("query", z.object({ after: z.coerce.number().int().min(0) })),
-    (c) =>
-      c.json({
-        lastSyncId: engine.lastSyncId,
-        actions: engine.actionsAfter(c.req.valid("query").after),
-      } satisfies DeltasResponse),
+// The sync protocol for one workspace and session: bootstrap, catch-up deltas and transactions (the engine's routes,
+// `handleSyncRequest`). The WebSocket that pushes delta packets lives with the Durable Object (src/worker.ts).
+export async function serveWorkspace(
+  engine: SyncEngine,
+  request: Request,
+  session: Session,
+): Promise<Response> {
+  return (
+    (await handleSyncRequest(engine, request, session, parseBatch)) ??
+    Response.json({ error: "Not found" }, { status: 404 })
   );
-
-  // A batch of transactions, executed all or nothing. The changes reach clients as a delta packet; the response
-  // carries the sync id the client waits for before treating the batch as complete.
-  app.post("/sync/transactions", validate("json", transactionBatch), (c) => {
-    const { actorId, transactions, utcOffsetMinutes } = c.req.valid("json");
-    try {
-      engine.execute(actorId, transactions, utcOffsetMinutes);
-    } catch (error) {
-      return fail(c, error);
-    }
-    return c.json({ lastSyncId: engine.lastSyncId } satisfies TransactionBatchResponse);
-  });
-
-  return app;
 }
 
 export type AppOptions = {
@@ -92,23 +47,23 @@ export type AppOptions = {
   me?: Person;
 };
 
-// Every workspace in memory, picked per request with the X-Workspace header, for tests. The deployed Worker keeps
-// each workspace in a Durable Object instead (src/worker.ts).
+// Every workspace in memory, picked per request with the X-Workspace header and open to anyone, for tests. The
+// deployed Worker keeps each workspace in a Durable Object and checks who's asking (src/worker.ts).
 export function createApp({ now = Date.now, me = { id: "you", name: "You" } }: AppOptions = {}) {
-  const apps = Object.fromEntries(
+  const engines = Object.fromEntries(
     WORKSPACES.map((name) => {
       const engine = new SyncEngine({ now });
       seed(engine, name, me, now());
       ensureOrganization(engine, name);
-      return [name, createWorkspaceApp(engine)];
+      return [name, engine];
     }),
-  ) as Record<WorkspaceName, Hono>;
+  ) as Record<WorkspaceName, SyncEngine>;
   const app = new Hono();
   app.use(cors());
-  app.all("*", (c) => {
+  app.all("*", async (c) => {
     const name = c.req.header("X-Workspace") ?? "local";
     if (!isWorkspaceName(name)) return c.json({ error: `Unknown workspace: ${name}` }, 400);
-    return apps[name].fetch(c.req.raw);
+    return serveWorkspace(engines[name], c.req.raw, openSession(c.req.raw));
   });
   return app;
 }

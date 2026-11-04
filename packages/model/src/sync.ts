@@ -1,7 +1,19 @@
-// The sync protocol shared by the API and the desktop app, modeled on Linear's sync engine (LSE): normalized
-// models in an object pool, transactions sent to the server, and delta packets of sync actions broadcast back,
-// all ordered by a monotonically increasing sync id.
+// Threads' half of the sync protocol, shared by the API and the desktop app: its models, the schema the sync engine
+// (`packages/sync`) runs them with, the transactions clients send, and how those change models on the client. The
+// engine itself (sync ids, the log, delta packets, sync groups, the client's queue and cache) knows none of this.
 
+import {
+  defineSchema,
+  modelNames,
+  schemaHash,
+  type BootstrapResponse as SyncBootstrapResponse,
+  type BuiltInTransaction,
+  type ClientMutations,
+  type DeltasResponse as SyncDeltasResponse,
+  type SyncAction as SyncActionOf,
+  type SyncMessage as SyncMessageOf,
+  type TransactionBatch as SyncTransactionBatch,
+} from "sync";
 import { labelSlug } from "./model";
 import type {
   Bucket,
@@ -70,85 +82,54 @@ export type ModelRecords = {
 export type ModelName = keyof ModelRecords;
 export type AnyRecord = ModelRecords[ModelName];
 
-export const MODEL_NAMES: ModelName[] = [
-  "Person",
-  "Thread",
-  "Entry",
-  "Organization",
-  "Label",
-  "Group",
-  "Sprint",
-];
-
-// Each model's metadata, as in LSE's ModelRegistry: how it loads, and which properties reference other models.
-// Every model loads instantly at bootstrap for now; lazy and partial loading can come with more data.
-export const ModelRegistry = {
-  Person: { loadStrategy: "instant", references: { managerId: "Person" } },
-  Thread: {
-    loadStrategy: "instant",
-    references: {
-      createdById: "Person",
-      branchedFromId: "Thread",
-      blocksId: "Thread",
+// Each model's references, as in LSE's ModelRegistry. A thread's entries belong to it (deleting a thread deletes
+// them). Everything is in the workspace's one sync group: every member sees every thread.
+export const threadsSchema = defineSchema<ModelRecords>({
+  version: "records:v21",
+  models: {
+    Person: { references: { managerId: "Person" } },
+    Thread: {
+      references: {
+        createdById: "Person",
+        branchedFromId: "Thread",
+        blocksId: "Thread",
+      },
+      referenceArrays: { assigneeIds: "Person", labelIds: "Label" },
+      backReferences: { entries: { model: "Entry", key: "threadId" } },
     },
-    referenceArrays: { assigneeIds: "Person", labelIds: "Label" },
-    backReferences: { entries: "Entry" },
+    Entry: {
+      references: { threadId: "Thread", authorId: "Person", actorId: "Person" },
+      referenceArrays: { sentToIds: "Person" },
+    },
+    Organization: {},
+    Label: {},
+    Group: {},
+    Sprint: {
+      references: { groupId: "Group", createdById: "Person" },
+      referenceArrays: { threadIds: "Thread" },
+    },
   },
-  Entry: {
-    loadStrategy: "instant",
-    references: { threadId: "Thread", authorId: "Person", actorId: "Person" },
-    referenceArrays: { sentToIds: "Person" },
-  },
-  Sprint: {
-    loadStrategy: "instant",
-    references: { groupId: "Group", createdById: "Person" },
-    referenceArrays: { threadIds: "Thread" },
-  },
-} as const;
+});
 
-// A hash of the registry. A client whose cache was built under another hash rebuilds it with a full bootstrap.
-export const SCHEMA_HASH = fnv1a(JSON.stringify(ModelRegistry) + "|records:v20");
+export const MODEL_NAMES: ModelName[] = modelNames(threadsSchema);
 
-function fnv1a(text: string): string {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16);
-}
+// A client whose cache was built under another hash rebuilds it with a full bootstrap.
+export const SCHEMA_HASH = schemaHash(threadsSchema);
 
-// --- Sync actions and delta packets -----------------------------------------------------------------------
+// --- The protocol, for these models ---------------------------------------------------------------------
 
-// One change on the server, numbered by sync id: I(nsert), U(pdate) or D(elete). Inserts and updates carry the
-// whole record, as LSE's do.
-export type SyncAction = {
-  id: number;
-  modelName: ModelName;
-  modelId: string;
-  action: "I" | "U" | "D";
-  data: AnyRecord | null;
-};
-
-export type BootstrapResponse = {
-  lastSyncId: number;
-  schemaHash: string;
-  models: { [Name in ModelName]: ModelRecords[Name][] };
-};
-
-export type DeltasResponse = { lastSyncId: number; actions: SyncAction[] };
-
-// Messages on the sync WebSocket. The handshake tells the client the server's lastSyncId, so it can fetch any
-// deltas it missed; each delta packet holds the sync actions from one executed batch.
-export type SyncMessage =
-  | { type: "handshake"; lastSyncId: number }
-  | { type: "delta"; lastSyncId: number; actions: SyncAction[] };
+export type SyncAction = SyncActionOf<ModelRecords>;
+export type BootstrapResponse = SyncBootstrapResponse<ModelRecords>;
+export type DeltasResponse = SyncDeltasResponse<ModelRecords>;
+export type SyncMessage = SyncMessageOf<ModelRecords>;
+// Deleting, archiving and unarchiving, which the engine provides for any model.
+export type BuiltIn = BuiltInTransaction<ModelRecords>;
 
 // --- Transactions -----------------------------------------------------------------------------------------
 
-// What clients send: creations and updates of the models they may write, and moves of messages between threads.
-// The server validates each, runs its side effects (activity lines, closing a thread on resolution)
-// and answers with the new lastSyncId.
+// What clients send: creations and updates of the models they may write, and moves of messages between threads (plus
+// the engine's built-in delete, archive and unarchive). The server validates each, runs its side effects (activity
+// lines, closing a thread on resolution) and answers with the new lastSyncId.
 export type TransactionInput =
   | { id: string; type: "create"; modelName: "Thread"; data: ThreadCreate }
   | { id: string; type: "create"; modelName: "Entry"; data: EntryCreate }
@@ -277,13 +258,50 @@ export type EntryCreate = {
 
 // `utcOffsetMinutes` is the actor's time zone, so activity lines such as "set the due date to Fri, Nov 7" read in their
 // local time rather than the server's UTC.
-export type TransactionBatch = {
-  actorId: string;
-  utcOffsetMinutes?: number;
-  transactions: TransactionInput[];
-};
+export type TransactionBatch = SyncTransactionBatch<TransactionInput | BuiltIn>;
 
-export type TransactionBatchResponse = { lastSyncId: number };
+export type { TransactionBatchResponse } from "sync";
+
+// How each transaction changes models on the client: shown at once, replayed after a restart, and kept on top of newer
+// server data. The server's side effects (activity lines, assignees from @mentions) aren't predicted; they arrive with
+// the delta. A creation makes the record the server will, before its side effects.
+export const threadsMutations: ClientMutations<ModelRecords, TransactionInput> = {
+  touches: (input) => {
+    if (input.type === "create") return [{ modelName: input.modelName, id: input.data.id }];
+    if (input.type === "move")
+      return input.entryIds.map((id) => ({ modelName: "Entry" as const, id }));
+    return [{ modelName: input.modelName, id: input.modelId }];
+  },
+  change: (input, _modelName, record, { actorId, nowMs }) => {
+    if (input.type === "create") {
+      if (record !== undefined) return record;
+      switch (input.modelName) {
+        case "Thread":
+          return threadFromCreate(input.data, actorId, nowMs);
+        case "Label":
+          return labelFromCreate(input.data, actorId, nowMs);
+        case "Group":
+          return groupFromCreate(input.data, actorId, nowMs);
+        case "Sprint":
+          return sprintFromCreate(input.data, actorId, nowMs);
+        case "Entry":
+          return entryFromCreate(input.data, actorId, nowMs);
+      }
+    }
+    if (record === undefined) return undefined;
+    if (input.type === "move") return { ...(record as EntryRecord), threadId: input.threadId };
+    if (input.modelName !== "Thread") return { ...record, ...input.changes } as AnyRecord;
+    // On a thread, changes only about whoever made them (seen, done, snoozed, placed in a bucket) land on their
+    // entry, as the server puts them.
+    const { record: scoped, rest } = applyScopedChanges(
+      record as ThreadRecord,
+      input.changes,
+      actorId,
+      nowMs,
+    );
+    return { ...scoped, ...rest };
+  },
+};
 
 // --- Records <-> the app's threads -------------------------------------------------------------------------
 

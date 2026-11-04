@@ -1,9 +1,20 @@
 import { DurableObject } from "cloudflare:workers";
 import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
-import type { AnyRecord, ModelName, SyncAction, SyncMessage } from "model";
-import { composeRequest, createWorkspaceApp } from "./app.ts";
+import type { AnyRecord, ModelName, ModelRecords } from "model";
+import {
+  broadcast,
+  isAdmin,
+  signSession,
+  sqliteStorage,
+  verifySession,
+  type HubSocket,
+  type Session,
+} from "sync/server";
+import { z } from "zod";
+import { composeRequest, openSession, serveWorkspace } from "./app.ts";
+import { workersAiComposer } from "./compose.ts";
 import {
   ensureOrganization,
   isWorkspaceName,
@@ -11,10 +22,8 @@ import {
   SAMPLE_ME,
   seed,
   SyncEngine,
-  type EngineStorage,
   type WorkspaceName,
 } from "./engine.ts";
-import { workersAiComposer } from "./compose.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
 // Request details a Workspace object needs. The desktop app sends them as headers; a browser WebSocket can't set
@@ -23,40 +32,32 @@ function param(request: Request, header: string, query: string): string | null {
   return request.headers.get(header) ?? new URL(request.url).searchParams.get(query);
 }
 
-// One workspace: its sync engine, with models, the sync log and executed transaction ids in this object's SQLite
-// storage, and the WebSockets of every client connected to it. Each committed batch goes out to all of them as a
-// delta packet, including the client that sent it, as in Linear's sync engine.
+// The Worker checks who's asking and passes the session to the workspace's object in this header, replacing any the
+// request came with. Only the Worker reaches the objects, so they trust it.
+const SESSION_HEADER = "X-Threads-Session";
+
+// Past this many actions in the log, it's trimmed back to the last `KEEP_ACTIONS`; a client further behind than that
+// bootstraps afresh.
+const KEEP_ACTIONS = 10_000;
+const COMPACT_AT = 12_000;
+
+// What a socket remembers through hibernation: who it is and the sync groups it was last told about.
+type SocketAttachment = { session: Session; groups: string[] };
+
+// One workspace: its sync engine (the sync package's server, running Threads' rules) with its models, log and executed
+// transactions in this object's SQLite storage, and the WebSockets of every client connected to it. Each committed
+// batch goes out to all of them, each seeing what its session may.
 export class Workspace extends DurableObject<Env> {
   #engine: SyncEngine | undefined;
-  #app: Hono | undefined;
   #kept: { modelName: ModelName; data: AnyRecord }[] = [];
   // Sorts inboxes with Workers AI after each change.
   #triager: Triager | undefined;
 
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    void ctx.blockConcurrencyWhile(async () => this.#createTables());
-  }
-
-  #createTables(): void {
-    const sql = this.ctx.storage.sql;
-    sql.exec(
-      "CREATE TABLE IF NOT EXISTS models (modelName TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, PRIMARY KEY (modelName, id))",
-    );
-    sql.exec(
-      "CREATE TABLE IF NOT EXISTS sync_actions (id INTEGER PRIMARY KEY, modelName TEXT NOT NULL, modelId TEXT NOT NULL, action TEXT NOT NULL, data TEXT)",
-    );
-    sql.exec(
-      "CREATE TABLE IF NOT EXISTS transactions (id TEXT PRIMARY KEY, syncId INTEGER NOT NULL)",
-    );
-    sql.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
-  }
-
-  // Starts the workspace over: deletes everything, so the next request seeds it afresh. Connected clients are
-  // dropped; they reconnect, find the server behind their cache and rebuild.
+  // Starts the workspace over: deletes everything, so the next request seeds it afresh with a new epoch. Connected
+  // clients are dropped; they reconnect, see the new epoch and rebuild.
   async #reset(): Promise<void> {
     for (const socket of this.ctx.getWebSockets()) socket.close(1012, "Workspace reset");
-    // A wipe is for threads and schedules; the organization, its labels and its groups stay.
+    // A wipe is for threads; the organization, its labels and its groups stay.
     this.#kept = this.ctx.storage.sql
       .exec<{ modelName: ModelName; data: string }>(
         "SELECT modelName, data FROM models WHERE modelName IN ('Organization', 'Label', 'Group')",
@@ -65,81 +66,20 @@ export class Workspace extends DurableObject<Env> {
       .map((row) => ({ modelName: row.modelName, data: JSON.parse(row.data) as AnyRecord }));
     await this.ctx.storage.deleteAll();
     this.#engine = undefined;
-    this.#app = undefined;
     this.#triager = undefined;
-    this.#createTables();
-  }
-
-  #storage(): EngineStorage {
-    const { sql } = this.ctx.storage;
-    return {
-      commit: (actions, transactionIds) =>
-        this.ctx.storage.transactionSync(() => {
-          for (const action of actions) {
-            sql.exec(
-              "INSERT INTO sync_actions (id, modelName, modelId, action, data) VALUES (?, ?, ?, ?, ?)",
-              action.id,
-              action.modelName,
-              action.modelId,
-              action.action,
-              action.data === null ? null : JSON.stringify(action.data),
-            );
-            if (action.data === null)
-              sql.exec(
-                "DELETE FROM models WHERE modelName = ? AND id = ?",
-                action.modelName,
-                action.modelId,
-              );
-            else
-              sql.exec(
-                "INSERT OR REPLACE INTO models (modelName, id, data) VALUES (?, ?, ?)",
-                action.modelName,
-                action.modelId,
-                JSON.stringify(action.data),
-              );
-          }
-          const syncId = actions.at(-1)?.id ?? 0;
-          for (const id of transactionIds)
-            sql.exec("INSERT OR IGNORE INTO transactions (id, syncId) VALUES (?, ?)", id, syncId);
-        }),
-      actionsAfter: (syncId) =>
-        sql
-          .exec<{
-            id: number;
-            modelName: ModelName;
-            modelId: string;
-            action: SyncAction["action"];
-            data: string | null;
-          }>(
-            "SELECT id, modelName, modelId, action, data FROM sync_actions WHERE id > ? ORDER BY id",
-            syncId,
-          )
-          .toArray()
-          .map((row) => ({
-            ...row,
-            data: row.data === null ? null : (JSON.parse(row.data) as AnyRecord),
-          })),
-      hasTransaction: (id) =>
-        sql.exec("SELECT 1 FROM transactions WHERE id = ?", id).toArray().length > 0,
-    };
   }
 
   // The workspace's engine, loaded from storage on first use. A new workspace is seeded.
   #load(name: WorkspaceName): SyncEngine {
     if (this.#engine !== undefined) return this.#engine;
-    const { sql } = this.ctx.storage;
-    sql.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('workspace', ?)", name);
-    const engine = new SyncEngine({
-      storage: this.#storage(),
-      onActions: (actions) => this.#broadcast(actions),
-    });
-    const rows = sql
-      .exec<{ modelName: ModelName; data: string }>("SELECT modelName, data FROM models")
-      .toArray()
-      .map((row) => ({ modelName: row.modelName, data: JSON.parse(row.data) as AnyRecord }));
-    const lastSyncId =
-      sql.exec<{ id: number | null }>("SELECT MAX(id) AS id FROM sync_actions").one().id ?? 0;
-    engine.load(rows, lastSyncId);
+    const storage = sqliteStorage<ModelRecords>(this.ctx.storage);
+    this.ctx.storage.sql.exec(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('workspace', ?)",
+      name,
+    );
+    const engine = new SyncEngine({ storage });
+    engine.onCommit = (actions, fromSyncId) =>
+      broadcast(engine, this.#sockets(), actions, fromSyncId);
     if (engine.isEmpty) seed(engine, name, SAMPLE_ME);
     refreshSeedPeople(engine, name, SAMPLE_ME);
     ensureOrganization(engine, name);
@@ -158,6 +98,22 @@ export class Workspace extends DurableObject<Env> {
     return engine;
   }
 
+  // The connected clients, as the engine's broadcast needs them.
+  #sockets(): HubSocket[] {
+    return this.ctx.getWebSockets().flatMap((socket) => {
+      const attachment = socket.deserializeAttachment() as SocketAttachment | null;
+      if (attachment === null) return [];
+      return [
+        {
+          session: attachment.session,
+          groups: attachment.groups,
+          setGroups: (groups) => socket.serializeAttachment({ ...attachment, groups }),
+          send: (message) => socket.send(message),
+        },
+      ];
+    });
+  }
+
   #sort(): void {
     if (this.#triager !== undefined) this.ctx.waitUntil(this.#triager.kick());
   }
@@ -173,24 +129,17 @@ export class Workspace extends DurableObject<Env> {
     if (loaded) this.#sort();
   }
 
-  #broadcast(actions: SyncAction[]): void {
-    const packet: SyncMessage = { type: "delta", lastSyncId: actions.at(-1)?.id ?? 0, actions };
-    const message = JSON.stringify(packet);
-    for (const socket of this.ctx.getWebSockets()) {
-      try {
-        socket.send(message);
-      } catch {
-        // A socket closing mid-send reconnects and catches up by sync id.
-      }
-    }
-  }
-
   async fetch(request: Request): Promise<Response> {
     const name = param(request, "X-Workspace", "workspace") ?? "local";
     if (!isWorkspaceName(name))
       return Response.json({ error: `Unknown workspace: ${name}` }, { status: 400 });
+    const session = JSON.parse(request.headers.get(SESSION_HEADER) ?? "null") as Session | null;
+    if (session === null) return Response.json({ error: "Unauthorized" }, { status: 401 });
     const { pathname } = new URL(request.url);
-    if (pathname === "/sync/reset" && request.method === "POST") await this.#reset();
+    if (pathname === "/sync/reset" && request.method === "POST") {
+      if (!isAdmin(session)) return Response.json({ error: "Forbidden" }, { status: 403 });
+      await this.#reset();
+    }
     const engine = this.#load(name);
     if (pathname === "/sync/reset") {
       if (this.#kept.length > 0) engine.restore(this.#kept);
@@ -198,22 +147,28 @@ export class Workspace extends DurableObject<Env> {
       return Response.json({ lastSyncId: engine.lastSyncId });
     }
 
-    // The sync socket: a handshake with the current lastSyncId, then a delta packet per committed batch. It
+    // The sync socket: a handshake with where the server stands, then a delta packet per committed batch. It
     // hibernates while idle, so open connections cost next to nothing.
     if (pathname === "/sync/ws") {
       if (request.headers.get("Upgrade") !== "websocket")
         return new Response("Expected a WebSocket upgrade", { status: 426 });
       const { 0: client, 1: server } = new WebSocketPair();
       this.ctx.acceptWebSocket(server);
-      const handshake: SyncMessage = { type: "handshake", lastSyncId: engine.lastSyncId };
-      server.send(JSON.stringify(handshake));
+      server.serializeAttachment({
+        session,
+        groups: engine.groupsOf(session),
+      } satisfies SocketAttachment);
+      server.send(JSON.stringify(engine.handshake(session)));
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    this.#app ??= createWorkspaceApp(engine);
-    const response = await this.#app.fetch(request);
-    // New or changed threads may need sorting into someone's buckets.
-    if (pathname === "/sync/transactions" && response.ok) this.#sort();
+    const response = await serveWorkspace(engine, request, session);
+    if (pathname === "/sync/transactions" && response.ok) {
+      // New or changed threads may need sorting into someone's buckets.
+      this.#sort();
+      if (engine.lastSyncId - engine.minSyncId > COMPACT_AT)
+        engine.compact({ keepActions: KEEP_ACTIONS });
+    }
     return response;
   }
 
@@ -227,24 +182,67 @@ export class Workspace extends DurableObject<Env> {
   }
 }
 
+// How long a session token lasts.
+const SESSION_MS = 30 * 24 * 60 * 60_000;
+
+// Session tokens are signed with a key derived from the API token, so there's no second secret to manage.
+const sessionSecret = (apiToken: string): string => `${apiToken}:sessions`;
+
+async function same(a: string, b: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [x, y] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(a)),
+    crypto.subtle.digest("SHA-256", encoder.encode(b)),
+  ]);
+  return crypto.subtle.timingSafeEqual(x, y);
+}
+
+// Who a request is from. With an API_TOKEN secret set (the hosted API), it needs a token: the API token itself is an
+// admin session (it sees everything and acts as anyone, for operators and the app's View As), and a session token
+// (minted by POST /auth/session) is that one person. The socket, which can't send headers, passes it as `token`.
+// Locally the secret is unset and the API is open (`openSession`). Undefined means not signed in.
+async function authenticate(c: Context<{ Bindings: Env }>, workspace: string) {
+  const apiToken = c.env.API_TOKEN;
+  if (!apiToken) return openSession(c.req.raw);
+  const given = c.req.header("Authorization")?.replace(/^Bearer /, "") ?? c.req.query("token");
+  if (given === undefined || given === "") return undefined;
+  if (await same(given, apiToken)) return { admin: true } satisfies Session;
+  const claims = await verifySession(sessionSecret(apiToken), given, workspace);
+  return claims === undefined ? undefined : ({ userId: claims.userId } satisfies Session);
+}
+
 const app = new Hono<{ Bindings: Env }>();
 
 // The desktop renderer runs on its own origin, so it needs CORS to reach the API.
 app.use(cors());
 
-// With an API_TOKEN secret set (the hosted API), every request needs it: as a bearer token, or on the sync socket,
-// which can't send headers, as a `token` query parameter. Locally it's unset and the API is open.
-app.use(async (c, next) => {
-  const token = c.env.API_TOKEN;
-  if (!token) return next();
-  const given = c.req.header("Authorization")?.replace(/^Bearer /, "") ?? c.req.query("token");
-  if (given !== token) return c.json({ error: "Unauthorized" }, 401);
-  await next();
-});
+// A session token for one person in one workspace, for an admin to hand out. Until there's a sign-in, the app mints
+// its own with the API token for whoever it's viewing as.
+app.post(
+  "/auth/session",
+  zValidator("json", z.object({ workspace: z.string(), personId: z.string().min(1) })),
+  async (c) => {
+    const { workspace, personId } = c.req.valid("json");
+    const session = await authenticate(c, workspace);
+    if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
+    if (!isAdmin(session)) return c.json({ error: "Only an admin hands out sessions" }, 403);
+    const expiresAtMs = Date.now() + SESSION_MS;
+    const apiToken = c.env.API_TOKEN;
+    // Locally there's no secret and no need for a token: `X-User` says who you are.
+    if (!apiToken) return c.json({ token: null, expiresAtMs });
+    const token = await signSession(sessionSecret(apiToken), {
+      userId: personId,
+      workspace,
+      expiresAtMs,
+    });
+    return c.json({ token, expiresAtMs });
+  },
+);
 
 // Drafting a new thread from what you typed (src/compose.ts). It reads and writes nothing, so it runs here, outside
 // any workspace.
 app.post("/ai/compose", zValidator("json", composeRequest), async (c) => {
+  if ((await authenticate(c, "local")) === undefined) return c.json({ error: "Unauthorized" }, 401);
   const { AI: ai } = c.env as { AI?: Ai };
   if (ai === undefined) return c.json({ error: "No AI here" }, 503);
   try {
@@ -260,8 +258,12 @@ app.all("*", async (c): Promise<Response> => {
   if (!isWorkspaceName(name)) return c.json({ error: `Unknown workspace: ${name}` }, 400);
   if (name === "sample" && c.env.SAMPLE_WORKSPACE !== "on")
     return c.json({ error: "The sample workspace is only served locally" }, 404);
+  const session = await authenticate(c, name);
+  if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
+  const forwarded = new Request(c.req.raw);
+  forwarded.headers.set(SESSION_HEADER, JSON.stringify(session));
   const { exports } = c.executionCtx as ExecutionContext;
-  return exports.Workspace.getByName(name).fetch(c.req.raw);
+  return exports.Workspace.getByName(name).fetch(forwarded);
 });
 
 export default app;
