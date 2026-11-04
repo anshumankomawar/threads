@@ -17,11 +17,13 @@ export type ParseBatch<M extends Models, T extends TransactionEnvelope> = (
 const json = (body: unknown, status = 200): Response => Response.json(body, { status });
 
 const MAX_BODY_BYTES = 1_000_000;
+const encoder = new TextEncoder();
 const MAX_LOAD_REQUESTS = 100;
 
 async function readJson(request: Request): Promise<unknown> {
   const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) throw new SyncError(413, "The request is too large");
+  if (encoder.encode(text).byteLength > MAX_BODY_BYTES)
+    throw new SyncError(413, "The request is too large");
   try {
     return JSON.parse(text);
   } catch {
@@ -66,7 +68,6 @@ export async function handleSyncRequest<M extends Models, T extends TransactionE
       const lines = encodeBootstrap(
         server.bootstrap(session, groups === null ? undefined : groups.split(",")),
       );
-      const encoder = new TextEncoder();
       return new Response(
         new ReadableStream({
           pull(controller) {
@@ -88,6 +89,9 @@ export async function handleSyncRequest<M extends Models, T extends TransactionE
     if (url.pathname === "/sync/transactions" && request.method === "POST") {
       const batch = parse(await readJson(request));
       if ("error" in batch) return json({ error: batch.error }, 400);
+      // A client always says which schema it was built with; one that doesn't is from before it did, so out of date.
+      if (batch.schemaHash === undefined)
+        throw new SyncError(426, "This version of the app is out of date");
       server.execute(batch, session);
       return json({ lastSyncId: server.lastSyncId });
     }

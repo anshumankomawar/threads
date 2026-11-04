@@ -18,6 +18,16 @@ export class RejectedError extends Error {}
 // The session wasn't accepted (401): the batch waits, to be sent again once signed in.
 export class UnauthorizedError extends Error {}
 
+// The server failed (5xx): the batch is retried, and after a few failures in a row it's stuck until the user retries or
+// discards it.
+export class ServerError extends Error {}
+
+// The server runs a newer schema (426): this client stops sending until it's updated.
+export class OutdatedError extends Error {}
+
+// Waits around `ms`, give or take a quarter, so clients that failed together don't all retry together.
+export const jittered = (ms: number): number => ms * (0.75 + Math.random() / 2);
+
 // LSE's transaction kinds. Creations don't rebase: the server's copy of a new model is the truth.
 export type TransactionKind = "creation" | "update" | "deletion" | "archival" | "unarchive";
 
@@ -215,8 +225,16 @@ export type QueueOptions<M extends Models, T extends TransactionEnvelope> = {
     "putTransactions" | "deleteTransactions"
   >;
   send: (batch: TransactionBatch<T | BuiltInTransaction<M>>) => Promise<TransactionBatchResponse>;
-  // Called when the server refuses a batch, after it's rolled back.
-  onRejected: (error: Error, batch: Transaction<M, T>[]) => void;
+  // The schema this client was built with, sent with every batch.
+  schemaHash: string;
+  // Called when the server refuses a batch, after it's rolled back, with it and any changes dropped with it.
+  onRejected: (error: Error, transactions: Transaction<M, T>[]) => void;
+  // Called when a batch is stuck (the server keeps failing on it), and with null when it's no longer stuck.
+  onStuck: (message: string | null) => void;
+  // Called when the server says this client is out of date; the queue has stopped.
+  onOutdated: (error: Error) => void;
+  // How long to wait before resending after a failure, doubling from `minMs` up to `maxMs`.
+  retry?: { minMs: number; maxMs: number };
   utcOffsetMinutes: () => number;
   // The client's sync position. A batch's delta packet can arrive before the response that accepts it.
   lastSyncId: () => number;
@@ -225,7 +243,9 @@ export type QueueOptions<M extends Models, T extends TransactionEnvelope> = {
 const MAX_BATCH = 100;
 // Kept well under the server's 1 MB limit on a request.
 const MAX_BATCH_BYTES = 500_000;
-const RETRY_MS = 2000;
+// Retries back off from 2 seconds to a minute by default. Five server failures in a row and the batch is stuck.
+const RETRY = { minMs: 2000, maxMs: 60_000 };
+const MAX_SERVER_FAILURES = 5;
 
 // Takes transactions from creation to completion, through LSE's stages: created (this tick), queued (saved, waiting to
 // send), executing (sent), and completed but unsynced (accepted, waiting for its sync id to arrive).
@@ -242,6 +262,11 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
   #commitScheduled = false;
   #retry: ReturnType<typeof setTimeout> | undefined;
   #stopped = false;
+  // Failed sends in a row (any kind), for backing off, and server failures in a row, for deciding it's stuck.
+  #attempts = 0;
+  #serverFailures = 0;
+  // The message of a batch stuck at the front of the queue, until it's retried or discarded.
+  stuck: string | null = null;
 
   constructor(options: QueueOptions<M, T>) {
     this.#options = options;
@@ -302,7 +327,13 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
 
   // Sends the next batch: the leading queued transactions sharing a batch index and an actor, within the size limits.
   dequeue(): void {
-    if (this.#stopped || !this.online || this.executingTransactions.length > 0) return;
+    if (
+      this.#stopped ||
+      this.stuck !== null ||
+      !this.online ||
+      this.executingTransactions.length > 0
+    )
+      return;
     const [first] = this.queuedTransactions;
     if (first === undefined) return;
     const batch: Transaction<M, T>[] = [];
@@ -328,9 +359,9 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
   async executeTransactionBatch(batch: Transaction<M, T>[]): Promise<void> {
     const {
       send,
-      database,
-      pool,
-      onRejected,
+      schemaHash,
+      onOutdated,
+      onStuck,
       utcOffsetMinutes,
       lastSyncId: synced,
     } = this.#options;
@@ -338,28 +369,97 @@ export class TransactionQueue<M extends Models, T extends TransactionEnvelope> {
       const { lastSyncId } = await send({
         actorId: batch[0].actorId,
         utcOffsetMinutes: utcOffsetMinutes(),
+        schemaHash,
         transactions: batch.map((transaction) => transaction.input),
       });
+      this.#attempts = 0;
+      this.#serverFailures = 0;
       for (const transaction of batch) transaction.syncIdNeededForCompletion = lastSyncId;
       this.completedButUnsyncedTransactions.push(...batch);
       this.executingTransactions = [];
       this.progressQueue(synced());
-      await database.deleteTransactions(batch.map((transaction) => transaction.id));
+      await this.#options.database.deleteTransactions(batch.map((transaction) => transaction.id));
     } catch (error) {
       this.executingTransactions = [];
       if (error instanceof RejectedError) {
-        // Undo newest first, so each restores the value the one before it saw.
-        for (const transaction of [...batch].reverse()) transaction.rollback(pool);
-        await database.deleteTransactions(batch.map((transaction) => transaction.id));
-        onRejected(error, batch);
+        this.#attempts = 0;
+        this.#serverFailures = 0;
+        await this.#refuse(batch, error);
       } else {
-        // Offline, the server is down, or signed out: keep the batch first in line and try again.
+        // Keep the batch first in line.
         this.queuedTransactions = [...batch, ...this.queuedTransactions];
+        if (error instanceof OutdatedError) {
+          // Nothing more goes out until the app is updated; what's queued stays, to send then.
+          this.#stopped = true;
+          onOutdated(error);
+          return;
+        }
+        if (error instanceof ServerError && ++this.#serverFailures >= MAX_SERVER_FAILURES) {
+          // The server keeps failing on this batch, and everything else waits behind it: the user decides.
+          this.stuck = error.message;
+          onStuck(error.message);
+          return;
+        }
+        // Offline, the server down, or signed out: try again, waiting longer each time.
         clearTimeout(this.#retry);
-        this.#retry = setTimeout(() => this.dequeue(), RETRY_MS);
+        const { minMs, maxMs } = this.#options.retry ?? RETRY;
+        const delay = Math.min(minMs * 2 ** this.#attempts++, maxMs);
+        this.#retry = setTimeout(() => this.dequeue(), jittered(delay));
         return;
       }
     }
+    this.dequeue();
+  }
+
+  // Rolls back a refused batch, newest first so each restores the value the one before it saw, and drops the changes
+  // still waiting that touch what a refused creation would have made: they can only be refused too, and rolling them
+  // back would bring back a record the server never had.
+  async #refuse(batch: Transaction<M, T>[], error: Error): Promise<void> {
+    for (const transaction of [...batch].reverse()) transaction.rollback(this.#options.pool);
+    const made = batch
+      .filter((transaction) => transaction.kind === "creation")
+      .flatMap((transaction) => transaction.touches());
+    const dependsOnRefused = (transaction: Transaction<M, T>): boolean =>
+      made.some((model) => transaction.touchesModel(model.modelName, model.id));
+    const dropped = [...this.createdTransactions, ...this.queuedTransactions].filter(
+      dependsOnRefused,
+    );
+    this.createdTransactions = this.createdTransactions.filter(
+      (transaction) => !dependsOnRefused(transaction),
+    );
+    this.queuedTransactions = this.queuedTransactions.filter(
+      (transaction) => !dependsOnRefused(transaction),
+    );
+    await this.#options.database.deleteTransactions(
+      [...batch, ...dropped].map((transaction) => transaction.id),
+    );
+    this.#options.onRejected(error, [...batch, ...dropped]);
+  }
+
+  // Sends the stuck batch again.
+  retryStuck(): void {
+    if (this.stuck === null) return;
+    this.stuck = null;
+    this.#serverFailures = 0;
+    this.#options.onStuck(null);
+    this.dequeue();
+  }
+
+  // Gives up on the stuck batch: rolls it back as if the server had refused it, and carries on with the rest.
+  async discardStuck(): Promise<void> {
+    if (this.stuck === null) return;
+    const [first] = this.queuedTransactions;
+    const batch = this.queuedTransactions.filter(
+      (transaction) => transaction.batchIndex === first?.batchIndex,
+    );
+    this.queuedTransactions = this.queuedTransactions.filter(
+      (transaction) => !batch.includes(transaction),
+    );
+    const message = this.stuck;
+    this.stuck = null;
+    this.#serverFailures = 0;
+    this.#options.onStuck(null);
+    await this.#refuse(batch, new Error(`Discarded: ${message}`));
     this.dequeue();
   }
 

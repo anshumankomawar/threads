@@ -4,13 +4,16 @@
 import {
   defineSchema,
   WORKSPACE_GROUP,
+  type SyncSchema,
   type BuiltInTransaction,
   type ClientMutations,
   type SyncMessage,
 } from "../src";
 import {
   memoryDatabase,
+  OutdatedError,
   RejectedError,
+  ServerError,
   SyncClient,
   UnauthorizedError,
   type ClientEvent,
@@ -133,7 +136,7 @@ export function createServer(
       if (transaction.type === "delete") {
         if (transaction.modelName === "Comment")
           return batch.delete("Comment", transaction.modelId);
-        const note = batch.get("Note", transaction.modelId);
+        const note = batch.find("Note", transaction.modelId);
         if (note?.ownerId !== actorId) throw new SyncError(403, "Only its owner deletes a note");
         return batch.delete("Note", transaction.modelId);
       }
@@ -144,24 +147,22 @@ export function createServer(
       if (transaction.type === "create") {
         if (transaction.modelName === "Comment") {
           // Only on a note you can see.
-          const parent = batch.get("Note", transaction.data.noteId);
-          const sees =
-            parent !== undefined &&
-            (parent.teamId === null
-              ? parent.ownerId === actorId
-              : (batch.get("Team", parent.teamId)?.memberIds.includes(actorId) ?? false));
-          if (!sees) throw new SyncError(404, "Note not found");
+          if (batch.find("Note", transaction.data.noteId) === undefined)
+            throw new SyncError(404, "Note not found");
           return batch.put("Comment", transaction.data);
         }
+        // A bug in a rule, as far as the engine can tell.
+        if (transaction.data.text === "explode")
+          throw new Error("Cannot read properties of undefined");
         intoTeam(transaction.data.teamId);
         return batch.put("Note", { ...transaction.data, ownerId: actorId });
       }
       if (transaction.modelName === "Team") {
-        const team = batch.get("Team", transaction.modelId);
+        const team = batch.find("Team", transaction.modelId);
         if (team === undefined) throw new SyncError(404, "Team not found");
         return batch.put("Team", { ...team, ...transaction.changes });
       }
-      const note = batch.get("Note", transaction.modelId);
+      const note = batch.find("Note", transaction.modelId);
       if (note === undefined) throw new SyncError(404, "Note not found");
       if ("teamId" in transaction.changes && transaction.changes.teamId !== note.teamId)
         intoTeam(transaction.changes.teamId);
@@ -188,6 +189,8 @@ export class Hub {
   server: TestServer;
   readonly sockets = new Set<Socket>();
   readonly offline = new Set<string>();
+  // While set, the server fails every batch (a 5xx).
+  failing = false;
 
   constructor(server: TestServer = createServer()) {
     this.server = server;
@@ -236,13 +239,16 @@ export class Hub {
       },
       send: async (batch) => {
         reachable();
+        if (this.failing) throw new ServerError("The server failed");
         try {
           this.server.execute(copy(batch), session);
         } catch (error) {
           if (error instanceof SyncError)
             throw error.status === 401
               ? new UnauthorizedError(error.message)
-              : new RejectedError(error.message);
+              : error.status === 426
+                ? new OutdatedError(error.message)
+                : new RejectedError(error.message);
           throw error;
         }
         return { lastSyncId: this.server.lastSyncId };
@@ -284,15 +290,17 @@ export class Hub {
     userId: string,
     database: TestDatabase = memoryDatabase(),
     onEvent?: (event: ClientEvent) => void,
+    built: SyncSchema<TestModels> = schema,
   ): TestClient {
     return new SyncClient<TestModels, TestTransaction>({
-      schema,
+      schema: built,
       mutations,
       transport: this.transport({ userId }),
       openDatabase: async () => database,
       onEvent,
-      // Quick reconnects, so tests don't wait out a real backoff.
+      // Quick reconnects and retries, so tests don't wait out a real backoff.
       reconnect: { minMs: 5, maxMs: 20 },
+      retry: { minMs: 5, maxMs: 20 },
     });
   }
 }

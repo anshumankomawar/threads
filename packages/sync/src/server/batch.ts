@@ -1,5 +1,5 @@
-import type { AnyRecord, ModelName, Models } from "../protocol";
-import { modelNames, type SyncSchema } from "../schema";
+import { visibleIn, type AnyRecord, type ModelName, type Models } from "../protocol";
+import { modelNames, syncGroupsOf, type SyncSchema } from "../schema";
 
 export type ModelMaps<M extends Models> = { [Name in ModelName<M>]: Map<string, M[Name]> };
 
@@ -16,15 +16,30 @@ export type StagedWrite<M extends Models> = {
 };
 
 // The writes of one batch, staged until the whole batch succeeds. Reads see staged writes first, so a transaction
-// sees what the ones before it in the batch did.
+// sees what the ones before it in the batch did. A batch run for a session knows its sync groups, so rules can look up
+// only what that session may see (`find`).
 export class Batch<M extends Models> {
   readonly writes = new Map<string, StagedWrite<M>>();
   readonly #models: ModelMaps<M>;
   readonly #schema: SyncSchema<M>;
+  readonly #groups: string[] | undefined;
 
-  constructor(models: ModelMaps<M>, schema: SyncSchema<M>) {
+  constructor(models: ModelMaps<M>, schema: SyncSchema<M>, groups?: string[]) {
     this.#models = models;
     this.#schema = schema;
+    this.#groups = groups;
+  }
+
+  // A record the acting session can see, or undefined, as if it weren't there. Rules look up whatever a transaction
+  // names with this, so nobody changes, or learns of, a record outside their groups by guessing its id. `get` reads
+  // anything, for side effects the server makes on its own account.
+  find<Name extends ModelName<M>>(modelName: Name, id: string): M[Name] | undefined {
+    const record = this.get(modelName, id);
+    if (record === undefined || this.#groups === undefined) return record;
+    const groups = syncGroupsOf(this.#schema, modelName, record as AnyRecord<M>, (name, other) =>
+      this.get(name, other),
+    );
+    return visibleIn(groups, this.#groups) ? record : undefined;
   }
 
   get<Name extends ModelName<M>>(modelName: Name, id: string): M[Name] | undefined {

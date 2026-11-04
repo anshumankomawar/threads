@@ -8,6 +8,7 @@ import {
   editNote,
   Hub,
   note,
+  schema,
   seedUsers,
   settle,
   txId,
@@ -507,4 +508,130 @@ test("session tokens are signed, scoped to a workspace, and expire", async () =>
   const [version, , signature] = token.split(".");
   const forged = `${version}.${btoa(JSON.stringify({ userId: "bob", workspace: "w", expiresAtMs: 2_000 }))}.${signature}`;
   expect(await verifySession("secret", forged, "w", 1_000)).toBeUndefined();
+});
+
+// --- Failures: rule bugs, a failing server, outdated apps, refused creations ---
+
+test("a rule that crashes refuses its batch (422) instead of leaving the client retrying forever", async () => {
+  const events: ServerEvent[] = [];
+  const server = createServer(
+    undefined,
+    () => 1_000,
+    (event) => events.push(event),
+  );
+  seedUsers(server, "ann");
+  const hub = new Hub(server);
+  const [ann] = await started(hub, "ann");
+  ann.transact(note("bad", "explode"), "ann");
+  expect(ann.pool.get("Note", "bad")).toBeDefined();
+  await settle();
+  expect(ann.pool.get("Note", "bad")).toBeUndefined();
+  expect(ann.error).toBe("The server couldn't apply this change");
+  expect(ann.queue.pending).toEqual([]);
+  expect(events.map((event) => event.type)).toContain("failed");
+  // The client carries on.
+  ann.transact(note("good"), "ann");
+  await settle();
+  expect(server.models.Note.has("good")).toBe(true);
+});
+
+test("a server that keeps failing leaves the change stuck, to retry or discard, and the rest waits behind it", async () => {
+  const { hub, server } = setUp("ann");
+  const [ann] = await started(hub, "ann");
+  hub.failing = true;
+  ann.transact(note("first"), "ann");
+  ann.transact(note("second"), "ann");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(ann.stuck).toBe("The server failed");
+  expect(server.models.Note.size).toBe(0);
+
+  // Fixed, and retried: both go through.
+  hub.failing = false;
+  ann.retryStuck();
+  await settle();
+  expect(ann.stuck).toBeNull();
+  expect(server.models.Note.size).toBe(2);
+
+  // Stuck again, and discarded: it's taken out as if refused, and what came after it goes through.
+  hub.failing = true;
+  ann.transact(note("doomed"), "ann");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(ann.stuck).not.toBeNull();
+  hub.failing = false;
+  await ann.discardStuck();
+  ann.transact(note("after"), "ann");
+  await settle();
+  expect(ann.pool.get("Note", "doomed")).toBeUndefined();
+  expect(server.models.Note.has("doomed")).toBe(false);
+  expect(server.models.Note.has("after")).toBe(true);
+});
+
+test("being offline never marks a change stuck: it waits and goes through when the server is back", async () => {
+  const { hub, server } = setUp("ann");
+  const [ann] = await started(hub, "ann");
+  hub.offline.add("ann");
+  ann.transact(note("patient"), "ann");
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  expect(ann.stuck).toBeNull();
+  hub.offline.delete("ann");
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  await settle();
+  expect(server.models.Note.has("patient")).toBe(true);
+});
+
+test("an app built for another schema stops syncing and says it's out of date; the server refuses its changes", async () => {
+  const { hub, server } = setUp("ann");
+  const old = hub.client("ann", memoryDatabase(), undefined, { ...schema, version: "test:v0" });
+  await old.start();
+  await settle();
+  expect(old.status).toBe("outdated");
+  expect(old.error).toContain("out of date");
+  expect(old.connected).toBe(false);
+  expect(() =>
+    server.execute(
+      { actorId: "ann", schemaHash: "something-else", transactions: [note("n")] },
+      { userId: "ann" },
+    ),
+  ).toThrow("out of date");
+});
+
+test("a rule looks up only what the session can see, so guessing an id changes nothing", () => {
+  const { server } = setUp("ann", "bob");
+  server.execute({ actorId: "ann", transactions: [note("private")] }, { userId: "ann" });
+  expect(() =>
+    server.execute(
+      { actorId: "bob", transactions: [editNote("private", { text: "Mine now" })] },
+      { userId: "bob" },
+    ),
+  ).toThrow("Note not found");
+  expect(server.models.Note.get("private")?.text).toBe("Hello");
+});
+
+test("when a creation is refused, the changes waiting on what it made go with it: no ghost record", async () => {
+  const { hub, server } = setUp("ann", "bob", "cat");
+  const events: ClientEvent[] = [];
+  const cat = hub.client("cat", memoryDatabase(), (event) => events.push(event));
+  await cat.start();
+  await settle();
+  // Cat isn't in the team, so making a note there is refused; meanwhile she edits and deletes it.
+  hub.offline.add("cat");
+  cat.transact(note("ghost", "Hi", "t"), "cat");
+  await Promise.resolve();
+  await Promise.resolve();
+  cat.transact(editNote("ghost", { text: "Edited" }), "cat");
+  await Promise.resolve();
+  await Promise.resolve();
+  cat.delete("Note", "ghost", "cat");
+  await settle();
+  hub.offline.delete("cat");
+  cat.queue.dequeue();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  await settle();
+  expect(server.models.Note.has("ghost")).toBe(false);
+  expect(cat.pool.get("Note", "ghost")).toBeUndefined();
+  expect(cat.queue.pending).toEqual([]);
+  // One refusal: the edit and the delete were dropped with the creation, never sent to be refused in turn.
+  expect(events.filter((event) => event.type === "rejected")).toEqual([
+    { type: "rejected", message: "Only a team's members put notes in it", transactions: 3 },
+  ]);
 });

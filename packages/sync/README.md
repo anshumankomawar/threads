@@ -38,6 +38,8 @@ Everything else is the engine's.
   settles the rare case rollback alone can't (the record left your view while the change was out). If the server
   deletes or inserts a model, unsent changes to it, or an unsent creation with its id, are dropped (`modelDeleted`,
   `modelUpserted`).
+- **A refused creation takes its dependents with it.** Changes still waiting that touch what a refused creation would
+  have made are dropped with it, never sent to be refused in turn.
 - **Last writer wins.** An update sets whole values, lists included, and the later one wins, as in LSE.
 - **Survives restarts.** The client's cache holds only server-confirmed data, plus unsent transactions (with when they
   were made), which are replayed on start.
@@ -52,6 +54,17 @@ Everything else is the engine's.
   moves out of your groups arrives as a delete, and one that moves in as an insert, and records whose groups come from
   it move with it. When your groups change, the client loads the new groups' records (a partial bootstrap) and drops
   the ones you no longer see, from its database and its pool, judged by the server's copy where it has one.
+- **A bad batch never blocks a client.** A rule that crashes (throws anything but a `SyncError`) refuses its batch with
+  a 422 instead of failing the request, so the client rolls it back rather than retrying forever. Sends that fail back
+  off (2 s doubling to a minute, with jitter); five server failures in a row and the change is `stuck`: the client
+  reports it and holds everything behind it until the user calls `retryStuck()` or `discardStuck()`. Being offline is
+  never "stuck".
+- **Out-of-date apps stop cleanly.** Every response says which schema the server runs, and every batch which one the
+  client was built with. A client built for another schema goes to `status: "outdated"` and stops syncing (what's on
+  screen stays readable, unsent changes stay saved); the server refuses its batches with a 426.
+- **Rules only see what the actor can see.** `batch.find` returns a record only if the acting session's groups include
+  it, so a rule that looks up whatever a transaction names with it can't be used to change, or learn of, a record by
+  guessing its id. (`batch.get` reads anything, for side effects and for checking an id is free.)
 - **Who's acting.** A user's session acts only as that user. An admin session sees everything and may act as anyone.
   `signSession` / `verifySession` make and check signed session tokens; whatever signs people in mints them.
 - **Loading on demand.** A model loads `instant` (at bootstrap), `lazy` (all at once, the first time it's asked for) or
@@ -70,6 +83,8 @@ Everything else is the engine's.
 
 ## What a product must respect
 
+- In `apply`, look up whatever a transaction names with `batch.find`, not `batch.get`.
+- Throw `SyncError` for a refusal; anything else is treated as a bug in the rule and refused with a 422.
 - Write only through `apply` (or `SyncServer.write` for server-made changes such as seeding). Never write to storage
   directly.
 - Make side effects in `apply`, staged on the batch, with ids derived from the transaction (`${transaction.id}:…`), so

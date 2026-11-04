@@ -39,7 +39,7 @@ export const isAdmin = (session: Session): session is { admin: true } => "admin"
 
 // A refusal: the whole batch is rolled back and the client told why, with this HTTP status.
 export class SyncError extends Error {
-  readonly status: 400 | 401 | 403 | 404 | 409 | 413;
+  readonly status: 400 | 401 | 403 | 404 | 409 | 413 | 422 | 426;
 
   constructor(status: SyncError["status"], message: string) {
     super(message);
@@ -64,6 +64,9 @@ export type ServerEvent =
       transactions: number;
     }
   | { type: "refused"; status: number; message: string; transactions: number }
+  // A rule threw something other than a `SyncError`: a bug in the product's rules, refused like any bad batch (422) so
+  // the client doesn't retry it forever.
+  | { type: "failed"; message: string; transactions: number }
   | { type: "compacted"; throughSyncId: number };
 
 export type ServerOptions<M extends Models, T extends TransactionEnvelope> = {
@@ -137,9 +140,14 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
 
   // --- Writing ---
 
-  // Runs `stage` as one batch: nothing is saved or applied if it throws.
-  write(stage: (batch: Batch<M>) => void, transactionIds: string[] = []): LoggedAction<M>[] {
-    const batch = new Batch(this.models, this.schema);
+  // Runs `stage` as one batch: nothing is saved or applied if it throws. `sessionGroups` are the acting session's, for
+  // `find`.
+  write(
+    stage: (batch: Batch<M>) => void,
+    transactionIds: string[] = [],
+    sessionGroups?: string[],
+  ): LoggedAction<M>[] {
+    const batch = new Batch(this.models, this.schema, sessionGroups);
     stage(batch);
     const fromSyncId = this.lastSyncId;
     const after: Lookup<M> = (modelName, id) => batch.get(modelName, id);
@@ -218,6 +226,8 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
   // it lost the response).
   execute(input: TransactionBatch<T | BuiltInTransaction<M>>, session: Session): LoggedAction<M>[] {
     try {
+      if (input.schemaHash !== undefined && input.schemaHash !== this.schemaHash)
+        throw new SyncError(426, "This version of the app is out of date");
       if (!isAdmin(session) && input.actorId !== session.userId)
         throw new SyncError(403, "You can only act as yourself");
       if (input.transactions.length > (this.#options.maxBatch ?? 200))
@@ -236,11 +246,23 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
       return this.write(
         (batch) => {
           for (const transaction of fresh) {
-            if (isBuiltIn(transaction)) this.#checkBuiltIn(batch, transaction, groups);
-            this.#options.apply(batch, transaction, context);
+            if (isBuiltIn(transaction)) this.#checkBuiltIn(batch, transaction);
+            try {
+              this.#options.apply(batch, transaction, context);
+            } catch (error) {
+              if (error instanceof SyncError) throw error;
+              const message = error instanceof Error ? error.message : String(error);
+              this.#options.onEvent?.({
+                type: "failed",
+                message,
+                transactions: input.transactions.length,
+              });
+              throw new SyncError(422, "The server couldn't apply this change");
+            }
           }
         },
         fresh.map((transaction) => transaction.id),
+        groups,
       );
     } catch (error) {
       if (error instanceof SyncError)
@@ -255,13 +277,11 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
   }
 
   // A delete, archive or unarchive needs a target this session can see, in the right state.
-  #checkBuiltIn(batch: Batch<M>, transaction: BuiltInTransaction, groups: string[]): void {
+  #checkBuiltIn(batch: Batch<M>, transaction: BuiltInTransaction): void {
     const { modelName, modelId, type } = transaction;
     if (!(modelName in this.models)) throw new SyncError(400, `Unknown model: ${modelName}`);
-    const name = modelName as ModelName<M>;
-    const record = batch.get(name, modelId);
-    if (record === undefined || !this.#visible(name, record, groups, (n, id) => batch.get(n, id)))
-      throw new SyncError(404, `${modelName} not found`);
+    const record = batch.find(modelName as ModelName<M>, modelId);
+    if (record === undefined) throw new SyncError(404, `${modelName} not found`);
     const archived = record.archivedAtMs !== undefined && record.archivedAtMs !== null;
     if (type === "archive" && archived) throw new SyncError(409, `${modelName} is archived`);
     if (type === "unarchive" && !archived) throw new SyncError(409, `${modelName} isn't archived`);
@@ -285,7 +305,12 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
   }
 
   position(session: Session): SyncPosition {
-    return { epoch: this.epoch, lastSyncId: this.lastSyncId, syncGroups: this.groupsOf(session) };
+    return {
+      epoch: this.epoch,
+      lastSyncId: this.lastSyncId,
+      syncGroups: this.groupsOf(session),
+      schemaHash: this.schemaHash,
+    };
   }
 
   handshake(session: Session): SyncMessage<M> {
@@ -306,7 +331,7 @@ export class SyncServer<M extends Models, T extends TransactionEnvelope = Transa
         models[name] = [...this.models[name].values()].filter((record) =>
           this.#visible(name, record as AnyRecord<M>, wanted),
         );
-    return { ...this.position(session), schemaHash: this.schemaHash, models };
+    return { ...this.position(session), models };
   }
 
   // Models that don't load at start, as LSE's batch loader asks for them: all of a lazy model, or a partial model's
