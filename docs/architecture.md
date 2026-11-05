@@ -87,15 +87,13 @@ person's id, and an empty token is the admin. Switching source or person (⌘U, 
 
 ### Signing in
 
-The desktop app signs in with Google or a one-time code sent to your email, through [Better
+The desktop app signs in only with Google, through [Better
 Auth](https://www.better-auth.com) in the Worker (`apps/api/src/auth.ts`) and its Electron plugin in the app's main
 process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: the API is all there is.
 
 - **The sign-in screen**: signed out of Local or Cloudflare, the whole window is the sign-in screen, as in Linear
   (`components/SignIn.tsx`; `main.tsx` loads it instead of the app, so no store is made). Sample has none: it's viewed as
   anyone (⌘U).
-- **An emailed code** (Continue with email, your email, then the code) never leaves the app: the main process asks the API for
-  the code and signs in with it directly (`window.threads.sendCode` / `verifyCode`).
 - **Google** (Continue with Google) opens the browser straight at Google (`/api/auth/electron/
   init-oauth-proxy`, with the app's PKCE request), which returns to the API (`<BETTER_AUTH_URL>/api/auth/callback/google`),
   which lands the browser on the API's own page at `/` (`SIGNED_IN_PAGE`). That page opens the app on
@@ -108,15 +106,12 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
   session token; locally, the person's id. Signed in, you're that person and ⌘U is off;
   signing out returns to View As. Calls from the main process carry `origin: com.threads.arc:/`, which the API trusts.
 - **Only invited emails get in.** `INVITES` (a secret: `email=personId` pairs, separated by commas) is the invite list
-  and says which Person each email is. An uninvited email can't get an account by either route (a `user.create` hook
-  refuses it), and asking for a code for one looks the same as for an invited one but sends nothing.
+  and says which Person each email is. An uninvited email can't get an account (a `user.create` hook refuses it).
 - **Better Auth keeps its own users and sessions** in a D1 database (`AUTH_DB`), apart from the workspaces. Its tables
   are made the first time the Worker signs anyone in (`getMigrations`), so there's no migration step to run.
-- **Codes** go out through Resend when `RESEND_API_KEY` is set; without it they're only written to the Worker's log,
-  which is allowed locally only (no `API_TOKEN`).
 - **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the API's own origin,
   `http://127.0.0.1:3030` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google is offered only with both;
-  its redirect URI is `<BETTER_AUTH_URL>/api/auth/callback/google`), and `RESEND_API_KEY`. Locally they go in
+  its redirect URI is `<BETTER_AUTH_URL>/api/auth/callback/google`). Locally they go in
   `apps/api/.dev.vars`; hosted, they're secrets.
 - **The plugin's content security policy is left off**, since it would keep the window from reaching the API.
 - **Per data source**: the main process keeps the chosen source in a `source` file in the app's data folder

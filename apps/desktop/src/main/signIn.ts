@@ -1,14 +1,12 @@
 import { electronClient } from "@better-auth/electron/client";
 import { storage } from "@better-auth/electron/storage";
 import { createAuthClient } from "better-auth/client";
-import { emailOTPClient } from "better-auth/client/plugins";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
 import { app, ipcMain } from "electron";
 
 // Signing the app in, with Better Auth's Electron plugin, all from this main process:
-// - An emailed code: the window asks for it and passes it here, and this signs in with the API directly.
 // - Google: the browser opens straight at Google, comes back to the API, and the API's page opens the app on a
 //   `com.threads.arc://` link with a one-time code (or shows the code to paste), which this trades for a session.
 // The session stays here, encrypted with the OS keychain (`safeStorage`) before it's written to disk; the window only
@@ -32,7 +30,6 @@ const API_URL = source === "cloudflare" && HOSTED_URL ? HOSTED_URL : "http://127
 const auth = createAuthClient({
   baseURL: API_URL,
   plugins: [
-    emailOTPClient(),
     electronClient({
       // Google sign-in goes straight to Google; this page is only where the browser lands afterwards.
       signInURL: `${API_URL}/`,
@@ -57,10 +54,6 @@ async function signedIn(): Promise<unknown> {
   }
 }
 
-// An answer for the window: done, or why not.
-const outcome = ({ error }: { error: { message?: string } | null }): { error?: string } =>
-  error ? { error: error.message ?? "That didn't work" } : {};
-
 // Must run before the app is ready: it registers the `com.threads.arc://` link and the window's sign-in bridges. Not the
 // plugin's content security policy, which would keep the window from reaching the API.
 export function setupSignIn(): void {
@@ -74,11 +67,4 @@ export function setupSignIn(): void {
     app.relaunch();
     app.exit(0);
   });
-  // An uninvited email gets no code, and is told nothing different.
-  ipcMain.handle("threads:send-code", async (_event, email: string) =>
-    outcome(await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" })),
-  );
-  ipcMain.handle("threads:verify-code", async (_event, email: string, code: string) =>
-    outcome(await auth.signIn.emailOtp({ email, otp: code })),
-  );
 }

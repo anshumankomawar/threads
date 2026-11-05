@@ -99,23 +99,13 @@ const GoogleLogo = (): JSX.Element => (
 );
 
 // Signed out, the whole window is this, as in Linear: Google (in the browser, straight to Google, back on a
-// `com.threads.arc://` link) or an emailed code, entered here. Signing in reloads the window as you.
+// `com.threads.arc://` link, or with a code to paste here). Signing in reloads the window as you.
 export default function SignIn(): JSX.Element {
-  const [step, setStep] = createSignal<"start" | "email" | "code" | "google">("start");
-  const [email, setEmail] = createSignal("");
+  const [step, setStep] = createSignal<"start" | "google">("start");
   const [error, setError] = createSignal<string | null>(null);
-  const [busy, setBusy] = createSignal(false);
   const go = (next: ReturnType<typeof step>): void => {
     setError(null);
     setStep(next);
-  };
-  const attempt = async (work: () => Promise<{ error?: string }>, then: () => void) => {
-    setBusy(true);
-    setError(null);
-    const { error } = await work();
-    setBusy(false);
-    if (error) setError(error);
-    else then();
   };
   const google = (): void => {
     void window.requestAuth({ provider: "google" });
@@ -133,71 +123,13 @@ export default function SignIn(): JSX.Element {
       <main class={sx(styles.screen)}>
         <div class={sx(styles.column)}>
           <img class={sx(styles.logo)} src={theme() === "dark" ? logoDark : logo} alt="" />
-          <h1 class={sx(styles.title)}>
-            {step() === "code" ? "Check your email" : "Log in to Arc"}
-          </h1>
+          <h1 class={sx(styles.title)}>Log in to Arc</h1>
           <Switch>
             <Match when={step() === "start"}>
               <button class={sx(styles.button, styles.primary)} onClick={google}>
                 <GoogleLogo />
                 Continue with Google
               </button>
-              <button class={sx(styles.button)} onClick={() => go("email")}>
-                Continue with email
-              </button>
-            </Match>
-            <Match when={step() === "email"}>
-              <form
-                class={sx(styles.form)}
-                onSubmit={(event) =>
-                  submit(event, (value) => {
-                    setEmail(value);
-                    void attempt(
-                      () => window.threads.sendCode(value),
-                      () => go("code"),
-                    );
-                  })
-                }
-              >
-                <input
-                  class={sx(styles.input)}
-                  name="value"
-                  type="email"
-                  placeholder="Enter your email address"
-                  autofocus
-                  required
-                />
-                <button class={sx(styles.button, styles.primary)} disabled={busy()}>
-                  Continue with email
-                </button>
-              </form>
-            </Match>
-            <Match when={step() === "code"}>
-              <form
-                class={sx(styles.form)}
-                onSubmit={(event) =>
-                  submit(event, (code) => {
-                    void attempt(
-                      () => window.threads.verifyCode(email(), code),
-                      () => location.reload(),
-                    );
-                  })
-                }
-              >
-                <p class={sx(styles.note)}>We sent a code to {email()}</p>
-                <input
-                  class={sx(styles.input)}
-                  name="value"
-                  inputmode="numeric"
-                  autocomplete="one-time-code"
-                  placeholder="Enter code"
-                  autofocus
-                  required
-                />
-                <button class={sx(styles.button, styles.primary)} disabled={busy()}>
-                  Continue
-                </button>
-              </form>
             </Match>
             <Match when={step() === "google"}>
               <p class={sx(styles.note)}>Finish logging in in your browser.</p>

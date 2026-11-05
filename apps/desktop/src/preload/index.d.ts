@@ -14,8 +14,6 @@ declare global {
       // The data source the main process signs in against; choosing another restarts the app.
       source: () => Promise<"cloudflare" | "local" | "sample">;
       useSource: (source: string) => Promise<void>;
-      sendCode: (email: string) => Promise<{ error?: string }>;
-      verifyCode: (email: string, code: string) => Promise<{ error?: string }>;
     };
   }
 }

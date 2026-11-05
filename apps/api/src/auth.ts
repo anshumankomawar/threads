@@ -1,14 +1,12 @@
 import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
 import { getMigrations } from "better-auth/db/migration";
-import { emailOTP } from "better-auth/plugins";
 import { electron } from "@better-auth/electron";
 
-// Signing in, with Better Auth: Google, or a one-time code sent to your email. Its users and sessions live in D1
+// Signing in, with Better Auth, through Google. Its users and sessions live in D1
 // (`AUTH_DB`), apart from the workspaces. Only invited emails get in (`INVITES`), each as one Person; a signed-in
 // session is then traded for the Threads session token the sync API already takes (`POST /auth/token` in worker.ts).
-// The desktop app signs in from its main process (Better Auth's Electron plugin): email codes directly, and Google in
-// the browser, which comes back to this API and then to the app on a `com.threads.arc://` link (`SIGNED_IN_PAGE`).
+// The desktop app signs in from its main process (Better Auth's Electron plugin), with Google in the browser, which comes back to this API and then to the app on a `com.threads.arc://` link (`SIGNED_IN_PAGE`).
 
 const DEV_SECRET = "threads-local-development-secret-not-for-production";
 // The local API. The browser must use exactly this origin all the way through Google and back (its cookies are this
@@ -25,30 +23,6 @@ export function personFor(invites: string, email: string): string | undefined {
   }
 }
 
-// Sends a sign-in code: by email through Resend when there's a key, else to the Worker's log, which is only allowed
-// locally (no API_TOKEN), so a hosted API never silently drops codes.
-async function sendCode(env: Env, email: string, otp: string): Promise<void> {
-  if (!env.RESEND_API_KEY) {
-    if (env.API_TOKEN)
-      throw new APIError("INTERNAL_SERVER_ERROR", { message: "Email isn't set up" });
-    console.log(`Sign-in code for ${email}: ${otp}`);
-    return;
-  }
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      // Resend's shared test sender; send from your own domain once it's verified there.
-      from: "Threads <onboarding@resend.dev>",
-      to: email,
-      subject: "Your Threads sign-in code",
-      text: `Your sign-in code is ${otp}. It expires in 5 minutes.`,
-    }),
-  });
-  if (!response.ok)
-    throw new APIError("BAD_GATEWAY", { message: `Sending the code failed (${response.status})` });
-}
-
 // Better Auth's settings for one request (the D1 binding exists only while handling one).
 function authOptions(env: Env) {
   const origin = env.BETTER_AUTH_URL || LOCAL_ORIGIN;
@@ -63,16 +37,7 @@ function authOptions(env: Env) {
     // The desktop app signs in through the browser and comes back on a `com.threads.arc://` link (Better Auth's Electron plugin).
     trustedOrigins: [origin, `${APP_SCHEME}:/`],
     socialProviders: google === undefined ? {} : { google },
-    plugins: [
-      electron(),
-      emailOTP({
-        // Uninvited emails are told nothing, so the form can't be used to find out who's invited.
-        async sendVerificationOTP({ email, otp, type }) {
-          if (type !== "sign-in" || personFor(env.INVITES, email) === undefined) return;
-          await sendCode(env, email, otp);
-        },
-      }),
-    ],
+    plugins: [electron()],
     databaseHooks: {
       user: {
         create: {

@@ -11,7 +11,4 @@ contextBridge.exposeInMainWorld("threads", {
   signedIn: () => ipcRenderer.invoke("threads:signed-in"),
   source: () => ipcRenderer.invoke("threads:source"),
   useSource: (source: string) => ipcRenderer.invoke("threads:use-source", source),
-  sendCode: (email: string) => ipcRenderer.invoke("threads:send-code", email),
-  verifyCode: (email: string, code: string) =>
-    ipcRenderer.invoke("threads:verify-code", email, code),
 });
