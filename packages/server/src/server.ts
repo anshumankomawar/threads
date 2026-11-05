@@ -20,8 +20,9 @@ import type { Logged, Storage } from "./storage";
 export type Session = { userId: string } | { admin: true };
 
 export type Write = Pick<TxRecord, "kind" | "model" | "modelId" | "changes">;
-// A write as permission hooks and effects see it: the row before and after (undefined for a create / a delete).
-export type Change = Write & { before?: Row; after?: Row };
+// A write as permission hooks and effects see it: the row before and after (undefined for a create / a delete), and
+// the person who made it (none for the admin, or for an effect's own writes).
+export type Change = Write & { before?: Row; after?: Row; userId?: string };
 
 export interface Reader {
   get(model: string, id: string): Row | undefined;
@@ -254,7 +255,7 @@ export class SyncServer {
               : (before?.archivedAt ?? null),
       };
     }
-    const change: Change = { ...write, before, after };
+    const change: Change = { ...write, before, after, userId };
     const rule = this.#options.rules?.[write.model];
     if (userId !== undefined && rule !== undefined && !rule(change, userId, this.#reader))
       throw new Refusal(

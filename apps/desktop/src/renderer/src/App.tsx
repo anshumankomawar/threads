@@ -34,10 +34,32 @@ import { Icon } from "./components/Icon";
 import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
+import { MentionToasts } from "./components/MentionToasts";
 import { LabelView, PersonView } from "./components/Pages";
 import { Sidebar, sidebarIcon, TopButton } from "./components/Sidebar";
 
 const styles = stylex.create({
+  saveError: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 8,
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 12px",
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
+    color: colors.urgent,
+  },
+  saveErrorDismiss: {
+    display: "flex",
+    flexShrink: 0,
+    padding: 0,
+    borderStyle: "none",
+    color: "inherit",
+    backgroundColor: "transparent",
+    cursor: "pointer",
+  },
   main: {
     position: "relative",
     display: "flex",
@@ -129,6 +151,21 @@ export default function App(): JSX.Element {
           <Sidebar />
         </Show>
         <main class={sx(styles.main)}>
+          {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
+          <Show when={store.rejection()}>
+            {(reason) => (
+              <div class={sx(styles.saveError)} role="alert">
+                <span>That change wasn't saved: {reason()}.</span>
+                <button
+                  class={sx(styles.saveErrorDismiss)}
+                  aria-label="Dismiss"
+                  onClick={() => store.dismissRejection()}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </Show>
           <div
             class={sx(topbar.bar, sidebarOpen() ? styles.topbarBesideSidebar : styles.topbarAlone)}
           >
@@ -216,6 +253,7 @@ export default function App(): JSX.Element {
           </Show>
         </main>
         <Palettes />
+        <MentionToasts />
         <ContextMenu />
       </Show>
     </>

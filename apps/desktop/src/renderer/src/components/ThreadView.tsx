@@ -9,14 +9,25 @@ import {
   Bucket,
   Label,
   Thread,
+  type Activity,
   plainText,
   PRIORITIES,
   splitText,
   STATES,
   User,
-  type Message,
+  Message,
 } from "models";
-import { itemFor, me, open, setDialog, setSplit, setState, showMenu, store } from "../session";
+import {
+  itemFor,
+  me,
+  open,
+  placeIn,
+  setDialog,
+  setSplit,
+  setState,
+  showMenu,
+  store,
+} from "../session";
 import { bucketIcons } from "../bucketIcons";
 import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
@@ -33,6 +44,16 @@ const styles = stylex.create({
   // The viewport minus about one block, so the last entry can reach the top but never leave the screen.
   overscroll: { height: "calc(100vh - 34px - 140px)" },
   quiet: { color: colors.textTertiary, fontSize: fontSizes.body },
+  event: { marginBlock: -6 },
+  eventMarker: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: 18,
+    marginTop: 0,
+  },
+  eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
+  eventActor: { color: colors.textSecondary },
   properties: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 4 },
   reply: { display: "flex", flex: 1, minWidth: 0 },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
@@ -72,7 +93,8 @@ export function ago(date: Date): string {
 }
 const titleOf = (id: string): string | undefined => store.findById(Thread, id)?.title;
 const nameOf = (id: string): string | undefined => store.findById(User, id)?.name;
-export const plain = (text: string): string => plainText(text, titleOf, nameOf);
+export const plain = (text: string): string =>
+  plainText(text, titleOf, nameOf, (id) => store.findById(Label, id)?.name);
 
 // Text with its thread links and mentions live: a link opens beside, a mention opens the profile.
 function LinkedText(props: { text: string; current: string; byline?: boolean }): JSX.Element {
@@ -92,6 +114,12 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
               {titleOf(part.thread) ?? "Thread"}
             </button>
           </Show>
+        ) : "date" in part ? (
+          new Date(part.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+        ) : "label" in part ? (
+          <button class={sx(link.person, link.mention)} onClick={() => open({ label: part.label })}>
+            @{store.findById(Label, part.label)?.name ?? "group"}
+          </button>
         ) : "person" in part ? (
           <button
             class={sx(link.person, link.mention)}
@@ -145,12 +173,7 @@ function Header(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   const item = (): ReturnType<typeof itemFor> => itemFor(c());
   const edit = (change: Partial<Thread>) => () => (Object.assign(c(), change), c().save());
-  const place = (bucket: Bucket | undefined) => () => {
-    const placed = item()!;
-    placed.bucket = bucket;
-    placed.manual = bucket !== undefined;
-    placed.save();
-  };
+  const place = (bucket: Bucket | undefined) => () => placeIn(item()!, bucket);
   const buckets = (): Bucket[] =>
     store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
   const labels = (): Label[] => c().labelIds.flatMap((id) => store.findById(Label, id) ?? []);
@@ -312,6 +335,20 @@ function Header(props: { thread: Thread }): JSX.Element {
   );
 }
 
+function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Element {
+  const line = (): Activity => props.activity;
+  return (
+    <div class={sx(thread.block, styles.event)}>
+      <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true" />
+      <div class={sx(styles.quiet, styles.eventText)}>
+        <span class={sx(styles.eventActor)}>{line().actor?.name ?? "Someone"}</span>{" "}
+        <LinkedText text={line().text} current={props.thread.id} />
+        <span> · {ago(line().createdAt)}</span>
+      </div>
+    </div>
+  );
+}
+
 function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element {
   const m = (): Message => props.message;
   return (
@@ -378,15 +415,26 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
         },
       ].filter((o) => o.label.toLowerCase().startsWith(query));
     if (open === "mention")
-      return store
-        .all(User)
-        .filter((u) => u.id !== me().id && u.name.toLowerCase().includes(query))
-        .map((u) => ({
-          label: u.name,
-          seed: u.id,
-          hint: "assigns them",
-          pick: () => menu.pick({ id: u.id, name: u.name }),
-        }));
+      return [
+        ...store
+          .all(User)
+          .filter((u) => u.id !== me().id && u.name.toLowerCase().includes(query))
+          .map((u) => ({
+            label: u.name,
+            seed: u.id,
+            hint: "assigns them",
+            pick: () => menu.pick({ id: u.id, name: u.name }),
+          })),
+        ...store
+          .all(Label)
+          .filter((l) => l.memberIds.length > 0 && l.name.toLowerCase().includes(query))
+          .map((l) => ({
+            label: l.name,
+            icon: i.UserMultipleIcon,
+            hint: `Group · ${l.memberIds.length}`,
+            pick: () => menu.pick({ id: `label:${l.id}`, name: l.name }),
+          })),
+      ];
     const found = store
       .all(Thread)
       .filter((o) => o.id !== c().id && o.title.toLowerCase().includes(query))
@@ -524,6 +572,10 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.Element {
   let end!: HTMLDivElement;
   const messages = (): Message[] => props.thread.messages.sorted("createdAt");
+  const entries = (): (Message | Activity)[] =>
+    [...messages(), ...props.thread.activity.sorted("createdAt")].sort(
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+    );
   // To the end on opening to reply, and whenever you send something.
   let opened = false;
   createEffect(
@@ -538,8 +590,14 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
       <div class={sx(thread.scroll)}>
         <article class={sx(thread.doc)}>
           <Header thread={props.thread} />
-          <For each={messages()}>
-            {(message) => <MessageBlock message={message} thread={props.thread} />}
+          <For each={entries()}>
+            {(entry) =>
+              entry instanceof Message ? (
+                <MessageBlock message={entry} thread={props.thread} />
+              ) : (
+                <ActivityLine activity={entry} thread={props.thread} />
+              )
+            }
           </For>
           <Show when={props.thread.isOpen}>
             <Reply thread={props.thread} autofocus={props.autofocus ?? true} />

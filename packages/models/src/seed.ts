@@ -208,7 +208,7 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
   ];
   if (!sample) return writes;
   for (const [id, name] of Object.entries(SAMPLE_LABELS))
-    writes.push(create("Label", id, { name, workspaceId: workspace }));
+    writes.push(create("Label", id, { name, memberIds: [], workspaceId: workspace }));
   for (const t of SAMPLE_THREADS)
     writes.push(
       create("Thread", t.id, {

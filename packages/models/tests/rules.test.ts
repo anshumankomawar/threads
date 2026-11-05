@@ -105,7 +105,8 @@ test("you write only your own User (not its workspaces), Bucket, Draft and Inbox
 
 test("members write threads, labels and messages in their workspace; others can't", () => {
   const server = setup();
-  const label = (id: string) => tx("create", "Label", id, { name: id, workspaceId: "local" });
+  const label = (id: string) =>
+    tx("create", "Label", id, { name: id, memberIds: [], workspaceId: "local" });
   expect(
     run(
       server,
@@ -233,6 +234,63 @@ test("a thread assigned to someone from the start is in their inbox, not its own
   expect(threadsIn("kk")).toContain("assigned");
   expect(threadsIn("anshu")).not.toContain("assigned");
   expect(threadsIn("anshu")).toContain("mine");
+});
+
+test("@mentioning a group assigns everyone in it and labels the thread", () => {
+  const server = setup();
+  run(
+    server,
+    anshu,
+    tx("create", "Label", "design", {
+      name: "Design",
+      memberIds: ["kk", "arjun", "anshu"],
+      workspaceId: "local",
+    }),
+    message("m1", { body: "[[label:design]] have a look" }),
+  );
+  expect(assignees(server)).toEqual(["kk", "arjun"]);
+  expect(row(server, "Thread", "t")!.labelIds).toEqual(["design"]);
+  expect(inInbox(server, "kk")).toBe(true);
+  expect(inInbox(server, "arjun")).toBe(true);
+  expect(inInbox(server, "anshu")).toBe(false);
+});
+
+const activityOn = (server: ReturnType<typeof setup>, threadId: string) =>
+  [...server.bootstrap(admin).rows].filter(
+    (line) => line.model === "Activity" && line.row.threadId === threadId,
+  );
+
+test("the server writes who changed what on a thread, and nobody else can", () => {
+  const server = setup();
+  run(server, arjun, tx("update", "Thread", "t", { state: "resolved", priority: "high" }));
+  run(server, anshu, tx("update", "Thread", "t", { state: "open" }));
+  run(server, anshu, tx("update", "Thread", "t", { assigneeIds: ["kk"] }));
+  expect(activityOn(server, "t").map((line) => [line.row.actorId, line.row.text])).toEqual([
+    ["arjun", "changed status to Resolved"],
+    ["arjun", "set priority to High"],
+    ["anshu", "reopened this"],
+  ]);
+  const [forged] = server.mutate(anshu, {
+    transactions: [
+      tx("create", "Activity", "x", {
+        threadId: "t",
+        actorId: "anshu",
+        text: "forged",
+        workspaceId: "local",
+      }),
+    ],
+  }).results;
+  expect(forged).toMatchObject({ ok: false, code: "forbidden" });
+});
+
+test("a blocked thread says what it's blocked on, and when it's unblocked", () => {
+  const server = setup();
+  run(server, anshu, thread("b1", { blocksId: "t" }));
+  run(server, arjun, tx("update", "Thread", "b1", { state: "resolved" }));
+  expect(activityOn(server, "t").map((line) => line.row.text)).toEqual([
+    "is blocked on [[thread:b1]]",
+    "is unblocked, [[thread:b1]] is resolved",
+  ]);
 });
 
 test("what was in a deleted bucket is sorted again", () => {

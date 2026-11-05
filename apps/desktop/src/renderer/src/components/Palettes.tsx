@@ -264,13 +264,13 @@ function NewThread(props: { labelId?: string; to?: User }): JSX.Element {
     else if (step() === "labels") go("pick");
     else setDialog(null);
   };
-  const create = (assignees: User[]): void => {
+  const create = (assignees: User[], group?: Label): void => {
     const labels = store.all(Label);
-    const labelIds = names().map(
+    const labelIds = [...new Set([...names(), ...(group ? [group.name] : [])])].map(
       (name) =>
         (
           labels.find((l) => l.name === name) ??
-          store.create(Label, { name, workspace: workspace() })
+          store.create(Label, { name, memberIds: [], workspace: workspace() })
         ).id,
     );
     setDialog(null);
@@ -325,11 +325,25 @@ function NewThread(props: { labelId?: string; to?: User }): JSX.Element {
         const section = `Step 3 of 3 · ${title()}`;
         const first = props.to?.id;
         return [
-          ...[
-            { label: "Unassigned", run: () => create([]) } as Row,
-            ...people(text, (u) => create([u])),
-            { label: "Me", seed: me().id, run: () => create([me()]) },
-          ]
+          ...(
+            [
+              { label: "Unassigned", run: () => create([]) },
+              ...people(text, (u) => create([u])),
+              { label: "Me", seed: me().id, run: () => create([me()]) },
+              ...store
+                .all(Label)
+                .filter((group) => group.memberIds.length > 0)
+                .map((group) => ({
+                  label: group.name,
+                  hint: `Group · ${group.memberIds.length}`,
+                  run: () =>
+                    create(
+                      group.memberIds.flatMap((id) => store.findById(User, id) ?? []),
+                      group,
+                    ),
+                })),
+            ] as Row[]
+          )
             .filter((row) => matches(row.label, text))
             .toSorted((a, b) => Number(b.seed === first) - Number(a.seed === first))
             .map((row) => ({ ...row, section })),
@@ -384,7 +398,7 @@ function NewLabel(props: { thread?: Thread }): JSX.Element {
       placeholder="Name the label"
       rows={(query) =>
         entry(query, "Make label", (name) => {
-          const label = store.create(Label, { name, workspace: workspace() });
+          const label = store.create(Label, { name, memberIds: [], workspace: workspace() });
           if (!props.thread) return open({ label: label.id });
           props.thread.labelIds = [...props.thread.labelIds, label.id];
           props.thread.save();

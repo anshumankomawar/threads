@@ -226,7 +226,7 @@ export function markDone(item: InboxItem): void {
 }
 
 // Out of your inbox until 9 tomorrow morning.
-function snooze(item: InboxItem): void {
+export function snooze(item: InboxItem): void {
   moveOn(item.thread);
   item.snoozedUntil = new Date(new Date(Date.now() + 86_400_000).setHours(9, 0, 0, 0));
   item.save();
@@ -234,6 +234,47 @@ function snooze(item: InboxItem): void {
     item.snoozedUntil = undefined;
     item.save();
   });
+}
+
+// Into one of your buckets by hand, or back to the model.
+export const placeIn = (item: InboxItem, bucket?: Bucket): void => {
+  item.bucket = bucket;
+  item.manual = bucket !== undefined;
+  item.save();
+};
+
+// What right-clicking a thread offers, wherever it's listed.
+export function threadMenu(thread: Thread): MenuItem[] {
+  const item = inbox().order.includes(thread) ? itemFor(thread) : undefined;
+  const shown = active();
+  return [
+    { label: "Open", run: () => open({ thread: thread.id }) },
+    ...(shown && shown !== thread
+      ? [{ label: "Open beside", run: () => setSplit(thread.id) }]
+      : []),
+    ...(item
+      ? [
+          "separator" as const,
+          { label: "Done", run: () => markDone(item) },
+          { label: "Snooze until tomorrow", run: () => snooze(item) },
+          "separator" as const,
+          ...store
+            .where(Bucket, "userId", me().id)
+            .sort((a, b) => a.position - b.position)
+            .filter((bucket) => bucket !== item.bucket)
+            .map((bucket) => ({
+              label: `Move to ${bucket.name}`,
+              run: () => placeIn(item, bucket),
+            })),
+          ...(item.manual ? [{ label: "Sort it for me", run: () => placeIn(item) }] : []),
+        ]
+      : []),
+    "separator",
+    {
+      label: thread.isOpen ? "Resolve" : "Reopen",
+      run: () => setState(thread, thread.isOpen ? "resolved" : "open"),
+    },
+  ];
 }
 
 export function setState(thread: Thread, state: Thread["state"]): void {

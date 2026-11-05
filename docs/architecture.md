@@ -41,9 +41,10 @@ everything a workspace's members share, and `user:<id>` for a person's own rows.
 | Workspace       | name                                                                                                                                        | its own `workspace:<id>`          |
 | User            | name, email, avatarUrl, workspaceIds                                                                                                        | `workspace:<id>` per workspaceIds |
 | WorkspaceMember | workspace, user, role (admin, member)                                                                                                       | `workspace:<id>`                  |
-| Label           | workspace, name                                                                                                                             | `workspace:<id>`                  |
+| Label           | workspace, name, memberIds                                                                                                                  | `workspace:<id>`                  |
 | Thread          | title, description, state (open, resolved, blocked), owner, assigneeIds, workspace, dueAt, priority, labelIds, branchedFrom, blocks, isOpen | `workspace:<id>`                  |
 | Message         | thread, author, body, workspaceId                                                                                                           | `workspace:<id>`                  |
+| Activity        | thread, actor, text, workspaceId                                                                                                            | `workspace:<id>`                  |
 | InboxItem       | user, thread, bucket, doneAt, snoozedUntil, seenAt, reason, manual                                                                          | `user:<id>`                       |
 | Bucket, Draft   | user, name, description, position / text, draft                                                                                             | `user:<id>`                       |
 
@@ -62,6 +63,11 @@ everything a workspace's members share, and `user:<id>` for a person's own rows.
   message that mentions nobody tells nobody. Mentioning them again brings it back.
 - **Message** has its thread's `workspaceId`, because a row computes its own group. Messages are created once; their
   author may delete them.
+- **Label** is also a group: `memberIds` is who's in it (set on its page). `@mention`ing it assigns everyone in it now, and
+  puts the label on the thread.
+- **Activity** is a line in a thread saying what someone changed (status, priority, due date, labels, title, or being
+  blocked and unblocked). Only the server writes these, from the changes themselves (`rules.ts`), so no client can forget
+  one or forge one.
 - **InboxItem** has `bucket` (one of the person's own Buckets, or none until sorted), `reason` and `manual` (placed by
   hand), and `seenAt` (unread is a message by someone else after it).
 - **Bucket** is a person's inbox bucket: a name and a description the model sorts by. **Draft** is an unsent ⌘⇧N

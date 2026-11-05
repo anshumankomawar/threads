@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Draft, mention, User, type ComposeDraft } from "models";
+import { Draft, Label, mention, User, type ComposeDraft } from "models";
 import { draftWith, me, open, setDialog, store } from "../session";
 import { button, menu } from "../styles/controls";
 import { compose, palette } from "../styles/palette";
@@ -14,16 +14,22 @@ const MENTION = /@([\p{L}\p{N}_-]+)/gu;
 const firstName = (u: User): string => u.name.split(" ")[0];
 const others = (): User[] => store.all(User).filter((u) => u.id !== me().id);
 
-// Everyone @mentioned, by first name or full name without spaces, in order.
+const compact = (name: string): string => name.replaceAll(/\s+/g, "");
+const groups = (): Label[] => store.all(Label).filter((l) => l.memberIds.length > 0);
+const namesIn = (text: string): string[] =>
+  [...text.matchAll(MENTION)].map(([, name]) => name.toLowerCase());
+const mentionedGroups = (text: string): Label[] =>
+  groups().filter((l) => namesIn(text).includes(compact(l.name).toLowerCase()));
+
+// Everyone @mentioned, by first name or full name without spaces, and everyone in a group that is, in order.
 const mentioned = (text: string): User[] => {
-  const found = [...text.matchAll(MENTION)].flatMap(([, name]) =>
+  const found = namesIn(text).flatMap((name) =>
     others().filter((u) =>
-      [firstName(u), u.name.replaceAll(/\s+/g, "")].some(
-        (key) => key.toLowerCase() === name.toLowerCase(),
-      ),
+      [firstName(u), compact(u.name)].some((key) => key.toLowerCase() === name),
     ),
   );
-  return [...new Set(found)];
+  const members = mentionedGroups(text).flatMap((l) => l.memberIds);
+  return [...new Set([...found, ...others().filter((u) => members.includes(u.id))])];
 };
 
 // Without the model: the first sentence as the title, and one ask for everyone mentioned.
@@ -104,17 +110,17 @@ export function Compose(props: { draftId?: string }): JSX.Element {
     const match = /(^|\s)@([\p{L}\p{N}_-]*)$/u.exec(text().slice(0, caret()));
     return match ? { start: caret() - match[2].length - 1, query: match[2].toLowerCase() } : null;
   });
-  const matches = createMemo((): User[] => {
+  const matches = createMemo((): (User | Label)[] => {
     const query = typing()?.query;
     if (query === undefined || menuHidden()) return [];
-    return others()
-      .filter((u) => u.name.toLowerCase().startsWith(query))
+    return [...others(), ...groups()]
+      .filter((target) => target.name.toLowerCase().startsWith(query))
       .slice(0, 6);
   });
-  const pick = (u: User): void => {
+  const pick = (target: User | Label): void => {
     const start = typing()?.start;
     if (start === undefined) return;
-    const inserted = `@${firstName(u)} `;
+    const inserted = `@${target instanceof User ? firstName(target) : compact(target.name)} `;
     const end = start + inserted.length;
     setText(text().slice(0, start) + inserted + text().slice(caret()));
     setCaret(end);
@@ -131,7 +137,8 @@ export function Compose(props: { draftId?: string }): JSX.Element {
       saved?.delete();
       setDialog(null);
       const title = made.title.trim() || plainDraft(trimmed()).title || "New thread";
-      const thread = createThread({ title, description: made.context });
+      const labelIds = mentionedGroups(trimmed()).map((l) => l.id);
+      const thread = createThread({ title, description: made.context, labelIds });
       for (const { personIds, text: body } of made.asks)
         send(thread, [...personIds.map(mention), body].join(" "));
       open({ thread: thread.id });
@@ -215,6 +222,11 @@ export function Compose(props: { draftId?: string }): JSX.Element {
                 >
                   <Identicon seed={u.id} size={16} />
                   <span class={sx(palette.rowLabel)}>{u.name}</span>
+                  <Show when={u instanceof Label}>
+                    <span class={sx(palette.shortcut)}>
+                      Group · {(u as Label).memberIds.length}
+                    </span>
+                  </Show>
                 </button>
               )}
             </For>

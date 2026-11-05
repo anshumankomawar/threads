@@ -12,9 +12,8 @@ import {
   sent,
   setDialog,
   setSidebarOpen,
-  setSplit,
   showMenu,
-  setState,
+  threadMenu,
   store,
   unread,
   view,
@@ -238,14 +237,7 @@ function overflowFade(): (element: HTMLElement) => void {
   return (next) => (element = next);
 }
 
-const menuFor = (c: Thread) => (event: MouseEvent) =>
-  showMenu(event, [
-    { label: "Open beside", run: () => setSplit(c.id) },
-    {
-      label: c.isOpen ? "Resolve" : "Reopen",
-      run: () => setState(c, c.isOpen ? "resolved" : "open"),
-    },
-  ]);
+const menuFor = (c: Thread) => (event: MouseEvent) => showMenu(event, threadMenu(c));
 
 // A one-line row (Sent, Drafts, Labels): an icon, its name, and something on the right.
 function Row(props: {

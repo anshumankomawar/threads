@@ -194,8 +194,62 @@ const toastIn = stylex.keyframes({
   from: { opacity: 0, transform: "translate(-50%, 6px)" },
 });
 
-// The undo toast at the bottom of the main area, rising in.
+const mentionIn = stylex.keyframes({
+  from: { opacity: 0, transform: "translateY(-6px)" },
+});
+
+// The undo toast at the bottom of the main area, rising in; a mention's at the top right.
 export const toast = stylex.create({
+  stack: {
+    position: "fixed",
+    top: "calc(env(safe-area-inset-top, 0px) + 44px)",
+    right: 14,
+    zIndex: layers.overlay,
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    width: 320,
+  },
+  mention: {
+    display: "flex",
+    gap: 10,
+    alignItems: "flex-start",
+    padding: "10px 10px 10px 12px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.panelBorder,
+    borderRadius: radii.panel,
+    backgroundColor: colors.panel,
+    boxShadow: shadows.float,
+    cursor: "pointer",
+    touchAction: "pan-y",
+    userSelect: "none",
+    animationName: { default: mentionIn, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationDuration: "160ms",
+    animationTimingFunction: "ease-out",
+    transitionProperty: "transform, opacity",
+    transitionDuration: "180ms",
+    transitionTimingFunction: "ease-out",
+  },
+  moving: { transitionProperty: "none" },
+  avatar: { flexShrink: 0, marginTop: 7.5 },
+  body: { flex: 1, minWidth: 0 },
+  title: {
+    overflow: "hidden",
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  emphasis: { color: colors.textPrimary },
+  text: {
+    display: "-webkit-box",
+    marginTop: 2,
+    overflow: "hidden",
+    color: colors.textPrimary,
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: 2,
+  },
   undo: {
     position: "absolute",
     bottom: 20,

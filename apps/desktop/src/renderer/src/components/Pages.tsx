@@ -2,7 +2,8 @@ import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Label, Thread, User, WorkspaceMember, type Message } from "models";
-import { me, memberOf, open, setDialog, store, workspace } from "../session";
+import { me, memberOf, open, setDialog, store, workspace, showMenu, threadMenu } from "../session";
+import { MenuChip } from "./Menus";
 import { chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
@@ -48,6 +49,7 @@ function Threads(props: {
                 <button
                   class={sx(page.bare, page.item, page.itemLook, page.hover, page.pointer)}
                   onClick={() => open({ thread: t.id })}
+                  onContextMenu={(event) => showMenu(event, threadMenu(t))}
                 >
                   <span class={sx(page.itemIcon)} aria-hidden="true">
                     <Icon icon={i.Message01Icon} size={13} />
@@ -73,6 +75,17 @@ export function LabelView(props: { label: Label }): JSX.Element {
   const threads = (): Thread[] =>
     store.all(Thread).filter((t) => t.labelIds.includes(props.label.id));
   const openCount = (): number => threads().filter((t) => t.isOpen).length;
+  const membersText = (): string => {
+    const count = props.label.memberIds.length;
+    return count === 0 ? "No members" : `${count} member${count === 1 ? "" : "s"}`;
+  };
+  const toggleMember = (user: User): void => {
+    const ids = props.label.memberIds;
+    props.label.memberIds = ids.includes(user.id)
+      ? ids.filter((id) => id !== user.id)
+      : [...ids, user.id];
+    props.label.save();
+  };
   return (
     <div class={sx(page.page)}>
       <h1 class={sx(page.title)}>{props.label.name}</h1>
@@ -80,6 +93,24 @@ export function LabelView(props: { label: Label }): JSX.Element {
         <Icon icon={i.Tag01Icon} size={11} class={sx(page.summaryIcon)} aria-hidden="true" />{" "}
         {openCount()} open thread{openCount() === 1 ? "" : "s"}
       </p>
+      <div class={sx(page.row, page.narrow)}>
+        <MenuChip
+          label={membersText()}
+          icon={<Icon icon={i.UserMultipleIcon} size={12} aria-hidden="true" />}
+          tone={props.label.memberIds.length === 0 ? "muted" : undefined}
+          title="Who's in this group: @mentioning it assigns them all"
+          items={store
+            .all(User)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .map((user) => ({
+              label: user.name,
+              icon: props.label.memberIds.includes(user.id) ? (
+                <Icon icon={i.Tick02Icon} size={12} aria-hidden="true" />
+              ) : undefined,
+              run: () => toggleMember(user),
+            }))}
+        />
+      </div>
       <Threads
         threads={threads()}
         newText="New thread"

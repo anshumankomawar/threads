@@ -68,6 +68,8 @@ const related = (a: TxRecord, b: TxRecord): boolean =>
 export class TransactionQueue {
   batch = 0;
   readonly pendingCount = cell(0);
+  // Why the server last refused a change, which has already been undone.
+  readonly rejection = cell<string | null>(null);
   readonly #o: QueueOptions;
   #entries: Entry[] = [];
   #created: Entry[] = [];
@@ -180,6 +182,7 @@ export class TransactionQueue {
 
   async #reject(entry: Entry, error: Error): Promise<void> {
     const { kind, modelId } = entry.record;
+    this.rejection.set(error.message);
     await this.#rollback(entry.record);
     // What waits on a refused creation goes with it: undoing it would bring back a model that never existed.
     if (kind === "create")

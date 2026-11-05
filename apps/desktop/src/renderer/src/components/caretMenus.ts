@@ -2,7 +2,7 @@ import { Extension, mergeAttributes, Node, type Editor } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { exitSuggestion, Suggestion, type SuggestionProps } from "@tiptap/suggestion";
-import { mention, threadLink } from "models";
+import { groupMention, mention, threadLink } from "models";
 import { editorClass } from "../styles/controls";
 
 // Typing `#`, `@` or `/` in a reply opens a menu at the caret, which the reply renders from what `announce` hands it
@@ -76,7 +76,11 @@ function chipNode(char: "#" | "@", announce: Announce) {
         text(node.attrs),
       ];
     },
-    renderText: ({ node }) => (isLink ? threadLink : mention)(String(node.attrs.id)),
+    renderText: ({ node }) => {
+      const id = String(node.attrs.id);
+      if (isLink) return threadLink(id);
+      return id.startsWith("label:") ? groupMention(id.slice("label:".length)) : mention(id);
+    },
     addProseMirrorPlugins() {
       return [caretMenu(this.editor, isLink ? "thread" : "mention", char, announce, name)];
     },

@@ -29,6 +29,8 @@ export interface Store {
   undo: UndoQueue;
   readonly connection: () => "connecting" | "live" | "offline";
   readonly pendingCount: () => number;
+  readonly rejection: () => string | null;
+  dismissRejection(): void;
   ready(): Promise<void>;
 }
 
@@ -115,6 +117,8 @@ export function createStore({
     undo: { group: (_label, fn) => fn(), undo() {}, redo() {} },
     connection: sync.connection,
     pendingCount: queue.pendingCount,
+    rejection: queue.rejection,
+    dismissRejection: () => queue.rejection.set(null),
     ready: () => started,
   };
 }
