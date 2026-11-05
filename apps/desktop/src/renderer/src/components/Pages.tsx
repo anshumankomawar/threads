@@ -1,84 +1,63 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Conversation, Message, Team, User } from "models";
-import { me, open, setDialog, store } from "../session";
+import { Label, Thread, User, WorkspaceMember, type Message } from "models";
+import { me, memberOf, open, position, setDialog, store } from "../session";
 import { chip, chipTone, link } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
-import { ago } from "./ConversationView";
+import { ago } from "./ThreadView";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 
-// A button for something new, then the resolved conversations' chip on the right.
-function Toolbar(props: {
-  newLabel?: string;
-  onNew: () => void;
-  resolved: number;
-  all: boolean;
-  onToggle: () => void;
-}): JSX.Element {
-  return (
-    <div class={sx(page.row, page.toolbar, page.narrow)}>
-      <Show when={props.newLabel}>
-        <button
-          class={sx(page.bare, page.border, page.newButton, page.pointer)}
-          onClick={() => props.onNew()}
-        >
-          {props.newLabel}
-        </button>
-      </Show>
-      <span class={sx(page.row, page.filters)}>
-        <Show when={props.resolved > 0}>
-          <button class={sx(chip.chip, !props.all && chipTone.muted)} onClick={props.onToggle}>
-            {props.all ? "Showing resolved" : `${props.resolved} resolved`}
-          </button>
-        </Show>
-      </span>
-    </div>
-  );
-}
-
-// Conversations as rows, open ones first; resolved ones behind a toggle.
-function Conversations(props: {
-  conversations: Conversation[];
-  newLabel?: string;
+// Threads as rows, newest first, under a button for a new one; resolved ones behind a toggle.
+function Threads(props: {
+  threads: Thread[];
+  newText: string;
   onNew: () => void;
   empty: string;
 }): JSX.Element {
   const [all, setAll] = createSignal(false);
-  const resolved = (): number => props.conversations.filter((c) => !c.isOpen).length;
-  const shown = (): Conversation[] =>
-    props.conversations
-      .filter((c) => all() || c.isOpen)
+  const resolved = (): number => props.threads.filter((t) => !t.isOpen).length;
+  const shown = (): Thread[] =>
+    props.threads
+      .filter((t) => all() || t.isOpen)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   return (
     <>
-      <Toolbar
-        newLabel={props.newLabel}
-        onNew={props.onNew}
-        resolved={resolved()}
-        all={all()}
-        onToggle={() => setAll(!all())}
-      />
+      <div class={sx(page.row, page.toolbar, page.narrow)}>
+        <button
+          class={sx(page.bare, page.border, page.newButton, page.pointer)}
+          onClick={() => props.onNew()}
+        >
+          {props.newText}
+        </button>
+        <span class={sx(page.row, page.filters)}>
+          <Show when={resolved() > 0}>
+            <button class={sx(chip.chip, !all() && chipTone.muted)} onClick={() => setAll(!all())}>
+              {all() ? "Showing resolved" : `${resolved()} resolved`}
+            </button>
+          </Show>
+        </span>
+      </div>
       <Show when={shown().length > 0} fallback={<p class={sx(page.empty)}>{props.empty}</p>}>
         <ul class={sx(page.list, page.items, page.narrow)}>
           <For each={shown()}>
-            {(c) => (
+            {(t) => (
               <li>
                 <button
                   class={sx(page.bare, page.item, page.itemLook, page.hover, page.pointer)}
-                  onClick={() => open({ conversation: c.id })}
+                  onClick={() => open({ thread: t.id })}
                 >
                   <span class={sx(page.itemIcon)} aria-hidden="true">
                     <Icon icon={i.Message01Icon} size={13} />
                   </span>
                   <span class={sx(page.itemBody)}>
-                    <span class={sx(page.itemName)}>{c.title}</span>
-                    <span class={sx(page.small)}>By {c.owner?.name ?? "someone"}</span>
+                    <span class={sx(page.itemName)}>{t.title}</span>
+                    <span class={sx(page.small)}>By {t.owner?.name ?? "someone"}</span>
                   </span>
                   <span class={sx(page.small, page.noShrink)}>
-                    {c.isOpen ? ago(c.updatedAt) : "Resolved"}
+                    {t.isOpen ? ago(t.updatedAt) : "Resolved"}
                   </span>
                 </button>
               </li>
@@ -113,70 +92,41 @@ const Fact = (props: { term: string; children: JSX.Element }): JSX.Element => (
   </>
 );
 
-export function TeamView(props: { team: Team }): JSX.Element {
-  const t = (): Team => props.team;
-  const member = (): boolean => t().memberIds.includes(me().id);
-  const members = (): User[] => t().memberIds.flatMap((id) => store.findById(User, id) ?? []);
-  const setMembers = (ids: string[]): void => {
-    t().memberIds = ids;
-    t().save();
-  };
-  const count = (n: number, word: string): string => `${n} ${word}${n === 1 ? "" : "s"}`;
+export function LabelView(props: { label: Label }): JSX.Element {
+  const threads = (): Thread[] =>
+    store.all(Thread).filter((t) => t.labelIds.includes(props.label.id));
+  const openCount = (): number => threads().filter((t) => t.isOpen).length;
   return (
     <div class={sx(page.page)}>
-      <h1 class={sx(page.title)}>{t().name}</h1>
+      <h1 class={sx(page.title)}>{props.label.name}</h1>
       <p class={sx(page.summary)}>
-        <Icon icon={i.UserGroupIcon} size={11} class={sx(page.summaryIcon)} aria-hidden="true" />{" "}
-        {count(members().length, "member")} ·{" "}
-        {count(t().conversations.filter((c) => c.isOpen).length, "open conversation")}
+        <Icon icon={i.Tag01Icon} size={11} class={sx(page.summaryIcon)} aria-hidden="true" />{" "}
+        {openCount()} open thread{openCount() === 1 ? "" : "s"}
       </p>
-      <ul class={sx(page.list, page.row, page.narrow, page.members)} aria-label="Members">
-        <For each={members()}>
-          {(user) => (
-            <li class={sx(page.border, page.member)}>
-              <Identicon seed={user.id} size={14} />
-              <button class={sx(link.person)} onClick={() => open({ person: user.id })}>
-                {user.name}
-              </button>
-            </li>
-          )}
-        </For>
-      </ul>
-      <div class={sx(page.actions)}>
-        <button
-          class={sx(page.bare, page.pointer, page.action)}
-          onClick={() =>
-            setMembers(
-              member() ? t().memberIds.filter((id) => id !== me().id) : [...t().memberIds, me().id],
-            )
-          }
-        >
-          {member() ? "Leave" : "Join"}
-        </button>
-      </div>
-      <Conversations
-        conversations={[...t().conversations]}
-        newLabel={member() ? "New conversation" : undefined}
-        onNew={() => setDialog({ kind: "newConversation", teamId: t().id })}
+      <Threads
+        threads={threads()}
+        newText="New thread"
+        onNew={() => setDialog({ kind: "newThread", labelId: props.label.id })}
         empty="Nothing here yet."
       />
     </div>
   );
 }
 
-// Someone's place in the org and the conversations you're both in; your own also shows everyone, by manager.
+// Someone's place in the org and the threads you're both in; your own also shows everyone, by manager.
 export function PersonView(props: { user: User }): JSX.Element {
   const u = (): User => props.user;
+  const member = (): WorkspaceMember | undefined => memberOf(u());
   const first = (): string => u().name.split(" ")[0];
-  const inIt = (c: Conversation, id: string): boolean =>
-    c.ownerId === id ||
-    c.messages.filter((m: Message) => m.authorId === id || m.toIds.includes(id)).length > 0;
-  const tree = (manager?: User): JSX.Element => (
+  const inIt = (t: Thread, id: string): boolean =>
+    t.ownerId === id ||
+    t.messages.filter((m: Message) => m.authorId === id || m.toIds.includes(id)).length > 0;
+  const tree = (manager?: WorkspaceMember): JSX.Element => (
     <ul class={sx(manager ? page.branch : page.tree)}>
       <For
-        each={store.all(User).filter((p) => (manager ? p.managerId === manager.id : !p.manager))}
+        each={manager ? [...manager.reports] : store.all(WorkspaceMember).filter((m) => !m.manager)}
       >
-        {(p) => (
+        {(m) => (
           <li>
             <button
               class={sx(
@@ -184,15 +134,17 @@ export function PersonView(props: { user: User }): JSX.Element {
                 page.person,
                 page.hover,
                 page.pointer,
-                p.id === me().id && page.me,
+                m.userId === me().id && page.me,
               )}
-              onClick={() => open({ person: p.id })}
+              onClick={() => open({ person: m.userId })}
             >
-              <Identicon seed={p.id} size={16} />
-              <span class={sx(page.personName, p.reports.length > 0 && page.bold)}>{p.name}</span>
-              <span class={sx(page.small)}>{[p.level, p.role].filter(Boolean).join(" · ")}</span>
+              <Identicon seed={m.userId} size={16} />
+              <span class={sx(page.personName, m.reports.length > 0 && page.bold)}>
+                {m.user.name}
+              </span>
+              <span class={sx(page.small)}>{position(m.user)}</span>
             </button>
-            <Show when={p.reports.length > 0}>{tree(p)}</Show>
+            <Show when={m.reports.length > 0}>{tree(m)}</Show>
           </li>
         )}
       </For>
@@ -204,15 +156,15 @@ export function PersonView(props: { user: User }): JSX.Element {
         <Identicon seed={u().id} size={40} />
         <div>
           <h1 class={sx(page.title)}>{u().name}</h1>
-          <p class={sx(page.summary)}>{[u().level, u().role].filter(Boolean).join(" · ")}</p>
+          <p class={sx(page.summary)}>{position(u())}</p>
         </div>
       </header>
       <dl class={sx(page.facts, page.narrow)}>
         <Fact term="Manager">
-          <People users={u().manager ? [u().manager!] : []} />
+          <People users={member()?.manager ? [member()!.manager!.user] : []} />
         </Fact>
         <Fact term="Reports">
-          <People users={[...u().reports]} />
+          <People users={[...(member()?.reports ?? [])].map((m) => m.user)} />
         </Fact>
       </dl>
       <Show
@@ -224,11 +176,11 @@ export function PersonView(props: { user: User }): JSX.Element {
           </>
         }
       >
-        <Conversations
-          conversations={store.all(Conversation).filter((c) => inIt(c, me().id) && inIt(c, u().id))}
-          newLabel={`New conversation with ${first()}`}
-          onNew={() => setDialog({ kind: "newConversation", to: u() })}
-          empty={`No conversations with ${first()} yet.`}
+        <Threads
+          threads={store.all(Thread).filter((t) => inIt(t, me().id) && inIt(t, u().id))}
+          newText={`New thread with ${first()}`}
+          onNew={() => setDialog({ kind: "newThread", to: u() })}
+          empty={`No threads with ${first()} yet.`}
         />
       </Show>
     </div>

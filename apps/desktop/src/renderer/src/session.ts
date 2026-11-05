@@ -5,11 +5,13 @@ import type { JSX } from "@solidjs/web";
 import { createStore, httpTransport, indexedLocalDB } from "sync";
 import {
   Bucket,
-  Conversation,
   InboxItem,
+  Thread,
   User,
+  Workspace,
   type ComposeDraft,
   type ComposeRequest,
+  type WorkspaceMember,
 } from "models";
 import * as stylex from "@stylexjs/stylex";
 import { lightTheme } from "./styles/tokens.stylex";
@@ -93,6 +95,14 @@ void store.ready().then(() => {
 });
 
 export const me = (): User => store.findById(User, viewerId ?? "")!;
+// A store holds one workspace, so a person has at most one membership in it.
+export const workspace = (): Workspace => store.all(Workspace)[0];
+export const memberOf = (user: User): WorkspaceMember | undefined => [...user.memberships][0];
+// "l5 · pm": someone's level and title here.
+export const position = (user: User): string | undefined => {
+  const member = memberOf(user);
+  return [member?.level, member?.title].filter(Boolean).join(" · ") || undefined;
+};
 export const signedIn = (): boolean =>
   viewerId !== null && store.findById(User, viewerId) !== undefined;
 
@@ -110,19 +120,17 @@ export const draftWith = async (
   ).json() as Promise<ComposeDraft>;
 
 // ── What's on screen ──
-export type View = { conversation: string | null } | { team: string } | { person: string };
-// An icon and a shortcut are only shown.
-export type MenuItem =
-  | { label: string; run: () => void; icon?: JSX.Element; shortcut?: string }
-  | "separator";
+export type View = { thread: string | null } | { label: string } | { person: string };
+export type MenuItem = { label: string; run: () => void; icon?: JSX.Element } | "separator";
 export type Dialog =
-  | { kind: "search" | "newTeam" | "viewAs" | "signIn" }
-  | { kind: "newConversation"; teamId?: string; to?: User }
+  | { kind: "search" | "viewAs" | "signIn" }
+  | { kind: "newThread"; labelId?: string; to?: User }
+  | { kind: "newLabel"; thread?: Thread }
   | { kind: "compose"; draftId?: string }
   | { kind: "bucket"; bucket?: Bucket }
-  | { kind: "blocked"; conversation: Conversation };
+  | { kind: "blocked"; thread: Thread };
 
-export const [view, setView] = createSignal<View>({ conversation: null });
+export const [view, setView] = createSignal<View>({ thread: null });
 export const [split, setSplit] = createSignal<string | null>(null);
 export const [dialog, setDialog] = createSignal<Dialog | null>(null);
 export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(
@@ -131,7 +139,7 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
 export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
 
-export type Theme = "dark" | "light";
+type Theme = "dark" | "light";
 export const [theme, setThemeSignal] = createSignal<Theme>(saved("theme", "dark"));
 const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
 export function applyTheme(next: Theme): void {
@@ -143,7 +151,7 @@ export function applyTheme(next: Theme): void {
 }
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));
-export function applyZoom(next: number): void {
+function applyZoom(next: number): void {
   const value = Math.round(Math.min(2, Math.max(0.7, next)) * 10) / 10;
   setZoom(value);
   save("zoom", value);
@@ -156,23 +164,23 @@ export const showMenu = (event: MouseEvent, items: MenuItem[]): void => {
 };
 
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
-export function offerUndo(text: string, run: () => void): void {
+function offerUndo(text: string, run: () => void): void {
   clearTimeout(undoTimer);
   setUndo({ text, run });
   undoTimer = setTimeout(() => setUndo(null), 5000);
 }
 
 // ── The inbox ──
-export const itemFor = (conversation: Conversation): InboxItem | undefined =>
-  conversation.inboxItems.filter((item) => item.userId === me().id)[0];
+export const itemFor = (thread: Thread): InboxItem | undefined =>
+  thread.inboxItems.filter((item) => item.userId === me().id)[0];
 export const unread = (item: InboxItem): boolean =>
-  item.conversation.messages.filter(
+  item.thread.messages.filter(
     (m) => m.authorId !== me().id && m.createdAt.getTime() > (item.seenAt?.getTime() ?? 0),
   ).length > 0;
 
 const RANK = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
 const byUrgency = (a: InboxItem, b: InboxItem): number => {
-  const [x, y] = [a.conversation, b.conversation];
+  const [x, y] = [a.thread, b.thread];
   return (
     Number(x.state === "blocked") - Number(y.state === "blocked") ||
     RANK[x.priority] - RANK[y.priority] ||
@@ -187,27 +195,26 @@ export const inbox = store.view(() => {
   const items = store
     .where(InboxItem, "userId", me().id)
     .filter(
-      (i) =>
-        i.conversation?.isOpen && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > now),
+      (i) => i.thread?.isOpen && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > now),
     )
     .sort(byUrgency);
   const buckets = store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
-  const groups = buckets.map((bucket) => ({
+  const sections = buckets.map((bucket) => ({
     bucket,
     items: items.filter((i) => i.bucketId === bucket.id),
   }));
   const unsorted = items.filter((i) => !buckets.some((b) => b.id === i.bucketId));
   return {
-    groups,
+    sections,
     unsorted,
-    order: [...unsorted, ...groups.flatMap((g) => g.items)].map((i) => i.conversation),
+    order: [...unsorted, ...sections.flatMap((s) => s.items)].map((i) => i.thread),
   };
 });
 
-// Open conversations you own that you've sent to someone.
+// Open threads you own that you've sent to someone.
 export const sent = store.view(() =>
   store
-    .where(Conversation, "ownerId", me().id)
+    .where(Thread, "ownerId", me().id)
     .filter(
       (c) => c.isOpen && c.messages.filter((m) => m.toIds.some((id) => id !== me().id)).length > 0,
     )
@@ -217,18 +224,17 @@ export const sent = store.view(() =>
 // ── Navigation and the actions it takes ──
 const activeId = (): string | null => {
   const shown = view();
-  return "conversation" in shown ? shown.conversation : null;
+  return "thread" in shown ? shown.thread : null;
 };
-export const active = (): Conversation | undefined =>
-  store.findById(Conversation, activeId() ?? "");
+export const active = (): Thread | undefined => store.findById(Thread, activeId() ?? "");
 
-// Opening a conversation marks it seen.
+// Opening a thread marks it seen.
 export function open(next: View): void {
   setView(next);
-  if (!("conversation" in next) || next.conversation === null) return;
-  if (next.conversation === split()) setSplit(null);
-  const conversation = store.findById(Conversation, next.conversation);
-  const item = conversation && itemFor(conversation);
+  if (!("thread" in next) || next.thread === null) return;
+  if (next.thread === split()) setSplit(null);
+  const thread = store.findById(Thread, next.thread);
+  const item = thread && itemFor(thread);
   if (item) {
     item.seenAt = new Date();
     item.save();
@@ -236,18 +242,18 @@ export function open(next: View): void {
 }
 
 // After you finish one, the next in your inbox opens; in the split view, the split closes.
-function moveOn(conversation: Conversation): void {
-  if (conversation.id === split()) return void setSplit(null);
+function moveOn(thread: Thread): void {
+  if (thread.id === split()) return void setSplit(null);
   const order = inbox().order;
-  const at = order.indexOf(conversation);
+  const at = order.indexOf(thread);
   const next = [...order.slice(at + 1), ...order.slice(0, Math.max(0, at))].find(
-    (c) => c !== conversation,
+    (c) => c !== thread,
   );
-  open({ conversation: next?.id ?? null });
+  open({ thread: next?.id ?? null });
 }
 
-export function markDone(item: InboxItem): void {
-  moveOn(item.conversation);
+function markDone(item: InboxItem): void {
+  moveOn(item.thread);
   item.doneAt = new Date();
   item.save();
   offerUndo("Done", () => {
@@ -257,8 +263,8 @@ export function markDone(item: InboxItem): void {
 }
 
 // Out of your inbox until 9 tomorrow morning.
-export function snooze(item: InboxItem): void {
-  moveOn(item.conversation);
+function snooze(item: InboxItem): void {
+  moveOn(item.thread);
   item.snoozedUntil = new Date(new Date(Date.now() + 86_400_000).setHours(9, 0, 0, 0));
   item.save();
   offerUndo("Snoozed until tomorrow", () => {
@@ -267,14 +273,14 @@ export function snooze(item: InboxItem): void {
   });
 }
 
-export function setState(conversation: Conversation, state: Conversation["state"]): void {
-  if (state === "resolved" && itemFor(conversation)) moveOn(conversation);
-  conversation.state = state;
-  conversation.save();
+export function setState(thread: Thread, state: Thread["state"]): void {
+  if (state === "resolved" && itemFor(thread)) moveOn(thread);
+  thread.state = state;
+  thread.save();
 }
 
 // ── Keys ──
-// ⌘K search, ⌘N new conversation, ⌘⇧N compose, ⌘U view as, ⌘+ ⌘- ⌘0 zoom. Superhuman's, never with a dialog or menu
+// ⌘K search, ⌘N new thread, ⌘⇧N compose, ⌘U view as, ⌘+ ⌘- ⌘0 zoom. Superhuman's, never with a dialog or menu
 // open: ⌘E done (even while typing), and when not typing J/K next or previous, H snooze, R reply.
 window.addEventListener("keydown", (event) => {
   if (event.altKey || event.ctrlKey || !signedIn()) return;
@@ -289,7 +295,7 @@ window.addEventListener("keydown", (event) => {
   const reading = free && !typing;
   const run: Record<string, (() => void) | false | undefined> = {
     "⌘k": () => setDialog({ kind: "search" }),
-    "⌘n": () => setDialog({ kind: "newConversation" }),
+    "⌘n": () => setDialog({ kind: "newThread" }),
     "⌘⇧n": () => setDialog({ kind: "compose" }),
     // Signed in, you're who you signed in as.
     "⌘u": !account && (() => setDialog({ kind: "viewAs" })),
@@ -297,10 +303,8 @@ window.addEventListener("keydown", (event) => {
     "⌘-": () => applyZoom(zoom() - 0.1),
     "⌘0": () => applyZoom(1),
     "⌘e": free && item && (() => markDone(item)),
-    j:
-      reading &&
-      (() => open({ conversation: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
-    k: reading && at > 0 && (() => open({ conversation: order[at - 1].id })),
+    j: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
+    k: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
     h: reading && item && (() => snooze(item)),
     r: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
     escape: typing && free && target.closest(".reply") !== null && (() => target.blur()),

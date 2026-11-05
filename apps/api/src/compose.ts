@@ -9,7 +9,7 @@ export type Compose = (request: ComposeRequest) => Promise<ComposeDraft>;
 
 // Llama 3.1 8B: a few times quicker than the 70B that sorts inboxes, which matters for a preview drafted as you type.
 // It mixes people up when given everyone, so the app sends only who's @mentioned.
-export const COMPOSE_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
+const COMPOSE_MODEL = "@cf/meta/llama-3.1-8b-instruct-fast";
 
 const SYSTEM = `You turn a message someone wrote into a work thread. The message mentions people with @ and asks them for things, sometimes different things of different people.
 

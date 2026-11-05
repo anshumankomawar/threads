@@ -6,22 +6,16 @@ export type IconSvgElement = readonly (readonly [
   { readonly [key: string]: string | number },
 ])[];
 
-type IconProps = Omit<JSX.SvgSVGAttributes<SVGSVGElement>, "color"> & {
-  icon: IconSvgElement;
-  size?: number;
-  color?: string;
-  strokeWidth?: number;
-};
+type IconProps = JSX.SvgSVGAttributes<SVGSVGElement> & { icon: IconSvgElement; size?: number };
 
-const markup = (icon: IconSvgElement, strokeWidth: number | undefined): string =>
+const markup = (icon: IconSvgElement): string =>
   icon
     .map(([tag, attributes]) => {
       const pairs = Object.entries(attributes)
         .filter(([name]) => name !== "key")
         .map(([name, value]) => {
-          const shown = name === "strokeWidth" && strokeWidth !== undefined ? strokeWidth : value;
           const attribute = name.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
-          return `${attribute}="${String(shown).replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`;
+          return `${attribute}="${String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`;
         });
       return `<${tag} ${pairs.join(" ")}/>`;
     })
@@ -35,8 +29,8 @@ export function Icon(props: IconProps): JSX.Element {
       height={props.size ?? 16}
       viewBox="0 0 24 24"
       fill="none"
-      color={props.color ?? "currentColor"}
-      innerHTML={markup(props.icon, props.strokeWidth)}
+      color="currentColor"
+      innerHTML={markup(props.icon)}
     />
   );
 }

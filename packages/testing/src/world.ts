@@ -15,7 +15,7 @@ import { memoryLocalDB } from "./memory-local-db";
 type Handlers = Parameters<Transport["connect"]>[0];
 
 // Something on the wire: an HTTP exchange or an open socket with messages waiting.
-export interface Flight {
+interface Flight {
   ready(): boolean;
   deliver(): void;
   duplicate(): void;
@@ -33,7 +33,7 @@ export type Client = {
 };
 
 // What a client applied to its local database: every row written, and the sync ids since each full load.
-export type Recorded = LocalDB & {
+type Recorded = LocalDB & {
   written: SyncAction[];
   loads: { base?: number; ids: number[] }[];
 };

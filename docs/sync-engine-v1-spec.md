@@ -238,7 +238,7 @@ Server mutation rules
 3. Commit once per request, then NOTIFY.
 4. A rejected transaction does not stop later independent ones; the client rolls back only the rejected one.
 
-Sync groups: A sync group is a string tag on every row, computed by the model's syncGroup function. A client receives a delta only if it shares at least one group with it. v1 uses three kinds: user:<id> (personal rows: inbox state, drafts, preferences), team:<id> (shared conversations and messages in a team), workspace:<id> (users, teams and settings everyone can see). Permission hooks check writes; sync groups control reads. Both come from the same model definition.
+Sync groups: A sync group is a string tag on every row, computed by the model's syncGroup function. A client receives a delta only if it shares at least one group with it. v1 uses two kinds: user:<id> (personal rows: inbox state, drafts, preferences) and workspace:<id> (everything a workspace's members share: people, conversations, messages, settings). Permission hooks check writes; sync groups control reads. Both come from the same model definition.
 
 ## Example data model
 

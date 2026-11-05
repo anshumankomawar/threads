@@ -14,12 +14,12 @@ export type TriageRequest = {
 export type TriageResult = { itemId: string; bucketId: string; reason: string };
 
 // Sorts one batch of a person's inbox items into their buckets.
-export type Classify = (request: TriageRequest) => Promise<TriageResult[]>;
+type Classify = (request: TriageRequest) => Promise<TriageResult[]>;
 
 // How many items go to the model at once.
 const CHUNK = 20;
 // How long an item the model failed on waits before it's tried again.
-export const RETRY_MS = 60_000;
+const RETRY_MS = 60_000;
 
 const ADMIN: Session = { admin: true };
 
@@ -39,14 +39,14 @@ function readAll(server: SyncServer): Reader {
 }
 
 // Everyone with unsorted inbox items and buckets to sort them into. `skip` holds items to leave for now.
-export function triageRequests(db: Reader, skip: ReadonlySet<string>): TriageRequest[] {
+function triageRequests(db: Reader, skip: ReadonlySet<string>): TriageRequest[] {
   const items = db.all("InboxItem");
   const field = (model: string, id: unknown, key: string): string =>
     (db.get(model, id as string)?.[key] as string | undefined) ?? "";
   const plain = (text: string): string =>
     plainText(
       text,
-      (id) => field("Conversation", id, "title"),
+      (id) => field("Thread", id, "title"),
       (id) => field("User", id, "name"),
     );
   const userIds = new Set(
@@ -74,16 +74,14 @@ export function triageRequests(db: Reader, skip: ReadonlySet<string>): TriageReq
           .filter((item) => item.manual && item.bucketId != null)
           .slice(-20)
           .map((item) => ({
-            title: field("Conversation", item.conversationId, "title"),
+            title: field("Thread", item.threadId, "title"),
             bucketId: item.bucketId as string,
           })),
         items: mine
           .filter((item) => unsorted(item) && !skip.has(item.id))
           .map((item) => {
-            const conversation = db.get("Conversation", item.conversationId as string)!;
-            const messages = db
-              .all("Message")
-              .filter((message) => message.conversationId === conversation.id);
+            const thread = db.get("Thread", item.threadId as string)!;
+            const messages = db.all("Message").filter((message) => message.threadId === thread.id);
             // What it's about: its first message, and the latest one sent to them.
             const sent = messages.findLast((message) =>
               (message.toIds as string[]).includes(userId),
@@ -94,8 +92,8 @@ export function triageRequests(db: Reader, skip: ReadonlySet<string>): TriageReq
               .join("\n");
             return {
               id: item.id,
-              title: conversation.title as string,
-              from: field("User", sent?.authorId ?? conversation.ownerId, "name"),
+              title: thread.title as string,
+              from: field("User", sent?.authorId ?? thread.ownerId, "name"),
               text: text.slice(0, 600),
             };
           }),
@@ -191,9 +189,9 @@ export class Triager {
   }
 }
 
-// Workers AI's Llama 3.3 70B, which answers in JSON to a schema. Its free daily allocation covers a team's inbox:
+// Workers AI's Llama 3.3 70B, which answers in JSON to a schema. Its free daily allocation covers a workspace's inboxes:
 // each call is about 150 neurons, and items are only sorted when they arrive.
-export const TRIAGE_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+const TRIAGE_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 
 const SYSTEM = `You sort one person's work inbox into the buckets they defined. Each bucket has a name and a plain-language description of what belongs in it, written by them.
 

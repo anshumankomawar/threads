@@ -12,72 +12,64 @@ import {
 import "./models";
 import { DEFAULT_BUCKETS, seed } from "./seed";
 
-const membersOf = (team: Row | undefined): string[] => (team?.memberIds ?? []) as string[];
-const inTeam = (userId: string, teamId: unknown, db: Reader): boolean =>
-  membersOf(db.get("Team", teamId as string)).includes(userId);
+const memberOf = (db: Reader, userId: string, workspaceId: unknown): Row | undefined =>
+  db.all("WorkspaceMember").find((m) => m.userId === userId && m.workspaceId === workspaceId);
 
 // The rows a change touches: before and after, whichever exist.
 const rowsOf = ({ before, after }: Change): Row[] =>
   [before, after].filter((row) => row !== undefined);
 const own = (change: Change, userId: string): boolean =>
   rowsOf(change).every((row) => row.userId === userId);
+const inWorkspace = (change: Change, userId: string, db: Reader): boolean =>
+  rowsOf(change).every((row) => memberOf(db, userId, row.workspaceId) !== undefined);
 
-// One workspace per server, so its Workspace row is the workspace.
 export const groupsOf = (userId: string, db: Reader): string[] => [
-  ...db.all("Workspace").map((workspace) => `workspace:${workspace.id}`),
-  `user:${userId}`,
   ...db
-    .all("Team")
-    .filter((team) => membersOf(team).includes(userId))
-    .map((team) => `team:${team.id}`),
+    .all("Workspace")
+    .filter((workspace) => memberOf(db, userId, workspace.id) !== undefined)
+    .map((workspace) => `workspace:${workspace.id}`),
+  `user:${userId}`,
 ];
 
 const rules: ServerOptions["rules"] = {
-  User: (change, userId) => change.modelId === userId,
-  Bucket: own,
-  Draft: own,
-  InboxItem: own,
-  Team: (change, userId) => {
-    const { kind, changes = {}, before, after } = change;
-    if (membersOf(before ?? after).includes(userId)) return true;
-    // Anyone may join: the only change is adding themselves.
-    return (
-      kind === "update" &&
-      Object.keys(changes).every((key) => key === "memberIds") &&
-      JSON.stringify(membersOf(after)) === JSON.stringify([...membersOf(before), userId])
-    );
-  },
-  Conversation: (change, userId, db) =>
-    rowsOf(change).every((row) => inTeam(userId, row.teamId, db)),
+  Workspace: ({ modelId }, userId, db) => memberOf(db, userId, modelId) !== undefined,
+  // `workspaceIds` is the server's: it follows the person's memberships.
+  User: ({ modelId, before, after }, userId) =>
+    modelId === userId &&
+    JSON.stringify(before?.workspaceIds ?? []) === JSON.stringify(after?.workspaceIds ?? []),
+  WorkspaceMember: (change, userId, db) =>
+    rowsOf(change).every((row) => memberOf(db, userId, row.workspaceId)?.role === "admin"),
+  Label: inWorkspace,
+  Thread: inWorkspace,
   Message: ({ kind, before, after }, userId, db) =>
     kind === "delete"
       ? before!.authorId === userId
-      : kind === "create" && after!.authorId === userId && inTeam(userId, after!.teamId, db),
+      : kind === "create" &&
+        after!.authorId === userId &&
+        memberOf(db, userId, after!.workspaceId) !== undefined,
+  Bucket: own,
+  Draft: own,
+  InboxItem: own,
 };
 
-// Puts the conversation in the user's inbox, or back in it when they'd marked it done or snoozed it.
-function deliver(db: Writer, userId: string, conversationId: string): void {
-  const item = db
-    .all("InboxItem")
-    .find((row) => row.userId === userId && row.conversationId === conversationId);
+const itemOf = (db: Reader, userId: string, threadId: string): Row | undefined =>
+  db.all("InboxItem").find((row) => row.userId === userId && row.threadId === threadId);
+const update = (db: Writer, model: string, modelId: string, changes: Record<string, unknown>) =>
+  db.write({ kind: "update", model, modelId, changes });
+
+// Puts the thread in the user's inbox, or back in it when they'd marked it done or snoozed it.
+function deliver(db: Writer, userId: string, threadId: string): void {
+  const item = itemOf(db, userId, threadId);
   if (item === undefined)
     db.write({
       kind: "create",
       model: "InboxItem",
       modelId: crypto.randomUUID(),
-      changes: { userId, conversationId, manual: false },
+      changes: { userId, threadId, manual: false },
     });
   else if (item.doneAt != null || item.snoozedUntil != null)
-    db.write({
-      kind: "update",
-      model: "InboxItem",
-      modelId: item.id,
-      changes: { doneAt: null, snoozedUntil: null },
-    });
+    update(db, "InboxItem", item.id, { doneAt: null, snoozedUntil: null });
 }
-
-const setState = (db: Writer, conversationId: string, state: string): void =>
-  db.write({ kind: "update", model: "Conversation", modelId: conversationId, changes: { state } });
 
 const effects: ServerOptions["effects"] = {
   User: ({ kind, modelId }, db) => {
@@ -91,33 +83,55 @@ const effects: ServerOptions["effects"] = {
         }),
       );
   },
-  Conversation: ({ kind, before, after }, db) => {
+  WorkspaceMember: ({ kind, before, after }, db) => {
+    if (kind !== "create" && kind !== "delete") return;
+    const { userId, workspaceId } = (after ?? before)!;
+    const user = db.get("User", userId as string);
+    if (user === undefined) return;
+    const others = (user.workspaceIds as string[]).filter((id) => id !== workspaceId);
+    update(db, "User", user.id, {
+      workspaceIds: kind === "create" ? [...others, workspaceId] : others,
+    });
+  },
+  Thread: ({ kind, before, after }, db) => {
     if (kind === "create") {
       if (after!.ownerId != null) deliver(db, after!.ownerId as string, after!.id);
-      if (after!.blocksId != null) setState(db, after!.blocksId as string, "blocked");
+      if (after!.blocksId != null)
+        update(db, "Thread", after!.blocksId as string, { state: "blocked" });
     }
     const blocked = after?.blocksId as string | undefined;
     if (after?.state !== "resolved" || before?.state === "resolved" || blocked == null) return;
     const stillBlocked = db
-      .all("Conversation")
+      .all("Thread")
       .some((row) => row.blocksId === blocked && row.state !== "resolved");
-    if (!stillBlocked && db.get("Conversation", blocked)?.state === "blocked")
-      setState(db, blocked, "open");
+    if (!stillBlocked && db.get("Thread", blocked)?.state === "blocked")
+      update(db, "Thread", blocked, { state: "open" });
   },
   Message: ({ kind, after }, db) => {
     if (kind !== "create") return;
-    const { conversationId, teamId, toIds } = after as Row & {
-      conversationId: string;
-      teamId: string;
+    const { threadId, workspaceId, authorId, toIds, createdAt } = after as Row & {
+      threadId: string;
+      authorId: string;
       toIds: string[];
     };
-    if (db.get("Conversation", conversationId)?.teamId !== teamId)
-      throw new Refusal("invalid", "A message's teamId is its conversation's");
-    for (const toId of toIds) {
-      if (!inTeam(toId, teamId, db))
-        throw new Refusal("invalid", `${toId} isn't in this conversation's team`);
-      deliver(db, toId, conversationId);
-    }
+    const thread = db.get("Thread", threadId);
+    if (thread === undefined || thread.workspaceId !== workspaceId)
+      throw new Refusal("invalid", "A message's workspaceId is its thread's");
+    for (const toId of toIds) deliver(db, toId, threadId);
+    // An owner who hands their thread to someone has it in Sent, out of their inbox, until someone sends them something
+    // there.
+    if (authorId !== thread.ownerId || !toIds.some((id) => id !== authorId)) return;
+    const asked = db
+      .all("Message")
+      .some(
+        (m) =>
+          m.threadId === threadId &&
+          (m.toIds as string[]).includes(authorId) &&
+          m.authorId !== authorId,
+      );
+    const item = itemOf(db, authorId, threadId);
+    if (!asked && item !== undefined && item.doneAt == null)
+      update(db, "InboxItem", item.id, { doneAt: createdAt });
   },
 };
 

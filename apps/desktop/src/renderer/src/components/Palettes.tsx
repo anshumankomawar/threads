@@ -1,13 +1,14 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Conversation, Message, Team, User } from "models";
+import { Bucket, Label, Message, Thread, User } from "models";
 import {
   account,
   applyTheme,
   dialog,
   me,
   open,
+  position,
   setDialog,
   signOut,
   source,
@@ -16,6 +17,7 @@ import {
   switchTo,
   theme,
   type Dialog,
+  workspace,
   type Source,
 } from "../session";
 import { menu } from "../styles/controls";
@@ -122,44 +124,39 @@ const people = (query: string, run: (user: User) => void): Row[] =>
     .filter((u) => u.id !== me().id && matches(u.name, query))
     .map((u) => ({ label: u.name, seed: u.id, run: () => run(u) }));
 
-export const everyone = (): Team => store.findById(Team, "everyone")!;
-
-export function startConversation(
-  title: string,
-  team: Team,
-  extra: Partial<Conversation> = {},
-): Conversation {
-  const conversation = store.create(Conversation, {
+export function startThread(title: string, extra: Partial<Thread> = {}): Thread {
+  const thread = store.create(Thread, {
     title,
     state: "open",
     priority: "none",
-    team,
+    workspace: workspace(),
     owner: me(),
+    labelIds: [],
     ...extra,
   });
-  open({ conversation: conversation.id });
-  return conversation;
+  open({ thread: thread.id });
+  return thread;
 }
 
-export function send(conversation: Conversation, body: string, to: User[] = []): void {
+export function send(thread: Thread, body: string, to: User[] = []): void {
   store.create(Message, {
-    conversation,
+    thread,
     author: me(),
     body,
     toIds: to.map((u) => u.id),
-    teamId: conversation.teamId,
+    workspaceId: thread.workspaceId,
   });
 }
 
 function Search(): JSX.Element {
   const commands = (): Row[] => [
     {
-      label: "New conversation",
+      label: "New thread",
       hint: "⌘ N",
       section: "Quick actions",
-      run: () => setDialog({ kind: "newConversation" }),
+      run: () => setDialog({ kind: "newThread" }),
     },
-    { label: "New team", section: "Quick actions", run: () => setDialog({ kind: "newTeam" }) },
+    { label: "New label", section: "Quick actions", run: () => setDialog({ kind: "newLabel" }) },
     {
       label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
       section: "Views",
@@ -213,20 +210,20 @@ function Search(): JSX.Element {
           ...commands(),
           ...store.all(User).map((u) => ({
             label: u.name,
-            hint: [u.level, u.role].filter(Boolean).join(" · ") || undefined,
+            hint: position(u),
             section: "People",
             seed: u.id,
             run: done(() => open({ person: u.id })),
           })),
-          ...store.all(Team).map((t) => ({
-            label: t.name,
-            section: "Teams",
-            run: done(() => open({ team: t.id })),
+          ...store.all(Label).map((l) => ({
+            label: l.name,
+            section: "Labels",
+            run: done(() => open({ label: l.id })),
           })),
-          ...store.all(Conversation).map((c) => ({
-            label: c.title,
-            section: "Conversations",
-            run: done(() => open({ conversation: c.id })),
+          ...store.all(Thread).map((t) => ({
+            label: t.title,
+            section: "Threads",
+            run: done(() => open({ thread: t.id })),
           })),
         ].filter((row) => matches(row.label, query))
       }
@@ -234,43 +231,46 @@ function Search(): JSX.Element {
   );
 }
 
-function NewConversation(props: { teamId?: string; to?: User }): JSX.Element {
-  const team = (): Team => store.findById(Team, props.teamId ?? "") ?? everyone();
+function NewThread(props: { labelId?: string; to?: User }): JSX.Element {
+  const label = (): Label | undefined => store.findById(Label, props.labelId ?? "");
   return (
     <Picker
       placeholder={
-        props.to ? `What do you need from ${props.to.name}?` : `New conversation in ${team().name}`
+        props.to
+          ? `What do you need from ${props.to.name}?`
+          : label()
+            ? `New thread in ${label()!.name}`
+            : "New thread"
       }
       rows={(query) =>
         entry(query, "Start", (title) => {
-          const conversation = startConversation(title, team());
-          if (props.to) send(conversation, title, [props.to]);
+          const thread = startThread(title, label() ? { labelIds: [label()!.id] } : {});
+          if (props.to) send(thread, title, [props.to]);
         })
       }
     />
   );
 }
 
-function NewTeam(): JSX.Element {
+// From a thread's labels chip, the new label goes on that thread; otherwise its page opens.
+function NewLabel(props: { thread?: Thread }): JSX.Element {
   return (
     <Picker
-      placeholder="Name the team"
+      placeholder="Name the label"
       rows={(query) =>
-        entry(query, "Make team", (name) => {
-          const team = store.create(Team, {
-            name,
-            workspace: me().workspace,
-            memberIds: [me().id],
-          });
-          open({ team: team.id });
+        entry(query, "Make label", (name) => {
+          const label = store.create(Label, { name, workspace: workspace() });
+          if (!props.thread) return open({ label: label.id });
+          props.thread.labelIds = [...props.thread.labelIds, label.id];
+          props.thread.save();
         })
       }
     />
   );
 }
 
-// `/blocked`: ask someone for what this needs, in a conversation that keeps this one blocked until it's resolved.
-function Blocked(props: { conversation: Conversation }): JSX.Element {
+// `/blocked`: ask someone for what this needs, in a thread that keeps this one blocked until it's resolved.
+function Blocked(props: { thread: Thread }): JSX.Element {
   const [person, setPerson] = createSignal<User | null>(null);
   return (
     <Show
@@ -285,9 +285,7 @@ function Blocked(props: { conversation: Conversation }): JSX.Element {
           placeholder={`What do you need from ${who.name}?`}
           rows={(query) =>
             entry(query, "Ask", (title) => {
-              const asked = startConversation(title, props.conversation.team, {
-                blocks: props.conversation,
-              });
+              const asked = startThread(title, { blocks: props.thread });
               send(asked, title, [who]);
             })
           }
@@ -364,8 +362,8 @@ function SignIn(): JSX.Element {
 
 const PALETTES = {
   search: Search,
-  newConversation: NewConversation,
-  newTeam: NewTeam,
+  newThread: NewThread,
+  newLabel: NewLabel,
   blocked: Blocked,
   bucket: BucketEditor,
   viewAs: ViewAs,

@@ -1,10 +1,10 @@
-// Links in a message's text: `[[thread:<id>]]` links a conversation, `[[person:<id>]]` mentions someone.
+// Links in a message's text: `[[thread:<id>]]` links a thread, `[[person:<id>]]` mentions someone.
 const TOKEN = /\[\[(thread|person):([^\]\s]+)\]\]/g;
 
 export const threadLink = (id: string): string => `[[thread:${id}]]`;
 export const mention = (id: string): string => `[[person:${id}]]`;
 
-export type TextPart = { text: string } | { thread: string } | { person: string };
+type TextPart = { text: string } | { thread: string } | { person: string };
 
 export function splitText(text: string): TextPart[] {
   const parts: TextPart[] = [];
@@ -28,5 +28,5 @@ export const plainText = (
   nameOf: (id: string) => string | undefined,
 ): string =>
   text.replace(TOKEN, (_, kind: string, id: string) =>
-    kind === "thread" ? `#${titleOf(id) ?? "conversation"}` : `@${nameOf(id) ?? "someone"}`,
+    kind === "thread" ? `#${titleOf(id) ?? "thread"}` : `@${nameOf(id) ?? "someone"}`,
   );

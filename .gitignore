@@ -32,3 +32,5 @@ out
 
 # AI agent worktrees
 .claude/worktrees/
+
+*.tsbuildinfo

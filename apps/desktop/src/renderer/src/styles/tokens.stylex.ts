@@ -7,8 +7,6 @@ const mix = (base: string, percent: number): string =>
   `color-mix(in srgb, ${base} ${percent}%, transparent)`;
 
 export const colors = stylex.defineVars({
-  base: DARK_BASE,
-  sidebar: "oklch(0.209 0 0)",
   chrome: "oklch(0.191 0 0)",
   sidebarSolid: "#1a1a1a",
   textPrimary: DARK_BASE,
@@ -21,23 +19,16 @@ export const colors = stylex.defineVars({
   strokeFocused: mix(DARK_BASE, 15),
   panel: "#171717",
   panelBorder: "#212121",
-  panelDivider: "#1c1c1c",
   panelSelected: "#222222",
   accent: "#78aee7",
   accentFill: "#1f252c",
-  statusWaiting: "oklch(0.681 0.131 252.629)",
   statusClosed: "oklch(0.713 0.094 155.438)",
   urgent: "oklch(0.712 0.177 12.651)",
-  glass: "rgb(0 0 0 / 62%)",
   overlay: "rgb(0 0 0 / 45%)",
-  floatBorder: "rgb(255 255 255 / 8%)",
-  onAccent: "#0f141a",
   avatarRing: "transparent",
 });
 
 export const lightTheme = stylex.createTheme(colors, {
-  base: LIGHT_BASE,
-  sidebar: "oklch(0.965 0 0)",
   chrome: "oklch(0.985 0 0)",
   sidebarSolid: "#f4f4f3",
   textPrimary: LIGHT_BASE,
@@ -50,17 +41,12 @@ export const lightTheme = stylex.createTheme(colors, {
   strokeFocused: mix(LIGHT_BASE, 20),
   panel: "#ffffff",
   panelBorder: "#e4e4e2",
-  panelDivider: "#ededeb",
   panelSelected: "#efefed",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
-  statusWaiting: "oklch(0.55 0.15 252.629)",
   statusClosed: "oklch(0.55 0.11 155.438)",
   urgent: "oklch(0.58 0.2 12.651)",
-  glass: "rgb(255 255 255 / 72%)",
   overlay: "rgb(0 0 0 / 18%)",
-  floatBorder: "rgb(0 0 0 / 8%)",
-  onAccent: "#ffffff",
   avatarRing: "rgb(0 0 0 / 14%)",
 });
 
@@ -76,13 +62,10 @@ export const contentZoom = stylex.defineVars({
 });
 
 export const layers = stylex.defineConsts({
-  float: 5,
   titlebar: 10,
   overlay: 20,
-  dropdown: 30,
   caretMenu: 50,
   contextMenu: 60,
-  toasts: 70,
 });
 
 export const radii = stylex.defineConsts({

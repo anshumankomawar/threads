@@ -8,7 +8,7 @@ This page says where each piece lives and what Threads adds.
 Desktop (Solid 2)                                     Cloudflare
 ──────────────────                                    ──────────
 components read models ─▶ object pool (per-field signals)  Worker: sessions, /ai/compose, routes by workspace
-   │ conversation.save()        ▲ applyDelta                          │
+   │ thread.save()              ▲ applyDelta                          │
    ▼                            │                                     ▼
 transaction queue ── POST /sync/mutate ──────────────────▶ Durable Object "Workspace" (one per workspace)
    │ outbox                     │                            SyncServer + Threads' rules, SQLite: sync_actions + a
@@ -32,27 +32,48 @@ A field's signal carries no value: its value lives in `model.__data`, where the 
 
 ## Threads' models
 
-The spec's six models plus ours, in its style (`packages/models/src/models.ts`). Sync groups are the spec's:
-`workspace:<id>` for Workspace, User and Team; `team:<id>` for Conversation and Message; `user:<id>` for InboxItem,
-Bucket and Draft. A session's groups are its workspace, itself, and each team whose `memberIds` include it. Every
-workspace has the team `everyone`, with everyone in it.
+In the spec's style, in `packages/models/src/models.ts`. There are two kinds of sync group: `workspace:<id>` for
+everything a workspace's members share, and `user:<id>` for a person's own rows. A session's groups are
+`workspace:<id>` when it's a member of the workspace, and `user:<me>`.
 
-- **Conversation** adds `priority`, `branchedFrom` (a branch, linked from a message by `[[thread:<id>]]`) and `blocks`
-  (made with `/blocked`; that conversation stays blocked until this one is resolved).
-- **Message** adds `toIds` (who it was sent to; none is a note) and `teamId` (its conversation's, so the row knows its
-  group). Messages are created once; their author may delete them.
+| Model           | Key fields                                                                                                        | Sync group                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Workspace       | name                                                                                                              | its own `workspace:<id>`          |
+| User            | name, email, avatarUrl, workspaceIds                                                                              | `workspace:<id>` per workspaceIds |
+| WorkspaceMember | workspace, user, role (admin, member), title, level, manager (a WorkspaceMember), reports                         | `workspace:<id>`                  |
+| Label           | workspace, name                                                                                                   | `workspace:<id>`                  |
+| Thread          | title, state (open, resolved, blocked), owner, workspace, dueAt, priority, labelIds, branchedFrom, blocks, isOpen | `workspace:<id>`                  |
+| Message         | thread, author, body, toIds, workspaceId                                                                          | `workspace:<id>`                  |
+| InboxItem       | user, thread, bucket, doneAt, snoozedUntil, seenAt, reason, manual                                                | `user:<id>`                       |
+| Bucket, Draft   | user, name, description, position / text, draft                                                                   | `user:<id>`                       |
+
+- **User** is the person, across workspaces. The server keeps `workspaceIds` (an effect of WorkspaceMember create and
+  delete), so members of any workspace they share see them.
+- **WorkspaceMember** is their place in one workspace: role, job title, level and manager. The org chart on a profile
+  reads members and their managers.
+- **Thread** is the only unit of work, and every member of the workspace sees every thread. `labelIds` lists its
+  Labels; a label's page is its threads. `branchedFrom` is a branch, linked from a message by `[[thread:<id>]]`;
+  `blocks` (made with `/blocked`) keeps that thread blocked until this one is resolved.
+- **Message** has `toIds` (who it was sent to; none is a note) and its thread's `workspaceId`, because a row computes
+  its own group. Messages are created once; their author may delete them.
 - **InboxItem** has `bucket` (one of the person's own Buckets, or none until sorted), `reason` and `manual` (placed by
   hand), and `seenAt` (unread is a message by someone else after it).
 - **Bucket** is a person's inbox bucket: a name and a description the model sorts by. **Draft** is an unsent ⌘⇧N
   message.
 
+The local workspace seeds 22 people and the sample workspace 7, each a member and an admin; the sample also has labels
+and threads.
+
 ## Server rules (`packages/models/src/rules.ts`)
 
-Permission hooks: you write only your own User, Bucket, Draft and InboxItem rows; conversations and messages only in
-your teams; a message's author is you, and only the author deletes it; a team's members change it, and anyone may add
-themselves. Effects, in the same commit: a new conversation gives its owner an InboxItem; a message gives each of its
-`toIds` an InboxItem (or clears `doneAt`/`snoozedUntil`), and is refused if one isn't in the team; a conversation made
-with `blocks` blocks that one, and resolving the last open blocker reopens it; a new user gets the default buckets.
+Permission hooks: you edit only your own User row, and never its `workspaceIds`; members write the workspace, its
+labels, threads and messages; only admins change memberships and roles; a message's author is you, and only the author
+deletes it; you write only your own Bucket, Draft and InboxItem rows. Effects, in the same commit: a membership adds
+its workspace to the person's `workspaceIds` (its removal takes it out); a new thread gives its owner an InboxItem; a
+message gives each of its `toIds` an InboxItem (or clears `doneAt`/`snoozedUntil`), and its `workspaceId` must be its
+thread's; when an owner sends their thread to someone and nobody else has sent them anything there, their own item is
+marked done, so it's in their Sent until someone writes to them; a thread made with `blocks` blocks that one, and
+resolving the last open blocker reopens it; a new user gets the default buckets.
 
 After each commit the Durable Object sorts unsorted, unplaced InboxItems into their owners' buckets with Workers AI and
 writes the answers as ordinary transactions (`apps/api/src/triage.ts`); a failure retries in a minute by alarm.

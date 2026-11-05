@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Conversation, Team, User } from "models";
+import { Label, Thread, User } from "models";
 import {
   active,
   itemFor,
@@ -27,13 +27,13 @@ import {
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
 import { colors, fontSizes, radii } from "./styles/tokens.stylex";
-import { ConversationView } from "./components/ConversationView";
+import { ThreadView } from "./components/ThreadView";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
 import { Icon } from "./components/Icon";
 import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
-import { PersonView, TeamView } from "./components/Pages";
+import { LabelView, PersonView } from "./components/Pages";
 import { Sidebar, sidebarIcon, TopButton } from "./components/Sidebar";
 
 const styles = stylex.create({
@@ -117,7 +117,7 @@ function Waiting(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
-  const shown = (key: "team" | "person"): string | undefined =>
+  const shown = (key: "label" | "person"): string | undefined =>
     (view() as Record<string, string | undefined>)[key];
   return (
     <>
@@ -145,7 +145,7 @@ export default function App(): JSX.Element {
             </Show>
             <span class={sx(topbar.title)}>
               {active()?.title ??
-                store.findById(Team, shown("team") ?? "")?.name ??
+                store.findById(Label, shown("label") ?? "")?.name ??
                 store.findById(User, shown("person") ?? "")?.name}
             </span>
             <span class={sx(topbar.end)}>
@@ -164,28 +164,25 @@ export default function App(): JSX.Element {
             </span>
           </div>
           <Switch>
-            <Match when={store.findById(Team, shown("team") ?? "")} keyed>
-              {(team) => <TeamView team={team} />}
+            <Match when={store.findById(Label, shown("label") ?? "")} keyed>
+              {(label) => <LabelView label={label} />}
             </Match>
             <Match when={store.findById(User, shown("person") ?? "")} keyed>
               {(user) => <PersonView user={user} />}
             </Match>
             <Match when={active()} keyed>
-              {(conversation) => (
+              {(thread) => (
                 <div class={sx(styles.panes)}>
-                  <ConversationView
-                    conversation={conversation}
-                    autofocus={!itemFor(conversation)}
-                  />
-                  <Show when={store.findById(Conversation, split() ?? "")} keyed>
+                  <ThreadView thread={thread} autofocus={!itemFor(thread)} />
+                  <Show when={store.findById(Thread, split() ?? "")} keyed>
                     {(beside) => (
                       <section class={sx(styles.splitPane)} aria-label={beside.title}>
                         <div class={sx(styles.splitPaneBar)}>
                           <span class={sx(topbar.title, styles.splitTitle)}>{beside.title}</span>
                           <button
                             class={sx(topbar.button)}
-                            aria-label="Open as the main conversation"
-                            onClick={() => open({ conversation: beside.id })}
+                            aria-label="Open as the main thread"
+                            onClick={() => open({ thread: beside.id })}
                           >
                             <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
                           </button>
@@ -197,7 +194,7 @@ export default function App(): JSX.Element {
                             <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
                           </button>
                         </div>
-                        <ConversationView conversation={beside} />
+                        <ThreadView thread={beside} />
                       </section>
                     )}
                   </Show>

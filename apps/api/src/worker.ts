@@ -205,7 +205,7 @@ app.post("/auth/token", async (c) => {
   return c.json({ personId, email: signedIn.user.email, workspace, token, expiresAtMs });
 });
 
-// Drafting a new conversation from what you typed (src/compose.ts). It reads and writes nothing, so it runs here,
+// Drafting a new thread from what you typed (src/compose.ts). It reads and writes nothing, so it runs here,
 // outside any workspace.
 app.post("/ai/compose", async (c) => {
   if ((await authenticate(c.env, tokenOf(c), workspaceOf(c))) === undefined)

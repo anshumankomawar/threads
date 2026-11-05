@@ -100,7 +100,6 @@ export const menu = stylex.create({
   label: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
   hint: { marginLeft: 6, color: colors.textTertiary },
   accent: { color: colors.accent },
-  shortcut: { marginLeft: "auto", paddingLeft: 16, color: colors.textTertiary, wordSpacing: 1 },
   separator: {
     flexShrink: 0,
     width: "100%",
@@ -135,17 +134,6 @@ export const topbar = stylex.create({
     textOverflow: "ellipsis",
   },
   end: { display: "flex", flexShrink: 0, gap: 2.5, marginLeft: "auto", paddingRight: 8 },
-});
-
-export const status = stylex.create({
-  unread: {
-    flexShrink: 0,
-    width: 6,
-    height: 6,
-    marginLeft: 2,
-    borderRadius: "50%",
-    backgroundColor: colors.statusWaiting,
-  },
 });
 
 export const link = stylex.create({

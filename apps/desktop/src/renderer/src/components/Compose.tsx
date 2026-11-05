@@ -6,7 +6,7 @@ import { button, link } from "../styles/controls";
 import { compose, palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { Identicon } from "./Identicon";
-import { everyone, Modal, send, startConversation } from "./Palettes";
+import { Modal, send, startThread } from "./Palettes";
 
 const MENTION = /@([\p{L}\p{N}_-]+)/gu;
 
@@ -30,7 +30,7 @@ const plainDraft = (text: string): ComposeDraft => {
   };
 };
 
-// A conversation written as one message (⌘⇧N): the model drafts its title, context and each person's ask while you
+// A thread written as one message (⌘⇧N): the model drafts its title, context and each person's ask while you
 // type. Enter sends it; ⌘S, or closing with something written, keeps it as a draft.
 export function Compose(props: { draftId?: string }): JSX.Element {
   const saved = untrack(() => store.findById(Draft, props.draftId ?? ""));
@@ -67,11 +67,11 @@ export function Compose(props: { draftId?: string }): JSX.Element {
     sending = true;
     saved?.delete();
     setDialog(null);
-    const conversation = startConversation(draft.title || "New conversation", everyone());
-    if (draft.context) send(conversation, draft.context);
+    const thread = startThread(draft.title || "New thread");
+    if (draft.context) send(thread, draft.context);
     for (const ask of draft.asks)
       send(
-        conversation,
+        thread,
         [...ask.personIds.map(mention), ask.text].join(" "),
         ask.personIds.flatMap((id) => store.findById(User, id) ?? []),
       );

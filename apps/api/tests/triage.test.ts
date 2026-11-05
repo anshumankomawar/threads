@@ -37,10 +37,8 @@ const rows = (model: string) =>
     .bootstrap(admin)
     .rows.filter((line) => line.model === model)
     .map((line) => line.row);
-const itemFor = (userId: string, conversationId: string) =>
-  rows("InboxItem").find(
-    (item) => item.userId === userId && item.conversationId === conversationId,
-  )!;
+const itemFor = (userId: string, threadId: string) =>
+  rows("InboxItem").find((item) => item.userId === userId && item.threadId === threadId)!;
 const bucketName = (id: unknown) => rows("Bucket").find((bucket) => bucket.id === id)?.name;
 
 test("unsorted inbox items are sorted into their user's buckets, once", async () => {

@@ -8,7 +8,7 @@ import { editorClass } from "../styles/controls";
 // Typing `#`, `@` or `/` in a reply opens a menu at the caret, which the reply renders from what `announce` hands it
 // (null when it closes). Picking replaces `<char>query` with a chip (thread link or mention), or removes it (command).
 export type CaretKind = "thread" | "mention" | "command";
-export type CaretAttrs = { id: string; title?: string; name?: string };
+type CaretAttrs = { id: string; title?: string; name?: string };
 export type CaretMenu = { query: string; rect: DOMRect | null; pick: (attrs?: CaretAttrs) => void };
 type Announce = (kind: CaretKind, menu: CaretMenu | null) => void;
 
@@ -60,7 +60,7 @@ function chipNode(char: "#" | "@", announce: Announce) {
     ? ["threadLink", "title", "data-thread-link"]
     : ["mention", "name", "data-mention"];
   const text = (attrs: Record<string, unknown>): string =>
-    isLink ? `# ${String(attrs.title) || "conversation"}` : `@${String(attrs.name) || "someone"}`;
+    isLink ? `# ${String(attrs.title) || "thread"}` : `@${String(attrs.name) || "someone"}`;
   return Node.create({
     name,
     group: "inline",

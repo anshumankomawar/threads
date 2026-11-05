@@ -2,7 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import { threadLineMarker } from "./markers.stylex";
 import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 
-// A conversation as a document (ConversationView): avatars at 15px, text at 52px, about 706px wide.
+// A thread as a document (ThreadView): avatars at 15px, text at 52px, about 706px wide.
 export const thread = stylex.create({
   view: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
   scroll: { flex: 1, minHeight: 0, overflowY: "auto" },

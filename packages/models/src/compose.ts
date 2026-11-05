@@ -8,7 +8,7 @@ export type ComposeRequest = {
   text: string;
 };
 
-export type ComposeAsk = { personIds: string[]; text: string };
+type ComposeAsk = { personIds: string[]; text: string };
 
 export type ComposeDraft = {
   title: string;

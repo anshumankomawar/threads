@@ -19,9 +19,6 @@ const items = (list: MenuItem[], close: () => void): JSX.Element => (
             <span class={sx(look.itemIcon)}>{item.icon}</span>
           </Show>
           <span>{item.label}</span>
-          <Show when={item.shortcut}>
-            <span class={sx(look.shortcut)}>{item.shortcut}</span>
-          </Show>
         </button>
       )
     }

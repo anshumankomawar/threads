@@ -7,7 +7,8 @@ import { Portal, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import {
   Bucket,
-  Conversation,
+  Label,
+  Thread,
   mentionsIn,
   plainText,
   PRIORITIES,
@@ -65,7 +66,7 @@ const styles = stylex.create({
 const icon = (svg: IconSvgElement, size = 13): JSX.Element => (
   <Icon icon={svg} size={size} aria-hidden="true" />
 );
-const dot = (state: Conversation["state"]): JSX.Element => (
+const dot = (state: Thread["state"]): JSX.Element => (
   <span class={sx(styles.dot, state !== "open" && styles[state])} aria-hidden="true" />
 );
 
@@ -80,11 +81,11 @@ export function ago(date: Date): string {
         : [minutes / 1440, "day"];
   return RELATIVE.format(Math.round(value), unit as Intl.RelativeTimeFormatUnit);
 }
-const titleOf = (id: string): string | undefined => store.findById(Conversation, id)?.title;
+const titleOf = (id: string): string | undefined => store.findById(Thread, id)?.title;
 const nameOf = (id: string): string | undefined => store.findById(User, id)?.name;
 export const plain = (text: string): string => plainText(text, titleOf, nameOf);
 
-// Text with its conversation links and mentions live: a link opens beside, a mention opens the profile.
+// Text with its thread links and mentions live: a link opens beside, a mention opens the profile.
 function LinkedText(props: { text: string; current: string; byline?: boolean }): JSX.Element {
   return (
     <For each={splitText(props.text)}>
@@ -99,7 +100,7 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
               onClick={() => setSplit(part.thread)}
             >
               {icon(i.GitBranchIcon, 11)}
-              {titleOf(part.thread) ?? "Conversation"}
+              {titleOf(part.thread) ?? "Thread"}
             </button>
           </Show>
         ) : "person" in part ? (
@@ -151,10 +152,10 @@ const LABELS = {
   urgent: "Urgent",
 };
 
-function Header(props: { conversation: Conversation }): JSX.Element {
-  const c = (): Conversation => props.conversation;
+function Header(props: { thread: Thread }): JSX.Element {
+  const c = (): Thread => props.thread;
   const item = (): ReturnType<typeof itemFor> => itemFor(c());
-  const edit = (change: Partial<Conversation>) => () => (Object.assign(c(), change), c().save());
+  const edit = (change: Partial<Thread>) => () => (Object.assign(c(), change), c().save());
   const place = (bucket: Bucket | undefined) => () => {
     const placed = item()!;
     placed.bucket = bucket;
@@ -163,6 +164,21 @@ function Header(props: { conversation: Conversation }): JSX.Element {
   };
   const buckets = (): Bucket[] =>
     store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
+  const labels = (): Label[] => c().labelIds.flatMap((id) => store.findById(Label, id) ?? []);
+  // "No labels", "Security", or "Security +1".
+  const labelsText = (): string =>
+    labels().length === 0
+      ? "No labels"
+      : labels().length === 1
+        ? labels()[0].name
+        : `${labels()[0].name} +${labels().length - 1}`;
+  const toggleLabel = (label: Label): void => {
+    const ids = c().labelIds;
+    c().labelIds = ids.includes(label.id)
+      ? ids.filter((id) => id !== label.id)
+      : [...ids, label.id];
+    c().save();
+  };
   const bucketIcon = (bucket?: Bucket): IconSvgElement =>
     bucketIcons(buckets()).get(bucket?.id ?? "") ?? i.InboxIcon;
   return (
@@ -216,6 +232,22 @@ function Header(props: { conversation: Conversation }): JSX.Element {
             )}
           </Show>
           <MenuChip
+            label={labelsText()}
+            icon={icon(i.Tag01Icon)}
+            tone={labels().length === 0 ? "muted" : undefined}
+            items={[
+              ...store
+                .all(Label)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((label) => ({
+                  label: label.name,
+                  icon: c().labelIds.includes(label.id) ? icon(i.Tick02Icon) : undefined,
+                  run: () => toggleLabel(label),
+                })),
+              { label: "New label…", run: () => setDialog({ kind: "newLabel", thread: c() }) },
+            ]}
+          />
+          <MenuChip
             label={LABELS[c().priority]}
             tone={
               c().priority === "urgent" ? "urgent" : c().priority === "none" ? "muted" : undefined
@@ -252,7 +284,7 @@ function Header(props: { conversation: Conversation }): JSX.Element {
   );
 }
 
-function MessageBlock(props: { message: Message; conversation: Conversation }): JSX.Element {
+function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element {
   const m = (): Message => props.message;
   const to = (): string =>
     m()
@@ -283,7 +315,7 @@ function MessageBlock(props: { message: Message; conversation: Conversation }): 
           </Show>
         </Meta>
         <div class={sx(thread.text)}>
-          <LinkedText text={m().body} current={props.conversation.id} />
+          <LinkedText text={m().body} current={props.thread.id} />
         </div>
       </div>
     </div>
@@ -291,7 +323,7 @@ function MessageBlock(props: { message: Message; conversation: Conversation }): 
 }
 
 // Who a reply goes to: whoever last sent you something here; else, for its owner, everyone else on it; else its owner.
-function replyTo(c: Conversation): User[] {
+function replyTo(c: Thread): User[] {
   const messages = c.messages.sorted("createdAt");
   const asked = messages.findLast((m) => m.authorId !== me().id && m.toIds.includes(me().id));
   const ids = asked
@@ -315,8 +347,8 @@ type Option = {
 };
 
 // The next message, written at the end. Enter sends it to `replyTo` and anyone @mentioned; with nobody, it's a note.
-function Reply(props: { conversation: Conversation; autofocus: boolean }): JSX.Element {
-  const c = (): Conversation => props.conversation;
+function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
+  const c = (): Thread => props.thread;
   const [menus, setMenus] = createSignal<Partial<Record<CaretKind, CaretMenu | null>>>({});
   const [at, setAt] = createSignal(0);
   const kind = (): CaretKind | undefined =>
@@ -333,7 +365,7 @@ function Reply(props: { conversation: Conversation; autofocus: boolean }): JSX.E
           label: "Blocked",
           hint: "Ask someone for what this needs",
           icon: i.UnavailableIcon,
-          pick: () => (menu.pick(), setDialog({ kind: "blocked", conversation: c() })),
+          pick: () => (menu.pick(), setDialog({ kind: "blocked", thread: c() })),
         },
         {
           label: "Resolve",
@@ -353,7 +385,7 @@ function Reply(props: { conversation: Conversation; autofocus: boolean }): JSX.E
           pick: () => menu.pick({ id: u.id, name: u.name }),
         }));
     const found = store
-      .all(Conversation)
+      .all(Thread)
       .filter((o) => o.id !== c().id && o.title.toLowerCase().includes(query))
       .slice(0, 6)
       .map((o) => ({
@@ -363,11 +395,12 @@ function Reply(props: { conversation: Conversation; autofocus: boolean }): JSX.E
       }));
     const title = menu.query.trim();
     const branch = (): void => {
-      const made = store.create(Conversation, {
+      const made = store.create(Thread, {
         title,
         state: "open",
         priority: "none",
-        team: c().team,
+        workspace: c().workspace,
+        labelIds: [...c().labelIds],
         owner: me(),
         branchedFrom: c(),
       });
@@ -377,7 +410,7 @@ function Reply(props: { conversation: Conversation; autofocus: boolean }): JSX.E
       ? [
           ...found,
           {
-            label: "New conversation",
+            label: "New thread",
             hint: `“${title}”`,
             icon: i.Add01Icon,
             isNew: true,
@@ -498,14 +531,11 @@ function Reply(props: { conversation: Conversation; autofocus: boolean }): JSX.E
   );
 }
 
-// A conversation as a document: its heading, its messages, then the reply. Opened from your inbox it starts at the top
+// A thread as a document: its heading, its messages, then the reply. Opened from your inbox it starts at the top
 // without taking the cursor, so the inbox keys keep working.
-export function ConversationView(props: {
-  conversation: Conversation;
-  autofocus?: boolean;
-}): JSX.Element {
+export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.Element {
   let end!: HTMLDivElement;
-  const messages = (): Message[] => props.conversation.messages.sorted("createdAt");
+  const messages = (): Message[] => props.thread.messages.sorted("createdAt");
   createEffect(
     () => props.autofocus || messages().at(-1)?.authorId === me().id,
     (follow) => {
@@ -516,12 +546,12 @@ export function ConversationView(props: {
     <div class={sx(thread.view)}>
       <div class={sx(thread.scroll)}>
         <article class={sx(thread.doc)}>
-          <Header conversation={props.conversation} />
+          <Header thread={props.thread} />
           <For each={messages()}>
-            {(message) => <MessageBlock message={message} conversation={props.conversation} />}
+            {(message) => <MessageBlock message={message} thread={props.thread} />}
           </For>
-          <Show when={props.conversation.isOpen}>
-            <Reply conversation={props.conversation} autofocus={props.autofocus ?? true} />
+          <Show when={props.thread.isOpen}>
+            <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
           </Show>
           <div ref={end} />
         </article>

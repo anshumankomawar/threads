@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Draft, InboxItem, Team, type Conversation } from "models";
+import { Bucket, Draft, InboxItem, Label, Thread } from "models";
 import {
   active,
   inbox,
@@ -18,11 +18,11 @@ import {
   view,
 } from "../session";
 import { bucketIcons } from "../bucketIcons";
-import { status, topbar } from "../styles/controls";
+import { topbar } from "../styles/controls";
 import { tabLabel } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { colors, sidebarSpace } from "../styles/tokens.stylex";
-import { ago, plain } from "./ConversationView";
+import { ago, plain } from "./ThreadView";
 import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 
@@ -68,7 +68,6 @@ const s = stylex.create({
   rowLook: { color: colors.textPrimary, outline: "none", backgroundColor: hoverBg },
   active: { backgroundColor: colors.bgTertiary },
   label: { ...clip, maskImage: { default: null, ":is([data-overflowing])": FADE } },
-  medium: { fontWeight: 500 },
   rowIcon: { position: "absolute", top: "50%", left: `calc(12px - ${GUTTER})`, display: "flex" },
   rowIconLook: { color: colors.iconTertiary, transform: "translateY(-50%)" },
   meta: { flexShrink: 0, marginLeft: "auto", paddingLeft: 8, whiteSpace: "nowrap", fontSize: 12 },
@@ -91,12 +90,12 @@ const s = stylex.create({
   ellipsis: { ...clip, textOverflow: "ellipsis" },
   caption: { margin: 0, fontSize: 11, fontWeight: 500 },
   empty: { margin: 0, padding: `4px ${INSET} 6px` },
-  newTeam: { ...quiet, display: "block", padding: `6px ${INSET}`, color: dim, textAlign: "left" },
+  newLabel: { ...quiet, display: "block", padding: `6px ${INSET}`, color: dim, textAlign: "left" },
   inbox: { ...column, gap: 6, paddingBottom: 12 },
   bucket: { margin: `0 ${GUTTER}`, borderRadius: RADIUS },
   bucketAfter: { marginTop: 12 },
   quick: { transitionDuration: "120ms", transitionTimingFunction: "ease" },
-  // A bucket's name stays at the top of the sidebar while you scroll through its conversations.
+  // A bucket's name stays at the top of the sidebar while you scroll through its threads.
   header: { ...center, position: "sticky", top: 0, zIndex: 1, height: 26 },
   headerLook: { padding: `0 ${PILL} 0 0`, backgroundColor: colors.sidebarSolid },
   toggle: { ...center, ...quiet, flex: 1, gap: 6, minWidth: 0, height: "100%" },
@@ -114,7 +113,7 @@ const s = stylex.create({
   link: { ...quiet, margin: "2px 0 0", color: dim, fontSize: 11 },
   more: { display: "block", padding: `2px calc(${PILL} + 24px)` },
   newBucket: { ...center, gap: 6, alignSelf: "flex-start", padding: `2px ${INSET}` },
-  // A bucket shows `BUCKET_ROWS` conversations and scrolls the rest, fading at an end with more past it.
+  // A bucket shows `BUCKET_ROWS` threads and scrolls the rest, fading at an end with more past it.
   capped: {
     overflowY: "auto",
     scrollbarWidth: "none",
@@ -145,7 +144,7 @@ export const sidebarIcon = (open: boolean): IconSvgElement =>
     ? [...i.PanelLeftIcon, ["path", { d: LEFT_PANE, fill: "currentColor", key: "pane" }]]
     : i.PanelLeftIcon;
 
-const dueLabel = (c: Conversation): string | undefined =>
+const dueLabel = (c: Thread): string | undefined =>
   c.dueAt?.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 // A div that acts as a button, for rows that hold other content.
@@ -176,7 +175,7 @@ function overflowFade(): (element: HTMLElement) => void {
   return (next) => (element = next);
 }
 
-const menuFor = (c: Conversation) => (event: MouseEvent) =>
+const menuFor = (c: Thread) => (event: MouseEvent) =>
   showMenu(event, [
     { label: "Open beside", run: () => setSplit(c.id) },
     {
@@ -185,12 +184,11 @@ const menuFor = (c: Conversation) => (event: MouseEvent) =>
     },
   ]);
 
-// A one-line row (Sent, Drafts, Teams): an icon, its name, an unread dot, and something on the right.
+// A one-line row (Sent, Drafts, Labels): an icon, its name, and something on the right.
 function Row(props: {
   label: string;
-  icon?: IconSvgElement;
+  icon: IconSvgElement;
   meta?: string;
-  unread?: boolean;
   active?: boolean;
   title?: string;
   onClick: () => void;
@@ -205,19 +203,12 @@ function Row(props: {
         onContextMenu={(e) => props.onMenu?.(e)}
         {...pressable(() => props.onClick())}
       >
-        <Show when={props.icon}>
-          {(icon) => (
-            <span class={sx(s.rowIcon, s.rowIconLook)} aria-hidden="true">
-              <Icon icon={icon()} size={12} />
-            </span>
-          )}
-        </Show>
-        <span ref={fade} class={sx(s.label, props.unread && s.medium)}>
+        <span class={sx(s.rowIcon, s.rowIconLook)} aria-hidden="true">
+          <Icon icon={props.icon} size={12} />
+        </span>
+        <span ref={fade} class={sx(s.label)}>
           {props.label}
         </span>
-        <Show when={props.unread}>
-          <span class={sx(status.unread)} aria-label="Unread" />
-        </Show>
         <Show when={props.meta}>
           <span class={sx(s.meta, s.faint)}>{props.meta}</span>
         </Show>
@@ -228,9 +219,7 @@ function Row(props: {
 
 // What someone last sent you, else why it's here.
 const lineOf = (item: InboxItem): string => {
-  const last = item.conversation.messages
-    .sorted("createdAt")
-    .findLast((m) => m.authorId !== me().id);
+  const last = item.thread.messages.sorted("createdAt").findLast((m) => m.authorId !== me().id);
   return last
     ? `${last.author.name.split(" ")[0]}: ${plain(last.body)}`
     : item.manual
@@ -238,13 +227,13 @@ const lineOf = (item: InboxItem): string => {
       : (item.reason ?? "");
 };
 
-// A conversation in the inbox: who it's from, its title and due date, and under them what they last sent you.
+// A thread in the inbox: who it's from, its title and due date, and under them what they last sent you.
 function InboxRow(props: { item: InboxItem }): JSX.Element {
-  const c = (): Conversation => props.item.conversation;
+  const c = (): Thread => props.item.thread;
   const on = (): boolean => active() === c();
   const fade = overflowFade();
   let row!: HTMLDivElement;
-  // The open conversation stays in view as J and K move past the rows showing.
+  // The open thread stays in view as J and K move past the rows showing.
   createEffect(on, (shown) => {
     if (shown) row.scrollIntoView({ block: "nearest" });
   });
@@ -261,7 +250,7 @@ function InboxRow(props: { item: InboxItem }): JSX.Element {
         )}
         title={props.item.manual ? "Placed here by you" : props.item.reason}
         onContextMenu={(e) => menuFor(c())(e)}
-        {...pressable(() => open({ conversation: c().id }))}
+        {...pressable(() => open({ thread: c().id }))}
       >
         <Identicon seed={c().ownerId ?? ""} size={16} class={sx(s.fixed)} />
         <span class={sx(s.body)}>
@@ -295,7 +284,7 @@ function Rows(props: {
 
 const [folded, setFolded] = createSignal<string[]>([]);
 
-// One bucket: its name and count, which folds it, and its conversations, capped at `BUCKET_ROWS` until "6 more" opens
+// One bucket: its name and count, which folds it, and its threads, capped at `BUCKET_ROWS` until "6 more" opens
 // the rest.
 function BucketSection(props: {
   bucket: Bucket;
@@ -405,12 +394,13 @@ function BucketSection(props: {
   );
 }
 
-// Your inbox in your buckets; conversations the model hasn't sorted yet wait at the top under "Sorting".
+// Your inbox in your buckets; threads the model hasn't sorted yet wait at the top under "Sorting".
 function InboxTab(): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(inbox().groups.map((g) => g.bucket));
-  // The bucket above shows its conversations, which sets this one further apart.
+  const icons = (): Map<string, IconSvgElement> =>
+    bucketIcons(inbox().sections.map((g) => g.bucket));
+  // The bucket above shows its threads, which sets this one further apart.
   const after = (index: number): boolean => {
-    const above = inbox().groups[index - 1];
+    const above = inbox().sections[index - 1];
     return !!above && above.items.length > 0 && !folded().includes(above.bucket.id);
   };
   return (
@@ -429,7 +419,7 @@ function InboxTab(): JSX.Element {
       <Show when={inbox().order.length === 0}>
         <p class={sx(s.empty, s.faint)}>Nothing for you</p>
       </Show>
-      <For each={inbox().groups}>
+      <For each={inbox().sections}>
         {(g, index) => (
           <BucketSection
             bucket={g.bucket}
@@ -472,7 +462,7 @@ function SentTab(): JSX.Element {
             label={c.title}
             meta={dueLabel(c)}
             active={active() === c}
-            onClick={() => open({ conversation: c.id })}
+            onClick={() => open({ thread: c.id })}
             onMenu={menuFor(c)}
           />
         )}
@@ -501,29 +491,24 @@ function DraftsTab(): JSX.Element {
   );
 }
 
-function TeamsTab(): JSX.Element {
-  const shownTeam = (): string | undefined => (view() as { team?: string }).team;
+function LabelsTab(): JSX.Element {
+  const shownLabel = (): string | undefined => (view() as { label?: string }).label;
+  const openIn = (label: Label): number =>
+    store.all(Thread).filter((t) => t.isOpen && t.labelIds.includes(label.id)).length;
   return (
     <>
-      <button class={sx(s.newTeam, s.pointer)} onClick={() => setDialog({ kind: "newTeam" })}>
-        New team
+      <button class={sx(s.newLabel, s.pointer)} onClick={() => setDialog({ kind: "newLabel" })}>
+        New label
       </button>
-      <List label="Teams">
-        <For
-          each={store
-            .all(Team)
-            .sort(
-              (a, b) =>
-                Number(!a.memberIds.includes(me().id)) - Number(!b.memberIds.includes(me().id)) ||
-                a.name.localeCompare(b.name),
-            )}
-        >
-          {(team) => (
+      <List label="Labels">
+        <For each={store.all(Label).sort((a, b) => a.name.localeCompare(b.name))}>
+          {(label) => (
             <Row
-              label={team.name}
-              meta={String(team.conversations.filter((c) => c.isOpen).length)}
-              active={shownTeam() === team.id}
-              onClick={() => open({ team: team.id })}
+              icon={i.Tag01Icon}
+              label={label.name}
+              meta={String(openIn(label))}
+              active={shownLabel() === label.id}
+              onClick={() => open({ label: label.id })}
             />
           )}
         </For>
@@ -541,7 +526,7 @@ const TABS = [
     count: () => store.where(Draft, "userId", me().id).length,
     tab: DraftsTab,
   },
-  { label: "Teams", icon: i.UserGroupIcon, count: () => 0, tab: TeamsTab },
+  { label: "Labels", icon: i.Tag01Icon, count: () => 0, tab: LabelsTab },
 ];
 
 export const TopButton = (props: {
@@ -578,9 +563,9 @@ export function Sidebar(): JSX.Element {
         />
         <span class={sx(topbar.end)}>
           <TopButton
-            label="New conversation"
+            label="New thread"
             icon={i.PencilEdit02Icon}
-            onClick={() => setDialog({ kind: "newConversation" })}
+            onClick={() => setDialog({ kind: "newThread" })}
           />
         </span>
       </div>

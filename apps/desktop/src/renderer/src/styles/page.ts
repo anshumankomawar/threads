@@ -3,7 +3,7 @@ import { colors, contentZoom, fontSizes as size, radii } from "./tokens.stylex";
 
 const muted = colors.textTertiary;
 
-// The team and person pages. The main content zooms on its own (⌘+, ⌘-, ⌘0).
+// The label and person pages. The main content zooms on its own (⌘+, ⌘-, ⌘0).
 export const page = stylex.create({
   page: {
     display: "flex",
@@ -50,8 +50,6 @@ export const page = stylex.create({
   itemBody: { display: "flex", flex: 1, flexDirection: "column", gap: 2, minWidth: 0 },
   itemName: { display: "flex", gap: 6, alignItems: "center", color: colors.textPrimary },
   noShrink: { flexShrink: 0 },
-  actions: { display: "flex", gap: 12, marginTop: 10 },
-  action: { color: { default: muted, ":hover": colors.textPrimary } },
   toolbar: { gap: 10, marginTop: 22 },
   newButton: {
     height: 24,
@@ -67,17 +65,6 @@ export const page = stylex.create({
   // Facts: a label column, then the value.
   facts: { display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 20px", margin: "20px 0 0" },
   value: { margin: 0, color: colors.textPrimary },
-  // Members as bordered name tags.
-  members: { margin: "14px 0 0" },
-  member: {
-    display: "inline-flex",
-    gap: 5,
-    alignItems: "center",
-    height: 22,
-    padding: "0 7px 0 5px",
-    borderRadius: radii.button,
-    color: colors.textSecondary,
-  },
   // The org chart on your own profile: a row per person, indented under their manager.
   tree: { maxWidth: 560, margin: "8px 0 0 -6px", padding: 0, listStyle: "none" },
   branch: { margin: 0, paddingLeft: 24, listStyle: "none" },

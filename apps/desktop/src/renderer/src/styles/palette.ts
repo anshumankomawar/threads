@@ -89,7 +89,7 @@ export const palette = stylex.create({
   shortcut: { flexShrink: 0, color: colors.textSecondary, wordSpacing: "2.5px" },
 });
 
-// Compose (⌘⇧N): what you write on top, the model's draft of the conversation under it.
+// Compose (⌘⇧N): what you write on top, the model's draft of the thread under it.
 export const compose = stylex.create({
   input: {
     ...base.below,

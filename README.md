@@ -1,29 +1,10 @@
-# Vite+ Monorepo Starter
+# Threads
 
-A starter for creating a Vite+ monorepo.
-
-## Development
-
-- Check everything is ready:
+An inbox of threads on its own Linear-style sync engine: an Electron app (`apps/desktop`) and a Cloudflare Worker API
+(`apps/api`). Start with [AGENTS.md](AGENTS.md) and [docs/architecture.md](docs/architecture.md).
 
 ```bash
-vp run ready
-```
-
-- Run the tests:
-
-```bash
-vp run -r test
-```
-
-- Build the monorepo:
-
-```bash
-vp run -r build
-```
-
-- Run the development server:
-
-```bash
-vp run dev
+vp install
+vp run dev   # the local API and the desktop app
+vp check     # format, lint and type check
 ```

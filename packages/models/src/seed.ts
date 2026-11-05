@@ -14,10 +14,10 @@ export const DEFAULT_BUCKETS = [
   },
 ];
 
-// [id, name, level, role, manager]; managers come before their reports, since a reference must exist.
+// [id, name, level, title, manager]; managers come before their reports, since a reference must exist.
 type Person = [string, string, string, ("sde" | "pm")?, string?];
 
-// Anshu, Arjun and KK are the real team; everyone else is made up, so the org view has a company to show.
+// Anshu, Arjun and KK are real; everyone else is made up, so the org chart has a company to show.
 const LOCAL_PEOPLE: Person[] = [
   ["nora", "Nora Alvarez", "l8"],
   ["marcus", "Marcus Bell", "l7", "sde", "nora"],
@@ -43,7 +43,7 @@ const LOCAL_PEOPLE: Person[] = [
   ["zoe", "Zoe Martin", "l4", undefined, "felix"],
 ];
 
-// The sample team, with "you" (whoever runs the app) in it.
+// The sample workspace's people, with "you" (whoever runs the app) among them.
 const SAMPLE_PEOPLE: Person[] = [
   ["elena", "Elena Park", "l7"],
   ["priya", "Priya Shah", "l6", "pm", "elena"],
@@ -61,7 +61,7 @@ type Sample = {
   id: string;
   title: string;
   owner: string;
-  team?: string;
+  labels?: string[];
   priority?: string;
   state?: string;
   dueIn?: number;
@@ -70,13 +70,19 @@ type Sample = {
   messages: [string, string, string[]][];
 };
 
-// The demo team's work: asks waiting on you, things you asked of others, a blocked one and a resolved one.
-const SAMPLE_CONVERSATIONS: Sample[] = [
+const SAMPLE_LABELS = {
+  "q4-planning": "Q4 Planning",
+  customers: "Customers",
+  compliance: "Compliance",
+};
+
+// The sample's work: asks waiting on you, things you asked of others, a blocked one and a resolved one.
+const SAMPLE_THREADS: Sample[] = [
   {
     id: "headcount-plan",
     title: "Approve Q4 headcount plan",
     owner: "priya",
-    team: "q4-planning",
+    labels: ["q4-planning"],
     priority: "high",
     dueIn: 8 * HOUR,
     messages: [
@@ -91,6 +97,7 @@ const SAMPLE_CONVERSATIONS: Sample[] = [
     id: "northwind-sso",
     title: "Northwind can't sign in with Okta since Tuesday",
     owner: "maya",
+    labels: ["customers"],
     priority: "urgent",
     dueIn: 4 * HOUR,
     messages: [
@@ -138,6 +145,7 @@ const SAMPLE_CONVERSATIONS: Sample[] = [
     id: "soc2-evidence",
     title: "Collect SOC 2 evidence for access reviews",
     owner: "elena",
+    labels: ["compliance"],
     priority: "high",
     dueIn: 7 * DAY,
     messages: [
@@ -152,6 +160,7 @@ const SAMPLE_CONVERSATIONS: Sample[] = [
     id: "soc2-okta-export",
     title: "Export the Okta group membership report",
     owner: "you",
+    labels: ["compliance"],
     blocks: "soc2-evidence",
     dueIn: 3 * DAY,
     messages: [
@@ -182,58 +191,52 @@ const create = (model: string, modelId: string, changes: Record<string, unknown>
   changes,
 });
 
-// A new workspace's rows, in an order where every reference exists: the workspace, its people, the "Everyone" team
-// and, in the sample workspace, its teams and conversations. People's buckets and inbox items are the rules' effects.
+const memberId = (userId: string): string => `member-${userId}`;
+
+// A new workspace's rows, in an order where every reference exists: the workspace, its people and their memberships
+// (everyone an admin), and in the sample workspace its labels and threads. People's buckets, their `workspaceIds` and
+// inbox items are the rules' effects.
 export function seed(workspace: string, nowMs = Date.now()): Write[] {
   const sample = workspace === "sample";
   const people = sample ? SAMPLE_PEOPLE : LOCAL_PEOPLE;
   const writes = [
-    create("Workspace", workspace, { name: sample ? "Sample Organization" : "" }),
-    ...people.map(([id, name, level, role, managerId]) =>
-      create("User", id, {
-        name,
-        level,
-        role: role ?? null,
-        managerId: managerId ?? null,
+    create("Workspace", workspace, { name: sample ? "Sample" : "Local" }),
+    ...people.map(([id, name]) => create("User", id, { name, workspaceIds: [] })),
+    ...people.map(([id, , level, title, manager]) =>
+      create("WorkspaceMember", memberId(id), {
         workspaceId: workspace,
+        userId: id,
+        role: "admin",
+        level,
+        title: title ?? null,
+        managerId: manager === undefined ? null : memberId(manager),
       }),
     ),
-    create("Team", "everyone", {
-      name: "Everyone",
-      workspaceId: workspace,
-      memberIds: people.map(([id]) => id),
-    }),
   ];
   if (!sample) return writes;
-  writes.push(
-    create("Team", "q4-planning", {
-      name: "Q4 Planning",
-      workspaceId: workspace,
-      memberIds: ["you", "priya", "maya"],
-    }),
-  );
-  for (const c of SAMPLE_CONVERSATIONS) {
-    const teamId = c.team ?? "everyone";
+  for (const [id, name] of Object.entries(SAMPLE_LABELS))
+    writes.push(create("Label", id, { name, workspaceId: workspace }));
+  for (const t of SAMPLE_THREADS)
     writes.push(
-      create("Conversation", c.id, {
-        title: c.title,
-        state: c.state ?? "open",
-        priority: c.priority ?? "none",
-        ownerId: c.owner,
-        teamId,
-        dueAt: c.dueIn === undefined ? null : nowMs + c.dueIn,
-        blocksId: c.blocks ?? null,
+      create("Thread", t.id, {
+        title: t.title,
+        state: t.state ?? "open",
+        priority: t.priority ?? "none",
+        ownerId: t.owner,
+        workspaceId: workspace,
+        labelIds: t.labels ?? [],
+        dueAt: t.dueIn === undefined ? null : nowMs + t.dueIn,
+        blocksId: t.blocks ?? null,
       }),
-      ...c.messages.map(([authorId, body, toIds], index) =>
-        create("Message", `${c.id}-${index}`, {
-          conversationId: c.id,
+      ...t.messages.map(([authorId, body, toIds], index) =>
+        create("Message", `${t.id}-${index}`, {
+          threadId: t.id,
           authorId,
           body,
           toIds,
-          teamId,
+          workspaceId: workspace,
         }),
       ),
     );
-  }
   return writes;
 }
