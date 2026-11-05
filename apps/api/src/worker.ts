@@ -13,7 +13,7 @@ import {
   type Socket,
   type SyncServer,
 } from "server";
-import { createAuth, personFor } from "./auth.ts";
+import { createAuth, personFor, SIGNED_IN_PAGE } from "./auth.ts";
 import { workersAiComposer } from "./compose.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
@@ -182,11 +182,15 @@ app.post("/auth/session", async (c) => {
   return c.json({ token, expiresAtMs });
 });
 
-// Signing in (src/auth.ts): Better Auth's own routes, which the sign-in page (apps/web) calls.
+// Signing in (src/auth.ts): Better Auth's own routes, which the desktop app's main process calls, and where Google
+// sends the browser back.
 app.on(["GET", "POST"], "/api/auth/*", async (c) => (await createAuth(c.env)).handler(c.req.raw));
 
-// Trades a signed-in Better Auth session (the sign-in page's cookie) for the token the sync API takes, as the Person the
-// email is invited as: hosted, their signed session token, as POST /auth/session mints; locally, their id.
+// Where the browser lands after signing in with Google, to hand the app its one-time code.
+app.get("/", (c) => c.html(SIGNED_IN_PAGE));
+
+// Trades a signed-in Better Auth session (its cookie) for the token the sync API takes, as the Person the email is
+// invited as: hosted, their signed session token, as POST /auth/session mints; locally, their id.
 app.post("/auth/token", async (c) => {
   const auth = await createAuth(c.env);
   const signedIn = await auth.api.getSession({ headers: c.req.raw.headers });

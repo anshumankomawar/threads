@@ -12,6 +12,11 @@ declare global {
     onAuthenticated: (callback: (user: unknown) => void) => () => void;
     onAuthError: (callback: (error: unknown) => void) => () => void;
     signOut: () => Promise<void>;
-    threads: { signedIn: () => Promise<SignedIn | null> };
+    // Who you're signed in as, and signing in with an emailed code (src/main/signIn.ts).
+    threads: {
+      signedIn: () => Promise<SignedIn | null>;
+      sendCode: (email: string) => Promise<{ error?: string }>;
+      verifyCode: (email: string, code: string) => Promise<{ error?: string }>;
+    };
   }
 }

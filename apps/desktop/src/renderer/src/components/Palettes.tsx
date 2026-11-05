@@ -176,10 +176,7 @@ function Search(): JSX.Element {
             {
               label: "Sign in…",
               section: "Account",
-              run: () => {
-                void window.requestAuth();
-                setDialog({ kind: "signIn" });
-              },
+              run: () => setDialog({ kind: "signIn" }),
             },
           ]
         : []),
@@ -343,18 +340,83 @@ function ViewAs(): JSX.Element {
 
 // Signing in happens in the browser, which sends you back here on a `com.threads.arc://` link. When the link doesn't open the
 // app, the sign-in page shows a code to paste here instead.
+type SignInStep = { kind: "start" } | { kind: "code"; email: string } | { kind: "google" };
+
+// Signing in, all in the app but for Google: your email, then the code it was sent; or Google, which opens in the
+// browser and comes back on a `com.threads.arc://` link (or with a code to paste here, when the link doesn't open the app).
+// Either way the app reloads as you once you're in. A refusal keeps you on the step, saying why.
 function SignIn(): JSX.Element {
+  const [step, setStep] = createSignal<SignInStep>({ kind: "start" });
+  const [note, setNote] = createSignal<string | null>(null);
+  const go = (next: SignInStep): void => (setNote(null), void setStep(next));
+  const tryIt = (work: () => Promise<{ error?: string }>, then?: () => void) => async () => {
+    setNote(null);
+    const { error } = await work();
+    if (error) setNote(error);
+    else then?.();
+  };
   return (
-    <Picker
-      placeholder="Signing in in your browser… or paste the code it shows"
-      rows={(query) =>
-        entry(
-          query.trim(),
-          "Sign in with code",
-          (code) => void window.authenticate({ token: code }),
+    <Show when={step()} keyed>
+      {(shown: SignInStep) =>
+        shown.kind === "code" ? (
+          <Picker
+            placeholder={note() ?? `The code sent to ${shown.email}`}
+            rows={(query) =>
+              query.trim() === ""
+                ? []
+                : [
+                    {
+                      label: `Sign in with “${query.trim()}”`,
+                      hint: "↵",
+                      run: tryIt(() => window.threads.verifyCode(shown.email, query.trim())),
+                    },
+                  ]
+            }
+          />
+        ) : shown.kind === "google" ? (
+          <Picker
+            placeholder="Finish in your browser… or paste the code it shows"
+            rows={(query) =>
+              query.trim() === ""
+                ? []
+                : [
+                    {
+                      label: `Sign in with code “${query.trim()}”`,
+                      hint: "↵",
+                      run: () => void window.authenticate({ token: query.trim() }),
+                    },
+                  ]
+            }
+          />
+        ) : (
+          <Picker
+            placeholder={note() ?? "Your email, or continue with Google"}
+            rows={(query) => [
+              {
+                label: "Continue with Google",
+                hint: "Opens your browser",
+                run: () => {
+                  void window.requestAuth({ provider: "google" });
+                  go({ kind: "google" });
+                },
+              },
+              ...(query.includes("@")
+                ? [
+                    {
+                      label: `Email a sign-in code to “${query.trim()}”`,
+                      hint: "↵",
+                      run: tryIt(
+                        () => window.threads.sendCode(query.trim()),
+                        () => go({ kind: "code", email: query.trim() }),
+                      ),
+                    },
+                  ]
+                : []),
+            ]}
+          />
         )
       }
-    />
+    </Show>
   );
 }
 

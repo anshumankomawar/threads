@@ -7,13 +7,15 @@ import { electron } from "@better-auth/electron";
 // Signing in, with Better Auth: Google, or a one-time code sent to your email. Its users and sessions live in D1
 // (`AUTH_DB`), apart from the workspaces. Only invited emails get in (`INVITES`), each as one Person; a signed-in
 // session is then traded for the Threads session token the sync API already takes (`POST /auth/token` in worker.ts).
+// The desktop app signs in from its main process (Better Auth's Electron plugin): email codes directly, and Google in
+// the browser, which comes back to this API and then to the app on a `com.threads.arc://` link (`SIGNED_IN_PAGE`).
 
 // What signing in needs from the Worker's environment. Secrets locally come from apps/api/.dev.vars.
 export type AuthEnv = {
   AUTH_DB: D1Database;
   // Signs Better Auth's cookies. Locally there's a fixed one, so it works without setup; the hosted API needs its own.
   BETTER_AUTH_SECRET?: string;
-  // Where the sign-in page is served from (its origin), which Google redirects back to.
+  // This API's own origin, which Google redirects back to (`/api/auth/callback/google`).
   BETTER_AUTH_URL?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
@@ -26,8 +28,10 @@ export type AuthEnv = {
 };
 
 const DEV_SECRET = "threads-local-development-secret-not-for-production";
-const LOCAL_ORIGIN = "http://localhost:5180";
-// The desktop app's link scheme, which the sign-in page sends you back to it on.
+// The local API. The browser must use exactly this origin all the way through Google and back (its cookies are this
+// host's), so it's 127.0.0.1, as the API serves, never localhost.
+const LOCAL_ORIGIN = "http://127.0.0.1:3030";
+// The desktop app's link scheme, which signing in with Google sends you back to it on.
 export const APP_SCHEME = "com.threads.arc";
 
 // The invite list: each invited email (lower case) and the Person it signs in as.
@@ -125,3 +129,49 @@ export async function createAuth(env: AuthEnv) {
   await ensureTables(options);
   return betterAuth(options);
 }
+
+// Where the browser lands after signing in with Google for the desktop app (the plugin sends it to `/`). Signing in left
+// a one-time code in a cookie (`better-auth.electron`); the page takes it and opens the app on a `com.threads.arc://` link,
+// showing the code to paste in case the link doesn't open it. Plain HTML, so the API serves it without a build.
+export const SIGNED_IN_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads</title>
+<style>
+  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+  body { display: grid; min-height: 100vh; margin: 0; place-items: center; background: Canvas; color: CanvasText; }
+  main { width: min(380px, calc(100vw - 32px)); padding: 28px; border: 1px solid #8884; border-radius: 12px; }
+  h1 { margin: 0 0 12px; font-size: 22px; }
+  p { margin: 8px 0; }
+  .muted { opacity: 0.7; }
+  code { display: block; padding: 10px 12px; border: 1px solid #8884; border-radius: 8px; word-break: break-all;
+    user-select: all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Threads</h1>
+  <p id="status">Nothing to do here. You can close this tab.</p>
+  <div id="fallback" hidden>
+    <p class="muted">If Threads didn't open, paste this code into it (⌘K, Sign in):</p>
+    <code id="code"></code>
+  </div>
+</main>
+<script>
+  const status = document.getElementById("status");
+  const error = new URLSearchParams(location.search).get("error");
+  const cookie = document.cookie.split("; ").find((c) => c.startsWith("better-auth.electron="));
+  const code = cookie && cookie.slice(cookie.indexOf("=") + 1);
+  if (error) status.textContent = "Signing in didn't work: " + error.replaceAll("_", " ");
+  else if (code) {
+    document.cookie = "better-auth.electron=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/";
+    status.textContent = "Signed in. Returning to Threads…";
+    document.getElementById("code").textContent = code;
+    document.getElementById("fallback").hidden = false;
+    location.replace("${APP_SCHEME}:/auth/callback#token=" + code);
+  }
+</script>
+</body>
+</html>`;

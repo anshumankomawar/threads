@@ -88,36 +88,37 @@ there, then reloads as the first person; switching source or person (⌘U, ⌘K)
 
 ### Signing in
 
-People sign in on the sign-in page (`apps/web`, a plain page with no framework) with Google or a one-time code sent to
-their email, through [Better Auth](https://www.better-auth.com) in the Worker (`apps/api/src/auth.ts`):
+The desktop app signs in with Google or a one-time code sent to your email, through [Better
+Auth](https://www.better-auth.com) in the Worker (`apps/api/src/auth.ts`) and its Electron plugin in the app's main
+process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: the API is all there is.
 
-- **Better Auth keeps its own users and sessions** in a D1 database (`AUTH_DB`), apart from the workspaces. Its tables
-  are made the first time the Worker signs anyone in (`getMigrations`), so there's no migration step to run.
+- **An emailed code** (⌘K, Sign in, your email, then the code) never leaves the app: the main process asks the API for
+  the code and signs in with it directly (`window.threads.sendCode` / `verifyCode`).
+- **Google** (⌘K, Sign in, Continue with Google) opens the browser straight at Google (`/api/auth/electron/
+  init-oauth-proxy`, with the app's PKCE request), which returns to the API (`<BETTER_AUTH_URL>/api/auth/callback/google`),
+  which lands the browser on the API's own page at `/` (`SIGNED_IN_PAGE`). That page opens the app on
+  `com.threads.arc:/auth/callback#token=…` with a one-time code, and shows the code to paste into the app in case the link
+  doesn't open it, which can happen in development. The main process trades the code for its session
+  (`/electron/token`). The browser has to use one origin for the whole round trip (its cookies are that host's), so it's
+  exactly `BETTER_AUTH_URL`: `http://127.0.0.1:3030` locally, never `localhost`.
+- **The session** stays in the main process, encrypted with the OS keychain (`safeStorage`) before it's written to disk.
+  The window only ever gets the Threads token, from `POST /auth/token` (`window.threads.signedIn()`): hosted, a signed
+  session token, as `POST /auth/session` mints; locally, the person's id. Signed in, you're that person and ⌘U is off;
+  signing out returns to View As. Calls from the main process carry `origin: com.threads.arc:/`, which the API trusts.
 - **Only invited emails get in.** `INVITES` (a secret: `email=personId` pairs, separated by commas) is the invite list
   and says which Person each email is. An uninvited email can't get an account by either route (a `user.create` hook
   refuses it), and asking for a code for one looks the same as for an invited one but sends nothing.
+- **Better Auth keeps its own users and sessions** in a D1 database (`AUTH_DB`), apart from the workspaces. Its tables
+  are made the first time the Worker signs anyone in (`getMigrations`), so there's no migration step to run.
 - **Codes** go out through Resend when `RESEND_API_KEY` is set; without it they're only written to the Worker's log,
   which is allowed locally only (no `API_TOKEN`).
-- **From a Better Auth session to the sync API's token**: `POST /auth/token`, with the sign-in page's cookie, answers the
-  invited person and their token: hosted, a signed session token, as `POST /auth/session` mints; locally, their id.
-- **The page** proxies `/api` and `/auth` to the API in development (`THREADS_API` points it elsewhere), so the cookie is
-  same-origin and Google redirects back to it, at `<BETTER_AUTH_URL>/api/auth/callback/google`
-  (`http://localhost:5180/api/auth/callback/google` locally).
-- **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the page's origin,
-  `http://localhost:5180` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google is offered only with both),
-  and `RESEND_API_KEY`. Locally they go in `apps/api/.dev.vars`; hosted, they're secrets.
-- **The desktop app** signs in through this page with Better Auth's Electron plugin (`apps/desktop/src/main/signIn.ts`):
-  ⌘K, Sign in, opens the page in the browser with the app's request (`client_id`, `state`, `code_challenge`, PKCE), which
-  goes along with the sign-in. Signed in, the page sends you back on `com.threads.arc:/auth/callback#token=…` with a one-time
-  code, and shows the code to paste into the app (⌘K, Sign in) in case the link doesn't open it, which can happen in
-  development; an already signed-in page asks for a fresh code (`/electron/transfer-user`). The main process trades the
-  code for the app's own session (`/electron/token`) and keeps it encrypted with the OS keychain (`safeStorage`); the
-  window only ever gets the Threads token, from `POST /auth/token` (`window.threads.signedIn()`). Signed in, you're that
-  person and ⌘U is off; signing out returns to View As. The sign-in page talks to the local API, so this is the Local
-  source's for now; `THREADS_SIGN_IN_URL` points the app at another sign-in page. The plugin's content security policy is
-  left off, since it would keep the window from reaching the API.
-- **Not yet**: a hosted sign-in page (and its `BETTER_AUTH_URL`), so the Cloudflare source signs in too; then the app
-  stops holding the API token, and ⌘U is for development only.
+- **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the API's own origin,
+  `http://127.0.0.1:3030` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google is offered only with both;
+  its redirect URI is `<BETTER_AUTH_URL>/api/auth/callback/google`), and `RESEND_API_KEY`. Locally they go in
+  `apps/api/.dev.vars`; hosted, they're secrets. The app finds the API with `THREADS_API_URL` (the local one by default).
+- **The plugin's content security policy is left off**, since it would keep the window from reaching the API.
+- **Not yet**: signing in to the Cloudflare source. It needs the hosted API's settings (its `BETTER_AUTH_URL` and Google
+  redirect URI) and the app pointed at it; then the app stops holding the API token, and ⌘U is for development only.
 
 ## Running and testing
 

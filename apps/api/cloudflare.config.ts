@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => ({
       // Who may sign in, as whom: `email=personId` pairs, separated by commas.
       INVITES: bindings.secret(),
       BETTER_AUTH_SECRET: bindings.secret(),
-      // The sign-in page's origin, which Google redirects back to (http://localhost:5180 locally).
+      // This API's own origin, which Google redirects back to (http://127.0.0.1:3030 locally, its default).
       BETTER_AUTH_URL: bindings.secret(),
       GOOGLE_CLIENT_ID: bindings.secret(),
       GOOGLE_CLIENT_SECRET: bindings.secret(),
