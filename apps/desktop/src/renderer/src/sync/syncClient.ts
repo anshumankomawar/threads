@@ -1,6 +1,5 @@
 import {
   labelSlug,
-  ORGANIZATION_ID,
   threadsMutations,
   threadsSchema,
   toThreads,
@@ -10,11 +9,8 @@ import {
   type GroupChanges,
   type Label,
   type ModelRecords,
-  type Organization,
   type Person,
   type PersonChanges,
-  type Sprint,
-  type SprintChanges,
   type Thread,
   type ThreadChanges,
   type TransactionInput,
@@ -27,11 +23,7 @@ import {
   type Transport,
 } from "sync/client";
 
-// How the app reaches its server: the sync engine's transport, plus wiping the workspace (a development tool).
-export type ThreadsTransport = Transport<ModelRecords, TransactionInput> & {
-  // Starts the workspace over: deletes every thread, keeping its people, organization, labels and groups.
-  reset(): Promise<unknown>;
-};
+export type ThreadsTransport = Transport<ModelRecords, TransactionInput>;
 
 export type NewThread = {
   title: string;
@@ -53,16 +45,13 @@ export type NewThread = {
 // and the socket). This adds what the app reads (threads with their people resolved, labels, groups) and the changes
 // it makes, each one a transaction.
 export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
-  readonly #transport: ThreadsTransport;
-
   constructor(
     transport: ThreadsTransport,
     openDatabase: () => Promise<SyncDatabase<ModelRecords, TransactionInput | BuiltIn>>,
     onEvent?: (event: ClientEvent) => void,
   ) {
     super({ schema: threadsSchema, mutations: threadsMutations, transport, openDatabase, onEvent });
-    this.#transport = transport;
-    derivedGetters(this, ["threads", "people", "organization", "labels", "groups", "sprints"]);
+    derivedGetters(this, ["threads", "people", "labels", "groups"]);
   }
 
   // The pool's threads with their references resolved, as the app renders them.
@@ -75,27 +64,12 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
     return [...this.pool.maps.Person.values()];
   }
 
-  get organization(): Organization | undefined {
-    return this.pool.maps.Organization.get(ORGANIZATION_ID);
-  }
-
   get labels(): Label[] {
     return [...this.pool.maps.Label.values()];
   }
 
   get groups(): Group[] {
     return [...this.pool.maps.Group.values()];
-  }
-
-  get sprints(): Sprint[] {
-    return [...this.pool.maps.Sprint.values()];
-  }
-
-  // Wipes the workspace's threads (people and the org stay), drops anything still unsent, and loads the clean copy
-  // straight away rather than waiting for the socket to notice.
-  async wipe(): Promise<void> {
-    await this.#transport.reset();
-    await this.discardAndReload();
   }
 
   #enqueue(input: TransactionInput, me: Person): void {
@@ -143,53 +117,6 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
         modelName: "Group",
         modelId: groupId,
         changes,
-      },
-      me,
-    );
-  }
-
-  // Starts a sprint in a group, with any of its threads to begin with. Returns its id.
-  createSprint(
-    groupId: string,
-    name: string,
-    dates: { startMs: number; endMs: number },
-    threadIds: string[],
-    me: Person,
-  ): string {
-    const sprintId = crypto.randomUUID();
-    this.#enqueue(
-      {
-        id: crypto.randomUUID(),
-        type: "create",
-        modelName: "Sprint",
-        data: { id: sprintId, groupId, name: name.trim(), ...dates, threadIds },
-      },
-      me,
-    );
-    return sprintId;
-  }
-
-  updateSprint(sprintId: string, changes: SprintChanges, me: Person): void {
-    this.#enqueue(
-      {
-        id: crypto.randomUUID(),
-        type: "update",
-        modelName: "Sprint",
-        modelId: sprintId,
-        changes,
-      },
-      me,
-    );
-  }
-
-  renameOrganization(name: string, me: Person): void {
-    this.#enqueue(
-      {
-        id: crypto.randomUUID(),
-        type: "update",
-        modelName: "Organization",
-        modelId: ORGANIZATION_ID,
-        changes: { name },
       },
       me,
     );

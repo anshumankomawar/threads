@@ -126,8 +126,6 @@ function httpTransport(server: Server, viewerId: string | null): ThreadsTranspor
     load: (requests) => request("POST", "/sync/batch", { requests }),
     deltas: (after) => request("GET", `/sync/deltas?after=${after}`),
     send: (batch) => request("POST", "/sync/transactions", batch),
-    // Wiping is an operator's tool, so it goes as the admin session.
-    reset: () => adminRequest(server, "POST", "/sync/reset"),
     connect: ({ onOpen, onMessage, onClose }) => {
       let socket: WebSocket | undefined;
       let ping: ReturnType<typeof setInterval> | undefined;
@@ -169,20 +167,6 @@ function httpTransport(server: Server, viewerId: string | null): ThreadsTranspor
       };
     },
   };
-}
-
-// A request with the API token itself (the admin session), or none locally.
-async function adminRequest(server: Server, method: string, path: string): Promise<unknown> {
-  const response = await fetch(`${server.url}${path}`, {
-    method,
-    headers: {
-      "X-Workspace": server.workspace,
-      "X-UTC-Offset": utcOffset(),
-      ...(server.token === undefined ? {} : { Authorization: `Bearer ${server.token}` }),
-    },
-  });
-  if (!response.ok) throw new Error(`${method} ${path} failed with ${response.status}`);
-  return response.json();
 }
 
 // The model's draft of a new thread from what you typed (POST /ai/compose). Not part of sync: it reads and writes

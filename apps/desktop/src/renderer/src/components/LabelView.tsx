@@ -1,22 +1,19 @@
 import { Cancel01Icon, Tag01Icon, UserGroupIcon } from "@hugeicons/core-free-icons";
 import * as stylex from "@stylexjs/stylex";
-import { isDone, labelSlug, type Group, type GroupChanges, type Person, type Sprint } from "model";
+import { isDone, labelSlug, type Group, type GroupChanges, type Person } from "model";
 import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { useApp } from "../app/state";
 import { formatRelativeTime } from "../format";
 import { NO_FILTER, threadsWithLabel, type ThreadFilter } from "../groups";
-import { useListView } from "../listView";
-import { sprintDates } from "../sprints";
 import { chip, chipTone, link } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { THREAD_ICON } from "../threadIcon";
-import { Board } from "./Board";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
-import { ThreadRows, ViewToggle } from "./ThreadItems";
+import { ThreadRows } from "./ThreadItems";
 import { MenuChip } from "./ThreadView";
 
 const styles = stylex.create({
@@ -227,37 +224,24 @@ function GroupTitle(props: { group: Group }): JSX.Element {
   );
 }
 
-// The Sprints menu's way to start one.
-const NEW_SPRINT = "new-sprint";
-
 // The organization's threads, in the main area: all of them, or a label's. A group's page is its label's threads, with
-// its members too, since a thread is in a group by having the group's label. Open threads by default, and you can
-// narrow by person (who owns it or is assigned it), by a group or label, and show closed ones. Any of it shows as a
-// list or a board. A group's Sprints menu opens its sprints, each on its own page (`SprintView`).
+// its members too, since a thread is in a group by having the group's label. Open threads by default, narrowed by
+// person, label, or showing closed ones.
 export function LabelView(): JSX.Element {
   const app = useApp();
   // The page's label and group: none for every thread, and no group for a plain label.
   const label = () => app.nav.shownLabel() ?? null;
   const group = (): Group | undefined => app.nav.shownGroup();
-  // The group's sprints; none on a label's page or every thread.
-  const sprints = (): Sprint[] => {
-    const shown = group();
-    return shown === undefined ? [] : app.groups.sprintsOf(shown.id);
-  };
   const updateGroup = (changes: GroupChanges): void => {
     const shown = group();
     if (shown !== undefined) app.groups.update(shown.id, changes);
   };
   const [filter, setFilter] = createSignal<ThreadFilter>(NO_FILTER);
-  const [view, setView] = useListView();
   const labelId = (): string | null => label()?.id ?? null;
   const everything = createMemo(() =>
     threadsWithLabel(app.data.threads(), labelId(), { ...filter(), includeDone: true }),
   );
-  // The board has a column for closed threads, so it always has them.
-  const shown = createMemo(() =>
-    view() === "board" ? everything() : threadsWithLabel(app.data.threads(), labelId(), filter()),
-  );
+  const shown = createMemo(() => threadsWithLabel(app.data.threads(), labelId(), filter()));
   const closedCount = (): number => everything().filter((thread) => isDone(thread.status)).length;
   const inThese = createMemo(() =>
     threadsWithLabel(app.data.threads(), labelId(), { ...NO_FILTER, includeDone: true }),
@@ -283,11 +267,6 @@ export function LabelView(): JSX.Element {
   );
   const nameOf = (personId: string): string =>
     app.data.people().find((person) => person.id === personId)?.name ?? personId;
-  // A new sprint in the group, with nothing in it yet.
-  const startSprint = (): void => {
-    const shown = group();
-    if (shown !== undefined) app.groups.startSprint(shown, []);
-  };
   const count = (): string => `${shown().length} ${shown().length === 1 ? "thread" : "threads"}`;
 
   return (
@@ -360,32 +339,6 @@ export function LabelView(): JSX.Element {
             New thread
           </button>
         </Show>
-        <ViewToggle view={view()} onChange={setView} />
-        {/* The group's sprints, each opening on its own page, and starting the next. */}
-        <Show
-          when={
-            group() !== undefined &&
-            (sprints().length > 0 || (isMember() && group()?.archived !== true))
-          }
-        >
-          <MenuChip
-            label={
-              sprints().some((sprint) => !sprint.closed)
-                ? `Sprints · ${sprints().filter((sprint) => !sprint.closed).length} open`
-                : "Sprints"
-            }
-            options={[
-              ...sprints().map((sprint) => ({
-                label: `${sprint.name} · ${sprint.closed ? "Closed" : sprintDates(sprint)}`,
-                value: sprint.id,
-              })),
-              ...(isMember() && group()?.archived !== true
-                ? [{ label: "New sprint", value: NEW_SPRINT }]
-                : []),
-            ]}
-            onSelect={(value) => (value === NEW_SPRINT ? startSprint() : app.nav.openSprint(value))}
-          />
-        </Show>
         <span class={sx(page.filters)}>
           <MenuChip
             label={filter().personId === null ? "Anyone" : nameOf(filter().personId ?? "")}
@@ -410,7 +363,7 @@ export function LabelView(): JSX.Element {
               onSelect={(labelId) => setFilter((current) => ({ ...current, labelId }))}
             />
           </Show>
-          <Show when={closedCount() > 0 && view() === "list"}>
+          <Show when={closedCount() > 0}>
             <button
               type="button"
               class={sx(chip.chip, !filter().includeDone && chipTone.muted)}
@@ -425,9 +378,7 @@ export function LabelView(): JSX.Element {
         </span>
       </div>
 
-      {view() === "board" ? (
-        <Board threads={shown()} />
-      ) : shown().length === 0 ? (
+      {shown().length === 0 ? (
         <p class={sx(page.empty)}>No threads here yet.</p>
       ) : (
         <ThreadRows threads={shown()} />

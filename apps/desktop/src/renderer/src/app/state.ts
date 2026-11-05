@@ -1,47 +1,4 @@
-/*
- * The app store: everything the app holds and can do, made once by `App` (`createAppState`) and read anywhere below it
- * with `useApp()`. Accessors are functions (`app.me()`, `app.nav.activeThread()`), actions are plain functions
- * (`app.nav.openThread(id)`). Components read state and call actions from here rather than taking them as props.
- *
- *   app.client()            the sync client for the current data source and viewer (raw: status, error, stuck, …)
- *   app.source()            the data source (Cloudflare / Local / Sample); app.switchSource(next) starts fresh there
- *   app.me()                who you view the app as; app.viewAs(person) switches (⌘U)
- *   app.now()               the time, updated every minute
- *
- *   app.data                the synced lists, resolved for the UI: threads(), people(), labels(), groups(),
- *                           sprints(), organization(); targets() (people and groups to @mention)
- *   app.nav                 what the main area shows: activeThreadId(), activeThread(), splitThreadId(),
- *                           splitThread(), page(), profileOpen(), draftId(), shownDraft(), shownPerson(),
- *                           shownSprint(), sprintGroup(), shownLabel(), shownGroup(), pageLabel(), title();
- *                           openThread(id), openSplit(id), closeSplit(), openProfile(), closeProfile(), toggleProfile(),
- *                           openPage(page), openLabel(id), openPerson(id), openSprint(id), openDraft(draft),
- *                           moveOn(thread)
- *   app.ui                  what's open: sidebarOpen(), detailsOpen(), searchOpen(), viewAsOpen(), newThreadOpen(),
- *                           newThreadSprintId(), composeOpen(), composing(), newGroupOpen(), renamingOrganization(),
- *                           editingBucket(), blocking(), moving(), threadMenu(), theme(), contentZoom(), dialogOpen();
- *                           a set…(value) for each, plus toggleSidebar(), toggleDetails(), toggleTheme(),
- *                           openNewThread(sprintId?), openCompose(draft | null), openViewAs()
- *   app.inbox               your inbox: view() (buildInbox), unreadIds(), seenAt(thread), activity(),
- *                           groupNotices(); markAllRead(), markDone(thread) (⌘E), snooze(thread) (H)
- *   app.buckets             your buckets: list(), actions (the sidebar's BucketActions), save(name, description) for
- *                           the bucket being edited, placeIn(threadId, bucketId | null)
- *   app.threads             changing threads: create(draft) (new-thread palette), compose(draft, fromDraftId) (⌘⇧N
- *                           or a draft), branch(from, title, with?, movedEntryIds?), createBlocker(from, person,
- *                           title, description), moveTo(target) (the messages in ui.moving()), setStatus(thread,
- *                           status) (straight, no moving on), actionsFor(thread) (a thread view's ThreadActions),
- *                           openMenu(event, thread) and menuItems(thread) (the right-click menu)
- *   app.drafts              unsent ⌘⇧N drafts on this device: list(), save(draft), saveAndClose(draft), remove(id)
- *   app.groups              create(name, members), update(groupId, changes), sprintsOf(groupId),
- *                           startSprint(group, threadIds), updateSprint(sprintId, changes),
- *                           renameOrganization(name)
- *   app.undo                current() (the Done / Snooze toast), run(), dismiss()
- *   app.links               what ThreadLinksContext provides (titleOf, nameOf, open, openPerson, search and the lists)
- *   app.keys                the window's key handlers, installed here: global(event) (⌘K, ⌘N, ⌘U, zoom…) and
- *                           inbox(event) (⌘E, J/K, H, R, Escape)
- *
- * Components read it all through `useApp()`; nothing else is app-wide. CurrentThreadContext stays with each ThreadView: it's the thread in that pane (main or split),
- * not app state.
- */
+// The app store: made once by `App`, read anywhere below it with `useApp()`.
 import {
   createContext,
   createEffect,
@@ -83,15 +40,12 @@ import type { ThreadLinks } from "../threadLinks";
 import { buildInbox } from "../inbox";
 import { activityFor } from "../activity";
 import { groupNoticesFor } from "../groups";
-import { nextSprint, openSprintWith, sprintsOf } from "../sprints";
 import type { BucketActions, SidebarPage } from "../components/Sidebar";
 import type { MessageEntry, ThreadActions } from "../components/ThreadView";
 import type { MoveTarget } from "../components/MovePalette";
 import type { NewThreadDraft } from "../components/NewThreadPalette";
 import type { ContextMenuItem } from "../components/ContextMenu";
 
-type Sprint = ThreadsClient["sprints"][number];
-type SprintChanges = Parameters<ThreadsClient["updateSprint"]>[1];
 type GroupChanges = Parameters<ThreadsClient["updateGroup"]>[1];
 
 export type AppState = ReturnType<typeof createAppState>;
@@ -200,10 +154,7 @@ function useSyncClient(
 }
 
 // The page shown in the main area, when it's one of the object forms.
-function pageField<K extends "label" | "person" | "sprint">(
-  page: SidebarPage | null,
-  key: K,
-): string | null {
+function pageField<K extends "label" | "person">(page: SidebarPage | null, key: K): string | null {
   return page !== null && typeof page === "object" && key in page
     ? (page as Record<K, string>)[key]
     : null;
@@ -226,8 +177,6 @@ export function createAppState() {
   const people = (): Person[] => client().people;
   const labels = (): Label[] => client().labels;
   const groups = (): Group[] => client().groups;
-  const sprints = (): ThreadsClient["sprints"] => client().sprints;
-  const organization = (): ThreadsClient["organization"] => client().organization;
   // You view the app as the chosen person, or the first person in the data until you pick one (or the local user,
   // before anyone has loaded).
   const me = createMemo(
@@ -274,11 +223,8 @@ export function createAppState() {
   const [searchOpen, setSearchOpen] = createSignal(false);
   const [detailsOpen, setDetailsOpen] = createSignal(false);
   const [newGroupOpen, setNewGroupOpen] = createSignal(false);
-  const [renamingOrganization, setRenamingOrganization] = createSignal(false);
   // Starting a thread opens the new-thread panel.
   const [newThreadOpen, setNewThreadOpen] = createSignal(false);
-  // The open sprint it was started from, which it goes into.
-  const [newThreadSprintId, setNewThreadSprintId] = createSignal<string | null>(null);
   // ⌘⇧N: a new thread written as one message, drafted by the model (`ComposePanel`). The first person asked has it;
   // each ask is a message sent to its people, which puts the thread in their inboxes, sorted by what they were asked.
   // A saved draft opens in the same panel, and leaves the drafts once it's sent.
@@ -295,9 +241,8 @@ export function createAppState() {
     null,
   );
 
-  const openNew = (sprintId: string | null = null): void => {
+  const openNew = (): void => {
     setSearchOpen(false);
-    setNewThreadSprintId(sprintId);
     setNewThreadOpen(true);
   };
   const openCompose = (draft: SavedDraft | null): void => {
@@ -321,15 +266,13 @@ export function createAppState() {
     blocking() !== null ||
     moving() !== null ||
     newGroupOpen() ||
-    renamingOrganization() ||
-    organization()?.name === "" ||
     threadMenu() !== null ||
     document.querySelector(".chip-menu, .context-menu, .thread-menu") !== null;
 
   // ── Navigation: what the main area shows ─────────────────────────────────────────────────────────────────────────
   const [activeThreadId, setActiveThreadId] = createSignal<string | null>(null);
   const [profileOpen, setProfileOpen] = createSignal(false);
-  // Settings, a label's or group's threads, someone's profile or a sprint; null for a thread or your own profile.
+  // Settings, a label's or group's threads, or someone's profile; null for a thread or your own profile.
   const [page, setPage] = createSignal<SidebarPage | null>(null);
   // A draft opened from the sidebar takes the thread's place in the main area (`DraftView`).
   const [draftId, setDraftId] = createSignal<string | null>(null);
@@ -352,14 +295,6 @@ export function createAppState() {
     const id = pageField(page(), "person");
     return id === null ? undefined : people().find((person) => person.id === id);
   });
-  // A sprint's page, with the group it's in.
-  const shownSprint = createMemo(() => {
-    const id = pageField(page(), "sprint");
-    return id === null ? undefined : sprints().find((sprint) => sprint.id === id);
-  });
-  const sprintGroup = createMemo(() =>
-    groups().find((group) => group.id === shownSprint()?.groupId),
-  );
   const shownGroup = createMemo(() => groups().find((group) => group.labelId === shownLabelId()));
   // A group's label comes back from the server just after the group, so go by the group until then.
   const shownLabel = createMemo((): Label | undefined => {
@@ -377,10 +312,8 @@ export function createAppState() {
           })
     );
   });
-  // The label a thread made from this page starts with: the group's or label's, or a sprint's group's, which it needs
-  // to go in the sprint.
-  const pageLabel = (): Label | undefined =>
-    shownLabel() ?? labels().find((label) => label.id === sprintGroup()?.labelId);
+  // The label a thread made from this page starts with.
+  const pageLabel = shownLabel;
   // The top bar's title for what's shown.
   const title = (): string | undefined =>
     profileOpen()
@@ -389,8 +322,7 @@ export function createAppState() {
         ? "Settings"
         : page() === "all"
           ? "All threads"
-          : (shownSprint()?.name ??
-            shownPerson()?.name ??
+          : (shownPerson()?.name ??
             shownLabel()?.name ??
             activeThread()?.title ??
             (shownDraft() === undefined ? undefined : shownDraft()?.draft?.title || "Draft"));
@@ -440,7 +372,6 @@ export function createAppState() {
     if (personId === me().id) openProfile();
     else openPage({ person: personId });
   };
-  const openSprint = (sprintId: string): void => openPage({ sprint: sprintId });
   const openDraft = (draft: SavedDraft): void => {
     openThread(null);
     setDraftId(draft.id);
@@ -589,14 +520,7 @@ export function createAppState() {
     if (id === draftId()) setDraftId(null);
   };
 
-  // ── Groups, sprints and the organization ─────────────────────────────────────────────────────────────────────────
-  // Starts the next sprint in a group (`nextSprint`), with any threads to carry over, and opens it.
-  const startSprint = (group: Group, threadIds: string[]): void => {
-    const next = nextSprint(sprintsOf(sprints(), group.id), Date.now());
-    openSprint(client().createSprint(group.id, next.name, next, threadIds, me()));
-  };
-  const updateSprint = (sprintId: string, changes: SprintChanges): void =>
-    client().updateSprint(sprintId, changes, me());
+  // ── Groups ───────────────────────────────────────────────────────────────────────────────────────────────────────
   // Makes a group (from the new-group palette) and opens its page.
   const createGroup = (
     name: string,
@@ -608,10 +532,6 @@ export function createAppState() {
   };
   const updateGroup = (groupId: string, changes: GroupChanges): void =>
     client().updateGroup(groupId, changes, me());
-  const renameOrganization = (name: string): void => {
-    client().renameOrganization(name, me());
-    setRenamingOrganization(false);
-  };
 
   // ── Thread links ─────────────────────────────────────────────────────────────────────────────────────────────────
   const threadLinks: ThreadLinks = {
@@ -648,19 +568,7 @@ export function createAppState() {
   // The panel's title and description make the thread. It appears at once and syncs in the background.
   const createThread = (draft: NewThreadDraft): void => {
     setNewThreadOpen(false);
-    const threadId = client().createThread(draft, me());
-    // Made from a sprint, it goes in it in the same batch, as long as it kept the group's label: only the group's
-    // threads go in its sprints.
-    const sprint = sprints().find((candidate) => candidate.id === newThreadSprintId());
-    const group = groups().find((candidate) => candidate.id === sprint?.groupId);
-    if (
-      sprint !== undefined &&
-      !sprint.closed &&
-      group !== undefined &&
-      draft.labelNames.some((name) => labelSlug(name) === group.labelId)
-    )
-      client().updateSprint(sprint.id, { threadIds: [...sprint.threadIds, threadId] }, me());
-    openThread(threadId);
+    openThread(client().createThread(draft, me()));
   };
 
   // Sends a draft, from the panel or a draft's page, and drops it from the drafts.
@@ -753,7 +661,7 @@ export function createAppState() {
     openSplit(threadId);
   };
 
-  // Straight to the thread: from a board you stay on the board, rather than moving on through your inbox.
+  // Straight to the thread, without moving on through your inbox.
   const setStatus = (thread: Thread, status: Status): void =>
     client().updateThread(thread.id, { status }, me());
 
@@ -846,34 +754,6 @@ export function createAppState() {
         items.push({ label: "Sort it for me", run: () => placeIn(thread.id, null) });
       items.push("separator");
     }
-    // The open sprints of your groups that it's in, or could join: only a group's threads go in its sprints, each in
-    // one open sprint of the group at a time.
-    const sprintItems: ContextMenuItem[] = groups().flatMap((group) => {
-      if (!group.memberIds.includes(me().id) || !thread.labelIds.includes(group.labelId)) return [];
-      const groupSprints = sprintsOf(sprints(), group.id);
-      const current = openSprintWith(groupSprints, thread.id);
-      if (current !== undefined)
-        return [
-          {
-            label: `Remove from ${current.name}`,
-            run: () =>
-              client().updateSprint(
-                current.id,
-                { threadIds: current.threadIds.filter((id) => id !== thread.id) },
-                me(),
-              ),
-          },
-        ];
-      if (isDone(thread.status)) return [];
-      return groupSprints
-        .filter((sprint) => !sprint.closed)
-        .map((sprint) => ({
-          label: `Add to ${sprint.name}${groups().length > 1 ? ` (${group.name})` : ""}`,
-          run: () =>
-            client().updateSprint(sprint.id, { threadIds: [...sprint.threadIds, thread.id] }, me()),
-        }));
-    });
-    if (sprintItems.length > 0) items.push(...sprintItems, "separator");
     items.push(
       isDone(thread.status)
         ? { label: "Reopen", run: () => setStatus("open") }
@@ -988,7 +868,7 @@ export function createAppState() {
     viewAs,
     now: nowMs,
 
-    data: { threads, people, labels, groups, sprints, organization, targets },
+    data: { threads, people, labels, groups, targets },
 
     nav: {
       activeThreadId,
@@ -1000,8 +880,6 @@ export function createAppState() {
       draftId,
       shownDraft,
       shownPerson,
-      shownSprint,
-      sprintGroup,
       shownLabel,
       shownGroup,
       pageLabel,
@@ -1019,7 +897,6 @@ export function createAppState() {
       openPage,
       openLabel,
       openPerson,
-      openSprint,
       openDraft,
       moveOn,
     },
@@ -1041,7 +918,6 @@ export function createAppState() {
       setViewAsOpen: valueSetter(setViewAsOpen),
       openViewAs,
       newThreadOpen,
-      newThreadSprintId,
       setNewThreadOpen: valueSetter(setNewThreadOpen),
       openNewThread: openNew,
       composeOpen,
@@ -1050,8 +926,6 @@ export function createAppState() {
       openCompose,
       newGroupOpen,
       setNewGroupOpen: valueSetter(setNewGroupOpen),
-      renamingOrganization,
-      setRenamingOrganization: valueSetter(setRenamingOrganization),
       editingBucket,
       setEditingBucket: valueSetter(setEditingBucket),
       blocking,
@@ -1105,10 +979,6 @@ export function createAppState() {
     groups: {
       create: createGroup,
       update: updateGroup,
-      sprintsOf: (groupId: string): Sprint[] => sprintsOf(sprints(), groupId),
-      startSprint,
-      updateSprint,
-      renameOrganization,
     },
 
     undo: {

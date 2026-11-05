@@ -21,16 +21,13 @@ import { Icon } from "./components/Icon";
 import { Identicon } from "./components/Identicon";
 import { Keyed } from "./components/Keyed";
 import { PersonView } from "./components/PersonView";
-import { SprintView } from "./components/SprintView";
 import { ProfileView } from "./components/ProfileView";
 import { LabelView } from "./components/LabelView";
 import { NewGroupPalette } from "./components/NewGroupPalette";
-import { OrganizationPrompt } from "./components/OrganizationPrompt";
 import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { AppStatus } from "./components/AppStatus";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
-import { WipeButton } from "./components/WipeButton";
 import { topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
 import { colors, fontSizes, layers, radii, shadows } from "./styles/tokens.stylex";
@@ -181,7 +178,7 @@ const styles = stylex.create({
 // `AppContext`: components read what they need from it, so the layout only places them.
 function App(): JSX.Element {
   const app = createAppState();
-  const { data, nav, ui, threads, groups } = app;
+  const { nav, ui, threads, groups } = app;
 
   return (
     <AppContext value={app}>
@@ -217,7 +214,6 @@ function App(): JSX.Element {
                 <Identicon seed={app.me().id} size={14} />
                 <span>{app.me().name}</span>
               </button>
-              <WipeButton />
               <DetailsToggle />
             </span>
           </div>
@@ -266,7 +262,7 @@ function App(): JSX.Element {
               </div>
             )}
           </Show>
-          {/* Each page is made anew for the person, sprint, label or draft it shows (keyed by its id). */}
+          {/* Each page is made anew for the person, label or draft it shows (keyed by its id). */}
           <Switch>
             <Match when={nav.profileOpen()}>
               <ProfileView />
@@ -277,11 +273,6 @@ function App(): JSX.Element {
             <Match when={nav.shownPerson()}>
               <Keyed value={nav.shownPerson()} by={(person) => person.id}>
                 {(person) => <PersonView person={person()} />}
-              </Keyed>
-            </Match>
-            <Match when={nav.sprintGroup() !== undefined && nav.shownSprint()}>
-              <Keyed value={nav.shownSprint()} by={(sprint) => sprint.id}>
-                {(sprint) => <SprintView sprint={sprint()} />}
               </Keyed>
             </Match>
             <Match
@@ -381,13 +372,6 @@ function App(): JSX.Element {
         </Show>
         <Show when={ui.newGroupOpen()}>
           <NewGroupPalette onCreate={groups.create} onClose={() => ui.setNewGroupOpen(false)} />
-        </Show>
-        <Show when={data.organization()?.name === "" || ui.renamingOrganization()}>
-          <OrganizationPrompt
-            current={data.organization()?.name ?? ""}
-            onSave={groups.renameOrganization}
-            onClose={() => ui.setRenamingOrganization(false)}
-          />
         </Show>
         <Show when={ui.blocking()}>
           {(thread) => (

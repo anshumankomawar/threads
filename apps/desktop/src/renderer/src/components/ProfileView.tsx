@@ -276,7 +276,6 @@ export function ProfileView(): JSX.Element {
   const app = useApp();
   const me = (): Person => app.me();
   const people = (): Person[] => app.data.people();
-  const organizationName = (): string => app.data.organization()?.name ?? "";
   const tree = createMemo(() => buildOrgTree(people()));
   const managers = createMemo(() => chainAbove(people(), me().id));
   const chain = createMemo(() => new Set([me().id, ...managers().map((person) => person.id)]));
@@ -331,21 +330,8 @@ export function ProfileView(): JSX.Element {
         </dd>
       </dl>
 
-      <h2 class={sx(page.heading)}>{organizationName() || "Organization"}</h2>
-      <p class={sx(page.summary)}>
-        {summary()}
-        {/* Not until the server has an organization to rename, because it hasn't been updated yet. */}
-        <Show when={app.data.organization() !== undefined}>
-          {" · "}
-          <button
-            type="button"
-            class={sx(profile.textButton)}
-            onClick={() => app.ui.setRenamingOrganization(true)}
-          >
-            Rename
-          </button>
-        </Show>
-      </p>
+      <h2 class={sx(page.heading)}>People</h2>
+      <p class={sx(page.summary)}>{summary()}</p>
       <ul class={sx(styles.tree)} role="tree" aria-label="Organization">
         <Show
           when={tree().length > 1}
@@ -363,7 +349,7 @@ export function ProfileView(): JSX.Element {
                   <Icon icon={Building03Icon} size={12} />
                 </span>
               </Guides>
-              <span class={sx(styles.name)}>{organizationName() || "Organization"}</span>
+              <span class={sx(styles.name)}>People</span>
               <span class={sx(styles.details)} />
               <span class={sx(styles.count)}>{`${tree().length} at the top`}</span>
             </div>

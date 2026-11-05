@@ -54,35 +54,18 @@ export function CommandPalette(props: { onClose: () => void }): JSX.Element {
     props.onClose();
     app.ui.setNewGroupOpen(true);
   };
-  // Groups' sprints, each named with its group.
-  const sprints = (): { id: string; label: string }[] =>
-    app.data.groups().flatMap((group) =>
-      app.groups.sprintsOf(group.id).map((sprint) => ({
-        id: sprint.id,
-        label: `${group.name} › ${sprint.name}`,
-      })),
-    );
-
   const sections = createMemo((): { title: string; items: Row[] }[] => {
     const groupsAndLabels: Section = {
       title: "Groups and Labels",
-      items: [
-        ...app.data
-          .labels()
-          .toSorted((a, b) => a.name.localeCompare(b.name))
-          .map((label) => ({
-            id: `label-${label.id}`,
-            label: label.name,
-            shortcut: label.groupId === null ? "Label" : "Group",
-            run: run(() => app.nav.openLabel(label.id)),
-          })),
-        ...sprints().map((sprint) => ({
-          id: `sprint-${sprint.id}`,
-          label: sprint.label,
-          shortcut: "Sprint",
-          run: run(() => app.nav.openSprint(sprint.id)),
+      items: app.data
+        .labels()
+        .toSorted((a, b) => a.name.localeCompare(b.name))
+        .map((label) => ({
+          id: `label-${label.id}`,
+          label: label.name,
+          shortcut: label.groupId === null ? "Label" : "Group",
+          run: run(() => app.nav.openLabel(label.id)),
         })),
-      ],
     };
     // Everyone else, by name; opening one shows their profile and the threads you're both in.
     const peopleSection: Section = {
@@ -122,7 +105,7 @@ export function CommandPalette(props: { onClose: () => void }): JSX.Element {
             {
               title: "Views",
               items: [
-                { id: "profile", label: "Profile and organization", run: run(app.nav.openProfile) },
+                { id: "profile", label: "Profile", run: run(app.nav.openProfile) },
                 { id: "new-group", label: "New Group", run: newGroup },
                 {
                   id: "theme",
