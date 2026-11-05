@@ -124,9 +124,12 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
 
 - `vp run api#dev` serves the API on `http://127.0.0.1:3030` (needs `cf` logged in to the Threads account for Workers
   AI; `THREADS_LOCAL_AI=off` leaves sorting out). A new workspace seeds itself. State lives in
-  `apps/api/.cloudflare/state`; delete its `v3/do` (API stopped) to start over.
+  `apps/api/.cloudflare/state`. A local workspace whose data was written under other models starts over by itself
+  (the `Workspace` object keeps the schema hash in a `schema` table), so changing the models needs no reset by hand;
+  hosted data is never thrown away. Deleting `v3/do` (API stopped) still starts over on demand.
 - `vp run desktop#dev` starts the app. Cloudflare is offered when `apps/desktop/.env.local` sets `VITE_API_URL` and
-  `VITE_API_TOKEN` (never commit the token). Use the cf CLI, never Wrangler; deploy with `vp run api#deploy`.
+  `VITE_API_TOKEN` (never commit the token). Closing its window only hides it: the app keeps running, synced, until
+  you quit it (⌘Q), and the Dock icon, opening it again or a sign-in link brings the window back. Use the cf CLI, never Wrangler; deploy with `vp run api#deploy`.
 - `vp test` in `packages/sync` (unit tests), `packages/testing` (the deterministic simulation), `packages/server`,
   `packages/models` (the rules) and `apps/api`. `vp check` at the root.
 

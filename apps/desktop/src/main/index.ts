@@ -27,6 +27,21 @@ function syncDockIcon(): void {
   app.dock?.setIcon(nativeTheme.shouldUseDarkColors ? iconDark : icon);
 }
 
+// The app keeps running when its window is closed: closing only hides the window, so the data stays loaded and synced,
+// and the Dock icon (or opening the app again, or a sign-in link) shows it. Quitting (⌘Q) is the only way out.
+let appWindow: BrowserWindow | undefined;
+let quitting = false;
+app.on("before-quit", () => {
+  quitting = true;
+});
+
+function showWindow(): void {
+  if (!app.isReady()) return;
+  if (appWindow === undefined) return createWindow();
+  if (appWindow.isMinimized()) appWindow.restore();
+  appWindow.show();
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 900,
@@ -49,6 +64,16 @@ function createWindow(): void {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,
     },
+  });
+
+  appWindow = mainWindow;
+  mainWindow.on("close", (event) => {
+    if (quitting) return;
+    event.preventDefault();
+    mainWindow.hide();
+  });
+  mainWindow.on("closed", () => {
+    appWindow = undefined;
   });
 
   // The whole interface at 110%: the same layout, a little roomier. Set on every load, since a reload resets it.
@@ -132,15 +157,13 @@ void app.whenReady().then(() => {
 
   createWindow();
 
-  app.on("activate", function () {
-    // macOS: clicking the Dock icon with no windows open makes one.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  // The Dock icon, opening the app again, and a sign-in link coming back all bring the window back.
+  app.on("activate", showWindow);
+  app.on("second-instance", showWindow);
+  app.on("open-url", showWindow);
 });
 
-// Quit when the last window closes, except on macOS, where apps stay open until ⌘Q.
+// The window only closes for real when quitting, so this is the app on its way out.
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+  app.quit();
 });
