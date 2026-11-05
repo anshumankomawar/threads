@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => ({
   worker: {
     name: "threads-api",
     compatibilityDate: "2026-10-19",
+    // Better Auth's Electron plugin fetches the API's own address, which otherwise never reaches this Worker.
+    compatibilityFlags: ["global_fetch_strictly_public"],
     entrypoint,
     observability: { enabled: true },
     exports: {
