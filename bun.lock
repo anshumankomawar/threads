@@ -19,6 +19,7 @@
         "models": "workspace:*",
         "protocol": "workspace:*",
         "server": "workspace:*",
+        "sync": "workspace:*",
       },
       "devDependencies": {
         "@cloudflare/vite-plugin": "^2.0.0-beta.v.8",

@@ -13,6 +13,7 @@ import {
   type Socket,
   type SyncServer,
 } from "server";
+import { registry } from "sync";
 import { createAuth, personFor, SIGNED_IN_PAGE } from "./auth.ts";
 import { workersAiComposer } from "./compose.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
@@ -58,6 +59,23 @@ export class Workspace extends DurableObject<Env> {
   #server: SyncServer | undefined;
   // Sorts inboxes with Workers AI after each change. Without AI (`THREADS_LOCAL_AI=off`) items stay unsorted.
   #triager: Triager | undefined;
+
+  constructor(ctx: DurableObjectState, env: Env) {
+    super(ctx, env);
+    if (!env.API_TOKEN) void ctx.blockConcurrencyWhile(() => this.#startOverOnNewModels());
+  }
+
+  // Locally (no API_TOKEN), data written under other models is thrown away and the workspace seeds again, so changing
+  // the models never needs a reset by hand; clients notice and load afresh. Hosted data is never thrown away.
+  async #startOverOnNewModels(): Promise<void> {
+    const { sql } = this.ctx.storage;
+    sql.exec("CREATE TABLE IF NOT EXISTS schema (hash TEXT NOT NULL)");
+    const stored = sql.exec<{ hash: string }>("SELECT hash FROM schema").toArray()[0]?.hash;
+    if (stored === registry.schemaHash) return;
+    await this.ctx.storage.deleteAll();
+    sql.exec("CREATE TABLE IF NOT EXISTS schema (hash TEXT NOT NULL)");
+    sql.exec("INSERT INTO schema (hash) VALUES (?)", registry.schemaHash);
+  }
 
   // The object is named by its workspace (`getByName`).
   get #workspace(): string {
