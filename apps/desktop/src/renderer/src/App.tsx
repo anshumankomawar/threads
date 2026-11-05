@@ -24,7 +24,6 @@ import { PersonView } from "./components/PersonView";
 import { ProfileView } from "./components/ProfileView";
 import { LabelView } from "./components/LabelView";
 import { NewGroupPalette } from "./components/NewGroupPalette";
-import { SettingsView } from "./components/SettingsView";
 import { ViewAsPalette } from "./components/ViewAsPalette";
 import { AppStatus } from "./components/AppStatus";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
@@ -231,9 +230,6 @@ function App(): JSX.Element {
           <Switch>
             <Match when={nav.profileOpen()}>
               <ProfileView />
-            </Match>
-            <Match when={nav.page() === "settings"}>
-              <SettingsView />
             </Match>
             <Match when={nav.shownPerson()}>
               <Keyed value={nav.shownPerson()} by={(person) => person.id}>

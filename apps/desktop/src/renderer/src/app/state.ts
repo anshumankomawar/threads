@@ -240,14 +240,12 @@ export function createAppState() {
   const title = (): string | undefined =>
     profileOpen()
       ? me().name
-      : page() === "settings"
-        ? "Settings"
-        : page() === "all"
-          ? "All threads"
-          : (shownPerson()?.name ??
-            shownLabel()?.name ??
-            activeThread()?.title ??
-            (shownDraft() && (shownDraft()?.draft?.title || "Draft")));
+      : page() === "all"
+        ? "All threads"
+        : (shownPerson()?.name ??
+          shownLabel()?.name ??
+          activeThread()?.title ??
+          (shownDraft() && (shownDraft()?.draft?.title || "Draft")));
 
   // Opening a thread marks it, and the one you're leaving, as seen.
   const openThread = (id: string | null): void => {

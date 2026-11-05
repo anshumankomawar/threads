@@ -66,8 +66,6 @@ const s = stylex.create({
   tabCount: { marginLeft: 4, color: colors.textSecondary, fontSize: 11 },
   tabular: { fontVariantNumeric: "tabular-nums" },
   end: { marginLeft: "auto" },
-  footer: { ...center, ...quiet, flexShrink: 0, gap: 8, height: 34, padding: `0 ${INSET}` },
-  footerLook: { color: colors.textPrimary, textAlign: "left", backgroundColor: hoverBg },
   fixed: { flexShrink: 0 },
   ellipsis: { ...clip, textOverflow: "ellipsis" },
   sectionAfter: { marginTop: 8 },
@@ -642,8 +640,8 @@ const TABS = [
   { tab: "groups", label: "Groups", icon: i.UserGroupIcon, view: GroupList },
 ] as const;
 
-// What opens in the main area from the sidebar: settings, every thread, a label's threads, or someone's profile.
-export type SidebarPage = "settings" | "all" | { label: string } | { person: string };
+// What opens in the main area from the sidebar: every thread, a label's threads, or someone's profile.
+export type SidebarPage = "all" | { label: string } | { person: string };
 
 // The top bar, the tabs (the chosen one opens out to show its name), the chosen tab's list, and you at the bottom.
 export function Sidebar(): JSX.Element {
@@ -710,8 +708,8 @@ export function Sidebar(): JSX.Element {
         <button
           class={sx(s.tab, s.tabLook, s.pointer, s.end, profile() && s.on)}
           aria-pressed={profile() ? "true" : "false"}
-          aria-label="Your profile and organization"
-          title="Your profile and organization"
+          aria-label="Your profile"
+          title="Your profile"
           onClick={() => app.nav.toggleProfile()}
         >
           <Identicon seed={app.me().id} size={14} />
@@ -720,14 +718,6 @@ export function Sidebar(): JSX.Element {
       <div class={sx(s.content)}>
         <Dynamic component={TABS.find((t) => t.tab === tab())!.view} />
       </div>
-      <button
-        class={sx(s.footer, s.footerLook, s.pointer)}
-        aria-current={app.nav.page() === "settings" ? "page" : undefined}
-        onClick={() => app.nav.openPage("settings")}
-      >
-        <Identicon seed={app.me().id} size={16} class={sx(s.fixed)} />
-        <span class={sx(s.ellipsis)}>{app.me().name}</span>
-      </button>
       <Show when={menu()}>
         {(shown) => <ContextMenu {...shown()} onClose={() => setMenu(null)} />}
       </Show>

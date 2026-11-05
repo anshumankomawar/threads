@@ -3,7 +3,7 @@ import { colors, contentZoom, fontSizes as size, radii } from "./tokens.stylex";
 
 const muted = colors.textTertiary;
 
-// The label, person, profile and settings pages. The main content zooms on its own (⌘+, ⌘-, ⌘0).
+// The label, person and profile pages. The main content zooms on its own (⌘+, ⌘-, ⌘0).
 export const page = stylex.create({
   page: {
     display: "flex",
@@ -14,7 +14,7 @@ export const page = stylex.create({
     overflowY: "auto",
     zoom: contentZoom["--content-zoom"],
   },
-  // Profile and settings: the title where a thread's title sits.
+  // Profile: the title where a thread's title sits.
   top: { paddingTop: "calc(13.75px + 4px)" },
   title: {
     margin: 0,
@@ -61,7 +61,7 @@ export const page = stylex.create({
   },
   filters: { marginLeft: "auto" },
   empty: { margin: "16px 0 0", color: muted },
-  // Facts and settings: a label column, then the value.
+  // Facts: a label column, then the value.
   facts: { display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 20px", margin: "20px 0 0" },
   value: { margin: 0, color: colors.textPrimary },
 });
