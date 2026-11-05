@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: desktop
+appId: com.threads.arc
+productName: Arc
 # Signing in comes back to the app on a threads:// link (src/main/signIn.ts).
 protocols:
   - name: Threads
@@ -16,7 +16,7 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: desktop
+  executableName: Arc
   icon: build/icon.ico
 nsis:
   artifactName: ${name}-${version}-setup.${ext}

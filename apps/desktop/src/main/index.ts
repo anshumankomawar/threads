@@ -10,6 +10,12 @@ setupSignIn();
 
 const UI_SCALE = 1.1;
 
+// The app's name in its menus ("About Arc", "Quit Arc"). The data folder is fixed first, since it follows the name:
+// in development it stays "desktop", so renaming keeps saved settings, drafts and caches.
+const userData = app.getPath("userData");
+app.setName("Arc");
+app.setPath("userData", userData);
+
 // In development, expose the Chrome DevTools protocol on localhost so scripts can drive and inspect the app.
 if (is.dev) app.commandLine.appendSwitch("remote-debugging-port", "9333");
 
@@ -73,7 +79,7 @@ function createWindow(): void {
 }
 
 void app.whenReady().then(() => {
-  electronApp.setAppUserModelId("com.electron");
+  electronApp.setAppUserModelId("com.threads.arc");
 
   // Dark until the renderer says otherwise (it sends its saved theme as it starts), so the vibrancy material matches.
   nativeTheme.themeSource = "dark";
