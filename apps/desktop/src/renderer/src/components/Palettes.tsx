@@ -341,7 +341,7 @@ function ViewAs(): JSX.Element {
   );
 }
 
-// Signing in happens in the browser, which sends you back here on a `threads://` link. When the link doesn't open the
+// Signing in happens in the browser, which sends you back here on a `com.threads.arc://` link. When the link doesn't open the
 // app, the sign-in page shows a code to paste here instead.
 function SignIn(): JSX.Element {
   return (

@@ -34,3 +34,6 @@ out
 .claude/worktrees/
 
 *.tsbuildinfo
+
+# Cloudflare secrets for local dev and deploys
+.dev.vars*

@@ -7,12 +7,12 @@ import { emailOTPClient } from "better-auth/client/plugins";
 //
 // The desktop app signs in here too (Better Auth's Electron plugin): it opens this page in the browser with
 // `client_id`, `state` and `code_challenge`, which go along with the sign-in, and once you're in, the page sends you
-// back to the app on a `threads://` link carrying a one-time code. If the link doesn't open the app, the code is shown
+// back to the app on a `com.threads.arc://` link carrying a one-time code. If the link doesn't open the app, the code is shown
 // to paste into it.
 
 const auth = createAuthClient({
   baseURL: location.origin,
-  plugins: [emailOTPClient(), electronProxyClient({ protocol: "threads" })],
+  plugins: [emailOTPClient(), electronProxyClient({ protocol: "com.threads.arc" })],
 });
 const root = document.querySelector<HTMLElement>("#app")!;
 
@@ -125,7 +125,7 @@ function askForCode(email: string): void {
 }
 
 // Signed in, and the desktop app asked: hand it a one-time code. Signing in just now made one; already signed in, the
-// page asks for one. Then the `threads://` link opens the app, and the code is there to paste in case it doesn't.
+// page asks for one. Then the `com.threads.arc://` link opens the app, and the code is there to paste in case it doesn't.
 async function backToApp(): Promise<void> {
   let code = auth.electron.getAuthorizationCode();
   if (code === null) {

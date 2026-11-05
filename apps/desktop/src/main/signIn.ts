@@ -4,7 +4,7 @@ import { createAuthClient } from "better-auth/client";
 import { ipcMain } from "electron";
 
 // Signing the app in, with Better Auth's Electron plugin: "Sign in" opens the sign-in page (apps/web) in the browser,
-// which sends you back on a `threads://` link with a one-time code (or shows the code to paste), and the code is traded
+// which sends you back on a `com.threads.arc://` link with a one-time code (or shows the code to paste), and the code is traded
 // for a session. The session stays here in the main process, encrypted with the OS keychain (`safeStorage`) before
 // it's written to disk; the window only ever gets the Threads token for the person you are (`threads:signed-in`).
 
@@ -16,7 +16,7 @@ const auth = createAuthClient({
   plugins: [
     electronClient({
       signInURL: SIGN_IN_URL,
-      protocol: { scheme: "threads" },
+      protocol: { scheme: "com.threads.arc" },
       storage: storage(),
       // Threads shows its own avatars.
       userImageProxy: { enabled: false },
@@ -28,7 +28,7 @@ const auth = createAuthClient({
 // in (or the sign-in page can't be reached).
 export type SignedIn = { personId: string; email: string; token: string; workspace: string };
 
-// Must run before the app is ready: it registers the `threads://` link and the window's sign-in bridges. Not the
+// Must run before the app is ready: it registers the `com.threads.arc://` link and the window's sign-in bridges. Not the
 // plugin's content security policy, which would keep the window from reaching the API.
 export function setupSignIn(): void {
   auth.setupMain({ scheme: true, bridges: true });

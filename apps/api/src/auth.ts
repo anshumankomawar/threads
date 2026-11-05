@@ -28,7 +28,7 @@ export type AuthEnv = {
 const DEV_SECRET = "threads-local-development-secret-not-for-production";
 const LOCAL_ORIGIN = "http://localhost:5180";
 // The desktop app's link scheme, which the sign-in page sends you back to it on.
-export const APP_SCHEME = "threads";
+export const APP_SCHEME = "com.threads.arc";
 
 // The invite list: each invited email (lower case) and the Person it signs in as.
 export function parseInvites(text: string | undefined): Map<string, string> {
@@ -79,7 +79,7 @@ function authOptions(env: AuthEnv) {
     database: env.AUTH_DB,
     secret: env.BETTER_AUTH_SECRET || (env.API_TOKEN ? undefined : DEV_SECRET),
     baseURL: origin,
-    // The desktop app signs in through the browser and comes back on a `threads://` link (Better Auth's Electron plugin).
+    // The desktop app signs in through the browser and comes back on a `com.threads.arc://` link (Better Auth's Electron plugin).
     trustedOrigins: [origin, `${APP_SCHEME}:/`],
     socialProviders: google === undefined ? {} : { google },
     plugins: [

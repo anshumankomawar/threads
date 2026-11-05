@@ -1,10 +1,10 @@
 appId: com.threads.arc
 productName: Arc
-# Signing in comes back to the app on a threads:// link (src/main/signIn.ts).
+# Signing in comes back to the app on a com.threads.arc:// link (src/main/signIn.ts).
 protocols:
   - name: Threads
     schemes:
-      - threads
+      - com.threads.arc
 directories:
   buildResources: build
 files:

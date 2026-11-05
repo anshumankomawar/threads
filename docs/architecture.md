@@ -108,7 +108,7 @@ their email, through [Better Auth](https://www.better-auth.com) in the Worker (`
   and `RESEND_API_KEY`. Locally they go in `apps/api/.dev.vars`; hosted, they're secrets.
 - **The desktop app** signs in through this page with Better Auth's Electron plugin (`apps/desktop/src/main/signIn.ts`):
   ⌘K, Sign in, opens the page in the browser with the app's request (`client_id`, `state`, `code_challenge`, PKCE), which
-  goes along with the sign-in. Signed in, the page sends you back on `threads:/auth/callback#token=…` with a one-time
+  goes along with the sign-in. Signed in, the page sends you back on `com.threads.arc:/auth/callback#token=…` with a one-time
   code, and shows the code to paste into the app (⌘K, Sign in) in case the link doesn't open it, which can happen in
   development; an already signed-in page asks for a fresh code (`/electron/transfer-user`). The main process trades the
   code for the app's own session (`/electron/token`) and keeps it encrypted with the OS keychain (`safeStorage`); the
