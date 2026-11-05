@@ -11,9 +11,9 @@
     "typecheck": "cf workers types && tsc"
   },
   "dependencies": {
-    "engine": "workspace:*",
     "hono": "4.13.13",
-    "model": "workspace:*",
+    "models": "workspace:*",
+    "protocol": "workspace:*",
     "server": "workspace:*"
   },
   "devDependencies": {

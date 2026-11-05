@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Draft, InboxItem, Team, type Conversation } from "model";
+import { Bucket, Draft, InboxItem, Team, type Conversation } from "models";
 import {
   active,
   inbox,

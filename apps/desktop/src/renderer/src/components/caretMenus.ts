@@ -2,7 +2,7 @@ import { Extension, mergeAttributes, Node, type Editor } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { exitSuggestion, Suggestion, type SuggestionProps } from "@tiptap/suggestion";
-import { mention, threadLink } from "model";
+import { mention, threadLink } from "models";
 import { editorClass } from "../styles/controls";
 
 // Typing `#`, `@` or `/` in a reply opens a menu at the caret, which the reply renders from what `announce` hands it

@@ -2,8 +2,7 @@
 // person reloads with a new session.
 import { createSignal } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { solidAdapter } from "adapter-solid";
-import { createStore, httpTransport, indexedLocalDB, setAdapter } from "engine";
+import { createStore, httpTransport, indexedLocalDB } from "sync";
 import {
   Bucket,
   Conversation,
@@ -11,11 +10,9 @@ import {
   User,
   type ComposeDraft,
   type ComposeRequest,
-} from "model";
+} from "models";
 import * as stylex from "@stylexjs/stylex";
 import { lightTheme } from "./styles/tokens.stylex";
-
-setAdapter(solidAdapter);
 
 export type Source = "cloudflare" | "local" | "sample";
 const HOSTED = { url: import.meta.env.VITE_API_URL, token: import.meta.env.VITE_API_TOKEN };

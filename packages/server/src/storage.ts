@@ -1,4 +1,4 @@
-import type { BootstrapLine, SyncAction } from "engine";
+import type { BootstrapLine, SyncAction } from "protocol";
 
 // A sync action with the sync groups it was logged under.
 export type Logged = { action: SyncAction; groups: string[] };

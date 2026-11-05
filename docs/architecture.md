@@ -7,7 +7,7 @@ This page says where each piece lives and what Threads adds.
 ```
 Desktop (Solid 2)                                     Cloudflare
 ──────────────────                                    ──────────
-components read models ─▶ object pool (per-field atoms)    Worker: sessions, /ai/compose, routes by workspace
+components read models ─▶ object pool (per-field signals)  Worker: sessions, /ai/compose, routes by workspace
    │ conversation.save()        ▲ applyDelta                          │
    ▼                            │                                     ▼
 transaction queue ── POST /sync/mutate ──────────────────▶ Durable Object "Workspace" (one per workspace)
@@ -18,18 +18,21 @@ IndexedDB ◀── sync client ◀──── delta packets (WS /sync/socket) 
 
 ## Packages
 
-| Path                     | What it is                                                                                                                                                                                                                                                                  |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/engine`        | The client core: decorators and registry (`engine/registry`, shared with the server), `Model`, `createStore`, the pool, queue, sync client, `memoryLocalDB`/`indexedLocalDB`, `httpTransport`, `plainAdapter`. `src/protocol.ts` and `src/api.ts` are the spec's contracts. |
-| `packages/server`        | The generic server: `SyncServer` (bootstrap, deltas, mutate, actions, sockets) over `sqliteStorage` (Durable Object) or `memoryStorage`, `handleRequest` for the HTTP routes, session tokens.                                                                               |
-| `packages/adapter-solid` | `solidAdapter`, the only code that knows Solid: an atom is a value-less signal, memos are owned by nothing.                                                                                                                                                                 |
-| `packages/model`         | Threads' models (`models.ts`), text tokens (`text.ts`), compose types; `model/server` has the server rules (`rules.ts`) and seed data (`seed.ts`).                                                                                                                          |
-| `apps/api`               | The Worker and the `Workspace` Durable Object, inbox sorting with Workers AI (`triage.ts`), `/ai/compose` (`compose.ts`).                                                                                                                                                   |
-| `apps/desktop`           | The Electron app. The renderer imports the store from `session.ts` and reads models directly; StyleX for styles.                                                                                                                                                            |
+| Path                | What it is                                                                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/protocol` | The spec's wire types (`Row`, `TxRecord`, `SyncAction`, the requests and messages) and model metadata (`FieldMeta`, `ModelMeta`). Types only.                                                                                                     |
+| `packages/sync`     | The client engine, with Solid built in (`@solidjs/signals`, the version solid-js uses): `Model`, the decorators, `registry` (shared with the server), the pool, transaction queue, sync client, `indexedLocalDB`, `createStore`, `httpTransport`. |
+| `packages/models`   | Threads' models (`models.ts`), text tokens (`text.ts`), compose types; `models/server` has the server rules (`rules.ts`) and seed data (`seed.ts`).                                                                                               |
+| `packages/server`   | The generic server: `SyncServer` (bootstrap, deltas, mutate, actions, sockets) over `sqliteStorage` (Durable Object) or `memoryStorage`, `handleRequest` for the HTTP routes, session tokens.                                                     |
+| `packages/testing`  | The deterministic simulation (`World`, and its test), `memoryLocalDB`, and the fake transport the engine's unit tests use.                                                                                                                        |
+| `apps/api`          | The Worker and the `Workspace` Durable Object, inbox sorting with Workers AI (`triage.ts`), `/ai/compose` (`compose.ts`).                                                                                                                         |
+| `apps/desktop`      | The Electron app. The renderer imports the store from `session.ts` and reads models directly; StyleX for styles.                                                                                                                                  |
+
+A field's signal carries no value: its value lives in `model.__data`, where the engine reads it at once, and the signal only says it changed. Views (`store.view`, `@Computed`) are memos owned by nothing. The same signals run in Node, so the server and the tests import `sync` as the app does.
 
 ## Threads' models
 
-The spec's six models plus ours, in its style (`packages/model/src/models.ts`). Sync groups are the spec's:
+The spec's six models plus ours, in its style (`packages/models/src/models.ts`). Sync groups are the spec's:
 `workspace:<id>` for Workspace, User and Team; `team:<id>` for Conversation and Message; `user:<id>` for InboxItem,
 Bucket and Draft. A session's groups are its workspace, itself, and each team whose `memberIds` include it. Every
 workspace has the team `everyone`, with everyone in it.
@@ -43,7 +46,7 @@ workspace has the team `everyone`, with everyone in it.
 - **Bucket** is a person's inbox bucket: a name and a description the model sorts by. **Draft** is an unsent ⌘⇧N
   message.
 
-## Server rules (`packages/model/src/rules.ts`)
+## Server rules (`packages/models/src/rules.ts`)
 
 Permission hooks: you write only your own User, Bucket, Draft and InboxItem rows; conversations and messages only in
 your teams; a message's author is you, and only the author deletes it; a team's members change it, and anyone may add
@@ -69,8 +72,8 @@ there, then reloads as the first person; switching source or person (⌘U, ⌘K)
   `apps/api/.cloudflare/state`; delete its `v3/do` (API stopped) to start over.
 - `vp run desktop#dev` starts the app. Cloudflare is offered when `apps/desktop/.env.local` sets `VITE_API_URL` and
   `VITE_API_TOKEN` (never commit the token). Use the cf CLI, never Wrangler; deploy with `vp run api#deploy`.
-- `vp test` in `packages/engine` (unit tests and the deterministic simulation), `packages/server`, `packages/model`
-  (the rules), `packages/adapter-solid` and `apps/api`. `vp check` at the root.
+- `vp test` in `packages/sync` (unit tests), `packages/testing` (the deterministic simulation), `packages/server`,
+  `packages/models` (the rules) and `apps/api`. `vp check` at the root.
 
 ## Changing the model
 

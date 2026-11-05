@@ -3,7 +3,7 @@
 // person's own ask. The app previews the draft while you type and makes the thread from it with ordinary
 // transactions, so this reads nothing and writes nothing.
 
-import type { ComposeDraft, ComposeRequest } from "model";
+import type { ComposeDraft, ComposeRequest } from "models";
 
 export type Compose = (request: ComposeRequest) => Promise<ComposeDraft>;
 

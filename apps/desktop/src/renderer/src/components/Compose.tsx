@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Draft, mention, User, type ComposeDraft } from "model";
+import { Draft, mention, User, type ComposeDraft } from "models";
 import { draftWith, me, setDialog, store } from "../session";
 import { button, link } from "../styles/controls";
 import { compose, palette } from "../styles/palette";

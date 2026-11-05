@@ -1,0 +1,25 @@
+{
+  "name": "sync",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "vp test",
+    "check": "vp check"
+  },
+  "dependencies": {
+    "@solidjs/signals": "2.0.0-rc.21",
+    "idb": "8.0.4",
+    "protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "testing": "workspace:*",
+    "typescript": "^7.0.2",
+    "vite-plus": "catalog:"
+  }
+}

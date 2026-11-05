@@ -1,9 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Hello } from "engine";
+import type { Hello } from "protocol";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
-import type { ComposeRequest } from "model";
-import { threadsServer } from "model/server";
+import type { ComposeRequest } from "models";
+import { threadsServer } from "models/server";
 import {
   handleRequest,
   signSession,

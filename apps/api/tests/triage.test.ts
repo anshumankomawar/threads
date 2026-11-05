@@ -1,4 +1,4 @@
-import { threadsServer } from "model/server";
+import { threadsServer } from "models/server";
 import { memoryStorage, type Session } from "server";
 import { beforeEach, expect, test } from "vite-plus/test";
 import {

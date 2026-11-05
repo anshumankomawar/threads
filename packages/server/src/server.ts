@@ -5,7 +5,6 @@ import type {
   DeltasResponse,
   GroupsChanged,
   ModelMeta,
-  ModelRegistry,
   MutateRequest,
   MutateResponse,
   Row,
@@ -13,7 +12,8 @@ import type {
   SyncAction,
   TxKind,
   TxRecord,
-} from "engine";
+} from "protocol";
+import { registry } from "sync";
 import type { Logged, Storage } from "./storage";
 
 // Who's asking. A user sees their sync groups and writes as themselves; the admin sees everything and acts as anyone.
@@ -41,7 +41,6 @@ export interface Socket {
 }
 
 export type ServerOptions = {
-  registry: ModelRegistry;
   storage: Storage;
   sockets: () => Iterable<Socket>;
   groupsOf: (userId: string, db: Reader) => string[];
@@ -96,7 +95,7 @@ export class SyncServer {
 
   constructor(options: ServerOptions) {
     this.#options = options;
-    this.#models = new Map(options.registry.all().map((meta) => [meta.name, meta]));
+    this.#models = new Map(registry.all().map((meta) => [meta.name, meta]));
     for (const name of this.#models.keys()) this.#rows.set(name, new Map());
     const { rows, actions } = options.storage.load([...this.#models.keys()]);
     for (const { model, row } of rows) this.#table(model).set(row.id, row);
@@ -117,7 +116,7 @@ export class SyncServer {
     );
     return {
       rows,
-      end: { lastSyncId: this.#lastSyncId, schemaHash: this.#options.registry.schemaHash },
+      end: { lastSyncId: this.#lastSyncId, schemaHash: registry.schemaHash },
     };
   }
 
@@ -319,7 +318,7 @@ export class SyncServer {
         throw invalid(`${key} is required`);
       if (field.kind !== "reference") continue;
       const id = changes[field.foreignKey!];
-      const target = (field.target!().prototype.__meta as ModelMeta).name; // as the engine's registry resolves it
+      const target = field.target!().prototype.__meta.name;
       if (typeof id === "string" && !this.#table(target).has(id))
         throw invalid(`no ${target} ${id}`);
     }

@@ -32,22 +32,31 @@ Solid 2 replaces MobX and most of the glue Linear needs between React and its sy
 | Free unused models                    | Custom bookkeeping                              | unobserved callback                           |
 | Performance tuning                    | React.memo, useMemo, useCallback                | None needed: components run once              |
 
-Two Solid 2 rules the adapter must respect
+Two Solid 2 rules the engine must respect
 
 - Writes are batched: a signal shows its new value only after the batch runs. So model values live in a plain object the engine reads instantly, and the signal only says "this changed".
 - Writing a signal while a component renders throws in dev. So lazy loads are scheduled for just after the read (a microtask) or exposed as async memos, never started inside a getter.
 
 Risks we accept
 
-- Solid 2 is at release candidate (latest tag solid-js@2.0.0-rc.21). We pin exact versions and keep all Solid code in the adapter.
+- Solid 2 is at release candidate (latest tag solid-js@2.0.0-rc.21). We pin exact versions, and the engine imports Solid's reactive core (`@solidjs/signals`) at the same version solid-js uses, so the app and the engine share one.
 - We do not use createOptimisticStore or action() for saving edits. They revert optimistic values and refetch, while we confirm edits by sync id and keep an outbox; their concurrency edge cases are also still being fixed.
 - Smaller ecosystem and hiring pool; no mature React Native equivalent for mobile.
 - Developers must not destructure models or props (const { title } = conversation loses reactivity).
 
 ## Architecture
 
-The engine core is framework-agnostic; the Solid 2 adapter is the only part that knows about the UI, and the server is generic over every model.
+The engine has Solid built in, the way Linear's engine has MobX: models hold Solid signals, and components read them directly. The server is generic over every model.
 An edit changes the object pool at once and goes up through the transaction queue; the server numbers it in sync_actions and broadcasts it back to every client, where the sync client writes it to IndexedDB and confirms the original transaction.
+
+Packages, in a Bun monorepo:
+
+- `packages/protocol`: the wire types and model metadata, shared by client and server. Types only.
+- `packages/sync`: the client engine, with Solid built in: models and decorators, registry, pool, transaction queue, sync client, IndexedDB, `createStore`, `httpTransport`.
+- `packages/models`: the product's models; `models/server` has its server rules and seed data.
+- `packages/server`: the generic server, over a Durable Object's SQLite or memory.
+- `packages/testing`: the simulation harness, the in-memory LocalDB and fake transports.
+- `apps/api` runs the server on Cloudflare; `apps/desktop` is the Electron app.
 
 ## Developer API
 
@@ -177,7 +186,7 @@ No hooks, no loading flags, no fetch calls.
 
 ## Engine internals
 
-Five internal pieces sit behind the developer API, and only the reactivity adapter knows Solid exists. Each interface below is the contract tests are written against. Their interfaces are in `packages/engine/src/api.ts` and `protocol.ts`, exactly as specified.
+Five internal pieces sit behind the developer API: the model registry, object pool, transaction queue, sync client and local database. Their classes in `packages/sync` (`ModelRegistry`, `ObjectPool`, `TransactionQueue`, `SyncClient`) and the `LocalDB` interface are the contracts tests are written against; the wire types and model metadata are in `packages/protocol`, exactly as specified.
 
 The registry is shared code: the server reads the same metadata to validate mutations and build tables.
 
@@ -187,7 +196,7 @@ applyDelta order: check the first sync id equals lastSyncId + 1 (otherwise fetch
 
 LocalDB: IndexedDB via a thin wrapper (Dexie or idb): one database per workspace, one table per model, plus _meta and _outbox. The test suite swaps in an in-memory version.
 
-ReactivityAdapter: The Solid 2 adapter implements this with a counter signal per field, createMemo, async memos, the unobserved option and createRoot. A plain adapter (no UI) is used by the server and the simulation tests. Field values always live in model.__data, so engine code never sees stale values from batching.
+Reactivity: the engine uses `@solidjs/signals` directly. Each field has a signal that carries no value (`equals: false`): reading the field subscribes, writing it announces the change. Field values always live in model.__data, so engine code never sees stale values from batching. store.view and @Computed are createMemo, owned by nothing (createRoot) and lazy; read outside a tracking scope they compute from the current values. Tests, the server and the simulation run the same real signals in Node.
 
 ## Wire protocol and server API
 
@@ -265,7 +274,7 @@ The server keeps InboxItem rows up to date: when a message arrives, a server wor
 The real engine code runs against a fake network, fake clock and in-memory databases, driven by a random seed; any failure replays exactly from its seed.
 
 1. One seeded random source drives every decision.
-2. Real engine, fake world: the sync client, queue and server code are the real modules; only the network (a message queue the simulator controls), the clock, the local database (in-memory LocalDB) and the reactivity adapter (the plain one) are swapped.
+2. Real engine, fake world: the sync client, queue and server code are the real modules; only the network (a message queue the simulator controls), the clock, and the local database (in-memory LocalDB) are swapped; models run on the real Solid signals.
 3. Several clients, one server: 2 to 5 clients, including two "tabs" of the same user.
 4. Random steps: a client edits a random model, creates or deletes one, calls a server action; the network delivers, delays, duplicates or drops a message; a client disconnects, reconnects, reloads (keeping only its local database); the server rejects a transaction.
 5. Quiesce (heal the network, deliver everything), then check the invariants.
@@ -295,4 +304,4 @@ test("clients converge under random faults", () => {
 });
 ```
 
-Other layers: unit tests for the registry, rebase and rollback logic; adapter tests for the Solid 2 adapter (a field write updates one text node, batching renders once, lazy collections resolve inside <Loading>).
+Other layers: unit tests for the registry, rebase and rollback logic; reactivity tests (a field write updates only what read it, writes in one tick run it once).

@@ -1,4 +1,5 @@
-import type { TxRecord } from "engine";
+import type { TxRecord } from "protocol";
+import { registry } from "sync";
 import { expect, test } from "vite-plus/test";
 import {
   handleRequest,
@@ -240,7 +241,7 @@ test("HTTP: bootstrap streams NDJSON ending with BootstrapEnd; refusals map to s
     .trimEnd()
     .split("\n")
     .map((line) => JSON.parse(line));
-  expect(lines.at(-1)).toEqual({ lastSyncId: 1, schemaHash: "test" });
+  expect(lines.at(-1)).toEqual({ lastSyncId: 1, schemaHash: registry.schemaHash });
   expect(lines).toHaveLength(2);
   const action = await handleRequest(
     server,

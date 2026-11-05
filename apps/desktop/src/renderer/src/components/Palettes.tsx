@@ -1,7 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Conversation, Message, Team, User } from "model";
+import { Bucket, Conversation, Message, Team, User } from "models";
 import {
   applyTheme,
   dialog,

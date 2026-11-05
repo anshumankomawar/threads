@@ -1,0 +1,24 @@
+{
+  "name": "models",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./server": "./src/rules.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "test": "vp test"
+  },
+  "dependencies": {
+    "protocol": "workspace:*",
+    "server": "workspace:*",
+    "sync": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vite-plus": "catalog:"
+  }
+}

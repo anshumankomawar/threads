@@ -1,7 +1,7 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Conversation, Message, Team, User } from "model";
+import { Conversation, Message, Team, User } from "models";
 import { me, open, setDialog, store } from "../session";
 import { chip, chipTone, link } from "../styles/controls";
 import { page } from "../styles/page";

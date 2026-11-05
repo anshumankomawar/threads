@@ -1,6 +1,6 @@
 import * as i from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "./components/Icon";
-import type { Bucket } from "model";
+import type { Bucket } from "models";
 
 // The first topic a bucket matches gives its icon.
 const BY_TOPIC: [RegExp, IconSvgElement][] = [

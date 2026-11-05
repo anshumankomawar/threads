@@ -1,5 +1,5 @@
-import type { Row, TxRecord } from "engine";
-import { plainText } from "model";
+import type { Row, TxRecord } from "protocol";
+import { plainText } from "models";
 import type { Reader, Session, SyncServer } from "server";
 
 // What the model needs to sort one person's inbox: their buckets, their inbox items that aren't sorted yet, and the

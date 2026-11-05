@@ -1,5 +1,6 @@
-import type { ModelMeta, ModelRegistry, ServerMessage } from "engine";
 import { DatabaseSync } from "node:sqlite";
+import type { ServerMessage } from "protocol";
+import { ClientModel, Model, Property, Reference } from "sync";
 import {
   memoryStorage,
   SyncServer,
@@ -9,40 +10,25 @@ import {
   type SqlStorageLike,
 } from "../src";
 
-// @ClientModel puts a model's meta on its prototype, which is how a reference names its target.
-class Team {}
-Object.assign(Team.prototype, { __meta: { name: "Team" } });
+@ClientModel("Team", { syncGroup: () => ["workspace:w"] })
+class Team extends Model {
+  @Property() name!: string;
+  @Property() memberIds!: string[];
+}
 
-const metas: ModelMeta[] = [
-  {
-    name: "Team",
-    fields: { name: { kind: "property" }, memberIds: { kind: "property" } },
-    syncGroup: () => ["workspace:w"],
-  },
-  {
-    name: "Note",
-    fields: {
-      title: { kind: "property" },
-      state: { kind: "property", enum: ["open", "done"] },
-      body: { kind: "property", nullable: true },
-      teamId: { kind: "property", indexed: true },
-      team: { kind: "reference", target: () => Team, foreignKey: "teamId" },
-    },
-    syncGroup: (row) => [`team:${row.teamId as string}`],
-  },
-  {
-    name: "Inbox",
-    fields: { userId: { kind: "property" }, noteId: { kind: "property" } },
-    syncGroup: (row) => [`user:${row.userId as string}`],
-  },
-];
+@ClientModel("Note", { syncGroup: (row) => [`team:${row.teamId as string}`] })
+export class Note extends Model {
+  @Property() title!: string;
+  @Property({ enum: ["open", "done"] }) state!: string;
+  @Property({ nullable: true }) body?: string;
+  @Reference(() => Team) team!: Team;
+}
 
-export const registry: ModelRegistry = {
-  register() {},
-  get: (name) => metas.find((meta) => meta.name === name)!,
-  all: () => metas,
-  schemaHash: "test",
-};
+@ClientModel("Inbox", { syncGroup: (row) => [`user:${row.userId as string}`] })
+export class Inbox extends Model {
+  @Property() userId!: string;
+  @Property() noteId!: string;
+}
 
 export const ann: Session = { userId: "ann" };
 export const bob: Session = { userId: "bob" };
@@ -60,7 +46,6 @@ export function createServer(
 ): SyncServer & { sockets: TestSocket[] } {
   const sockets: TestSocket[] = [];
   const server = new SyncServer({
-    registry,
     storage: memoryStorage(),
     sockets: () => sockets,
     groupsOf: (userId, db) => [

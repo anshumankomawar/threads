@@ -15,7 +15,7 @@ import {
   STATES,
   User,
   type Message,
-} from "model";
+} from "models";
 import { itemFor, me, open, setDialog, setSplit, setState, showMenu, store } from "../session";
 import { bucketIcons } from "../bucketIcons";
 import { link, menu as look } from "../styles/controls";

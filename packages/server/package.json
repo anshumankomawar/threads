@@ -12,7 +12,8 @@
     "check": "vp check"
   },
   "dependencies": {
-    "engine": "workspace:*"
+    "protocol": "workspace:*",
+    "sync": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

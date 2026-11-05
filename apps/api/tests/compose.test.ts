@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import type { ComposeRequest } from "model";
+import type { ComposeRequest } from "models";
 import { composePrompt, parseCompose } from "../src/compose.ts";
 
 const request: ComposeRequest = {

@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Conversation, Team, User } from "model";
+import { Conversation, Team, User } from "models";
 import {
   active,
   itemFor,
