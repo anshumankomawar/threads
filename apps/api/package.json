@@ -11,11 +11,10 @@
     "typecheck": "cf workers types && tsc"
   },
   "dependencies": {
-    "@hono/zod-validator": "0.9.1",
+    "engine": "workspace:*",
     "hono": "4.13.13",
     "model": "workspace:*",
-    "sync": "workspace:*",
-    "zod": "4.6.7"
+    "server": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^2.0.0-beta.v.8",

@@ -1,204 +1,26 @@
 import { DurableObject } from "cloudflare:workers";
-import { zValidator } from "@hono/zod-validator";
+import type { Hello } from "engine";
 import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
-import type { AnyRecord, ModelName, ModelRecords } from "model";
+import type { ComposeRequest } from "model";
+import { threadsServer } from "model/server";
 import {
-  broadcast,
-  isAdmin,
-  receive,
+  handleRequest,
   signSession,
   sqliteStorage,
   verifySession,
-  type HubSocket,
   type Session,
-} from "sync/server";
-import { z } from "zod";
-import { composeRequest, openSession, serveWorkspace } from "./app.ts";
+  type Socket,
+  type SyncServer,
+} from "server";
 import { workersAiComposer } from "./compose.ts";
-import {
-  ensureOrganization,
-  isWorkspaceName,
-  refreshSeedPeople,
-  SAMPLE_ME,
-  seed,
-  SyncEngine,
-  type WorkspaceName,
-} from "./engine.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
-// Request details a Workspace object needs. The desktop app sends them as headers; a browser WebSocket can't set
-// headers, so the sync socket passes them as query parameters instead.
-function param(request: Request, header: string, query: string): string | null {
-  return request.headers.get(header) ?? new URL(request.url).searchParams.get(query);
-}
-
-// The Worker checks who's asking and passes the session to the workspace's object in this header, replacing any the
-// request came with. Only the Worker reaches the objects, so they trust it.
+const WORKSPACES = ["local", "sample"];
+const ADMIN: Session = { admin: true };
+// The Worker passes the session it resolved to the workspace's object in this header, replacing any the request came
+// with. Only the Worker reaches the objects, so they trust it.
 const SESSION_HEADER = "X-Threads-Session";
-
-// Past this many actions in the log, it's trimmed back to the last `KEEP_ACTIONS`; a client further behind than that
-// bootstraps afresh.
-const KEEP_ACTIONS = 10_000;
-const COMPACT_AT = 12_000;
-
-// What a socket remembers through hibernation: who it is and the sync groups it was last told about.
-type SocketAttachment = { session: Session; groups: string[] };
-
-// One workspace: its sync engine (the sync package's server, running Threads' rules) with its models, log and executed
-// transactions in this object's SQLite storage, and the WebSockets of every client connected to it. Each committed
-// batch goes out to all of them, each seeing what its session may.
-export class Workspace extends DurableObject<Env> {
-  #engine: SyncEngine | undefined;
-  #kept: { modelName: ModelName; data: AnyRecord }[] = [];
-  // Sorts inboxes with Workers AI after each change.
-  #triager: Triager | undefined;
-
-  // Starts the workspace over: deletes everything, so the next request seeds it afresh with a new epoch. Connected
-  // clients are dropped; they reconnect, see the new epoch and rebuild.
-  async #reset(): Promise<void> {
-    for (const socket of this.ctx.getWebSockets()) socket.close(1012, "Workspace reset");
-    // A wipe is for threads; the organization, its labels and its groups stay.
-    this.#kept = this.ctx.storage.sql
-      .exec<{ modelName: ModelName; data: string }>(
-        "SELECT modelName, data FROM models WHERE modelName IN ('Organization', 'Label', 'Group')",
-      )
-      .toArray()
-      .map((row) => ({ modelName: row.modelName, data: JSON.parse(row.data) as AnyRecord }));
-    await this.ctx.storage.deleteAll();
-    this.#engine = undefined;
-    this.#triager = undefined;
-  }
-
-  // The workspace's engine, loaded from storage on first use. A new workspace is seeded.
-  #load(name: WorkspaceName): SyncEngine {
-    if (this.#engine !== undefined) return this.#engine;
-    const storage = sqliteStorage<ModelRecords>(this.ctx.storage);
-    this.ctx.storage.sql.exec(
-      "INSERT OR REPLACE INTO meta (key, value) VALUES ('workspace', ?)",
-      name,
-    );
-    // The engine's events go to the Worker's logs (observability is on), one JSON line each.
-    const engine = new SyncEngine({
-      storage,
-      onEvent: (event) => console.log(JSON.stringify({ workspace: name, ...event })),
-    });
-    engine.onCommit = (actions) => broadcast(engine, this.#sockets(), actions);
-    if (engine.isEmpty) seed(engine, name, SAMPLE_ME);
-    refreshSeedPeople(engine, name, SAMPLE_ME);
-    ensureOrganization(engine, name);
-    this.#engine = engine;
-    // Local dev without Cloudflare access has no AI (`THREADS_LOCAL_AI=off`), so threads wait under "Sorting".
-    const { AI: ai } = this.env as { AI?: Ai };
-    this.#triager =
-      ai === undefined
-        ? undefined
-        : new Triager(engine, workersAiClassifier(ai), {
-            // Try again in a minute, even if nothing else changes.
-            onFailure: (retryAtMs) => void this.ctx.storage.setAlarm(retryAtMs),
-          });
-    // Anything left unsorted, such as a fresh seed or threads the model failed on before a restart.
-    this.#sort();
-    return engine;
-  }
-
-  // The connected clients, as the engine's broadcast needs them.
-  #sockets(): (HubSocket & { raw: WebSocket })[] {
-    return this.ctx.getWebSockets().flatMap((socket) => {
-      const attachment = socket.deserializeAttachment() as SocketAttachment | null;
-      if (attachment === null) return [];
-      return [
-        {
-          raw: socket,
-          session: attachment.session,
-          groups: attachment.groups,
-          setGroups: (groups) => socket.serializeAttachment({ ...attachment, groups }),
-          send: (message) => socket.send(message),
-        },
-      ];
-    });
-  }
-
-  #sort(): void {
-    if (this.#triager !== undefined) this.ctx.waitUntil(this.#triager.kick());
-  }
-
-  // The workspace this object is, as recorded when it first loaded, for work that arrives without a request: the retry
-  // alarm, and socket messages after hibernation.
-  #stored(): SyncEngine | undefined {
-    if (this.#engine !== undefined) return this.#engine;
-    const [row] = this.ctx.storage.sql
-      .exec<{ value: string }>("SELECT value FROM meta WHERE key = 'workspace'")
-      .toArray();
-    return row === undefined || !isWorkspaceName(row.value) ? undefined : this.#load(row.value);
-  }
-
-  // Retries sorting after the model failed.
-  async alarm(): Promise<void> {
-    const loaded = this.#engine !== undefined;
-    if (this.#stored() !== undefined && loaded) this.#sort();
-  }
-
-  async fetch(request: Request): Promise<Response> {
-    const name = param(request, "X-Workspace", "workspace") ?? "local";
-    if (!isWorkspaceName(name))
-      return Response.json({ error: `Unknown workspace: ${name}` }, { status: 400 });
-    const session = JSON.parse(request.headers.get(SESSION_HEADER) ?? "null") as Session | null;
-    if (session === null) return Response.json({ error: "Unauthorized" }, { status: 401 });
-    const { pathname } = new URL(request.url);
-    if (pathname === "/sync/reset" && request.method === "POST") {
-      if (!isAdmin(session)) return Response.json({ error: "Forbidden" }, { status: 403 });
-      await this.#reset();
-    }
-    const engine = this.#load(name);
-    if (pathname === "/sync/reset") {
-      if (this.#kept.length > 0) engine.restore(this.#kept);
-      this.#kept = [];
-      return Response.json({ lastSyncId: engine.lastSyncId });
-    }
-
-    // The sync socket: a handshake with where the server stands, then a delta packet per committed batch. It
-    // hibernates while idle, so open connections cost next to nothing.
-    if (pathname === "/sync/ws") {
-      if (request.headers.get("Upgrade") !== "websocket")
-        return new Response("Expected a WebSocket upgrade", { status: 426 });
-      const { 0: client, 1: server } = new WebSocketPair();
-      this.ctx.acceptWebSocket(server);
-      server.serializeAttachment({
-        session,
-        groups: engine.groupsOf(session),
-      } satisfies SocketAttachment);
-      server.send(JSON.stringify(engine.handshake(session)));
-      return new Response(null, { status: 101, webSocket: client });
-    }
-
-    const response = await serveWorkspace(engine, request, session);
-    if (pathname === "/sync/transactions" && response.ok) {
-      // New or changed threads may need sorting into someone's buckets.
-      this.#sort();
-      if (engine.lastSyncId - engine.minSyncId > COMPACT_AT)
-        engine.compact({ keepActions: KEEP_ACTIONS });
-    }
-    return response;
-  }
-
-  // Clients ping to keep the connection alive through proxies, and send ephemeral values (who's looking at what), which
-  // go to every other client that can see the record and are never stored.
-  webSocketMessage(socket: WebSocket, message: string | ArrayBuffer): void {
-    if (message === "ping") return socket.send("pong");
-    const engine = this.#stored();
-    if (engine === undefined || typeof message !== "string") return;
-    const sockets = this.#sockets();
-    const from = sockets.find((candidate) => candidate.raw === socket);
-    if (from !== undefined) receive(engine, sockets, from, message);
-  }
-
-  webSocketClose(socket: WebSocket, code: number): void {
-    socket.close(code, "closing");
-  }
-}
-
-// How long a session token lasts.
 const SESSION_MS = 30 * 24 * 60 * 60_000;
 
 // Session tokens are signed with a key derived from the API token, so there's no second secret to manage.
@@ -213,73 +35,185 @@ async function same(a: string, b: string): Promise<boolean> {
   return crypto.subtle.timingSafeEqual(x, y);
 }
 
-// Who a request is from. With an API_TOKEN secret set (the hosted API), it needs a token: the API token itself is an
-// admin session (it sees everything and acts as anyone, for operators and the app's View As), and a session token
-// (minted by POST /auth/session) is that one person. The socket, which can't send headers, passes it as `token`.
-// Locally the secret is unset and the API is open (`openSession`). Undefined means not signed in.
-async function authenticate(c: Context<{ Bindings: Env }>, workspace: string) {
-  const apiToken = c.env.API_TOKEN;
-  if (!apiToken) return openSession(c.req.raw);
-  const given = c.req.header("Authorization")?.replace(/^Bearer /, "") ?? c.req.query("token");
-  if (given === undefined || given === "") return undefined;
-  if (await same(given, apiToken)) return { admin: true } satisfies Session;
-  const claims = await verifySession(sessionSecret(apiToken), given, workspace);
-  return claims === undefined ? undefined : ({ userId: claims.userId } satisfies Session);
+// Who a token is; undefined when it's no one. Hosted (API_TOKEN set), the API token is the admin and a session token
+// (POST /auth/session) is its person. Locally the API is open: the token is a user id, and no token is the admin.
+async function authenticate(
+  env: Env,
+  token: string,
+  workspace: string,
+): Promise<Session | undefined> {
+  if (!env.API_TOKEN) return token === "" ? ADMIN : { userId: token };
+  if (token === "") return undefined;
+  if (await same(token, env.API_TOKEN)) return ADMIN;
+  const claims = await verifySession(sessionSecret(env.API_TOKEN), token, workspace);
+  return claims && { userId: claims.userId };
 }
+
+// A socket's attachment, which survives hibernation: who said Hello, and the groups the server last sent it.
+type Attachment = { session: Session; groups?: string[] };
+
+// One workspace: its `SyncServer` over this object's SQLite storage, and the WebSockets of every client connected to it.
+export class Workspace extends DurableObject<Env> {
+  #server: SyncServer | undefined;
+  // Sorts inboxes with Workers AI after each change. Without AI (`THREADS_LOCAL_AI=off`) items stay unsorted.
+  #triager: Triager | undefined;
+
+  // The object is named by its workspace (`getByName`).
+  get #workspace(): string {
+    return this.ctx.id.name!;
+  }
+
+  // Loaded from storage on first use; a new workspace is seeded.
+  #load(): SyncServer {
+    if (this.#server !== undefined) return this.#server;
+    const server = threadsServer(sqliteStorage(this.ctx.storage), () => this.#sockets());
+    if (server.deltas(ADMIN, 0).lastSyncId === 0) server.action(ADMIN, "seed", this.#workspace);
+    const { AI: ai } = this.env as { AI?: Ai };
+    if (ai !== undefined)
+      this.#triager = new Triager(server, workersAiClassifier(ai), {
+        onFailure: (retryAtMs) => void this.ctx.storage.setAlarm(retryAtMs),
+      });
+    this.#server = server;
+    // Anything left unsorted, such as a fresh seed.
+    this.#sort();
+    return server;
+  }
+
+  #sort(): void {
+    if (this.#triager !== undefined) this.ctx.waitUntil(this.#triager.kick());
+  }
+
+  #sockets(): Socket[] {
+    return this.ctx.getWebSockets().flatMap((ws) => {
+      const attachment = ws.deserializeAttachment() as Attachment | null;
+      return attachment === null ? [] : [this.#socket(ws, attachment)];
+    });
+  }
+
+  #socket(ws: WebSocket, attachment: Attachment): Socket {
+    return {
+      session: attachment.session,
+      get groups() {
+        return attachment.groups;
+      },
+      set groups(groups) {
+        attachment.groups = groups;
+        ws.serializeAttachment(attachment);
+      },
+      send(message) {
+        // A socket that's closing throws; it reconnects with a Hello.
+        try {
+          ws.send(JSON.stringify(message));
+        } catch {}
+      },
+    };
+  }
+
+  // Retries sorting after the model failed.
+  async alarm(): Promise<void> {
+    this.#load();
+    this.#sort();
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const server = this.#load();
+    // The sync socket hibernates while idle, so open connections cost next to nothing. It counts once it says Hello.
+    if (new URL(request.url).pathname === "/sync/socket") {
+      if (request.headers.get("Upgrade") !== "websocket")
+        return new Response("Expected a WebSocket upgrade", { status: 426 });
+      const { 0: client, 1: socket } = new WebSocketPair();
+      this.ctx.acceptWebSocket(socket);
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    const response = await handleRequest(
+      server,
+      request,
+      JSON.parse(request.headers.get(SESSION_HEADER)!),
+    );
+    // A commit may have new inbox items to sort.
+    if (request.method === "POST") this.#sort();
+    return response;
+  }
+
+  // The only message a client sends is its Hello; the server then sends what it missed and every commit after.
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    if (ws.deserializeAttachment() !== null) return;
+    const hello = JSON.parse(message as string) as Hello;
+    const session = await authenticate(this.env, hello.token, this.#workspace);
+    if (session === undefined) return ws.close(4401, "Unauthorized");
+    const attachment: Attachment = { session };
+    ws.serializeAttachment(attachment);
+    this.#load().hello(this.#socket(ws, attachment), hello.lastSyncId);
+  }
+
+  webSocketClose(ws: WebSocket, code: number): void {
+    ws.close(code, "closing");
+  }
+}
+
+type Ctx = Context<{ Bindings: Env }>;
+
+const tokenOf = (c: Ctx): string => c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "";
+// The socket can't send headers, so it names its workspace with `?workspace=`.
+const workspaceOf = (c: Ctx): string =>
+  c.req.header("X-Workspace") ?? c.req.query("workspace") ?? "local";
 
 const app = new Hono<{ Bindings: Env }>();
 
 // The desktop renderer runs on its own origin, so it needs CORS to reach the API.
 app.use(cors());
 
-// A session token for one person in one workspace, for an admin to hand out. Until there's a sign-in, the app mints
-// its own with the API token for whoever it's viewing as.
-app.post(
-  "/auth/session",
-  zValidator("json", z.object({ workspace: z.string(), personId: z.string().min(1) })),
-  async (c) => {
-    const { workspace, personId } = c.req.valid("json");
-    const session = await authenticate(c, workspace);
-    if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
-    if (!isAdmin(session)) return c.json({ error: "Only an admin hands out sessions" }, 403);
-    const expiresAtMs = Date.now() + SESSION_MS;
-    const apiToken = c.env.API_TOKEN;
-    // Locally there's no secret and no need for a token: `X-User` says who you are.
-    if (!apiToken) return c.json({ token: null, expiresAtMs });
-    const token = await signSession(sessionSecret(apiToken), {
-      userId: personId,
-      workspace,
-      expiresAtMs,
-    });
-    return c.json({ token, expiresAtMs });
-  },
-);
+// A person's session token, which only the admin hands out. Until there's a sign-in, the app mints its own with the
+// API token for whoever it's viewing as. Locally the token is the person's id.
+app.post("/auth/session", async (c) => {
+  const { workspace, personId } = await c.req.json<{ workspace: string; personId: string }>();
+  const session = await authenticate(c.env, tokenOf(c), workspace);
+  if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
+  if (!("admin" in session)) return c.json({ error: "Only an admin hands out sessions" }, 403);
+  const expiresAtMs = Date.now() + SESSION_MS;
+  const token = c.env.API_TOKEN
+    ? await signSession(sessionSecret(c.env.API_TOKEN), {
+        userId: personId,
+        workspace,
+        expiresAtMs,
+      })
+    : personId;
+  return c.json({ token, expiresAtMs });
+});
 
-// Drafting a new thread from what you typed (src/compose.ts). It reads and writes nothing, so it runs here, outside
-// any workspace.
-app.post("/ai/compose", zValidator("json", composeRequest), async (c) => {
-  if ((await authenticate(c, "local")) === undefined) return c.json({ error: "Unauthorized" }, 401);
+// Drafting a new conversation from what you typed (src/compose.ts). It reads and writes nothing, so it runs here,
+// outside any workspace.
+app.post("/ai/compose", async (c) => {
+  if ((await authenticate(c.env, tokenOf(c), workspaceOf(c))) === undefined)
+    return c.json({ error: "Unauthorized" }, 401);
   const { AI: ai } = c.env as { AI?: Ai };
   if (ai === undefined) return c.json({ error: "No AI here" }, 503);
+  const request = await c.req.json<ComposeRequest>();
+  if (!(request.text?.length <= 4000 && request.people?.length <= 500))
+    return c.json({ error: "Too long" }, 400);
   try {
-    return c.json(await workersAiComposer(ai)(c.req.valid("json")));
+    return c.json(await workersAiComposer(ai)(request));
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : "The model failed" }, 502);
   }
 });
 
-// Each workspace lives in its own Durable Object, picked with X-Workspace (or `workspace` on the socket).
-app.all("*", async (c): Promise<Response> => {
-  const name = param(c.req.raw, "X-Workspace", "workspace") ?? "local";
-  if (!isWorkspaceName(name)) return c.json({ error: `Unknown workspace: ${name}` }, 400);
-  if (name === "sample" && c.env.SAMPLE_WORKSPACE !== "on")
-    return c.json({ error: "The sample workspace is only served locally" }, 404);
-  const session = await authenticate(c, name);
-  if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
+// The sync protocol goes to the workspace's object, with the session; the socket authenticates with its Hello.
+app.on(["GET", "POST"], ["/sync/*", "/actions/*"], async (c) => {
+  const workspace = workspaceOf(c);
+  if (
+    !WORKSPACES.includes(workspace) ||
+    (workspace === "sample" && c.env.SAMPLE_WORKSPACE !== "on")
+  )
+    return c.json({ error: `Unknown workspace: ${workspace}` }, 404);
   const forwarded = new Request(c.req.raw);
-  forwarded.headers.set(SESSION_HEADER, JSON.stringify(session));
+  if (c.req.path !== "/sync/socket") {
+    const session = await authenticate(c.env, tokenOf(c), workspace);
+    if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
+    forwarded.headers.set(SESSION_HEADER, JSON.stringify(session));
+  }
   const { exports } = c.executionCtx as ExecutionContext;
-  return exports.Workspace.getByName(name).fetch(forwarded);
+  return exports.Workspace.getByName(workspace).fetch(forwarded);
 });
 
 export default app;

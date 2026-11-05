@@ -5,13 +5,15 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./server": "./src/rules.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
-    "check": "vp check"
+    "test": "vp test"
   },
   "dependencies": {
-    "sync": "workspace:*"
+    "engine": "workspace:*",
+    "server": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
