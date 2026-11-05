@@ -14,44 +14,41 @@ export const DEFAULT_BUCKETS = [
   },
 ];
 
-// [id, name, level, title, manager]; managers come before their reports, since a reference must exist.
-type Person = [string, string, string, ("sde" | "pm")?, string?];
-
-// Anshu, Arjun and KK are real; everyone else is made up, so the org chart has a company to show.
-const LOCAL_PEOPLE: Person[] = [
-  ["nora", "Nora Alvarez", "l8"],
-  ["marcus", "Marcus Bell", "l7", "sde", "nora"],
-  ["sofia", "Sofia Marin", "l7", "pm", "nora"],
-  ["felix", "Felix Wagner", "l7", undefined, "nora"],
-  ["lena", "Lena Novak", "l6", "sde", "marcus"],
-  ["devika", "Devika Rao", "l6", undefined, "marcus"],
-  ["raj", "Raj Mehta", "l6", "pm", "sofia"],
-  ["tomas", "Tomás Ruiz", "l5", "sde", "lena"],
-  ["wei", "Wei Liu", "l5", "sde", "lena"],
-  ["amara", "Amara Osei", "l5", "pm", "sofia"],
-  ["kk", "KK", "l2", undefined, "tomas"],
-  ["anshu", "Anshu", "l1", undefined, "kk"],
-  ["arjun", "Arjun", "l1", undefined, "kk"],
-  ["ivy", "Ivy Zhang", "l3", "sde", "tomas"],
-  ["omar", "Omar Haddad", "l2", "sde", "tomas"],
-  ["grace", "Grace Kim", "l3", "sde", "wei"],
-  ["ben", "Ben Carter", "l2", "sde", "wei"],
-  ["hana", "Hana Sato", "l4", undefined, "devika"],
-  ["leo", "Leo Moreau", "l3", undefined, "devika"],
-  ["ella", "Ella Brooks", "l4", "pm", "raj"],
-  ["noah", "Noah Fischer", "l3", "pm", "raj"],
-  ["zoe", "Zoe Martin", "l4", undefined, "felix"],
+// Anshu, Arjun and KK are real; everyone else is made up, so the workspace has people in it.
+const LOCAL_PEOPLE: [string, string][] = [
+  ["anshu", "Anshu"],
+  ["arjun", "Arjun"],
+  ["kk", "KK"],
+  ["nora", "Nora Alvarez"],
+  ["marcus", "Marcus Bell"],
+  ["sofia", "Sofia Marin"],
+  ["felix", "Felix Wagner"],
+  ["lena", "Lena Novak"],
+  ["devika", "Devika Rao"],
+  ["raj", "Raj Mehta"],
+  ["tomas", "Tomás Ruiz"],
+  ["wei", "Wei Liu"],
+  ["amara", "Amara Osei"],
+  ["ivy", "Ivy Zhang"],
+  ["omar", "Omar Haddad"],
+  ["grace", "Grace Kim"],
+  ["ben", "Ben Carter"],
+  ["hana", "Hana Sato"],
+  ["leo", "Leo Moreau"],
+  ["ella", "Ella Brooks"],
+  ["noah", "Noah Fischer"],
+  ["zoe", "Zoe Martin"],
 ];
 
 // The sample workspace's people, with "you" (whoever runs the app) among them.
-const SAMPLE_PEOPLE: Person[] = [
-  ["elena", "Elena Park", "l7"],
-  ["priya", "Priya Shah", "l6", "pm", "elena"],
-  ["jordan", "Jordan Lee", "l6", "sde", "elena"],
-  ["maya", "Maya Chen", "l5", "pm", "priya"],
-  ["daniel", "Daniel Okafor", "l4", "pm", "maya"],
-  ["sam", "Sam Rivera", "l4", "sde", "jordan"],
-  ["you", "You", "l5", undefined, "priya"],
+const SAMPLE_PEOPLE: [string, string][] = [
+  ["you", "You"],
+  ["elena", "Elena Park"],
+  ["priya", "Priya Shah"],
+  ["jordan", "Jordan Lee"],
+  ["maya", "Maya Chen"],
+  ["daniel", "Daniel Okafor"],
+  ["sam", "Sam Rivera"],
 ];
 
 const HOUR = 3_600_000;
@@ -191,8 +188,6 @@ const create = (model: string, modelId: string, changes: Record<string, unknown>
   changes,
 });
 
-const memberId = (userId: string): string => `member-${userId}`;
-
 // A new workspace's rows, in an order where every reference exists: the workspace, its people and their memberships
 // (everyone an admin), and in the sample workspace its labels and threads. People's buckets, their `workspaceIds` and
 // inbox items are the rules' effects.
@@ -202,14 +197,11 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
   const writes = [
     create("Workspace", workspace, { name: sample ? "Sample" : "Local" }),
     ...people.map(([id, name]) => create("User", id, { name, workspaceIds: [] })),
-    ...people.map(([id, , level, title, manager]) =>
-      create("WorkspaceMember", memberId(id), {
+    ...people.map(([id]) =>
+      create("WorkspaceMember", `member-${id}`, {
         workspaceId: workspace,
         userId: id,
         role: "admin",
-        level,
-        title: title ?? null,
-        managerId: manager === undefined ? null : memberId(manager),
       }),
     ),
   ];

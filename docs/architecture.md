@@ -40,7 +40,7 @@ everything a workspace's members share, and `user:<id>` for a person's own rows.
 | --------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------- |
 | Workspace       | name                                                                                                              | its own `workspace:<id>`          |
 | User            | name, email, avatarUrl, workspaceIds                                                                              | `workspace:<id>` per workspaceIds |
-| WorkspaceMember | workspace, user, role (admin, member), title, level, manager (a WorkspaceMember), reports                         | `workspace:<id>`                  |
+| WorkspaceMember | workspace, user, role (admin, member)                                                                             | `workspace:<id>`                  |
 | Label           | workspace, name                                                                                                   | `workspace:<id>`                  |
 | Thread          | title, state (open, resolved, blocked), owner, workspace, dueAt, priority, labelIds, branchedFrom, blocks, isOpen | `workspace:<id>`                  |
 | Message         | thread, author, body, toIds, workspaceId                                                                          | `workspace:<id>`                  |
@@ -49,8 +49,8 @@ everything a workspace's members share, and `user:<id>` for a person's own rows.
 
 - **User** is the person, across workspaces. The server keeps `workspaceIds` (an effect of WorkspaceMember create and
   delete), so members of any workspace they share see them.
-- **WorkspaceMember** is their place in one workspace: role, job title, level and manager. The org chart on a profile
-  reads members and their managers.
+- **WorkspaceMember** is their place in one workspace and their role there (everyone is an admin for now). A person's
+  page shows their role; your own lists the workspace's members.
 - **Thread** is the only unit of work, and every member of the workspace sees every thread. `labelIds` lists its
   Labels; a label's page is its threads. `branchedFrom` is a branch, linked from a message by `[[thread:<id>]]`;
   `blocks` (made with `/blocked`) keeps that thread blocked until this one is resolved.

@@ -24,7 +24,7 @@ export const SOURCES: Partial<Record<Source, string>> = {
   sample: "Sample",
 };
 
-function saved<T>(key: string, initial: T): T {
+export function saved<T>(key: string, initial: T): T {
   try {
     const raw = localStorage.getItem(key);
     return raw === null ? initial : (JSON.parse(raw) as T);
@@ -32,7 +32,7 @@ function saved<T>(key: string, initial: T): T {
     return initial;
   }
 }
-function save(key: string, value: unknown): void {
+export function save(key: string, value: unknown): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {}
@@ -98,11 +98,6 @@ export const me = (): User => store.findById(User, viewerId ?? "")!;
 // A store holds one workspace, so a person has at most one membership in it.
 export const workspace = (): Workspace => store.all(Workspace)[0];
 export const memberOf = (user: User): WorkspaceMember | undefined => [...user.memberships][0];
-// "l5 · pm": someone's level and title here.
-export const position = (user: User): string | undefined => {
-  const member = memberOf(user);
-  return [member?.level, member?.title].filter(Boolean).join(" · ") || undefined;
-};
 export const signedIn = (): boolean =>
   viewerId !== null && store.findById(User, viewerId) !== undefined;
 

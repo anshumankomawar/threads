@@ -2,8 +2,8 @@ import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Label, Thread, User, WorkspaceMember, type Message } from "models";
-import { me, memberOf, open, position, setDialog, store } from "../session";
-import { chip, chipTone, link } from "../styles/controls";
+import { me, memberOf, open, setDialog, store, workspace } from "../session";
+import { chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { ago } from "./ThreadView";
@@ -69,29 +69,6 @@ function Threads(props: {
   );
 }
 
-// Names that open someone's profile, or "None".
-const People = (props: { users: User[] }): JSX.Element => (
-  <Show when={props.users.length > 0} fallback="None">
-    <For each={props.users}>
-      {(user, index) => (
-        <span>
-          {index() > 0 && ", "}
-          <button class={sx(link.person)} onClick={() => open({ person: user.id })}>
-            {user.name}
-          </button>
-        </span>
-      )}
-    </For>
-  </Show>
-);
-
-const Fact = (props: { term: string; children: JSX.Element }): JSX.Element => (
-  <>
-    <dt class={sx(page.muted)}>{props.term}</dt>
-    <dd class={sx(page.value)}>{props.children}</dd>
-  </>
-);
-
 export function LabelView(props: { label: Label }): JSX.Element {
   const threads = (): Thread[] =>
     store.all(Thread).filter((t) => t.labelIds.includes(props.label.id));
@@ -113,66 +90,47 @@ export function LabelView(props: { label: Label }): JSX.Element {
   );
 }
 
-// Someone's place in the org and the threads you're both in; your own also shows everyone, by manager.
+const ROLE = { admin: "Admin", member: "Member" };
+
+// Someone and their role here, and the threads you're both in. Your own also lists the workspace's members.
 export function PersonView(props: { user: User }): JSX.Element {
   const u = (): User => props.user;
-  const member = (): WorkspaceMember | undefined => memberOf(u());
   const first = (): string => u().name.split(" ")[0];
   const inIt = (t: Thread, id: string): boolean =>
     t.ownerId === id ||
     t.messages.filter((m: Message) => m.authorId === id || m.toIds.includes(id)).length > 0;
-  const tree = (manager?: WorkspaceMember): JSX.Element => (
-    <ul class={sx(manager ? page.branch : page.tree)}>
-      <For
-        each={manager ? [...manager.reports] : store.all(WorkspaceMember).filter((m) => !m.manager)}
-      >
-        {(m) => (
-          <li>
-            <button
-              class={sx(
-                page.bare,
-                page.person,
-                page.hover,
-                page.pointer,
-                m.userId === me().id && page.me,
-              )}
-              onClick={() => open({ person: m.userId })}
-            >
-              <Identicon seed={m.userId} size={16} />
-              <span class={sx(page.personName, m.reports.length > 0 && page.bold)}>
-                {m.user.name}
-              </span>
-              <span class={sx(page.small)}>{position(m.user)}</span>
-            </button>
-            <Show when={m.reports.length > 0}>{tree(m)}</Show>
-          </li>
-        )}
-      </For>
-    </ul>
-  );
+  const summary = (user: User): string =>
+    [user.email, ROLE[memberOf(user)?.role ?? "member"]].filter(Boolean).join(" · ");
   return (
     <div class={sx(page.page)}>
       <header class={sx(page.header)}>
         <Identicon seed={u().id} size={40} />
         <div>
           <h1 class={sx(page.title)}>{u().name}</h1>
-          <p class={sx(page.summary)}>{position(u())}</p>
+          <p class={sx(page.summary)}>{summary(u())}</p>
         </div>
       </header>
-      <dl class={sx(page.facts, page.narrow)}>
-        <Fact term="Manager">
-          <People users={member()?.manager ? [member()!.manager!.user] : []} />
-        </Fact>
-        <Fact term="Reports">
-          <People users={[...(member()?.reports ?? [])].map((m) => m.user)} />
-        </Fact>
-      </dl>
       <Show
         when={u().id !== me().id}
         fallback={
           <>
-            <h2 class={sx(page.subheading, page.body)}>People</h2>
-            {tree()}
+            <h2 class={sx(page.subheading, page.body)}>Members of {workspace().name}</h2>
+            <ul class={sx(page.list)}>
+              <For each={store.all(WorkspaceMember)}>
+                {(m) => (
+                  <li>
+                    <button
+                      class={sx(page.bare, page.person, page.hover, page.pointer)}
+                      onClick={() => open({ person: m.userId })}
+                    >
+                      <Identicon seed={m.userId} size={16} />
+                      <span class={sx(page.personName)}>{m.user.name}</span>
+                      <span class={sx(page.small)}>{ROLE[m.role]}</span>
+                    </button>
+                  </li>
+                )}
+              </For>
+            </ul>
           </>
         }
       >

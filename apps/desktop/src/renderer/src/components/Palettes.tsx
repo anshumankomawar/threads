@@ -8,7 +8,6 @@ import {
   dialog,
   me,
   open,
-  position,
   setDialog,
   signOut,
   source,
@@ -210,7 +209,6 @@ function Search(): JSX.Element {
           ...commands(),
           ...store.all(User).map((u) => ({
             label: u.name,
-            hint: position(u),
             section: "People",
             seed: u.id,
             run: done(() => open({ person: u.id })),

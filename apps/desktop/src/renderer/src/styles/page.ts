@@ -40,7 +40,6 @@ export const page = stylex.create({
   list: { margin: 0, padding: 0, listStyle: "none" },
   row: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
   border: { borderWidth: 1, borderStyle: "solid", borderColor: colors.strokeTertiary },
-  muted: { color: muted },
   small: { color: muted, fontSize: size.body },
   narrow: { maxWidth: 640 },
   items: { display: "flex", flexDirection: "column", gap: 2, margin: "12px 0 0 -8px" },
@@ -63,12 +62,6 @@ export const page = stylex.create({
   },
   filters: { marginLeft: "auto" },
   empty: { margin: "16px 0 0", color: muted },
-  // Facts: a label column, then the value.
-  facts: { display: "grid", gridTemplateColumns: "120px 1fr", gap: "6px 20px", margin: "20px 0 0" },
-  value: { margin: 0, color: colors.textPrimary },
-  // The org chart on your own profile: a row per person, indented under their manager.
-  tree: { maxWidth: 560, margin: "8px 0 0 -6px", padding: 0, listStyle: "none" },
-  branch: { margin: 0, paddingLeft: 24, listStyle: "none" },
   person: {
     display: "flex",
     gap: 6,
@@ -80,7 +73,5 @@ export const page = stylex.create({
     color: colors.textPrimary,
     textAlign: "left",
   },
-  me: { backgroundColor: colors.bgTertiary },
   personName: { flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
-  bold: { fontWeight: 600 },
 });

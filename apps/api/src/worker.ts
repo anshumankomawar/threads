@@ -154,7 +154,7 @@ export class Workspace extends DurableObject<Env> {
 
 type Ctx = Context<{ Bindings: Env }>;
 
-const tokenOf = (c: Ctx): string => c.req.header("Authorization")?.replace(/^Bearer /, "") ?? "";
+const tokenOf = (c: Ctx): string => c.req.header("Authorization")?.replace(/^Bearer\s*/, "") ?? "";
 // The socket can't send headers, so it names its workspace with `?workspace=`.
 const workspaceOf = (c: Ctx): string =>
   c.req.header("X-Workspace") ?? c.req.query("workspace") ?? "local";

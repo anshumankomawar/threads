@@ -16,12 +16,14 @@ import {
   store,
   unread,
   view,
+  save,
+  saved,
 } from "../session";
 import { bucketIcons } from "../bucketIcons";
 import { topbar } from "../styles/controls";
 import { tabLabel } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { colors, sidebarSpace } from "../styles/tokens.stylex";
+import { colors, layers, sidebarSpace } from "../styles/tokens.stylex";
 import { ago, plain } from "./ThreadView";
 import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
@@ -44,19 +46,59 @@ const clip = { minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } as const;
 const hoverBg = { default: "transparent", ":hover": colors.bgQuaternary } as const;
 const dim = { default: colors.textTertiary, ":hover": colors.textPrimary } as const;
 const reduced = "@media (prefers-reduced-motion: reduce)";
+const EDGE = `linear-gradient(to right, transparent 2px, ${colors.strokeFocused} 2px, ${colors.strokeFocused} 3px, transparent 3px)`;
+const WIDTH = { initial: 268, min: 210, max: 400 };
+const clampWidth = (px: number): number => Math.min(WIDTH.max, Math.max(WIDTH.min, Math.round(px)));
+const [width, setWidth] = createSignal(clampWidth(saved("sidebar-width", WIDTH.initial)));
+const keepWidth = (px: number): void => {
+  setWidth(px);
+  save("sidebar-width", px);
+};
+
+// Dragging the right edge resizes the sidebar (straight on the element, saved on release); a double-click resets it.
+function resize(event: PointerEvent & { currentTarget: HTMLHRElement }): void {
+  event.preventDefault();
+  const edge = event.currentTarget;
+  const panel = edge.parentElement!;
+  const [startX, start] = [event.clientX, panel.getBoundingClientRect().width];
+  const at = (x: number): number => clampWidth(start + x - startX);
+  const move = (e: PointerEvent): void => void (panel.style.width = `${at(e.clientX)}px`);
+  const end = (e: PointerEvent): void => {
+    edge.removeEventListener("pointermove", move);
+    delete edge.dataset.resizing;
+    keepWidth(at(e.clientX));
+  };
+  edge.setPointerCapture(event.pointerId);
+  edge.dataset.resizing = "";
+  edge.addEventListener("pointermove", move);
+  edge.addEventListener("pointerup", end, { once: true });
+  edge.addEventListener("pointercancel", end, { once: true });
+}
 
 const s = stylex.create({
   sidebar: {
     ...column,
     position: "relative",
     flexShrink: 0,
-    width: 268,
     height: "100%",
     minWidth: 0,
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
     backgroundColor: colors.sidebarSolid,
+  },
+  // The resize edge: a 1px line over the border on hover and while dragging.
+  edge: {
+    position: "absolute",
+    top: 0,
+    right: -2,
+    bottom: 0,
+    zIndex: layers.titlebar,
+    width: 4,
+    margin: 0,
+    borderStyle: "none",
+    cursor: "col-resize",
+    backgroundImage: { default: null, ":hover": EDGE, ":is([data-resizing])": EDGE },
   },
   topbar: { paddingLeft: 71.5 },
   content: { ...column, flexGrow: 1, minHeight: 0, overflowY: "auto" },
@@ -551,7 +593,7 @@ export function Sidebar(): JSX.Element {
   onSettled(() => void document.fonts.ready.then(measure));
   const profile = (): boolean => (view() as { person?: string }).person === me().id;
   return (
-    <aside class={sx(s.sidebar)}>
+    <aside class={sx(s.sidebar)} style={{ width: `${width()}px` }}>
       <div class={sx(topbar.bar, s.topbar)}>
         <TopButton
           label="Hide sidebar"
@@ -611,6 +653,13 @@ export function Sidebar(): JSX.Element {
       <div class={sx(s.content)}>
         <Dynamic component={tab().tab} />
       </div>
+      <hr
+        class={sx(s.edge)}
+        aria-label="Resize sidebar"
+        aria-orientation="vertical"
+        onPointerDown={resize}
+        onDblClick={() => keepWidth(WIDTH.initial)}
+      />
     </aside>
   );
 }

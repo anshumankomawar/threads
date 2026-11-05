@@ -136,7 +136,7 @@ test("only admins change memberships and roles", () => {
       server,
       kk,
       tx("update", "WorkspaceMember", "member-kk", { role: "admin" }),
-      tx("update", "WorkspaceMember", "member-arjun", { title: "pm" }),
+      tx("update", "WorkspaceMember", "member-arjun", { role: "member" }),
     ),
   ).toEqual(["forbidden", "forbidden"]);
   expect(

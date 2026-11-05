@@ -37,19 +37,14 @@ export class User extends Model {
   @OneToMany(() => WorkspaceMember, "user") memberships!: Collection<WorkspaceMember>;
 }
 
-// A person's place in a workspace: their role, their job title and level, and who they report to.
+// A person's place in a workspace, and their role there.
 @ClientModel("WorkspaceMember", { syncGroup: inWorkspace })
 export class WorkspaceMember extends Model {
   @Reference(() => Workspace, "members") workspace!: Workspace;
   @Reference(() => User, "memberships") user!: User;
   @Property({ enum: ROLES }) role!: Role;
-  @Property({ nullable: true }) title?: string;
-  @Property({ nullable: true }) level?: string;
-  @Reference(() => WorkspaceMember, "reports", { nullable: true }) manager?: WorkspaceMember;
-  @OneToMany(() => WorkspaceMember, "manager") reports!: Collection<WorkspaceMember>;
   declare workspaceId: string;
   declare userId: string;
-  declare managerId?: string;
 }
 
 @ClientModel("Label", { syncGroup: inWorkspace })
