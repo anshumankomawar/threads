@@ -4,11 +4,9 @@ import type { JSX } from "@solidjs/web";
 import { menu } from "../styles/controls";
 import { sx } from "../styles/sx";
 
-// An action, or a line between groups of them.
 export type ContextMenuItem = { label: string; shortcut?: string; run: () => void } | "separator";
 
-// A right-click menu at the pointer, kept on screen. Closes on picking an item, clicking elsewhere, scrolling or
-// Escape.
+// A right-click menu at the pointer, kept on screen. Closes on a pick, a click elsewhere, scrolling or Escape.
 export function ContextMenu(props: {
   x: number;
   y: number;
@@ -16,7 +14,6 @@ export function ContextMenu(props: {
   onClose: () => void;
 }): JSX.Element {
   let ref!: HTMLDivElement;
-  // Null until measured; the pointer position until then.
   const [measured, setMeasured] = createSignal<{ left: number; top: number } | null>(null);
   createEffect(
     () => ({ x: props.x, y: props.y }),
@@ -30,31 +27,25 @@ export function ContextMenu(props: {
   );
   const position = (): { left: number; top: number } =>
     measured() ?? { left: props.x, top: props.y };
-
   onSettled(() => {
-    const onClose = (): void => props.onClose();
+    const close = (): void => props.onClose();
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       props.onClose();
     };
-    window.addEventListener("mousedown", onClose);
+    const events = ["mousedown", "wheel", "blur"] as const;
+    for (const name of events) window.addEventListener(name, close);
     window.addEventListener("keydown", onKeyDown, true);
-    window.addEventListener("wheel", onClose);
-    window.addEventListener("blur", onClose);
     return () => {
-      window.removeEventListener("mousedown", onClose);
+      for (const name of events) window.removeEventListener(name, close);
       window.removeEventListener("keydown", onKeyDown, true);
-      window.removeEventListener("wheel", onClose);
-      window.removeEventListener("blur", onClose);
     };
   });
-
   return (
     <Portal mount={document.body}>
       <div
         ref={ref}
-        // `context-menu` stays as a hook: App's keys look for an open menu with `document.querySelector`.
         class={[sx(menu.menu, menu.context), "context-menu"]}
         role="menu"
         style={{ left: `${position().left}px`, top: `${position().top}px` }}
@@ -67,7 +58,6 @@ export function ContextMenu(props: {
               <div class={sx(menu.separator)} role="separator" />
             ) : (
               <button
-                type="button"
                 role="menuitem"
                 class={sx(menu.item, menu.itemHover)}
                 onClick={() => {

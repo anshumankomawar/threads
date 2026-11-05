@@ -3,217 +3,129 @@ import { Placeholder } from "@tiptap/extensions";
 import StarterKit from "@tiptap/starter-kit";
 import {
   Add01Icon,
-  InboxIcon,
   ArrowDown02Icon,
   Calendar01Icon,
   Cancel01Icon,
+} from "@hugeicons/core-free-icons";
+import {
   CheckmarkCircle02Icon,
   GitBranchIcon,
   HourglassIcon,
-  TaskAdd01Icon,
-  Tag01Icon,
-  Tick02Icon,
-  UnavailableIcon,
+  InboxIcon,
 } from "@hugeicons/core-free-icons";
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  Match,
-  merge,
-  onSettled,
-  Show,
-  Switch,
-  untrack,
-  useContext,
-} from "solid-js";
+import { Tag01Icon, TaskAdd01Icon, Tick02Icon, UnavailableIcon } from "@hugeicons/core-free-icons";
+import { createEffect, createMemo, createSignal, For, merge, onSettled } from "solid-js";
+import { Show, untrack, useContext } from "solid-js";
 import { Portal, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
+import { bucketsOf, descriptionOf, EFFORT_OPTIONS, formatEffort, GROUP_TARGET } from "model";
+import { groupMentionsIn, groupTarget, inboxPeople, isDone, labelSlug, mentionsIn } from "model";
+import { plainThreadLinks, PRIORITY_LABELS, replyTo, splitThreadLinks, STATUS_LABELS } from "model";
+import type { Entry, Person, Priority, Status, Thread } from "model";
 import { useApp } from "../app/state";
 import { CurrentThreadContext } from "../threadLinks";
 import { sx } from "../styles/sx";
 import { thread } from "../styles/thread";
 import { threadLineMarker } from "../styles/markers.stylex";
-import {
-  chip,
-  chipTone,
-  link,
-  menu as menuStyles,
-  status as statusStyles,
-  statusDot,
-} from "../styles/controls";
-import { styles } from "./ThreadView.styles";
-import {
-  closeThreadMenu,
-  offerKey,
-  THREAD_MENU_EVENT,
-  THREAD_MENU_KEY,
-  ThreadLinkNode,
-  type ThreadMenuState,
-} from "./threadLinkNode";
-import {
-  closeCommandMenu,
-  COMMAND_MENU_EVENT,
-  COMMANDS,
-  SlashCommands,
-  type CommandMenuState,
-  type CommandName,
-} from "./slashCommands";
-import {
-  closeMentionMenu,
-  MENTION_MENU_EVENT,
-  MentionNode,
-  type MentionMenuState,
-} from "./mentionNode";
+import { chip, chipTone, link, menu as menuStyles, status, statusDot } from "../styles/controls";
+import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
+import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { selectableLabels } from "../groups";
-import {
-  isDone,
-  EFFORT_OPTIONS,
-  formatEffort,
-  labelSlug,
-  plainThreadLinks,
-  PRIORITY_LABELS,
-  splitThreadLinks,
-  STATUS_LABELS,
-  threadLink,
-  type Entry,
-  type Person,
-  type Priority,
-  type Status,
-  type Thread,
-  mentionsIn,
-  groupMentionsIn,
-  groupTarget,
-  GROUP_TARGET,
-  mentionToken,
-  descriptionOf,
-  bucketsOf,
-  inboxPeople,
-  replyTo,
-} from "model";
 import { bucketIcons } from "../bucketIcons";
 import { DAY, formatDue, formatRelativeTime, startOfDay } from "../format";
-import { Keyed } from "./Keyed";
 import { recipientsOf } from "../compose";
+import { Keyed } from "./Keyed";
 import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { ThreadMinimap } from "./ThreadMinimap";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 
-const ICON_PROPS = { size: 13, "aria-hidden": "true" } as const;
+const icon = (svg: IconSvgElement, size = 13, cls?: string) => (
+  <Icon icon={svg} size={size} aria-hidden="true" class={cls} />
+);
+const avatar = (person: { id: string }, size = 20) => <Identicon seed={person.id} size={size} />;
+const firstName = (person: { name: string }): string => person.name.split(" ")[0];
+const muted = (when: boolean): "muted" | undefined => (when ? "muted" : undefined);
 
-// What each `/` command shows in the menu.
-const COMMAND_ICONS: Record<CommandName, IconSvgElement> = {
-  blocked: UnavailableIcon,
-  task: TaskAdd01Icon,
-  close: CheckmarkCircle02Icon,
-};
+const COMMANDS = [
+  ["blocked", "Blocked", "Ask someone for what you need in a new thread", UnavailableIcon],
+  ["task", "Task", "Turn what you were asked into a task of your own", TaskAdd01Icon],
+  ["close", "Close", "Close this thread for everyone", CheckmarkCircle02Icon],
+] as const;
 
 export type MessageEntry = Extract<Entry, { kind: "message" }>;
-type EventEntry = Extract<Entry, { kind: "event" }>;
-// How a click changes the selection: toggle one message, or extend from the last one clicked.
 type SelectMode = "toggle" | "range";
-type ResolutionEntry = Extract<Entry, { kind: "resolution" }>;
+type Run = "start" | "middle" | "end" | undefined;
 
 export type ThreadActions = {
-  // A note in the thread (Enter): nobody is told.
+  // A note: nobody is told.
   onNote: (text: string) => void;
-  // A message sent to people (⌘↵), which puts the thread in their inbox.
   onSend: (text: string, to: Person[]) => void;
-  // `/blocked`: opens the form for asking someone what this thread needs, in a new thread that blocks it.
+  // `/blocked`: ask someone for what this needs, in a new thread that blocks it.
   onBlocked: () => void;
-  // `/task`: turns what you were asked here into a task of your own, a new thread linked from this one.
+  // `/task`: what you were asked here as a task of your own, linked from this one.
   onTask: () => void;
   onSetStatus: (status: Status) => void;
   onSetPriority: (priority: Priority) => void;
   onSetDue: (dueAtMs: number | null) => void;
   onSetEffort: (effortHours: number | null) => void;
-  // Adds or removes a label, making it first if it's new.
   onToggleLabel: (label: { id: string; name: string }) => void;
-  // Puts it in one of your buckets by hand, or (null) hands it back to the model to sort.
+  // null hands it back to the model to sort.
   onSetBucket: (bucketId: string | null) => void;
-  // Starts a thread branching off this one, with the same people, and returns its id: from "New thread" in the
-  // `#` menu, titled by what you typed.
+  // A branch with the same people, from "New thread" in the `#` menu; returns its id.
   onBranch: (title: string) => string;
-  // Moves messages out of this thread, into another or a new branch; asks where.
   onMoveMessages: (messages: MessageEntry[]) => void;
-  // Deletes one of your own messages.
   onDeleteMessage: (message: MessageEntry) => void;
 };
 
-// A thread link as a chip with the linked thread's current title; clicking opens it beside this one. In a byline
-// ("Branched from") it's smaller, with the byline's icon colour.
+// A thread link as a chip with the thread's current title, opening beside this one; plain text for this thread.
 function ThreadLinkChip(props: { threadId: string; inByline?: boolean }): JSX.Element {
   const app = useApp();
-  const currentThreadId = useContext(CurrentThreadContext);
+  const current = useContext(CurrentThreadContext);
   const title = (): string => app.links.titleOf(props.threadId) ?? "Thread";
+  const self = <span class={sx(styles.linkSelf)}>#{title()}</span>;
+  const open = (event: MouseEvent): void => {
+    event.stopPropagation();
+    app.links.open(props.threadId);
+  };
   return (
-    <Show
-      when={currentThreadId() !== props.threadId}
-      fallback={<span class={sx(styles.linkSelf)}>#{title()}</span>}
-    >
+    <Show when={current() !== props.threadId} fallback={self}>
       <button
         type="button"
         class={sx(link.thread, props.inByline && link.threadInByline)}
-        onClick={(event) => {
-          event.stopPropagation();
-          app.links.open(props.threadId);
-        }}
+        onClick={open}
       >
-        <Icon
-          icon={GitBranchIcon}
-          size={11}
-          aria-hidden="true"
-          class={props.inByline ? sx(thread.bylineIcon) : undefined}
-        />
+        {icon(GitBranchIcon, 11, props.inByline ? sx(thread.bylineIcon) : undefined)}
         {title()}
       </button>
     </Show>
   );
 }
 
-// A message's text, with its thread links as chips. The thread's description, under its title in the header, is
-// the same text styled as one.
-function MessageText(props: { text: string; description?: boolean }): JSX.Element {
-  return (
-    <div
-      class={sx(
-        thread.text,
-        props.description && thread.description,
-        props.description && thread.headerDescription,
-      )}
-    >
-      <LinkedText text={props.text} />
-    </div>
-  );
-}
-
-// Text with its thread links as chips, inline.
+// Text with its thread links and mentions as chips.
 function LinkedText(props: { text: string }): JSX.Element {
   const links = useApp().links;
+  const mention = (name: string) => <span class={sx(link.mention)}>@{name}</span>;
+  const person = (id: string, name: string) => (
+    <button
+      type="button"
+      class={sx(link.person, link.mention)}
+      onClick={() => links.openPerson(id)}
+    >
+      @{name}
+    </button>
+  );
   return (
     <For each={splitThreadLinks(props.text)}>
       {(part) =>
         "threadId" in part ? (
           <ThreadLinkChip threadId={part.threadId} />
         ) : "personId" in part ? (
-          <Show
-            when={links.nameOf(part.personId) !== undefined}
-            fallback={<span class={sx(link.mention)}>@someone</span>}
-          >
-            <button
-              type="button"
-              class={sx(link.person, link.mention)}
-              onClick={() => links.openPerson(part.personId)}
-            >
-              @{links.nameOf(part.personId)}
-            </button>
+          <Show when={links.nameOf(part.personId)} fallback={mention("someone")}>
+            {(name) => person(part.personId, name())}
           </Show>
         ) : "groupId" in part ? (
-          <span class={sx(link.mention)}>
-            @{links.nameOf(groupTarget(part.groupId)) ?? "group"}
-          </span>
+          mention(links.nameOf(groupTarget(part.groupId)) ?? "group")
         ) : (
           <span>{part.text}</span>
         )
@@ -222,43 +134,51 @@ function LinkedText(props: { text: string }): JSX.Element {
   );
 }
 
-// Due-date shortcuts, each landing at 5pm on that day.
-function dueOptions(nowMs: number): { label: string; value: number | null }[] {
-  const at5pm = (offsetDays: number): number => {
-    const date = new Date(startOfDay(nowMs) + offsetDays * DAY);
-    date.setHours(17, 0, 0, 0);
-    return date.getTime();
-  };
-  const daysToFriday = (5 - new Date(nowMs).getDay() + 7) % 7 || 7;
-  return [
-    { label: "Today", value: at5pm(0) },
-    { label: "Tomorrow", value: at5pm(1) },
-    { label: "This Friday", value: at5pm(daysToFriday) },
-    { label: "Next week", value: at5pm(7) },
-    { label: "No due date", value: null },
-  ];
-}
+const MessageText = (props: { text: string; description?: boolean }): JSX.Element => (
+  <div class={sx(thread.text, props.description && [thread.description, thread.headerDescription])}>
+    <LinkedText text={props.text} />
+  </div>
+);
 
-function Avatar(props: { person: Person }): JSX.Element {
+// Who wrote it and when: the author opens their profile.
+function Meta(props: { person: Person; atMs: number; marker?: boolean; children?: JSX.Element }) {
+  const app = useApp();
+  const open = (): void => app.links.openPerson(props.person.id);
   return (
-    <span class={sx(thread.avatar)}>
-      <Identicon seed={props.person.id} size={20} />
-    </span>
+    <div {...stylex.attrs(thread.meta, props.marker && threadLineMarker)}>
+      <button type="button" class={sx(link.person, thread.author)} onClick={open}>
+        {props.person.name}
+      </button>
+      {props.children}
+      <span class={sx(styles.quiet)}>{formatRelativeTime(props.atMs, app.now())}</span>
+    </div>
   );
 }
 
-type ChipTone = keyof typeof chipTone;
+// Due-date shortcuts, each at 5pm on that day.
+function dueOptions(nowMs: number) {
+  const at5pm = (days: number) => new Date(startOfDay(nowMs) + days * DAY).setHours(17, 0, 0, 0);
+  const days = {
+    Today: 0,
+    Tomorrow: 1,
+    "This Friday": (5 - new Date(nowMs).getDay() + 7) % 7 || 7,
+    "Next week": 7,
+  };
+  const options = Object.entries(days).map(([label, n]) => ({
+    label,
+    value: at5pm(n) as number | null,
+  }));
+  return [...options, { label: "No due date", value: null }];
+}
 
-// A property chip that opens a small menu of options, styled like the search panel.
+// A property chip that opens a small menu of options, optionally with a field for typing a value in words.
 export function MenuChip<T>(props: {
   label: string;
   icon?: JSX.Element;
-  tone?: ChipTone;
+  tone?: keyof typeof chipTone;
   options: { label: string; value: T; icon?: JSX.Element }[];
   onSelect: (value: T) => void;
-  // Shown on hover.
   title?: string;
-  // A field at the top of the menu for typing a value in words, with what it reads as.
   typed?: { placeholder: string; parse: (text: string) => { label: string; value: T } | null };
 }): JSX.Element {
   const [open, setOpen] = createSignal(false);
@@ -270,26 +190,29 @@ export function MenuChip<T>(props: {
     setText("");
   };
   let root!: HTMLSpanElement;
-
-  createEffect(
-    () => open(),
-    (isOpen) => {
-      if (!isOpen) return;
-      const onPointerDown = (event: PointerEvent): void => {
-        if (!root.contains(event.target as Node)) setOpen(false);
-      };
-      const onKeyDown = (event: KeyboardEvent): void => {
-        if (event.key === "Escape") setOpen(false);
-      };
-      window.addEventListener("pointerdown", onPointerDown);
-      window.addEventListener("keydown", onKeyDown);
-      return () => {
-        window.removeEventListener("pointerdown", onPointerDown);
-        window.removeEventListener("keydown", onKeyDown);
-      };
-    },
+  createEffect(open, (isOpen) => {
+    if (!isOpen) return;
+    const close = (event: Event): void => {
+      const key = event instanceof KeyboardEvent;
+      if (key ? event.key === "Escape" : !root.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", close);
+    };
+  });
+  const item = (label: string, value: T, optionIcon?: JSX.Element) => (
+    <div
+      class={sx(menuStyles.item, menuStyles.itemHover)}
+      role="menuitem"
+      onClick={() => choose(value)}
+    >
+      {optionIcon}
+      {label}
+    </div>
   );
-
   return (
     <span ref={root} class={sx(styles.chipAnchor)}>
       <button
@@ -314,245 +237,134 @@ export function MenuChip<T>(props: {
                 spellcheck={false}
                 value={text()}
                 onInput={(event) => setText(event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  const value = parsed();
-                  if (event.key === "Enter" && value !== null) choose(value.value);
-                }}
+                onKeyDown={(event) => event.key === "Enter" && parsed() && choose(parsed()!.value)}
               />
             )}
           </Show>
-          <Show when={parsed()}>
-            {(value) => (
-              <div
-                class={sx(menuStyles.item, menuStyles.itemHover)}
-                role="menuitem"
-                onClick={() => choose(value().value)}
-              >
-                {value().label}
-              </div>
-            )}
-          </Show>
-          <For each={props.options}>
-            {(option) => (
-              <div
-                class={sx(menuStyles.item, menuStyles.itemHover)}
-                role="menuitem"
-                onClick={() => choose(option.value)}
-              >
-                {option.icon}
-                {option.label}
-              </div>
-            )}
-          </For>
+          <Show when={parsed()}>{(value) => item(value().label, value().value)}</Show>
+          <For each={props.options}>{(o) => item(o.label, o.value, o.icon)}</For>
         </div>
       </Show>
     </span>
   );
 }
 
-// A thread's labels: pick any, or type a new one. A group's label puts the thread in that group.
-function LabelChip(props: { thread: Thread; actions: ThreadActions }): JSX.Element {
-  const links = useApp().links;
-  const offered = createMemo(() => [
-    ...new Map(
-      [
-        ...selectableLabels(links.labels, links.groups),
-        ...links.labels.filter((label) => props.thread.labelIds.includes(label.id)),
-      ].map((label) => [label.id, label]),
-    ).values(),
-  ]);
-  return (
-    <MenuChip
-      label={labelsLabel(props.thread.labelIds, links.labels)}
-      icon={<Icon icon={Tag01Icon} {...ICON_PROPS} />}
-      tone={props.thread.labelIds.length === 0 ? "muted" : undefined}
-      options={offered().map((label) => ({
-        label: label.name,
-        value: { id: label.id, name: label.name },
-        icon: props.thread.labelIds.includes(label.id) ? (
-          <Icon icon={Tick02Icon} {...ICON_PROPS} />
-        ) : undefined,
-      }))}
-      typed={{
-        placeholder: "Find or make a label…",
-        parse: (text) => {
-          const name = text.trim();
-          const id = labelSlug(name);
-          if (id === "") return null;
-          const existing = links.labels.find(
-            (label) => label.id === id || labelSlug(label.name) === id,
-          );
-          return existing === undefined
-            ? { label: `Make “${name}”`, value: { id, name } }
-            : { label: existing.name, value: { id: existing.id, name: existing.name } };
-        },
-      }}
-      onSelect={(label) => props.actions.onToggleLabel(label)}
-    />
-  );
-}
+const statusIcon = (value: Status) => (
+  <span class={sx(status.dot, value !== "open" && statusDot[value])} aria-hidden="true" />
+);
 
-// "No labels", "Security", or "Security +1".
-function labelsLabel(labelIds: string[], labels: { id: string; name: string }[]): string {
-  const [first, ...rest] = labels.filter((label) => labelIds.includes(label.id));
-  if (first === undefined) return "No labels";
-  return rest.length === 0 ? first.name : `${first.name} +${rest.length}`;
-}
-
-function StatusDot(props: { status: Status }): JSX.Element {
-  return (
-    <span
-      class={sx(statusStyles.dot, props.status !== "open" && statusDot[props.status])}
-      aria-hidden="true"
-    />
-  );
-}
-
-// The top of every thread. An issue shows the ask (who wants what from whom), its title and description, and its
-// properties, including which of your buckets it's in while it waits on you; a conversation shows who's in it.
-function ThreadHeader(props: {
-  thread: Thread;
-  ask: MessageEntry | undefined;
-  actions: ThreadActions;
-}): JSX.Element {
+// The top of a thread: who asked and when, the title and description, then its properties, including which of your
+// buckets it's in while it's in your inbox.
+function ThreadHeader(props: { thread: Thread; ask: MessageEntry | undefined }): JSX.Element {
   const app = useApp();
-  const me = app.me;
-  const due = createMemo(() =>
-    props.thread.dueAtMs === null ? null : formatDue(props.thread.dueAtMs, app.now()),
-  );
-  const statuses = Object.keys(STATUS_LABELS) as Status[];
-  const priorities = Object.keys(PRIORITY_LABELS) as Priority[];
-  const priorityTone = (): ChipTone | undefined =>
-    props.thread.priority === "urgent"
-      ? "urgent"
-      : props.thread.priority === "none"
-        ? "muted"
-        : undefined;
-  const dueTone = (): ChipTone | undefined => {
-    const shown = due();
-    return shown === null ? "muted" : shown.overdue ? "urgent" : undefined;
-  };
-  // Its bucket shows only to people whose inbox it's in, since buckets are theirs.
-  const inMyInbox = createMemo(() => inboxPeople(props.thread).includes(me().id));
-  const buckets = createMemo(() => bucketsOf(me()));
-  const triage = createMemo(() => props.thread.triage[me().id] ?? null);
-  const bucket = createMemo(() =>
-    buckets().find((candidate) => candidate.id === triage()?.bucketId),
-  );
+  const links = app.links;
+  const t = (): Thread => props.thread;
+  const actions = (): ThreadActions => app.threads.actionsFor(t());
+  const due = () => (t().dueAtMs === null ? null : formatDue(t().dueAtMs!, app.now()));
+  const buckets = createMemo(() => bucketsOf(app.me()));
   const icons = createMemo(() => bucketIcons(buckets()));
-  const bucketIcon = createMemo(() => {
-    const current = bucket();
-    return (current && icons().get(current.id)) ?? InboxIcon;
-  });
-
+  const bucketIcon = (id?: string) => icons().get(id ?? "") ?? InboxIcon;
+  const triage = (): Thread["triage"][string] | undefined => t().triage[app.me().id];
+  const bucket = () => buckets().find((b) => b.id === triage()?.bucketId);
+  const bucketTitle = (): string =>
+    triage() === undefined
+      ? "Being sorted into one of your buckets"
+      : triage()!.manual
+        ? "Placed by you"
+        : triage()!.reason;
+  const has = (id: string): boolean => t().labelIds.includes(id);
+  const offered = () => {
+    const all = [
+      ...selectableLabels(links.labels, links.groups),
+      ...links.labels.filter((l) => has(l.id)),
+    ];
+    return [...new Map(all.map(({ id, name }) => [id, { id, name }])).values()];
+  };
+  const labelsLabel = (): string => {
+    const [first, ...rest] = links.labels.filter((label) => has(label.id));
+    if (first === undefined) return "No labels";
+    return rest.length === 0 ? first.name : `${first.name} +${rest.length}`;
+  };
+  const parseLabel = (text: string) => {
+    const name = text.trim();
+    const id = labelSlug(name);
+    if (id === "") return null;
+    const found = links.labels.find((label) => label.id === id || labelSlug(label.name) === id);
+    if (found === undefined) return { label: `Make “${name}”`, value: { id, name } };
+    return { label: found.name, value: { id: found.id, name: found.name } };
+  };
   const description = (): string => props.ask?.text.trim() ?? "";
+  const priorityTone = () =>
+    t().priority === "urgent" ? "urgent" : muted(t().priority === "none");
+  const bucketOptions = () => [
+    ...buckets().map(({ id, name }) => ({
+      label: name,
+      value: id as string | null,
+      icon: icon(id === bucket()?.id ? Tick02Icon : bucketIcon(id)),
+    })),
+    ...(triage()?.manual ? [{ label: "Sort it for me", value: null }] : []),
+  ];
 
   return (
-    <header
-      class={sx(thread.block, thread.header)}
-      id={props.ask === undefined ? undefined : `entry-${props.ask.id}`}
-    >
-      {/* The thread opens like its first message: who asked and when, then what it's about. */}
-      <Show when={props.ask} fallback={<span class={sx(thread.avatar)} />}>
-        {(ask) => <Avatar person={ask().author} />}
-      </Show>
+    <header class={sx(thread.block, thread.header)} id={props.ask && `entry-${props.ask.id}`}>
+      <span class={sx(thread.avatar)}>{props.ask && avatar(props.ask.author)}</span>
       <div class={sx(thread.body, thread.headerBody)}>
         <Show when={props.ask}>
-          {(ask) => (
-            <div {...stylex.attrs(thread.meta, threadLineMarker)}>
-              <button
-                type="button"
-                class={sx(link.person, thread.author)}
-                onClick={() => app.links.openPerson(ask().author.id)}
-              >
-                {ask().author.name}
-              </button>
-              <span class={sx(styles.time)}>
-                {formatRelativeTime(ask().createdAtMs, app.now())}
-              </span>
-            </div>
-          )}
+          {(ask) => <Meta person={ask().author} atMs={ask().createdAtMs} marker />}
         </Show>
-        <Show when={props.thread.branchedFromId}>
-          {(branchedFromId) => (
+        <Show when={t().branchedFromId}>
+          {(id) => (
             <div {...stylex.attrs(thread.byline, threadLineMarker)}>
               <span>Branched from</span>
-              <ThreadLinkChip threadId={branchedFromId()} inByline />
+              <ThreadLinkChip threadId={id()} inByline />
             </div>
           )}
         </Show>
-        <h1 class={sx(thread.title, thread.headerTitle)}>{props.thread.title}</h1>
+        <h1 class={sx(thread.title, thread.headerTitle)}>{t().title}</h1>
         <Show when={description() !== ""}>
           <MessageText text={description()} description />
         </Show>
         <div class={sx(styles.properties)}>
           <MenuChip
-            label={STATUS_LABELS[props.thread.status]}
-            icon={<StatusDot status={props.thread.status} />}
-            options={statuses.map((status) => ({
-              label: STATUS_LABELS[status],
-              value: status,
-              icon: <StatusDot status={status} />,
+            label={STATUS_LABELS[t().status]}
+            icon={statusIcon(t().status)}
+            options={(Object.keys(STATUS_LABELS) as Status[]).map((value) => ({
+              label: STATUS_LABELS[value],
+              value,
+              icon: statusIcon(value),
             }))}
-            onSelect={(status) => props.actions.onSetStatus(status)}
+            onSelect={(value) => actions().onSetStatus(value)}
           />
-          <Show when={inMyInbox()}>
+          <Show when={inboxPeople(t()).includes(app.me().id)}>
             <MenuChip
               label={bucket()?.name ?? "Sorting…"}
-              icon={<Icon icon={bucketIcon()} {...ICON_PROPS} />}
-              tone={bucket() === undefined ? "muted" : undefined}
-              title={(() => {
-                const current = triage();
-                return current === null
-                  ? "Being sorted into one of your buckets"
-                  : current.manual
-                    ? "Placed by you"
-                    : current.reason;
-              })()}
-              options={[
-                ...buckets().map((option) => ({
-                  label: option.name,
-                  value: option.id as string | null,
-                  icon: (
-                    <Icon
-                      icon={
-                        option.id === bucket()?.id
-                          ? Tick02Icon
-                          : (icons().get(option.id) ?? InboxIcon)
-                      }
-                      {...ICON_PROPS}
-                    />
-                  ),
-                })),
-                ...(triage()?.manual ? [{ label: "Sort it for me", value: null }] : []),
-              ]}
-              onSelect={(bucketId) => props.actions.onSetBucket(bucketId)}
+              icon={icon(bucketIcon(bucket()?.id))}
+              tone={muted(bucket() === undefined)}
+              title={bucketTitle()}
+              options={bucketOptions()}
+              onSelect={(id) => actions().onSetBucket(id)}
             />
           </Show>
           <MenuChip
-            label={PRIORITY_LABELS[props.thread.priority]}
+            label={PRIORITY_LABELS[t().priority]}
             tone={priorityTone()}
-            options={priorities.map((priority) => ({
-              label: PRIORITY_LABELS[priority],
-              value: priority,
+            options={(Object.keys(PRIORITY_LABELS) as Priority[]).map((value) => ({
+              label: PRIORITY_LABELS[value],
+              value,
             }))}
-            onSelect={(priority) => props.actions.onSetPriority(priority)}
+            onSelect={(value) => actions().onSetPriority(value)}
           />
           <MenuChip
             label={due()?.label ?? "No due date"}
-            icon={<Icon icon={Calendar01Icon} {...ICON_PROPS} />}
-            tone={dueTone()}
+            icon={icon(Calendar01Icon)}
+            tone={due()?.overdue ? "urgent" : muted(due() === null)}
             options={dueOptions(app.now())}
-            onSelect={(dueAtMs) => props.actions.onSetDue(dueAtMs)}
+            onSelect={(value) => actions().onSetDue(value)}
           />
           <MenuChip
-            label={
-              props.thread.effortHours === null
-                ? "No estimate"
-                : formatEffort(props.thread.effortHours)
-            }
-            icon={<Icon icon={HourglassIcon} {...ICON_PROPS} />}
-            tone={props.thread.effortHours === null ? "muted" : undefined}
+            label={t().effortHours === null ? "No estimate" : formatEffort(t().effortHours!)}
+            icon={icon(HourglassIcon)}
+            tone={muted(t().effortHours === null)}
             options={[
               ...EFFORT_OPTIONS.map((hours) => ({
                 label: formatEffort(hours),
@@ -560,190 +372,165 @@ function ThreadHeader(props: {
               })),
               { label: "No estimate", value: null },
             ]}
-            onSelect={(effortHours) => props.actions.onSetEffort(effortHours)}
+            onSelect={(value) => actions().onSetEffort(value)}
           />
-          <LabelChip thread={props.thread} actions={props.actions} />
+          <MenuChip
+            label={labelsLabel()}
+            icon={icon(Tag01Icon)}
+            tone={muted(t().labelIds.length === 0)}
+            options={offered().map((label) => ({
+              label: label.name,
+              value: label,
+              icon: has(label.id) ? icon(Tick02Icon) : undefined,
+            }))}
+            typed={{ placeholder: "Find or make a label…", parse: parseLabel }}
+            onSelect={(label) => actions().onToggleLabel(label)}
+          />
         </div>
       </div>
     </header>
   );
 }
 
-function MessageBlock(props: {
-  message: MessageEntry;
+// One entry after the header. Messages can be selected to move: a run of selected neighbours reads as one box.
+function EntryBlock(props: {
+  entry: Entry;
+  afterEvent: boolean;
   selected: boolean;
-  // Where a selected message sits in a run of selected neighbours, so the run reads as one box.
-  run: "single" | "start" | "middle" | "end" | undefined;
-  // While some messages are selected, a click selects instead of placing the cursor.
+  run: Run;
   selecting: boolean;
-  onSelect?: (mode: SelectMode) => void;
-  onContextMenu?: (event: MouseEvent) => void;
+  onSelect: (mode: SelectMode) => void;
+  onContextMenu: (event: MouseEvent) => void;
 }): JSX.Element {
+  const app = useApp();
+  const entry = (): Entry => props.entry;
+  const message = (): MessageEntry => props.entry as MessageEntry;
+  const time = (): string => formatRelativeTime(entry().createdAtMs, app.now());
   // Whoever the message names: the people it mentions and the members of the groups it mentions.
-  const app = useApp();
-  const links = app.links;
-  const named = createMemo(
-    () =>
-      new Set([
-        ...mentionsIn(props.message.text),
-        ...groupMentionsIn(props.message.text).flatMap(
-          (groupId) => links.groups.find((group) => group.id === groupId)?.memberIds ?? [],
-        ),
-      ]),
-  );
-  const modeFor = (event: MouseEvent): SelectMode | undefined =>
-    event.shiftKey ? "range" : event.metaKey || props.selecting ? "toggle" : undefined;
-  return (
-    <div
-      class={sx(
-        thread.block,
-        styles.message,
-        props.selected && styles.selected,
-        props.run === "start" && styles.runStart,
-        props.run === "middle" && styles.runMiddle,
-        props.run === "end" && styles.runEnd,
-        props.selecting && styles.selecting,
-      )}
-      id={`entry-${props.message.id}`}
-      onMouseDown={(event) => {
-        // Shift-click selects messages, not text.
-        if (event.shiftKey) event.preventDefault();
-      }}
-      onClick={(event) => {
-        if ((event.target as HTMLElement).closest("button, a") !== null) return;
-        const mode = modeFor(event);
-        if (mode !== undefined) props.onSelect?.(mode);
-      }}
-      onContextMenu={(event) => props.onContextMenu?.(event)}
-    >
-      <Avatar person={props.message.author} />
-      <div class={sx(thread.body)}>
-        <div class={sx(thread.meta)}>
-          <button
-            type="button"
-            class={sx(link.person, thread.author)}
-            onClick={() => links.openPerson(props.message.author.id)}
-          >
-            {props.message.author.name}
-          </button>
-          {/* Who it was sent to, unless the message @mentions them all already (or the groups they're in), or that it's
-              a note nobody was told about. The description is neither. */}
-          <Show
-            when={props.message.sentTo.length !== 0}
-            fallback={<span class={sx(styles.note)}>Note</span>}
-          >
-            <Show when={!props.message.sentTo.every((person) => named().has(person.id))}>
-              <span class={sx(styles.sentTo)}>
-                to {props.message.sentTo.map((person) => person.name.split(" ")[0]).join(", ")}
-              </span>
-            </Show>
-          </Show>
-          <span class={sx(styles.time)}>
-            {formatRelativeTime(props.message.createdAtMs, app.now())}
-          </span>
-        </div>
-        <MessageText text={props.message.text} />
-      </div>
-    </div>
-  );
-}
-
-// An activity line; one right after another sits closer to it.
-function EventLine(props: { event: EventEntry; afterEvent: boolean }): JSX.Element {
-  const app = useApp();
-  return (
+  const named = (): Set<string> => {
+    const groupIds = groupMentionsIn(message().text);
+    const groups = app.links.groups.filter((group) => groupIds.includes(group.id));
+    return new Set([...mentionsIn(message().text), ...groups.flatMap((group) => group.memberIds)]);
+  };
+  const sentTo = (): Person[] => message().sentTo;
+  const onClick = (event: MouseEvent): void => {
+    if ((event.target as HTMLElement).closest("button, a") !== null) return;
+    if (event.shiftKey) props.onSelect("range");
+    else if (event.metaKey || props.selecting) props.onSelect("toggle");
+  };
+  const event = (): JSX.Element => (
     <div
       class={sx(thread.block, styles.event, props.afterEvent && styles.eventAfterEvent)}
-      id={`entry-${props.event.id}`}
+      id={`entry-${entry().id}`}
     >
-      {/* No marker, just the avatar's width, so the line lines up with the text column. */}
       <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true" />
-      <div class={sx(styles.eventText)}>
-        <span class={sx(styles.eventActor)}>{props.event.actor.name}</span>{" "}
-        <LinkedText text={props.event.text} />
-        <span> · {formatRelativeTime(props.event.createdAtMs, app.now())}</span>
+      <div class={sx(styles.quiet, styles.eventText)}>
+        <span class={sx(styles.eventActor)}>{(entry() as { actor: Person }).actor.name}</span>{" "}
+        <LinkedText text={entry().text} />
+        <span> · {time()}</span>
       </div>
     </div>
   );
-}
-
-function ResolutionMarker(): JSX.Element {
-  return (
-    <span class={sx(thread.avatar, styles.resolutionMarker)} aria-hidden="true">
-      <Icon icon={Tick02Icon} size={12} />
-    </span>
-  );
-}
-
-function ResolutionBlock(props: { resolution: ResolutionEntry }): JSX.Element {
-  const app = useApp();
-  return (
-    <div class={sx(thread.block)} id={`entry-${props.resolution.id}`}>
-      <ResolutionMarker />
+  const resolution = (): JSX.Element => (
+    <div class={sx(thread.block)} id={`entry-${entry().id}`}>
+      <span class={sx(thread.avatar, styles.resolutionMarker, styles.resolved)} aria-hidden="true">
+        {icon(Tick02Icon, 12)}
+      </span>
       <div class={sx(thread.body)}>
         <div class={sx(thread.meta)}>
           <span class={sx(thread.author, thread.authorResolved)}>Done</span>
-          <span class={sx(styles.time)}>
-            {props.resolution.author.name} ·{" "}
-            {formatRelativeTime(props.resolution.createdAtMs, app.now())}
+          <span class={sx(styles.quiet)}>
+            {message().author.name} · {time()}
           </span>
         </div>
-        <MessageText text={props.resolution.text} />
+        <MessageText text={entry().text} />
       </div>
     </div>
   );
+  return (
+    <Show when={entry().kind !== "event"} fallback={event()}>
+      <Show when={entry().kind === "message"} fallback={resolution()}>
+        <div
+          class={sx(
+            thread.block,
+            styles.message,
+            props.selected && styles.selected,
+            props.run && styles[props.run],
+            props.selecting && styles.selecting,
+          )}
+          id={`entry-${entry().id}`}
+          // Shift-click selects messages, not text.
+          onMouseDown={(event) => event.shiftKey && event.preventDefault()}
+          onClick={onClick}
+          onContextMenu={(event) => props.onContextMenu(event)}
+        >
+          <span class={sx(thread.avatar)}>{avatar(message().author)}</span>
+          <div class={sx(thread.body)}>
+            <Meta person={message().author} atMs={message().createdAtMs}>
+              {/* Who it went to, unless it @mentions them all already; or that it's a note nobody was told about. */}
+              <Show
+                when={sentTo().length !== 0}
+                fallback={<span class={sx(styles.note, styles.noteShape)}>Note</span>}
+              >
+                <Show when={!sentTo().every((person) => named().has(person.id))}>
+                  <span class={sx(styles.quiet)}>to {sentTo().map(firstName).join(", ")}</span>
+                </Show>
+              </Show>
+            </Meta>
+            <MessageText text={message().text} />
+          </div>
+        </div>
+      </Show>
+    </Show>
+  );
 }
 
-// The next message, written in place at the end of the thread. Enter sends it to the other side (whoever last sent you
-// something here, else whoever's on the other end) plus anyone you @mention, which puts the thread in their inbox.
-// With nobody to send to, it's a note. The To line shows only once you've mentioned someone, to add or take people
-// off. Shift+Enter breaks the line.
+type MenuOption = {
+  kind: CaretKind | "new";
+  id: string;
+  label: string;
+  hint?: string;
+  svg?: IconSvgElement;
+};
+
+// The next message, written in place at the end of the thread. Enter sends it to `defaultTo` plus anyone you
+// @mention, or with nobody to send to, keeps it as a note. The To line shows once you've mentioned someone.
 function ReplyBlock(props: {
-  threadId: string;
+  thread: Thread;
   placeholder: string;
-  // Hands the thread a way to focus the reply (null once it's gone), for clicks on empty space around the document.
+  // Hands the thread a way to focus the reply (null once it's gone), for clicks on empty space.
   focusRef: (focus: (() => void) | null) => void;
-  // Who Enter sends to, before mentions.
   defaultTo: Person[];
-  onNote: (text: string) => void;
-  onSend: (text: string, to: Person[]) => void;
-  onBranch: ThreadActions["onBranch"];
-  onCommand: (name: CommandName) => void;
-  // Whether the reply takes the cursor when it appears.
   autoFocus: boolean;
 }): JSX.Element {
   const app = useApp();
   const me = app.me;
-  // Who's @mentioned in the draft, read from the editor, and who's been added or taken off the To line by hand. Both
-  // clear once the message is sent.
+  const links = app.links;
+  const actions = (): ThreadActions => app.threads.actionsFor(props.thread);
   const [mentionedIds, setMentionedIds] = createSignal<string[]>([]);
   const [addedIds, setAddedIds] = createSignal<string[]>([]);
   const [removedIds, setRemovedIds] = createSignal<string[]>([]);
-  // A mentioned group sends it to its members as they are now.
-  const links = app.links;
-  const to = createMemo(() =>
-    [
-      ...props.defaultTo,
-      ...recipientsOf([...mentionedIds(), ...addedIds()], app.data.people(), links.groups, me()),
-    ].filter(
+  const unremove = (id: string): string[] =>
+    setRemovedIds((ids) => ids.filter((other) => other !== id));
+  const to = createMemo(() => {
+    const mentioned = recipientsOf(
+      [...mentionedIds(), ...addedIds()],
+      app.data.people(),
+      links.groups,
+      me(),
+    );
+    return [...props.defaultTo, ...mentioned].filter(
       (person, index, all) =>
         person.id !== me().id &&
         !removedIds().includes(person.id) &&
         all.findIndex((other) => other.id === person.id) === index,
-    ),
-  );
-  const reset = (): void => {
-    setAddedIds([]);
-    setRemovedIds([]);
-  };
+    );
+  });
 
   // Made as its element is, so the reply has its full height when the thread first scrolls to it.
-  let editor: Editor | undefined;
+  let editor!: Editor;
   const mountEditor = (element: HTMLDivElement): void => {
-    const { placeholder, autoFocus } = untrack(() => ({
-      placeholder: props.placeholder,
-      autoFocus: props.autoFocus,
-    }));
+    const { placeholder, autoFocus } = untrack(() => ({ ...props }));
     editor = new Editor({
       element,
       autofocus: autoFocus ? "end" : false,
@@ -751,18 +538,17 @@ function ReplyBlock(props: {
         // No underline, so ⌘U stays the app's user picker.
         StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
         Placeholder.configure({ placeholder }),
-        ThreadLinkNode,
-        MentionNode,
-        SlashCommands,
+        ...caretExtensions((kind, menu) => {
+          setMenus((all) => ({ ...all, [kind]: menu }));
+          setSelected(0);
+        }),
       ],
       onUpdate: ({ editor: current }) => {
         const ids: string[] = [];
         current.state.doc.descendants((node) => {
           if (node.type.name === "mention") ids.push(String(node.attrs.id));
         });
-        const previous = mentionedIds();
-        if (previous.length !== ids.length || previous.some((id, index) => id !== ids[index]))
-          setMentionedIds(ids);
+        if (ids.join() !== mentionedIds().join()) setMentionedIds(ids);
       },
       editorProps: {
         attributes: {
@@ -770,297 +556,193 @@ function ReplyBlock(props: {
           "aria-label": "Reply",
         },
         handleKeyDown: (view, event) => {
-          // The `#` and `/` menus, when open, get keys first.
-          if (offerKey(view.dom, event)) return true;
+          // An open caret menu gets keys first.
+          if (onMenuKey(event)) return true;
           if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
-          // Thread links go out as `[[thread:<id>]]`.
-          const text = view.state.doc
-            .textBetween(0, view.state.doc.content.size, "\n", (leaf) =>
-              leaf.type.name === "threadLink"
-                ? threadLink(String(leaf.attrs.id))
-                : leaf.type.name === "mention"
-                  ? mentionToken(String(leaf.attrs.id))
-                  : "",
-            )
-            .trim();
-          if (text.length > 0) {
-            const recipients = to();
-            if (recipients.length > 0) props.onSend(text, recipients);
-            else props.onNote(text);
-            view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
-            reset();
-          }
+          // Chips go out as their tokens (`[[thread:<id>]]`, `[[person:<id>]]`).
+          const text = editor.getText({ blockSeparator: "\n" }).trim();
+          if (text.length === 0) return true;
+          if (to().length > 0) actions().onSend(text, to());
+          else actions().onNote(text);
+          view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
+          setAddedIds([]);
+          setRemovedIds([]);
           return true;
         },
       },
     });
   };
 
-  // The `#` and `/` menus: their extensions announce them on the editor; this renders whichever is open and handles
-  // its keys.
-  const [menu, setMenu] = createSignal<ThreadMenuState>(null);
-  const [commandMenu, setCommandMenu] = createSignal<CommandMenuState>(null);
-  const [mentionMenu, setMentionMenu] = createSignal<MentionMenuState>(null);
+  // The caret menus; with more than one open (`#a @b`), `/` wins, then `@`.
+  const [menus, setMenus] = createSignal<Partial<Record<CaretKind, CaretMenu | null>>>({});
   const [selected, setSelected] = createSignal(0);
-  const open = createMemo(() => commandMenu() ?? mentionMenu() ?? menu());
+  const openKind = (): CaretKind | undefined =>
+    (["command", "mention", "thread"] as const).find((k) => menus()[k]);
   const options = createMemo((): MenuOption[] => {
-    const commands = commandMenu();
-    const mentions = mentionMenu();
-    const threads = menu();
-    return commands !== null
-      ? COMMANDS.filter((command) => command.name.startsWith(commands.query.toLowerCase())).map(
-          (command) => ({ kind: "command", ...command }),
-        )
-      : mentions !== null
-        ? links.people
-            .filter(
-              (person) =>
-                person.id !== me().id &&
-                person.name.toLowerCase().includes(mentions.query.toLowerCase()),
-            )
-            .map((person): MenuOption => ({ kind: "person", person }))
-            .concat(
-              links.groups
-                .filter(
-                  (group) =>
-                    !group.archived &&
-                    group.name.toLowerCase().includes(mentions.query.toLowerCase()),
-                )
-                .map((group) => ({
-                  kind: "person",
-                  person: { id: groupTarget(group.id), name: group.name },
-                })),
-            )
-        : threads === null
-          ? []
-          : menuOptions(threads.query, links.search, props.threadId);
+    const kind = openKind();
+    if (kind === undefined) return [];
+    const typed = menus()[kind]!.query;
+    const query = typed.toLowerCase();
+    const has = (name: string): boolean => name.toLowerCase().includes(query);
+    if (kind === "command")
+      return COMMANDS.filter(([id]) => id.startsWith(query)).map(([id, label, hint, svg]) => ({
+        kind,
+        id,
+        label,
+        hint,
+        svg,
+      }));
+    if (kind === "mention") {
+      const people = links.people.filter((person) => person.id !== me().id && has(person.name));
+      const groups = links.groups.filter((group) => !group.archived && has(group.name));
+      const named = [
+        ...people,
+        ...groups.map((group) => ({ id: groupTarget(group.id), name: group.name })),
+      ];
+      return named.map(({ id, name }) => ({
+        kind,
+        id,
+        label: name,
+        hint: id.startsWith(GROUP_TARGET)
+          ? "sends it to everyone in the group"
+          : "sends it to them too",
+      }));
+    }
+    // Threads matching what's typed, then a new thread titled by it unless one already has that title.
+    const title = typed.trim();
+    const found = links.search(title);
+    const result: MenuOption[] = found
+      .filter((match) => match.id !== props.thread.id)
+      .slice(0, 6)
+      .map((match) => ({ kind, id: match.id, label: match.title, svg: GitBranchIcon }));
+    if (title !== "" && !found.some((match) => match.title.toLowerCase() === title.toLowerCase()))
+      result.push({ kind: "new", id: "", label: "New thread", hint: title, svg: Add01Icon });
+    return result;
   });
+  const current = (): number => Math.min(selected(), options().length - 1);
   const choose = (option: MenuOption): void => {
-    const threads = menu();
+    const menu = menus()[openKind()!];
     if (option.kind === "command") {
-      commandMenu()?.take();
-      props.onCommand(option.name);
-    } else if (option.kind === "person") {
-      // The mention puts them on the To line (read back from the editor).
-      mentionMenu()?.pick(option.person);
-      setRemovedIds((current) => current.filter((id) => id !== option.person.id));
-    } else if (threads === null) return;
-    else if (option.kind === "link") threads.pick(option.link);
-    else threads.pick({ id: props.onBranch(option.title), title: option.title });
+      menu?.pick();
+      if (option.id === "blocked") actions().onBlocked();
+      if (option.id === "close") actions().onSetStatus("closed");
+      if (option.id === "task") actions().onTask();
+    } else if (option.kind === "mention") {
+      menu?.pick({ id: option.id, name: option.label });
+      unremove(option.id);
+    } else if (option.kind === "thread") menu?.pick({ id: option.id, title: option.label });
+    else menu?.pick({ id: actions().onBranch(option.hint!), title: option.hint });
   };
 
+  const onMenuKey = (key: KeyboardEvent): boolean => {
+    const kind = openKind();
+    const count = options().length;
+    if (kind === undefined) return false;
+    if (key.key === "Escape") closeCaretMenu(editor.view, kind);
+    else if (count === 0) return false;
+    else if (key.key === "ArrowDown") setSelected((selected() + 1) % count);
+    else if (key.key === "ArrowUp") setSelected((selected() - 1 + count) % count);
+    else if ((key.key === "Enter" && !key.shiftKey) || key.key === "Tab")
+      choose(options()[current()]);
+    else return false;
+    return true;
+  };
   onSettled(() => {
-    const current = editor;
-    if (current === undefined) return;
-    const view = current.view;
-    const dom = view.dom;
-    props.focusRef(() => current.commands.focus("end"));
-    const onMenu = (event: Event): void => {
-      setMenu((event as CustomEvent<ThreadMenuState>).detail);
-      setSelected(0);
-    };
-    const onCommandMenu = (event: Event): void => {
-      setCommandMenu((event as CustomEvent<CommandMenuState>).detail);
-      setSelected(0);
-    };
-    const onMentionMenu = (event: Event): void => {
-      setMentionMenu((event as CustomEvent<MentionMenuState>).detail);
-      setSelected(0);
-    };
-    const onKey = (event: Event): void => {
-      if (open() === null) return;
-      const key = (event as CustomEvent<KeyboardEvent>).detail;
-      const shown = options();
-      const index = selected();
-      if (key.key === "Escape") {
-        if (commandMenu() !== null) closeCommandMenu(view);
-        else if (mentionMenu() !== null) closeMentionMenu(view);
-        else closeThreadMenu(view);
-      } else if (shown.length === 0) return;
-      else if (key.key === "ArrowDown") setSelected((index + 1) % shown.length);
-      else if (key.key === "ArrowUp") setSelected((index - 1 + shown.length) % shown.length);
-      else if ((key.key === "Enter" && !key.shiftKey) || key.key === "Tab")
-        choose(shown[Math.min(index, shown.length - 1)]);
-      else return;
-      event.preventDefault();
-    };
-    dom.addEventListener(THREAD_MENU_EVENT, onMenu);
-    dom.addEventListener(COMMAND_MENU_EVENT, onCommandMenu);
-    dom.addEventListener(MENTION_MENU_EVENT, onMentionMenu);
-    dom.addEventListener(THREAD_MENU_KEY, onKey);
+    props.focusRef(() => editor.commands.focus("end"));
     return () => {
-      dom.removeEventListener(THREAD_MENU_EVENT, onMenu);
-      dom.removeEventListener(COMMAND_MENU_EVENT, onCommandMenu);
-      dom.removeEventListener(MENTION_MENU_EVENT, onMentionMenu);
-      dom.removeEventListener(THREAD_MENU_KEY, onKey);
       props.focusRef(null);
-      current.destroy();
+      editor.destroy();
     };
   });
+  const addable = (): Person[] =>
+    app.data
+      .people()
+      .filter((person) => person.id !== me().id && !to().some((other) => other.id === person.id));
 
   return (
-    <div class={sx(thread.block)} onClick={() => editor?.commands.focus()}>
-      <Avatar person={me()} />
+    <div class={sx(thread.block)} onClick={() => editor.commands.focus()}>
+      <span class={sx(thread.avatar)}>{avatar(me())}</span>
       <div class={sx(thread.body)}>
         <div class={sx(thread.meta)}>
           <span class={sx(thread.author)}>{me().name}</span>
         </div>
         <div ref={mountEditor} class={sx(styles.reply)} />
         <Show when={mentionedIds().length > 0}>
-          <div class={sx(styles.replyTo)} onClick={(event) => event.stopPropagation()}>
+          <div
+            class={sx(styles.quiet, styles.replyTo)}
+            onClick={(event) => event.stopPropagation()}
+          >
             <span class={sx(styles.replyToLabel)}>To</span>
             <For each={to()}>
               {(person) => (
-                <span class={sx(styles.replyToPerson)}>
-                  <Identicon seed={person.id} size={12} />
-                  {person.name.split(" ")[0]}
+                <span class={sx(chip.chip, chipTone.static, styles.replyToPerson)}>
+                  {avatar(person, 12)}
+                  {firstName(person)}
                   <button
                     type="button"
                     class={sx(styles.replyToRemove)}
                     aria-label={`Don't send to ${person.name}`}
-                    onClick={() => setRemovedIds((current) => [...current, person.id])}
+                    onClick={() => setRemovedIds((ids) => [...ids, person.id])}
                   >
-                    <Icon icon={Cancel01Icon} size={10} aria-hidden="true" />
+                    {icon(Cancel01Icon, 10)}
                   </button>
                 </span>
               )}
             </For>
             <MenuChip
               label={to().length === 0 ? "Add someone" : "Add"}
-              icon={<Icon icon={Add01Icon} size={11} aria-hidden="true" />}
+              icon={icon(Add01Icon, 11)}
               tone="muted"
-              options={app.data
-                .people()
-                .filter(
-                  (person) =>
-                    person.id !== me().id && !to().some((other) => other.id === person.id),
-                )
-                .map((person) => ({
-                  label: person.name,
-                  value: person,
-                  icon: <Identicon seed={person.id} size={14} />,
-                }))}
+              options={addable().map((person) => ({
+                label: person.name,
+                value: person,
+                icon: avatar(person, 14),
+              }))}
               onSelect={(person) => {
-                setAddedIds((current) => [...current, person.id]);
-                setRemovedIds((current) => current.filter((id) => id !== person.id));
+                setAddedIds((ids) => [...ids, person.id]);
+                unremove(person.id);
               }}
             />
           </div>
         </Show>
       </div>
-      <Show when={open() !== null && options().length > 0}>
-        <ThreadMenu
-          rect={open()?.rect ?? null}
-          options={options()}
-          selected={Math.min(selected(), options().length - 1)}
-          onHover={setSelected}
-          onChoose={choose}
-        />
+      {/* On the body, so the content zoom doesn't move it. */}
+      <Show when={options().length > 0 && menus()[openKind()!]?.rect}>
+        {(rect) => (
+          <Portal mount={document.body}>
+            <div
+              class={[sx(menuStyles.menu, styles.caretMenu), "thread-menu"]}
+              role="listbox"
+              aria-label="Link a thread"
+              style={{ left: `${rect().left}px`, top: `${rect().bottom + 6}px` }}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <For each={options()}>
+                {(option, index) => (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={index() === current() ? "true" : "false"}
+                    class={sx(menuStyles.item, index() === current() && menuStyles.itemSelected)}
+                    onMouseEnter={() => setSelected(index())}
+                    onClick={() => choose(option)}
+                  >
+                    {option.svg ? icon(option.svg) : avatar(option, 14)}
+                    <span class={sx(styles.menuTitle)}>
+                      {option.label}{" "}
+                      <span class={sx(option.kind === "new" ? styles.menuNew : styles.menuHint)}>
+                        {option.kind === "new" ? `“${option.hint}”` : option.hint}
+                      </span>
+                    </span>
+                  </button>
+                )}
+              </For>
+            </div>
+          </Portal>
+        )}
       </Show>
     </div>
   );
-}
-
-type MenuOption =
-  | { kind: "link"; link: { id: string; title: string } }
-  | { kind: "new"; title: string }
-  | { kind: "command"; name: CommandName; label: string; hint: string }
-  | { kind: "person"; person: { id: string; name: string } };
-
-const MENU_MATCHES = 6;
-
-// Threads matching what's typed after `#`, then a new thread titled by it unless one already has that title.
-function menuOptions(
-  query: string,
-  search: (query: string) => { id: string; title: string }[],
-  currentThreadId: string,
-): MenuOption[] {
-  const title = query.trim();
-  const found = search(title);
-  const matches = found.filter((thread) => thread.id !== currentThreadId).slice(0, MENU_MATCHES);
-  const options: MenuOption[] = matches.map((link) => ({ kind: "link", link }));
-  // No new thread named like one that exists, including the one you're in.
-  const exact = found.some((thread) => thread.title.toLowerCase() === title.toLowerCase());
-  if (title.length > 0 && !exact) options.push({ kind: "new", title });
-  return options;
-}
-
-// The `#` menu, below the text being typed. Rendered on the body so the content zoom doesn't move it.
-function ThreadMenu(props: {
-  rect: DOMRect | null;
-  options: MenuOption[];
-  selected: number;
-  onHover: (index: number) => void;
-  onChoose: (option: MenuOption) => void;
-}): JSX.Element {
-  return (
-    <Show when={props.rect}>
-      {(rect) => (
-        <Portal mount={document.body}>
-          <div
-            class={[sx(menuStyles.menu, styles.threadMenu), "thread-menu"]}
-            role="listbox"
-            aria-label="Link a thread"
-            style={{ left: `${rect().left}px`, top: `${rect().bottom + 6}px` }}
-            onMouseDown={(event) => event.preventDefault()}
-          >
-            <For each={props.options}>
-              {(option, index) => (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={index() === props.selected ? "true" : "false"}
-                  class={sx(menuStyles.item, index() === props.selected && menuStyles.itemSelected)}
-                  onMouseEnter={() => props.onHover(index())}
-                  onClick={() => props.onChoose(option)}
-                >
-                  {option.kind === "person" ? (
-                    <>
-                      <Identicon seed={option.person.id} size={14} />
-                      <span class={sx(styles.threadMenuTitle)}>
-                        {option.person.name}{" "}
-                        <span class={sx(styles.threadMenuHint)}>
-                          {option.person.id.startsWith(GROUP_TARGET)
-                            ? "sends it to everyone in the group"
-                            : "sends it to them too"}
-                        </span>
-                      </span>
-                    </>
-                  ) : option.kind === "command" ? (
-                    <>
-                      <Icon icon={COMMAND_ICONS[option.name]} {...ICON_PROPS} />
-                      <span class={sx(styles.threadMenuTitle)}>
-                        {option.label} <span class={sx(styles.threadMenuHint)}>{option.hint}</span>
-                      </span>
-                    </>
-                  ) : option.kind === "link" ? (
-                    <>
-                      <Icon icon={GitBranchIcon} {...ICON_PROPS} />
-                      <span class={sx(styles.threadMenuTitle)}>{option.link.title}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Icon icon={Add01Icon} {...ICON_PROPS} />
-                      <span class={sx(styles.threadMenuTitle)}>
-                        New thread <span class={sx(styles.threadMenuNew)}>“{option.title}”</span>
-                      </span>
-                    </>
-                  )}
-                </button>
-              )}
-            </For>
-          </div>
-        </Portal>
-      )}
-    </Show>
-  );
-}
-
-// Who made an entry, if a person did.
-function entryPerson(entry: Entry): Person | undefined {
-  if (entry.kind === "message" || entry.kind === "resolution") return entry.author;
-  if (entry.kind === "event") return entry.actor;
-  return undefined;
 }
 
 export function ThreadView(props: {
@@ -1075,149 +757,99 @@ export function ThreadView(props: {
   let focusReply: (() => void) | null = null;
   const app = useApp();
   const me = app.me;
-  // This thread's changes (each pane's own).
-  const actions = createMemo(() => app.threads.actionsFor(props.thread));
+  const links = app.links;
+  const actions = (): ThreadActions => app.threads.actionsFor(props.thread);
   const entries = (): Entry[] => props.thread.entries;
-  // The description moves into the header, under the title.
+  const by = (entry: Entry): string => (entry.kind === "event" ? entry.actor : entry.author).id;
+  // The description moves into the header.
   const ask = createMemo(() => descriptionOf(props.thread));
-  const rest = createMemo(() => {
-    const description = ask();
-    return description === undefined
-      ? entries()
-      : entries().filter((entry) => entry !== description);
-  });
+  const rest = createMemo(() => entries().filter((entry) => entry !== ask()));
 
-  // Whether you're following the conversation: the reply block is on screen. Scroll it away to read back and new
-  // entries from others stop moving the view; a pill counts them instead. `seenCount` is how many entries the thread
-  // had the last time you were following.
+  // Following: the reply block is on screen. Read back and new entries from others stop moving the view; a pill
+  // counts them instead. `seenCount` is how many entries there were when you last followed.
   const [following, setFollowing] = createSignal(true);
   const [seenCount, setSeenCount] = createSignal(untrack(() => props.thread.entries.length));
   let followingNow = true;
   let lastLength: number | undefined;
-
-  // Puts the reply block at eye level: its bottom edge a third of the way down the view, so where you type sits just
-  // above it. The overscroll spacer leaves room to scroll that far.
+  const replyOffset = () =>
+    endEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top;
+  // The reply's bottom edge a third of the way down the view; the overscroll spacer leaves room to scroll that far.
   const bringReplyIntoView = (behavior: ScrollBehavior = "auto"): void => {
-    const offset = endEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top;
-    scrollEl.scrollTo({
-      top: Math.max(0, scrollEl.scrollTop + offset - scrollEl.clientHeight / 3),
-      behavior,
-    });
+    const top = Math.max(0, scrollEl.scrollTop + replyOffset() - scrollEl.clientHeight / 3);
+    scrollEl.scrollTo({ top, behavior });
   };
-
-  // On opening a thread and whenever it grows: back to the reply block if you're following, or if you made the change.
   createEffect(
-    () => ({ entries: entries(), meId: me().id, autoFocusReply: merged.autoFocusReply }),
-    ({ entries: all, meId, autoFocusReply }) => {
+    () => ({ all: entries(), meId: me().id, autoFocus: merged.autoFocusReply }),
+    ({ all, meId, autoFocus }) => {
       const previous = lastLength;
       lastLength = all.length;
       if (previous !== undefined && all.length <= previous) return;
-      const added = previous === undefined ? [] : all.slice(previous);
-      const yours = added.some((entry) => entryPerson(entry)?.id === meId);
-      // Opened from the inbox, a thread starts at its top, title first.
-      if (previous === undefined ? autoFocusReply : followingNow || yours) bringReplyIntoView();
+      // Opened from the inbox, a thread starts at its top; growing, it follows if you were or if you made the change.
+      const yours = previous !== undefined && all.slice(previous).some((e) => by(e) === meId);
+      if (previous === undefined ? autoFocus : followingNow || yours) bringReplyIntoView();
     },
   );
-
-  // Tracks following as you scroll; reaching the reply block marks everything seen.
   const onScroll = (): void => {
-    const offset = endEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top;
-    const onScreen = offset > 0 && offset <= scrollEl.clientHeight;
+    const onScreen = replyOffset() > 0 && replyOffset() <= scrollEl.clientHeight;
     followingNow = onScreen;
     if (onScreen !== following()) setFollowing(onScreen);
     if (onScreen && seenCount() !== entries().length) setSeenCount(entries().length);
   };
 
-  // Messages selected to move, in thread order: right-click → Select, ⌘-click, or shift-click for a range. Kept
-  // per thread; moved messages drop out of it on their own. Escape clears it.
-  const links = app.links;
-  const [selection, setSelection] = createSignal<{
-    threadId: string;
-    ids: string[];
-    anchor: string | null;
-  }>({ threadId: untrack(() => props.thread.id), ids: [], anchor: null });
-  const messages = createMemo(() =>
-    rest().filter((entry): entry is MessageEntry => entry.kind === "message"),
-  );
-  const pickedIds = createMemo(() =>
-    selection().threadId === props.thread.id ? selection().ids : [],
-  );
-  const selected = createMemo(() =>
-    messages().filter((message) => pickedIds().includes(message.id)),
-  );
-  const selecting = createMemo(() => selected().length > 0);
-  const select = (messageId: string, mode: SelectMode): void => {
+  // Messages selected to move (right-click → Select, ⌘-click, shift-click for a range), kept per thread.
+  const none = { threadId: untrack(() => props.thread.id), ids: [] as string[], anchor: "" };
+  const [selection, setSelection] = createSignal(none);
+  const messages = createMemo(() => rest().filter((e): e is MessageEntry => e.kind === "message"));
+  const pickedIds = () => (selection().threadId === props.thread.id ? selection().ids : []);
+  const selected = createMemo(() => messages().filter((m) => pickedIds().includes(m.id)));
+  const selecting = (): boolean => selected().length > 0;
+  const setPicked = (ids: string[], anchor = ""): void => {
+    setSelection({ threadId: props.thread.id, ids, anchor });
+  };
+  const select = (id: string, mode: SelectMode): void => {
     const picked = pickedIds();
-    let ids: string[];
-    if (mode === "toggle") {
-      ids = picked.includes(messageId)
-        ? picked.filter((id) => id !== messageId)
-        : [...picked, messageId];
-    } else {
-      const all = messages();
-      const to = all.findIndex((message) => message.id === messageId);
-      const anchor = all.findIndex((message) => message.id === selection().anchor);
-      const from = anchor === -1 ? to : anchor;
-      const range = all.slice(Math.min(from, to), Math.max(from, to) + 1).map(({ id }) => id);
-      ids = [...new Set([...picked, ...range])];
-    }
-    setSelection({ threadId: props.thread.id, ids, anchor: messageId });
+    const toggled = picked.includes(id) ? picked.filter((other) => other !== id) : [...picked, id];
+    if (mode === "toggle") return setPicked(toggled, id);
+    const all = messages().map((message) => message.id);
+    const to = all.indexOf(id);
+    const from = all.includes(selection().anchor) ? all.indexOf(selection().anchor) : to;
+    const range = all.slice(Math.min(from, to), Math.max(from, to) + 1);
+    setPicked([...new Set([...picked, ...range])], id);
   };
-  const clearSelection = (): void => {
-    setSelection({ threadId: props.thread.id, ids: [], anchor: null });
+  const isPicked = (entry?: Entry) => !!entry && pickedIds().includes(entry.id);
+  const runAt = (index: number): Run => {
+    const [before, after] = [isPicked(rest()[index - 1]), isPicked(rest()[index + 1])];
+    if (!isPicked(rest()[index])) return undefined;
+    return before ? (after ? "middle" : "end") : after ? "start" : undefined;
   };
-  const isPicked = (entry: Entry | undefined): boolean =>
-    entry?.kind === "message" && pickedIds().includes(entry.id);
-  const runAt = (index: number): "single" | "start" | "middle" | "end" | undefined => {
-    const all = rest();
-    if (!isPicked(all[index])) return undefined;
-    const before = isPicked(all[index - 1]);
-    const after = isPicked(all[index + 1]);
-    return before ? (after ? "middle" : "end") : after ? "start" : "single";
-  };
+  createEffect(selecting, (on) => {
+    if (!on) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape" && !event.defaultPrevented) setPicked([]);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
-  createEffect(
-    () => selecting(),
-    (on) => {
-      if (!on) return;
-      const onKeyDown = (event: KeyboardEvent): void => {
-        if (event.key === "Escape" && !event.defaultPrevented)
-          setSelection((current) => ({ ...current, ids: [], anchor: null }));
-      };
-      window.addEventListener("keydown", onKeyDown);
-      return () => window.removeEventListener("keydown", onKeyDown);
-    },
-  );
-
-  const [menu, setMenu] = createSignal<{ x: number; y: number; items: ContextMenuItem[] } | null>(
-    null,
-  );
-  const moveLabel = (count: number): string =>
-    count === 1 ? "Move to thread…" : `Move ${count} messages to thread…`;
+  const [menu, setMenu] = createSignal<{ x: number; y: number; items: ContextMenuItem[] }>();
+  const move = (picked: MessageEntry[]): { label: string; run: () => void } => ({
+    label: picked.length === 1 ? "Move to thread…" : `Move ${picked.length} messages to thread…`,
+    run: () => actions().onMoveMessages(picked),
+  });
   const menuFor = (message: MessageEntry): ContextMenuItem[] => {
-    if (pickedIds().includes(message.id)) {
-      const picked = selected();
+    if (pickedIds().includes(message.id))
       return [
-        { label: moveLabel(picked.length), run: () => actions().onMoveMessages(picked) },
+        move(selected()),
         "separator",
-        { label: "Clear selection", shortcut: "Esc", run: clearSelection },
+        { label: "Clear selection", shortcut: "Esc", run: () => setPicked([]) },
       ];
-    }
+    const text = plainThreadLinks(message.text, links.titleOf, links.nameOf);
+    const label = selecting() ? "Add to selection" : "Select";
     return [
-      { label: moveLabel(1), run: () => actions().onMoveMessages([message]) },
-      {
-        label: selecting() ? "Add to selection" : "Select",
-        shortcut: "⌘ Click",
-        run: () => select(message.id, "toggle"),
-      },
+      move([message]),
+      { label, shortcut: "⌘ Click", run: () => select(message.id, "toggle") },
       "separator",
-      {
-        label: "Copy text",
-        run: () =>
-          void navigator.clipboard.writeText(
-            plainThreadLinks(message.text, links.titleOf, links.nameOf),
-          ),
-      },
+      { label: "Copy text", run: () => void navigator.clipboard.writeText(text) },
       // Your own messages, other than the description, can be deleted.
       ...(message.author.id === me().id && message.id !== props.thread.id
         ? [
@@ -1230,39 +862,29 @@ export function ThreadView(props: {
 
   // What arrived while you were reading back: messages and resolutions by others, else any activity.
   const unseen = createMemo(() => (following() ? [] : entries().slice(seenCount())));
-  const unseenMessages = createMemo(
-    () =>
-      unseen().filter(
-        (entry) =>
-          (entry.kind === "message" || entry.kind === "resolution") &&
-          entryPerson(entry)?.id !== me().id,
-      ).length,
-  );
+  const pill = (): string => {
+    const count = unseen().filter((e) => e.kind !== "event" && by(e) !== me().id).length;
+    return count === 0 ? "New activity" : `${count} new ${count === 1 ? "message" : "messages"}`;
+  };
 
   // As in email, a reply goes back to whoever last sent you something here, else the other side.
   const defaultTo = createMemo(() => replyTo(props.thread, me().id));
-  const placeholder = (): string =>
+  const placeholder = () =>
     defaultTo().length === 0
       ? "Write a note…"
-      : `Reply to ${defaultTo()
-          .map((person) => person.name.split(" ")[0])
-          .join(", ")}…`;
-  // Someone new to reply to changes the prompt, which the editor only takes when it's made, so the reply is made
-  // again when this changes.
-  const replyKey = createMemo(() =>
+      : `Reply to ${defaultTo().map(firstName).join(", ")}…`;
+  // The editor takes its placeholder only when made, so someone new to reply to makes the reply again.
+  const replyKey = () =>
     isDone(props.thread.status)
       ? null
       : `${props.thread.id}:${defaultTo()
           .map((person) => person.id)
-          .join(",")}`,
-  );
-
+          .join()}`;
   // Clicking empty space in the thread, including below the last block, puts the cursor in the reply.
-  const onBackgroundMouseDown = (event: MouseEvent): void => {
+  const onBackgroundDown = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
-    const empty =
-      target === scrollEl || target === docEl || target.classList.contains("thread-overscroll");
-    if (!empty) return;
+    if (target !== scrollEl && target !== docEl && !target.classList.contains("thread-overscroll"))
+      return;
     event.preventDefault();
     focusReply?.();
   };
@@ -1273,61 +895,38 @@ export function ThreadView(props: {
         <div
           ref={scrollEl}
           class={sx(thread.scroll)}
-          onMouseDown={onBackgroundMouseDown}
           onScroll={onScroll}
+          onMouseDown={onBackgroundDown}
         >
           <article ref={docEl} class={sx(thread.doc)}>
-            <ThreadHeader thread={props.thread} ask={ask()} actions={actions()} />
+            <ThreadHeader thread={props.thread} ask={ask()} />
             <For each={rest()} keyed={(entry) => entry.id}>
-              {(entry, index) => {
-                const kind = createMemo(() => entry().kind);
-                return (
-                  <Switch>
-                    <Match when={kind() === "message"}>
-                      <MessageBlock
-                        message={entry() as MessageEntry}
-                        selected={pickedIds().includes(entry().id)}
-                        run={runAt(index())}
-                        selecting={selecting()}
-                        onSelect={(mode) => select(entry().id, mode)}
-                        onContextMenu={(event) => {
-                          event.preventDefault();
-                          setMenu({
-                            x: event.clientX,
-                            y: event.clientY,
-                            items: menuFor(entry() as MessageEntry),
-                          });
-                        }}
-                      />
-                    </Match>
-                    <Match when={kind() === "event"}>
-                      <EventLine
-                        event={entry() as EventEntry}
-                        afterEvent={rest()[index() - 1]?.kind === "event"}
-                      />
-                    </Match>
-                    <Match when={kind() === "resolution"}>
-                      <ResolutionBlock resolution={entry() as ResolutionEntry} />
-                    </Match>
-                  </Switch>
-                );
-              }}
+              {(entry, index) => (
+                <EntryBlock
+                  entry={entry()}
+                  afterEvent={rest()[index() - 1]?.kind === "event"}
+                  selected={pickedIds().includes(entry().id)}
+                  run={runAt(index())}
+                  selecting={selecting()}
+                  onSelect={(mode) => select(entry().id, mode)}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      items: menuFor(entry() as MessageEntry),
+                    });
+                  }}
+                />
+              )}
             </For>
             <Keyed value={replyKey()} by={(key) => key}>
               {() => (
                 <ReplyBlock
+                  thread={props.thread}
                   placeholder={placeholder()}
                   focusRef={(focus) => (focusReply = focus)}
                   defaultTo={defaultTo()}
-                  onNote={(text) => actions().onNote(text)}
-                  onSend={(text, to) => actions().onSend(text, to)}
-                  onBranch={(title) => actions().onBranch(title)}
-                  onCommand={(name) => {
-                    if (name === "blocked") actions().onBlocked();
-                    if (name === "close") actions().onSetStatus("closed");
-                    if (name === "task") actions().onTask();
-                  }}
-                  threadId={props.thread.id}
                   autoFocus={merged.autoFocusReply}
                 />
               )}
@@ -1338,47 +937,48 @@ export function ThreadView(props: {
           <div class={[sx(styles.overscroll), "thread-overscroll"]} aria-hidden="true" />
         </div>
         <Show when={selecting()}>
-          <div class={sx(styles.selectionBar)} role="toolbar" aria-label="Selected messages">
-            <span class={sx(styles.selectionBarCount)}>{selected().length} selected</span>
+          <div
+            class={sx(menuStyles.menu, styles.floating, styles.bar, styles.selectionBar)}
+            role="toolbar"
+            aria-label="Selected messages"
+          >
+            <span class={sx(styles.selectionCount)}>{selected().length} selected</span>
             <button
               type="button"
-              class={sx(styles.selectionBarMove)}
-              onClick={() => actions().onMoveMessages(selected())}
+              class={sx(styles.barButton, styles.move)}
+              onClick={() => move(selected()).run()}
             >
-              <Icon icon={GitBranchIcon} {...ICON_PROPS} />
+              {icon(GitBranchIcon)}
               Move to thread…
             </button>
             <button
               type="button"
-              class={sx(styles.selectionBarClear)}
+              class={sx(styles.barButton, styles.clear)}
               aria-label="Clear selection"
               title="Clear selection (Esc)"
-              onClick={clearSelection}
+              onClick={() => setPicked([])}
             >
-              <Icon icon={Cancel01Icon} {...ICON_PROPS} />
+              {icon(Cancel01Icon)}
             </button>
           </div>
         </Show>
         <Show when={menu()}>
-          {(shown) => (
-            <ContextMenu
-              x={shown().x}
-              y={shown().y}
-              items={shown().items}
-              onClose={() => setMenu(null)}
-            />
-          )}
+          {(shown) => <ContextMenu {...shown()} onClose={() => setMenu()} />}
         </Show>
         <Show when={unseen().length > 0 && !selecting()}>
           <button
             type="button"
-            class={sx(styles.newPill)}
+            class={sx(
+              menuStyles.menu,
+              styles.floating,
+              styles.bar,
+              styles.newPill,
+              styles.newPillHover,
+            )}
             onClick={() => bringReplyIntoView("smooth")}
           >
-            <Icon icon={ArrowDown02Icon} {...ICON_PROPS} />
-            {unseenMessages() === 0
-              ? "New activity"
-              : `${unseenMessages()} new ${unseenMessages() === 1 ? "message" : "messages"}`}
+            {icon(ArrowDown02Icon)}
+            {pill()}
           </button>
         </Show>
         <ThreadMinimap entries={entries()} scrollRef={() => scrollEl} />
@@ -1386,3 +986,92 @@ export function ThreadView(props: {
     </CurrentThreadContext>
   );
 }
+
+const quiet = { color: colors.textTertiary, fontSize: fontSizes.body };
+const bare = { borderStyle: "none", backgroundColor: "transparent", cursor: "pointer" } as const;
+const center = { alignItems: "center", justifyContent: "center" } as const;
+const edge = "-10.25px";
+const hoverColor = (base: string) => ({ default: base, ":hover": colors.textPrimary });
+const hoverFill = (base: string) => ({ default: base, ":hover": colors.panelSelected });
+
+const styles = stylex.create({
+  // The viewport minus about one block, so the last entry can reach the top but never leave the screen.
+  overscroll: { height: "calc(100vh - 34px - 140px)" },
+  quiet,
+  properties: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 4 },
+  chipAnchor: { position: "relative", display: "inline-flex" },
+  note: { borderWidth: 1, borderStyle: "solid", borderColor: colors.strokeTertiary, ...quiet },
+  noteShape: { padding: "0 5px", borderRadius: radii.control, fontSize: 10.5, lineHeight: "15px" },
+  message: { position: "relative", isolation: "isolate" },
+  selected: {
+    "::before": {
+      content: '""',
+      position: "absolute",
+      inset: "-7px -10px",
+      zIndex: -1,
+      borderRadius: radii.item,
+      backgroundColor: colors.accentFill,
+      boxShadow: `inset 2px 0 ${colors.accent}`,
+    },
+  },
+  // The tint fills the gap between selected neighbours.
+  start: { "::before": { bottom: edge, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } },
+  middle: { "::before": { top: edge, bottom: edge, borderRadius: 0 } },
+  end: { "::before": { top: edge, borderTopLeftRadius: 0, borderTopRightRadius: 0 } },
+  selecting: { cursor: "pointer", userSelect: "none" },
+  event: { marginBlock: -6 },
+  eventAfterEvent: { marginTop: -14.5 },
+  eventMarker: { ...center, height: 18, marginTop: 0 },
+  eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
+  eventActor: { color: colors.textSecondary },
+  resolutionMarker: { ...center, width: 20, marginInline: 1, borderRadius: "50%" },
+  resolved: {
+    color: colors.statusClosed,
+    backgroundColor: `color-mix(in srgb, ${colors.statusClosed} 18%, transparent)`,
+  },
+  reply: { display: "flex", flex: 1, minWidth: 0 },
+  replyEditor: { minHeight: 21, outline: "none", cursor: "text" },
+  replyTo: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginTop: 8 },
+  replyToLabel: { marginRight: 2 },
+  replyToPerson: { padding: "0 4px 0 6px", borderRadius: radii.item },
+  replyToRemove: { ...bare, display: "flex", padding: 2, color: hoverColor(colors.iconTertiary) },
+  caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: 300 },
+  menuTitle: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  menuNew: { color: colors.accent },
+  menuHint: { marginLeft: 6, color: colors.textTertiary },
+  linkSelf: { color: colors.textSecondary },
+  floating: {
+    position: "absolute",
+    bottom: 16,
+    left: "50%",
+    zIndex: layers.float,
+    transform: "translateX(-50%)",
+  },
+  // On the menu panel.
+  bar: {
+    display: "inline-flex",
+    flexDirection: "row",
+    alignItems: "center",
+    overflowY: "visible",
+    fontSize: fontSizes.body,
+  },
+  newPill: { gap: 6, height: 26, padding: "0 12px", borderRadius: 13, color: colors.textPrimary },
+  newPillHover: { font: "inherit", backgroundColor: hoverFill(colors.panel), cursor: "pointer" },
+  selectionBar: { gap: 4, height: 30, padding: "0 4px 0 12px", color: colors.textSecondary },
+  selectionCount: { marginRight: 6 },
+  barButton: {
+    ...bare,
+    ...center,
+    display: "inline-flex",
+    gap: 6,
+    height: 22,
+    borderRadius: radii.control,
+  },
+  move: {
+    padding: "0 8px",
+    color: colors.textPrimary,
+    font: "inherit",
+    backgroundColor: hoverFill("transparent"),
+  },
+  clear: { width: 22, padding: 0, color: hoverColor(colors.textTertiary) },
+});

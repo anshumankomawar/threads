@@ -33,7 +33,6 @@ import { sx } from "./styles/sx";
 import { colors, fontSizes, layers, radii, shadows } from "./styles/tokens.stylex";
 
 const styles = stylex.create({
-  // Cursor's main chat surface, darker than the sidebar.
   main: {
     position: "relative",
     display: "flex",
@@ -42,50 +41,34 @@ const styles = stylex.create({
     minWidth: 0,
     backgroundColor: `color-mix(in srgb, ${colors.chrome} 72%, transparent)`,
   },
-  // The main top bar beside the sidebar. After `topbar.bar`.
-  topbarBesideSidebar: {
-    paddingLeft: "12px",
-  },
-  // With the sidebar hidden, the toggle icon sits as far from the last traffic light (larger on macOS 26) as the top
-  // bar's last icon sits from the sidebar's right edge, the sidebar inset (the sidebar's own top bar does the same, in
-  // Sidebar.tsx).
-  topbarAlone: {
-    paddingLeft: "71.5px",
-  },
-  // Who you're viewing the app as; opens the View As palette.
+  // Beside the sidebar, or clear of the traffic lights without it.
+  topbarBesideSidebar: { paddingLeft: 12 },
+  topbarAlone: { paddingLeft: 71.5 },
   viewAs: {
     display: "flex",
-    gap: "6px",
+    gap: 6,
     alignItems: "center",
-    height: "22px",
-    marginRight: "4px",
+    height: 22,
+    marginRight: 4,
     padding: "0 6px",
     borderStyle: "none",
     borderRadius: radii.control,
-    color: {
-      default: colors.textSecondary,
-      ":hover": colors.textPrimary,
-    },
+    color: { default: colors.textSecondary, ":hover": colors.textPrimary },
     font: "inherit",
     fontSize: fontSizes.body,
     backgroundColor: "transparent",
     cursor: "pointer",
     WebkitAppRegion: "no-drag",
   },
-  // Which data source you're on, ahead of who you're viewing as.
-  viewAsSource: {
-    marginRight: "4px",
-    color: colors.textTertiary,
-  },
-  // A change the server refused, under the top bar until it's dismissed or the next change is made.
+  viewAsSource: { marginRight: 4, color: colors.textTertiary },
   saveError: {
     display: "flex",
     flexShrink: 0,
-    gap: "8px",
+    gap: 8,
     alignItems: "center",
     justifyContent: "space-between",
     padding: "6px 12px",
-    borderBottomWidth: "1px",
+    borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
     color: colors.urgent,
@@ -93,16 +76,13 @@ const styles = stylex.create({
   saveErrorAction: {
     flexShrink: 0,
     padding: "2px 8px",
-    borderWidth: "1px",
+    borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.strokeFocused,
     borderRadius: radii.control,
     color: colors.textPrimary,
     font: "inherit",
-    backgroundColor: {
-      default: "transparent",
-      ":hover": colors.bgTertiary,
-    },
+    backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
     cursor: "pointer",
   },
   saveErrorDismiss: {
@@ -114,47 +94,34 @@ const styles = stylex.create({
     backgroundColor: "transparent",
     cursor: "pointer",
   },
-  // The main thread and, when a thread link is open, the linked thread beside it.
-  panes: {
-    display: "flex",
-    flex: 1,
-    minHeight: 0,
-  },
+  panes: { display: "flex", flex: 1, minHeight: 0 },
   splitPane: {
     display: "flex",
     flex: 1,
     flexDirection: "column",
     minWidth: 0,
-    borderLeftWidth: "1px",
+    borderLeftWidth: 1,
     borderLeftStyle: "solid",
     borderLeftColor: colors.panelBorder,
   },
   splitPaneBar: {
     display: "flex",
     flexShrink: 0,
-    gap: "2.5px",
+    gap: 2.5,
     alignItems: "center",
-    height: "34px",
+    height: 34,
     padding: "0 8px 0 12px",
-  },
-  splitPaneTitle: {
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    color: colors.textSecondary,
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
   },
   undoToast: {
     position: "absolute",
-    bottom: "20px",
+    bottom: 20,
     left: "50%",
     zIndex: layers.overlay,
     display: "flex",
-    gap: "14px",
+    gap: 14,
     alignItems: "center",
     padding: "8px 12px",
-    borderWidth: "1px",
+    borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.panelBorder,
     borderRadius: radii.panel,
@@ -174,8 +141,7 @@ const styles = stylex.create({
   },
 });
 
-// The app's layout. Its state and actions are the app store (`app/state.ts`), provided to everything below as
-// `AppContext`: components read what they need from it, so the layout only places them.
+// The layout. State and actions are the store (`app/state.ts`); components read it with `useApp()`.
 function App(): JSX.Element {
   const app = createAppState();
   const { nav, ui, threads, groups } = app;
@@ -217,7 +183,7 @@ function App(): JSX.Element {
               <DetailsToggle />
             </span>
           </div>
-          {/* A change the server keeps failing on holds up everything after it: retry it, or give it up. */}
+          {/* A change the server keeps failing on holds up everything after it. */}
           <Show when={app.client().stuck !== null}>
             <div class={sx(styles.saveError)} role="alert">
               <span>
@@ -262,7 +228,6 @@ function App(): JSX.Element {
               </div>
             )}
           </Show>
-          {/* Each page is made anew for the person, label or draft it shows (keyed by its id). */}
           <Switch>
             <Match when={nav.profileOpen()}>
               <ProfileView />
@@ -290,7 +255,6 @@ function App(): JSX.Element {
               </Keyed>
             </Match>
             <Match when={nav.activeThread() !== undefined}>
-              {/* `thread-panes` stays: the store's R key finds the reply with `.thread-panes > .thread-view …`. */}
               <div class={[sx(styles.panes), "thread-panes"]}>
                 <Keyed value={nav.activeThread()} by={(thread) => thread.id}>
                   {(thread) => (
@@ -304,7 +268,9 @@ function App(): JSX.Element {
                   {(split) => (
                     <section class={sx(styles.splitPane)} aria-label={split().title}>
                       <div class={sx(styles.splitPaneBar)}>
-                        <span class={sx(styles.splitPaneTitle)}>{split().title}</span>
+                        <span class={sx(topbar.title)} style={{ flex: 1 }}>
+                          {split().title}
+                        </span>
                         <button
                           type="button"
                           class={sx(topbar.button)}

@@ -1,8 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 
-// Cursor Dark's core palette and the tokens derived from it, as StyleX variables. Dark is the default; `lightTheme`
-// (applied to the root by `applyTheme`) is the same tokens, inverted. The "mix" values are the text colour faded to a
-// share of itself, as main.css's `color-mix(in srgb, var(--base) N%, transparent)`.
+// Dark is the default; `lightTheme` (on the root, from `applyTheme`) is the same tokens for light.
 const DARK_BASE = "oklch(0.955 0 0)";
 const LIGHT_BASE = "oklch(0.21 0 0)";
 const mix = (base: string, percent: number): string =>
@@ -12,12 +10,10 @@ export const colors = stylex.defineVars({
   base: DARK_BASE,
   sidebar: "oklch(0.209 0 0)",
   chrome: "oklch(0.191 0 0)",
-  // The side panels and the title bar are solid, at the shades they had over the window's glass.
   sidebarSolid: "#1a1a1a",
   textPrimary: DARK_BASE,
   textSecondary: mix(DARK_BASE, 74),
   textTertiary: mix(DARK_BASE, 60),
-  // Delta's hover and selected fills: about 5% and 9% of the way from background to text.
   bgTertiary: mix(DARK_BASE, 9),
   bgQuaternary: mix(DARK_BASE, 5),
   iconTertiary: mix(DARK_BASE, 52),
@@ -31,7 +27,6 @@ export const colors = stylex.defineVars({
   accentFill: "#1f252c",
   statusWaiting: "oklch(0.681 0.131 252.629)",
   statusClosed: "oklch(0.713 0.094 155.438)",
-  // Blocked is the same red as urgent.
   urgent: "oklch(0.712 0.177 12.651)",
   glass: "rgb(0 0 0 / 62%)",
   overlay: "rgb(0 0 0 / 45%)",
@@ -69,24 +64,17 @@ export const lightTheme = stylex.createTheme(colors, {
   avatarRing: "rgb(0 0 0 / 14%)",
 });
 
-// The sidebar's spacing: how far everything sits from its edges, so icons, times and lines all line up, and the pills
-// rows' fills sit in, this far in from the edges, rounded like the tab buttons.
 export const sidebarSpace = stylex.defineConsts({
   inset: "12px",
   rowGutter: "6px",
   rowRadius: "6px",
 });
 
-// The main content's zoom (⌘+, ⌘-, ⌘0): the thread, list pages and the org view zoom on their own; the sidebar, top bar
-// and palettes keep their size. The `--` key keeps the variable's literal name, so App's
-// `document.documentElement.style.setProperty("--content-zoom", …)` still drives it. Use `contentZoom["--content-zoom"]`.
+// The main content's zoom (⌘+, ⌘-, ⌘0), set on the root by the store.
 export const contentZoom = stylex.defineVars({
   "--content-zoom": "1",
 });
 
-// Stacking, lowest to highest: things floating over a page (minimap, new-messages pill, selection bar), the window's
-// drag strip and the resize handles, the dim behind palettes (and the undo toast), property dropdowns, the reply's
-// caret menus, right-click menus (and the notifications panel), and mention toasts over everything.
 export const layers = stylex.defineConsts({
   float: 5,
   titlebar: 10,
@@ -97,8 +85,6 @@ export const layers = stylex.defineConsts({
   toasts: 70,
 });
 
-// Corner radii: controls (chips, menu and palette rows, icon buttons), bordered buttons, list rows and cards, and
-// floating panels (palettes, menus, toasts).
 export const radii = stylex.defineConsts({
   control: "4px",
   button: "5px",
@@ -106,7 +92,6 @@ export const radii = stylex.defineConsts({
   panel: "8px",
 });
 
-// The type scale. The body text is 12px (on `body`); messages and titles are 15px; page titles 20px.
 export const fontSizes = stylex.defineConsts({
   label: "10px",
   small: "11px",
@@ -117,7 +102,6 @@ export const fontSizes = stylex.defineConsts({
   pageTitle: "20px",
 });
 
-// Floating surfaces' shadows: panels that open from something (palettes, menus) and free-floating ones (toasts).
 export const shadows = stylex.defineConsts({
   panel: "0 4px 12px rgb(0 0 0 / 28%)",
   float: "0 8px 24px rgb(0 0 0 / 35%)",

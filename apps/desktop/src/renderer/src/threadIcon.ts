@@ -1,4 +1,1 @@
-import { Message01Icon } from "@hugeicons/core-free-icons";
-
-// A thread's icon, wherever threads are listed.
-export const THREAD_ICON = Message01Icon;
+export { Message01Icon as THREAD_ICON } from "@hugeicons/core-free-icons";

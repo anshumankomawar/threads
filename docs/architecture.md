@@ -245,18 +245,18 @@ itself; the rest are yours.
 
 - A message links another thread with the token `[[thread:<id>]]` in its text (`threadLink`, `splitThreadLinks`,
   `plainThreadLinks` in `packages/model/src/model.ts`). Renderers show it as a chip with the linked thread's current
-  title (`ThreadLinkChip` via `ThreadLinksContext`); previews show `#<title>`.
-- Typing `#` in a reply opens the thread menu (the `threadLink` Tiptap node in `components/threadLinkNode.ts`, built
+  title (`ThreadLinkChip`, through the store's `links`); previews show `#<title>`.
+- Typing `#` in a reply opens the thread menu (the `#` caret menu in `components/caretMenus.ts`, built
   on `@tiptap/suggestion`; the menu renders in `ReplyBlock`). It lists threads whose title matches, from
-  `ThreadLinksContext.search`, then "New thread “…”", which creates a branch titled by what you typed and links it.
+  the store's `links.search`, then "New thread “…”", which creates a branch titled by what you typed and links it.
 - Messages move between threads: right-click a message (Select, Move to thread…), ⌘-click to add to the selection,
   shift-click for a range; the selection bar and `MovePalette` pick an existing thread or a new branch. The `move`
   transaction changes each message's `threadId`; the server adds one activity line to the source thread, timed at the
   first moved message so it sits where they were ("moved 3 messages to <link>"). A new branch opens with the moved
   messages instead of a description (`movedEntryIds`), so moved messages always stay messages.
 - A branch is an ordinary `response` thread with `branchedFromId` set, between the same people as its parent
-  (`createBranch` in `App.tsx`), shown in its byline as "Branched from". No palette: change people in the branch.
-- Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `App.tsx`).
+  (`createBranch` in `app/state.ts`), shown in its byline as "Branched from". No palette: change people in the branch.
+- Clicking a link opens the thread in the split view beside the current one (`splitThreadId` in `app/state.ts`).
 
 ## Owners, assignees and the global list
 
@@ -285,7 +285,7 @@ can close it, and each marks it done for themselves (⌘E).
 `ComposePanel` takes one message written as you'd say it ("@Anshu @Arjun can you review this CR. @Omar can you also
 track this"). While you type, the app sends it with the names of the people it @mentions to `POST /ai/compose`
 (`apps/api/src/compose.ts`, Workers AI's Llama 3.1 8B, for speed), which drafts a title, any shared context, and an ask per distinct request with the people it's for; the
-panel previews that draft. Enter makes the thread from it with ordinary transactions (`composeThread` in `App.tsx`):
+panel previews that draft. Enter makes the thread from it with ordinary transactions (`composeThread` in `app/state.ts`):
 the title and context as the thread and its description, and each ask as a message sent to its people, opening with
 their @mentions, which assigns them (a message that @mentions everyone it went to doesn't also
 say "to …"). So it's still one thread, in each person's inbox and sorted for them by what they were
@@ -305,7 +305,7 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
 
 - **Sends and notes.** In the reply, Enter sends it (`ReplyBlock` in `ThreadView.tsx`) to whoever last sent you
   something there, else (for its owner) its assignees or (for anyone else) its owner (`replyTo` in `model.ts`), plus
-  anyone @mentioned (`mentionNode.ts`), who's assigned the thread. The To
+  anyone @mentioned (the `@` menu in `caretMenus.ts`), who's assigned the thread. The To
   line only shows once someone's mentioned, to add or take people off. With nobody to send to, it's a note: in the
   thread for anyone who opens it, but nobody is told (`sentToIds` empty). Sent messages show who they went to, notes say "Note". The server checks the people
   exist and that only messages are sent. Who's on a thread is derived: its owner, its assignees, and everyone who's
@@ -318,7 +318,7 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
   `snoozeUntilMs`. Scoped changes (also `seen` and `bucketId`) are about whoever sends them: `applyScopedChanges` in
   `sync.ts` applies them on the server and, optimistically, in the app (`UpdateTransaction`), and they're quiet: no
   activity line, and the thread doesn't count as updated.
-- **Keys** (`inboxKeysRef` in `App.tsx`; never with a dialog open, and only ⌘E while typing): J/K open the next or
+- **Keys** (`inboxKeys` in `app/state.ts`; never with a dialog open, and only ⌘E while typing): J/K open the next or
   previous thread in your inbox, ⌘E marks the open one done for you (it never closes it: closing is
   always by hand, by anyone, with `/close`, the status or right-click; it comes back when someone else sends you
   something new or, when it's assigned to you, does anything there) and opens the next, H snoozes it until 9 tomorrow, R puts the cursor in the
@@ -336,20 +336,19 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
   knowing (closed, reopened, renamed, handed over, blocked, unblocked, moved). Sorting and routine edits stay out. It's derived from entries, with nothing stored;
   what's new counts against the same last-seen times as the unread dots, which live on this device ("Mark all read"
   moves them all to now).
-- `/blocked` (the `/` menu, `components/slashCommands.ts`, then `BlockedPalette`) makes a blocker: an ordinary
+- `/blocked` (the `/` menu in `components/caretMenus.ts`, then `BlockedPalette`) makes a blocker: an ordinary
   response to the chosen person, with `blocksId` (and `branchedFromId`) set to the thread you're in. The server
   marks that thread Blocked and adds "is blocked on <link>". When its last open blocker closes, the server sets it
   back to Open ("is unblocked, <link> is closed"). A blocked thread stays in its holder's inbox, last, labelled Blocked; the blocker is in their Sent.
 - `buildInbox` in `inbox.ts` lays this out: your inbox, in your buckets, and Sent.
 - Closing is a status change; nothing else closes a thread. Archiving is too: an archived thread is done like a closed
   one and also leaves every list and the notifications, but stays searchable. Right-clicking a thread in a list
-  (`ThreadMenuContext` in `threadMenu.ts`) offers Open, Open beside, Close or Reopen, and Archive or Unarchive.
+  (`threads.menuItems` in `app/state.ts`) offers Open, Open beside, Close or Reopen, and Archive or Unarchive.
 
 ## Organization, groups and labels
 
-- **The organization** (`Organization`, one record, `ORGANIZATION_ID`): one per workspace. Its name is empty until someone
-  names it at first run (`OrganizationPrompt`, which can't be skipped); anyone can rename it from their profile, since
-  there are no roles yet. `ensureOrganization` makes sure a workspace has it and the seeded labels.
+- **The organization** (`Organization`, one record, `ORGANIZATION_ID`): one per workspace. The desktop app no longer
+  shows or renames it. `ensureOrganization` makes sure a workspace has it and the seeded labels.
 - **Labels** (`Label`): how threads are filed. Names are unique across the
   organization; a label's id is `labelSlug(name)`, so "Back-end" and "back end" are one label, and making one that exists
   does nothing rather than refusing the batch (and any thread made in it). `SEEDED_LABELS` in `score.ts` are the only
@@ -371,33 +370,14 @@ The model is Superhuman's, for threads: a thread is a reply thread with a title 
 - **A wipe** (`#reset` in `worker.ts`) clears threads but keeps the organization, labels and groups. Sprints go with
   the threads.
 
-## Boards and sprints
+## Sprints
 
-A board and a sprint are ways of looking at threads; neither changes one.
-
-- **The board** is a layout of the global list (List or Board beside New thread, remembered on this device): whatever
-  the page and its filters show, in a column per status (Open, Blocked, Closed; `Board.tsx`, `boardColumns` in
-  `sprints.ts`). Dragging a card to another column is the same status change as in the thread, with the same activity
-  line, and leaves you on the board rather than moving on through your inbox.
-- **Sprints exist only in a group** (`Sprint`, `groupId`). The server enforces it (`checkSprint` in `#apply`): the group
-  must exist (and not be archived, to start one), only its members plan its sprints, only threads with the group's label
-  go in one, a thread is in at most one open sprint of a group at a time (reopening a sprint is checked too), and a
-  sprint runs from a day to a year. A thread taken out of the group (its label removed) leaves the group's open sprints
-  as a side effect; closed sprints keep their record. Threads go in a sprint by changing the sprint's `threadIds` (the
-  whole list, like a group's members), never by changing the thread, so a thread made and added in one batch works.
-- **In the app**: each sprint has its own page (`SprintView`, the `{ sprint }` page), opened from its group's Sprints
-  button (which lists them, with "New sprint") or ⌘K ("Platform › Sprint 2"). The group's page itself shows no sprint.
-  A sprint's page has its name (renamed in place) and dates, its group (linking back), a summary ("3 threads · 1
-  blocked"), each assignee's load (open threads and estimated hours; a shared thread counts in full for each of its
-  assignees), and its threads as a list or a board, with adding the group's threads, closing or reopening it, and, once
-  closed with unfinished threads, starting the next with them. "New sprint" is numbered after the others and runs two
-  weeks, from today or from where the latest ends (`nextSprint`). A thread made on an open sprint's page starts with
-  the group's label and goes in the sprint, if it keeps the label. A thread's right-click menu adds it to, or takes it
-  out of, the open sprints of your groups it's in. Starting and closing sprints show in the group's activity.
+The API still has sprints (`Sprint`, `groupId`, checked by `checkSprint` in `#apply`), but the desktop app no longer
+shows or makes them, and it has no board.
 
 ## Profiles
 
-- **Your own** (`ProfileView`) is you, your inbox counts and the org tree, with the organization's rename.
+- **Your own** (`ProfileView`) is you, your inbox counts and the org tree.
 - **Anyone else's** (`PersonView`, the `{ person }` page) opens in the main area like a group's page. It shows who they are,
   their manager and the chain above, their reports, and the groups you're both in, each linking on. Then **the threads
   you're both in** (`sharedThreads` in `profile.ts`), in three lists by who it's assigned to: you, them, and everything
@@ -453,7 +433,7 @@ The inbox (the sidebar's Inbox tab) is grouped into your **buckets** and ordered
    schema in `engine.ts` (`threadChanges`, `threadCreate`, ...).
 3. If changing it should leave an activity line, add a case to `describeChanges` in `engine.ts`.
 4. Bump `threadsSchema.version` in `sync.ts` (`"records:vN"`) so clients rebuild their caches.
-5. Add the UI: call `client.updateThread(id, { field }, me)` from `App.tsx`'s actions.
+5. Add the UI: call `client.updateThread(id, { field }, me)` from the store's actions (`app/state.ts`).
 6. Tests: an API test in `apps/api/tests/app.test.ts`; a client test in `apps/desktop/tests/sync.test.ts` if the
    client logic changes.
 

@@ -1,48 +1,34 @@
 import { GROUP_TARGET, groupTarget, type ComposeDraft, type Group, type Person } from "model";
 
-// Reading a message written in the new-message panel (⌘⇧N): who and which groups it @mentions, and a plain draft of
-// the thread for when the model can't help.
-
-// Someone or some group you can @mention. `id` is a person's id or `group:<id>` (`mentionToken`), which is also what
-// a draft's asks list.
+// Someone or some group you can @mention. `id` is a person's id or `group:<id>`, which is also what a draft's asks list.
 export type Target = { id: string; name: string; handle: string; group: Group | null };
 
-// Everyone but you, then the groups that aren't archived. A person goes by their first name after `@`, a group by its
-// name without spaces.
+const compact = (name: string): string => name.replaceAll(/\s+/g, "");
+const MENTION = /@([\p{L}\p{N}_-]+)/gu;
+
+// Everyone but you (by first name after `@`), then the groups that aren't archived (by name without spaces).
 export function targetsFor(people: Person[], groups: Group[], me: Person): Target[] {
   return [
     ...people
       .filter((person) => person.id !== me.id)
-      .map((person) => ({
-        id: person.id,
-        name: person.name,
-        handle: person.name.split(" ")[0],
-        group: null,
-      })),
+      .map((p) => ({ id: p.id, name: p.name, handle: p.name.split(" ")[0], group: null })),
     ...groups
       .filter((group) => !group.archived)
-      .map((group) => ({
-        id: groupTarget(group.id),
-        name: group.name,
-        handle: group.name.replaceAll(/\s+/g, ""),
-        group,
-      })),
+      .map((g) => ({ id: groupTarget(g.id), name: g.name, handle: compact(g.name), group: g })),
   ];
 }
 
-// Everyone and every group `@`mentioned in the text, by handle or full name without spaces, in order.
+// Everyone and every group `@`mentioned, by handle or full name without spaces, in order.
 export function mentionedTargets(text: string, targets: Target[]): Target[] {
-  const found: Target[] = [];
-  for (const [, name] of text.matchAll(/@([\p{L}\p{N}_-]+)/gu)) {
+  const found = new Set<Target>();
+  for (const [, name] of text.matchAll(MENTION)) {
     const key = name.toLowerCase();
     const target = targets.find(
-      (candidate) =>
-        candidate.handle.toLowerCase() === key ||
-        candidate.name.replaceAll(/\s+/g, "").toLowerCase() === key,
+      (t) => t.handle.toLowerCase() === key || compact(t.name).toLowerCase() === key,
     );
-    if (target !== undefined && !found.includes(target)) found.push(target);
+    if (target !== undefined) found.add(target);
   }
-  return found;
+  return [...found];
 }
 
 // Who an ask goes to: its people, and each group's members as they are now, once each and never you.
@@ -54,7 +40,7 @@ export function recipientsOf(
 ): Person[] {
   const ids = targetIds.flatMap((id) =>
     id.startsWith(GROUP_TARGET)
-      ? (groups.find((group) => groupTarget(group.id) === id)?.memberIds ?? [])
+      ? (groups.find((g) => groupTarget(g.id) === id)?.memberIds ?? [])
       : [id],
   );
   return [...new Set(ids)]
@@ -64,20 +50,12 @@ export function recipientsOf(
 
 // Without the model: the first sentence, mentions taken out, as the title, and one ask for everyone mentioned.
 export function plainDraft(text: string, targets: Target[]): ComposeDraft {
-  const withoutMentions = text
-    .replaceAll(/@[\p{L}\p{N}_-]+/gu, "")
-    .replaceAll(/\s+/g, " ")
-    .trim();
-  const title = (withoutMentions.split(/(?<=[.?!])\s/)[0] ?? "")
-    .replace(/[.?!]+$/, "")
-    .slice(0, 80);
+  const rest = text.replaceAll(MENTION, "").replaceAll(/\s+/g, " ").trim();
+  const title = (rest.split(/(?<=[.?!])\s/)[0] ?? "").replace(/[.?!]+$/, "").slice(0, 80);
   const asked = mentionedTargets(text, targets);
   return {
     title,
     context: "",
-    asks:
-      asked.length === 0
-        ? []
-        : [{ personIds: asked.map((target) => target.id), text: withoutMentions }],
+    asks: asked.length === 0 ? [] : [{ personIds: asked.map((target) => target.id), text: rest }],
   };
 }
