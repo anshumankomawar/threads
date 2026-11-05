@@ -122,3 +122,35 @@ test("a transaction is done only once lastSyncId reaches its sync id", async () 
   expect(store.pendingCount()).toBe(0);
   expect(await localDB.outbox.all()).toEqual([]);
 });
+
+test("a confirmed change the socket doesn't bring back makes it reconnect, and catch up", async () => {
+  const { store, transport, timers } = await setup(seed);
+  const c = store.findById(Conversation, "c1")!;
+  const dead = transport.socket;
+  c.title = "Mine";
+  c.save();
+  await tick();
+  // The server's own effect on the same row, which only reaches this client through a delta.
+  transport.lastSyncId = 1;
+  transport.log.push({
+    id: 1,
+    txId: transport.requests[0].request.transactions[0].id,
+    model: "Conversation",
+    modelId: "c1",
+    action: "U",
+    data: row("c1", { title: "Mine", state: "blocked", teamId: "t1" }),
+  });
+  transport.requests[0].resolve(ok(transport.requests[0].request, 1));
+  await tick();
+  expect(c.state).toBe("open");
+  timers.splice(0).forEach((run) => run()); // the grace runs out, and the socket closes
+  await tick();
+  timers.splice(0).forEach((run) => run()); // the reconnect
+  await tick();
+  expect(transport.socket).not.toBe(dead);
+  // The new socket's Hello is answered with what it missed.
+  transport.send({ type: "delta", actions: transport.log, lastSyncId: 1 });
+  await tick();
+  expect(c.state).toBe("blocked");
+  expect(store.pendingCount()).toBe(0);
+});

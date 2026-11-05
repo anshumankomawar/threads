@@ -8,6 +8,9 @@ import { backoff, type Timer, type TransactionQueue } from "./transactions";
 
 type Change = { model: string; modelId: string; data?: Row };
 
+// How long the socket gets to bring back a change the server confirmed.
+const SOCKET_GRACE_MS = 3000;
+
 const insert = (model: string, row: Row): SyncAction => ({
   id: 0,
   txId: "",
@@ -35,6 +38,7 @@ export class SyncClient {
   #lock = Promise.resolve();
   #waiters: { id: number; resolve: () => void }[] = [];
   #attempt = 0;
+  #socket: { close(): void } | undefined;
 
   constructor(options: SyncOptions) {
     this.#o = options;
@@ -70,7 +74,7 @@ export class SyncClient {
   connect(): void {
     this.connection.set("connecting");
     let failed = false;
-    const socket = this.#o.transport.connect({
+    const socket = (this.#socket = this.#o.transport.connect({
       hello: () => {
         this.#attempt = 0;
         this.connection.set("live");
@@ -95,7 +99,7 @@ export class SyncClient {
           backoff(this.#attempt++),
         );
       },
-    });
+    }));
   }
 
   applyDelta(packet: DeltasResponse): Promise<void> {
@@ -104,6 +108,11 @@ export class SyncClient {
 
   waitForSyncId(id: number): Promise<void> {
     if (id <= this.lastSyncId) return Promise.resolve();
+    // A socket can look open and deliver nothing, which would leave this client showing only its own edits. A confirmed
+    // change that hasn't come back says so: connect again, and the new Hello catches up.
+    this.#o.setTimeout(() => {
+      if (id > this.lastSyncId) this.#socket?.close();
+    }, SOCKET_GRACE_MS);
     return new Promise((resolve) => this.#waiters.push({ id, resolve }));
   }
 

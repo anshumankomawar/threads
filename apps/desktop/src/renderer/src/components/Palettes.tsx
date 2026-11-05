@@ -439,42 +439,64 @@ function Blocked(props: { thread: Thread }): JSX.Element {
   );
 }
 
-// A bucket's name, then what goes in it (which the model reads).
+// Making or editing a bucket: its name, then in plain words what goes in it, which the model reads to sort threads.
 function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
-  const [name, setName] = createSignal<string | null>(null);
+  const [naming, setNaming] = createSignal(true);
+  const query = createSignal(untrack(() => props.bucket?.name ?? ""));
+  const [, setTyped] = query;
+  const [name, setName] = createSignal(untrack(() => props.bucket?.name ?? ""));
+  const save = (description: string): void => {
+    setDialog(null);
+    if (props.bucket) {
+      props.bucket.name = name();
+      props.bucket.description = description;
+      props.bucket.save();
+      return;
+    }
+    const mine = store.where(Bucket, "userId", me().id);
+    const position = Math.max(-1, ...mine.map((bucket) => bucket.position)) + 1;
+    store.create(Bucket, { user: me(), name: name(), description, position });
+  };
   return (
-    <Show
-      when={name()}
-      keyed
-      fallback={
-        <Picker
-          placeholder={props.bucket?.name ?? "Name the bucket"}
-          rows={(query) => entry(query || (props.bucket?.name ?? ""), "Name it", setName)}
-        />
+    <Picker
+      placeholder={
+        naming()
+          ? "Name the bucket… (Follow-ups)"
+          : "What goes in it? (anything a customer asked for or reported)"
       }
-    >
-      {(named) => (
-        <Picker
-          placeholder={props.bucket?.description ?? `What goes in ${named}?`}
-          rows={(query) =>
-            entry(query || (props.bucket?.description ?? ""), "Describe it as", (description) => {
-              if (!props.bucket) {
-                store.create(Bucket, {
-                  user: me(),
-                  name: named,
-                  description,
-                  position: store.all(Bucket).length,
-                });
-                return;
-              }
-              props.bucket.name = named;
-              props.bucket.description = description;
-              props.bucket.save();
-            })
-          }
-        />
-      )}
-    </Show>
+      query={query}
+      onBack={() => {
+        if (!naming()) {
+          setNaming(true);
+          setTyped(name());
+        } else setDialog(null);
+      }}
+      rows={(text) =>
+        naming()
+          ? text === ""
+            ? []
+            : [
+                {
+                  label: `Next “${text}”`,
+                  hint: "↵",
+                  section: `Step 1 of 2 · ${props.bucket ? "Rename" : "New bucket"}`,
+                  run: () => {
+                    setName(text.slice(0, 40));
+                    setNaming(false);
+                    setTyped(props.bucket?.description ?? "");
+                  },
+                },
+              ]
+          : [
+              {
+                label: props.bucket ? "Save bucket" : "Create bucket",
+                hint: "↵",
+                section: `Step 2 of 2 · Describe “${name()}” so threads are sorted into it`,
+                run: () => save(text.slice(0, 500)),
+              },
+            ]
+      }
+    />
   );
 }
 
