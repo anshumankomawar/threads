@@ -98,7 +98,8 @@ export function PersonView(props: { user: User }): JSX.Element {
   const first = (): string => u().name.split(" ")[0];
   const inIt = (t: Thread, id: string): boolean =>
     t.ownerId === id ||
-    t.messages.filter((m: Message) => m.authorId === id || m.toIds.includes(id)).length > 0;
+    t.assigneeIds.includes(id) ||
+    t.messages.filter((m: Message) => m.authorId === id).length > 0;
   const summary = (user: User): string =>
     [user.email, ROLE[memberOf(user)?.role ?? "member"]].filter(Boolean).join(" · ");
   return (

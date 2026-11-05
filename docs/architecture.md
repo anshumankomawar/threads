@@ -36,16 +36,16 @@ In the spec's style, in `packages/models/src/models.ts`. There are two kinds of 
 everything a workspace's members share, and `user:<id>` for a person's own rows. A session's groups are
 `workspace:<id>` when it's a member of the workspace, and `user:<me>`.
 
-| Model           | Key fields                                                                                                        | Sync group                        |
-| --------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Workspace       | name                                                                                                              | its own `workspace:<id>`          |
-| User            | name, email, avatarUrl, workspaceIds                                                                              | `workspace:<id>` per workspaceIds |
-| WorkspaceMember | workspace, user, role (admin, member)                                                                             | `workspace:<id>`                  |
-| Label           | workspace, name                                                                                                   | `workspace:<id>`                  |
-| Thread          | title, state (open, resolved, blocked), owner, workspace, dueAt, priority, labelIds, branchedFrom, blocks, isOpen | `workspace:<id>`                  |
-| Message         | thread, author, body, toIds, workspaceId                                                                          | `workspace:<id>`                  |
-| InboxItem       | user, thread, bucket, doneAt, snoozedUntil, seenAt, reason, manual                                                | `user:<id>`                       |
-| Bucket, Draft   | user, name, description, position / text, draft                                                                   | `user:<id>`                       |
+| Model           | Key fields                                                                                                                                  | Sync group                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Workspace       | name                                                                                                                                        | its own `workspace:<id>`          |
+| User            | name, email, avatarUrl, workspaceIds                                                                                                        | `workspace:<id>` per workspaceIds |
+| WorkspaceMember | workspace, user, role (admin, member)                                                                                                       | `workspace:<id>`                  |
+| Label           | workspace, name                                                                                                                             | `workspace:<id>`                  |
+| Thread          | title, description, state (open, resolved, blocked), owner, assigneeIds, workspace, dueAt, priority, labelIds, branchedFrom, blocks, isOpen | `workspace:<id>`                  |
+| Message         | thread, author, body, workspaceId                                                                                                           | `workspace:<id>`                  |
+| InboxItem       | user, thread, bucket, doneAt, snoozedUntil, seenAt, reason, manual                                                                          | `user:<id>`                       |
+| Bucket, Draft   | user, name, description, position / text, draft                                                                                             | `user:<id>`                       |
 
 - **User** is the person, across workspaces. The server keeps `workspaceIds` (an effect of WorkspaceMember create and
   delete), so members of any workspace they share see them.
@@ -54,8 +54,14 @@ everything a workspace's members share, and `user:<id>` for a person's own rows.
 - **Thread** is the only unit of work, and every member of the workspace sees every thread. `labelIds` lists its
   Labels; a label's page is its threads. `branchedFrom` is a branch, linked from a message by `[[thread:<id>]]`;
   `blocks` (made with `/blocked`) keeps that thread blocked until this one is resolved.
-- **Message** has `toIds` (who it was sent to; none is a note) and its thread's `workspaceId`, because a row computes
-  its own group. Messages are created once; their author may delete them.
+- **Making a thread**: `createThread` (`components/Palettes.tsx`) is the only way, from ⌘N (title, description, assignee,
+  and labels on Tab), ⌘⇧N (written as one message; the model drafts it and you can edit the draft), `/blocked` and a `#`
+  branch. A thread assigned to someone else from the start is in their inbox and its owner's Sent.
+- **Assignees**: a thread has one owner and any number of assignees. `@mention`ing someone in a message assigns them
+  (the server reads the mentions), and the thread stays in their inbox until they mark it done or it's resolved. A
+  message that mentions nobody tells nobody. Mentioning them again brings it back.
+- **Message** has its thread's `workspaceId`, because a row computes its own group. Messages are created once; their
+  author may delete them.
 - **InboxItem** has `bucket` (one of the person's own Buckets, or none until sorted), `reason` and `manual` (placed by
   hand), and `seenAt` (unread is a message by someone else after it).
 - **Bucket** is a person's inbox bucket: a name and a description the model sorts by. **Draft** is an unsent ⌘⇧N
@@ -70,9 +76,10 @@ Permission hooks: you edit only your own User row, and never its `workspaceIds`;
 labels, threads and messages; only admins change memberships and roles; a message's author is you, and only the author
 deletes it; you write only your own Bucket, Draft and InboxItem rows. Effects, in the same commit: a membership adds
 its workspace to the person's `workspaceIds` (its removal takes it out); a new thread gives its owner an InboxItem; a
-message gives each of its `toIds` an InboxItem (or clears `doneAt`/`snoozedUntil`), and its `workspaceId` must be its
-thread's; when an owner sends their thread to someone and nobody else has sent them anything there, their own item is
-marked done, so it's in their Sent until someone writes to them; a thread made with `blocks` blocks that one, and
+message's `@mentions` become assignees and each gets an InboxItem (or clears `doneAt`/`snoozedUntil`), and its
+`workspaceId` must be its thread's; assigning from the thread does the same and unassigning marks their item done; an
+owner who hasn't been mentioned has their own item marked done when they mention someone else, so it's in their Sent; a
+deleted bucket's items are sorted again; a thread made with `blocks` blocks that one, and
 resolving the last open blocker reopens it; a new user gets the default buckets.
 
 After each commit the Durable Object sorts unsorted, unplaced InboxItems into their owners' buckets with Workers AI and

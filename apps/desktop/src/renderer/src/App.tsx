@@ -6,6 +6,7 @@ import { Label, Thread, User } from "models";
 import {
   active,
   itemFor,
+  account,
   me,
   open,
   server,
@@ -151,6 +152,7 @@ export default function App(): JSX.Element {
             <span class={sx(topbar.end)}>
               <button
                 class={sx(styles.viewAs)}
+                disabled={account !== null}
                 aria-label={`Viewing as ${me().name}. Switch user`}
                 onClick={() => setDialog({ kind: "viewAs" })}
               >

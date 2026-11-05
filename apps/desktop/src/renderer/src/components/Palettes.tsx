@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack, type Signal } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Label, Message, Thread, User } from "models";
@@ -27,11 +27,11 @@ import { Compose } from "./Compose";
 import { Identicon } from "./Identicon";
 
 // A modal palette: a click outside or Escape closes it.
-export function Modal(props: { onClose?: () => void; children: JSX.Element }): JSX.Element {
+export function Modal(props: { children: JSX.Element }): JSX.Element {
   return (
     <dialog
       ref={(el) => queueMicrotask(() => ((el.closedBy = "any"), el.showModal()))}
-      onClose={() => (props.onClose?.(), setDialog(null))}
+      onClose={() => setDialog(null)}
       class={sx(palette.dialog, palette.open)}
     >
       {props.children}
@@ -43,10 +43,21 @@ export function Modal(props: { onClose?: () => void; children: JSX.Element }): J
 type Row = { label: string; hint?: string; seed?: string; section?: string; run: () => void };
 
 // An input over rows that match it, in sections; arrows choose, Enter or a click runs the row.
-function Picker(props: { placeholder: string; rows: (query: string) => Row[] }): JSX.Element {
-  const [query, setQuery] = createSignal("");
+function Picker(props: {
+  placeholder: string;
+  rows: (query: string) => Row[];
+  // A form's steps share the one input, so the form holds what's typed.
+  query?: Signal<string>;
+  // Escape goes back a step instead of closing; Tab does whatever a step wants.
+  onBack?: () => void;
+  onTab?: () => void;
+}): JSX.Element {
+  const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
   const rows = createMemo(() => props.rows(query().trim()));
+  createEffect(rows, () => {
+    setAt(0);
+  });
   const index = (): number => Math.min(at(), rows().length - 1);
   const sections = createMemo(() =>
     rows().reduce<{ title?: string; rows: { row: Row; at: number }[] }[]>((out, row, at) => {
@@ -60,6 +71,8 @@ function Picker(props: { placeholder: string; rows: (query: string) => Row[] }):
     const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
     if (by) setAt((index() + by + rows().length) % rows().length);
     else if (event.key === "Enter") rows()[index()]?.run();
+    else if (event.key === "Escape" && props.onBack) props.onBack();
+    else if (event.key === "Tab" && props.onTab) props.onTab();
     else return;
     event.preventDefault();
   };
@@ -72,7 +85,7 @@ function Picker(props: { placeholder: string; rows: (query: string) => Row[] }):
           placeholder={props.placeholder}
           spellcheck={false}
           value={query()}
-          onInput={(event) => (setQuery(event.currentTarget.value), setAt(0))}
+          onInput={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={onKeyDown}
         />
       </div>
@@ -123,26 +136,33 @@ const people = (query: string, run: (user: User) => void): Row[] =>
     .filter((u) => u.id !== me().id && matches(u.name, query))
     .map((u) => ({ label: u.name, seed: u.id, run: () => run(u) }));
 
-export function startThread(title: string, extra: Partial<Thread> = {}): Thread {
-  const thread = store.create(Thread, {
-    title,
+// The one way a thread is made: ⌘N, ⌘⇧N, /blocked and a # branch all come here. Anyone in `assignees` gets it in
+// their inbox (rules.ts); with nobody else, it's in yours.
+export function createThread(fields: {
+  title: string;
+  description?: string;
+  assignees?: User[];
+  labelIds?: string[];
+  blocks?: Thread;
+  branchedFrom?: Thread;
+}): Thread {
+  const { assignees = [], labelIds = [], ...rest } = fields;
+  return store.create(Thread, {
+    ...rest,
     state: "open",
     priority: "none",
     workspace: workspace(),
     owner: me(),
-    labelIds: [],
-    ...extra,
+    labelIds,
+    assigneeIds: assignees.map((u) => u.id),
   });
-  open({ thread: thread.id });
-  return thread;
 }
 
-export function send(thread: Thread, body: string, to: User[] = []): void {
+export function send(thread: Thread, body: string): void {
   store.create(Message, {
     thread,
     author: me(),
     body,
-    toIds: to.map((u) => u.id),
     workspaceId: thread.workspaceId,
   });
 }
@@ -217,23 +237,142 @@ function Search(): JSX.Element {
   );
 }
 
+type Step = "write" | "describe" | "pick" | "labels";
+
+// Starting a thread: its title, an optional description, then who it's assigned to; there Tab picks labels. Started
+// from a label's or a person's page, that label is already on it and that person is first in the list.
 function NewThread(props: { labelId?: string; to?: User }): JSX.Element {
-  const label = (): Label | undefined => store.findById(Label, props.labelId ?? "");
+  const [step, setStep] = createSignal<Step>("write");
+  const query = createSignal("");
+  const setTyped = query[1];
+  const [title, setTitle] = createSignal("");
+  const [description, setDescription] = createSignal("");
+  // Labels by name, since one you make here doesn't exist until the thread does.
+  const [names, setNames] = createSignal<string[]>(
+    untrack(() => {
+      const label = store.findById(Label, props.labelId ?? "");
+      return label ? [label.name] : [];
+    }),
+  );
+  const go = (next: Step, text = ""): void => {
+    setStep(next);
+    setTyped(text);
+  };
+  const back = (): void => {
+    if (step() === "describe") go("write", title());
+    else if (step() === "pick") go("describe", description());
+    else if (step() === "labels") go("pick");
+    else setDialog(null);
+  };
+  const create = (assignees: User[]): void => {
+    const labels = store.all(Label);
+    const labelIds = names().map(
+      (name) =>
+        (
+          labels.find((l) => l.name === name) ??
+          store.create(Label, { name, workspace: workspace() })
+        ).id,
+    );
+    setDialog(null);
+    open({
+      thread: createThread({ title: title(), description: description(), assignees, labelIds }).id,
+    });
+  };
+  const toggle = (name: string): void => {
+    setNames((all) => (all.includes(name) ? all.filter((n) => n !== name) : [...all, name]));
+    setTyped("");
+  };
+  const labelsText = (): string => {
+    const [first, ...rest] = names();
+    if (!first) return "No labels";
+    return rest.length ? `${first} +${rest.length}` : first;
+  };
+  const steps: Record<Step, [string, (query: string) => Row[]]> = {
+    write: [
+      untrack(() => (props.to ? `What do you need from ${props.to.name}?` : "What do you need?")),
+      (text) =>
+        text === ""
+          ? []
+          : [
+              {
+                label: `Next “${text}”`,
+                hint: "↵",
+                section: "Step 1 of 3",
+                run: () => {
+                  setTitle(text);
+                  go("describe", description());
+                },
+              },
+            ],
+    ],
+    describe: [
+      "Add a description… (optional)",
+      (text) => [
+        {
+          label: text === "" ? "Skip the description" : "Next",
+          hint: "↵",
+          section: `Step 2 of 3 · ${title()}`,
+          run: () => {
+            setDescription(text);
+            go("pick");
+          },
+        },
+      ],
+    ],
+    pick: [
+      "Assign to…",
+      (text) => {
+        const section = `Step 3 of 3 · ${title()}`;
+        const first = props.to?.id;
+        return [
+          ...[
+            { label: "Unassigned", run: () => create([]) } as Row,
+            ...people(text, (u) => create([u])),
+            { label: "Me", seed: me().id, run: () => create([me()]) },
+          ]
+            .filter((row) => matches(row.label, text))
+            .toSorted((a, b) => Number(b.seed === first) - Number(a.seed === first))
+            .map((row) => ({ ...row, section })),
+          {
+            label: labelsText(),
+            hint: "⇥",
+            section: "Labels",
+            run: () => go("labels"),
+          },
+        ];
+      },
+    ],
+    labels: [
+      "Find or make a label…",
+      (text) => {
+        const all = store.all(Label).sort((a, b) => a.name.localeCompare(b.name));
+        const exists = [...all.map((l) => l.name), ...names()].some(
+          (name) => name.toLowerCase() === text.toLowerCase(),
+        );
+        return [
+          ...all
+            .filter((l) => matches(l.name, text))
+            .map((l) => ({
+              label: l.name,
+              hint: names().includes(l.name) ? "✓" : undefined,
+              run: () => toggle(l.name),
+            })),
+          ...names()
+            .filter((name) => !all.some((l) => l.name === name) && matches(name, text))
+            .map((name) => ({ label: name, hint: "✓", run: () => toggle(name) })),
+          ...(text !== "" && !exists ? [{ label: `Make “${text}”`, run: () => toggle(text) }] : []),
+          { label: "Done", hint: "esc", section: "Labels", run: () => go("pick") },
+        ];
+      },
+    ],
+  };
   return (
     <Picker
-      placeholder={
-        props.to
-          ? `What do you need from ${props.to.name}?`
-          : label()
-            ? `New thread in ${label()!.name}`
-            : "New thread"
-      }
-      rows={(query) =>
-        entry(query, "Start", (title) => {
-          const thread = startThread(title, label() ? { labelIds: [label()!.id] } : {});
-          if (props.to) send(thread, title, [props.to]);
-        })
-      }
+      placeholder={steps[step()][0]}
+      rows={(text) => steps[step()][1](text)}
+      query={query}
+      onBack={back}
+      onTab={() => step() === "pick" && go("labels")}
     />
   );
 }
@@ -271,8 +410,13 @@ function Blocked(props: { thread: Thread }): JSX.Element {
           placeholder={`What do you need from ${who.name}?`}
           rows={(query) =>
             entry(query, "Ask", (title) => {
-              const asked = startThread(title, { blocks: props.thread });
-              send(asked, title, [who]);
+              createThread({
+                title,
+                assignees: [who],
+                blocks: props.thread,
+                branchedFrom: props.thread,
+                labelIds: props.thread.labelIds,
+              });
             })
           }
         />

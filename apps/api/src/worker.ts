@@ -164,10 +164,6 @@ export class Workspace extends DurableObject<Env> {
     ws.serializeAttachment(attachment);
     this.#load().hello(this.#socket(ws, attachment), hello.lastSyncId);
   }
-
-  webSocketClose(ws: WebSocket, code: number): void {
-    ws.close(code, "closing");
-  }
 }
 
 type Ctx = Context<{ Bindings: Env }>;

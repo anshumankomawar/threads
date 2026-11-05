@@ -9,7 +9,6 @@ import {
   Bucket,
   Label,
   Thread,
-  mentionsIn,
   plainText,
   PRIORITIES,
   splitText,
@@ -23,28 +22,18 @@ import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { thread } from "../styles/thread";
-import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
+import { colors, fontSizes, layers } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
-import { send } from "./Palettes";
+import { createThread, send } from "./Palettes";
 
 const styles = stylex.create({
   // The viewport minus about one block, so the last entry can reach the top but never leave the screen.
   overscroll: { height: "calc(100vh - 34px - 140px)" },
   quiet: { color: colors.textTertiary, fontSize: fontSizes.body },
   properties: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 4 },
-  note: {
-    padding: "0 5px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.strokeTertiary,
-    borderRadius: radii.control,
-    color: colors.textTertiary,
-    fontSize: 10.5,
-    lineHeight: "15px",
-  },
   reply: { display: "flex", flex: 1, minWidth: 0 },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
   caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: 300 },
@@ -172,6 +161,17 @@ function Header(props: { thread: Thread }): JSX.Element {
       : labels().length === 1
         ? labels()[0].name
         : `${labels()[0].name} +${labels().length - 1}`;
+  const assigneesText = (): string => {
+    const [first, ...rest] = c().assigneeIds.map((id) => nameOf(id)?.split(" ")[0] ?? "Someone");
+    return !first ? "No assignees" : rest.length ? `${first} +${rest.length}` : first;
+  };
+  const toggleAssignee = (user: User): void => {
+    const ids = c().assigneeIds;
+    c().assigneeIds = ids.includes(user.id)
+      ? ids.filter((id) => id !== user.id)
+      : [...ids, user.id];
+    c().save();
+  };
   const toggleLabel = (label: Label): void => {
     const ids = c().labelIds;
     c().labelIds = ids.includes(label.id)
@@ -196,7 +196,22 @@ function Header(props: { thread: Thread }): JSX.Element {
             </div>
           )}
         </Show>
+        <For each={c().blockers.filter((blocker) => blocker.isOpen)}>
+          {(blocker) => (
+            <div {...stylex.attrs(thread.byline, threadLineMarker)}>
+              <span>Blocked on</span>
+              <LinkedText text={`[[thread:${blocker.id}]]`} current={c().id} byline />
+            </div>
+          )}
+        </For>
         <h1 class={sx(thread.title, thread.headerTitle)}>{c().title}</h1>
+        <Show when={c().description}>
+          {(description) => (
+            <div class={sx(thread.text, thread.description, thread.headerDescription)}>
+              <LinkedText text={description()} current={c().id} />
+            </div>
+          )}
+        </Show>
         <div class={sx(styles.properties)}>
           <MenuChip
             label={LABELS[c().state]}
@@ -248,6 +263,19 @@ function Header(props: { thread: Thread }): JSX.Element {
             ]}
           />
           <MenuChip
+            label={assigneesText()}
+            icon={icon(i.UserMultipleIcon)}
+            tone={c().assigneeIds.length === 0 ? "muted" : undefined}
+            items={store
+              .all(User)
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((user) => ({
+                label: user.name,
+                icon: c().assigneeIds.includes(user.id) ? icon(i.Tick02Icon) : undefined,
+                run: () => toggleAssignee(user),
+              }))}
+          />
+          <MenuChip
             label={LABELS[c().priority]}
             tone={
               c().priority === "urgent" ? "urgent" : c().priority === "none" ? "muted" : undefined
@@ -286,11 +314,6 @@ function Header(props: { thread: Thread }): JSX.Element {
 
 function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element {
   const m = (): Message => props.message;
-  const to = (): string =>
-    m()
-      .toIds.filter((id) => !mentionsIn(m().body).includes(id))
-      .map((id) => nameOf(id)?.split(" ")[0] ?? "someone")
-      .join(", ");
   return (
     <div
       class={sx(thread.block)}
@@ -307,33 +330,13 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
         <Identicon seed={m().authorId} size={20} />
       </span>
       <div class={sx(thread.body)}>
-        <Meta user={m().author} at={m().createdAt}>
-          <Show when={m().toIds.length > 0} fallback={<span class={sx(styles.note)}>Note</span>}>
-            <Show when={to()}>
-              <span class={sx(styles.quiet)}>to {to()}</span>
-            </Show>
-          </Show>
-        </Meta>
+        <Meta user={m().author} at={m().createdAt} />
         <div class={sx(thread.text)}>
           <LinkedText text={m().body} current={props.thread.id} />
         </div>
       </div>
     </div>
   );
-}
-
-// Who a reply goes to: whoever last sent you something here; else, for its owner, everyone else on it; else its owner.
-function replyTo(c: Thread): User[] {
-  const messages = c.messages.sorted("createdAt");
-  const asked = messages.findLast((m) => m.authorId !== me().id && m.toIds.includes(me().id));
-  const ids = asked
-    ? [asked.authorId]
-    : c.ownerId === me().id
-      ? messages.flatMap((m) => [m.authorId, ...m.toIds])
-      : [c.ownerId ?? ""];
-  return [...new Set(ids)]
-    .filter((id) => id !== me().id)
-    .flatMap((id) => store.findById(User, id) ?? []);
 }
 
 // An option shows an avatar (`seed`) or an icon.
@@ -346,7 +349,7 @@ type Option = {
   pick: () => void;
 };
 
-// The next message, written at the end. Enter sends it to `replyTo` and anyone @mentioned; with nobody, it's a note.
+// The next message, written at the end. Enter posts it; only someone @mentioned hears about it.
 function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   const c = (): Thread => props.thread;
   const [menus, setMenus] = createSignal<Partial<Record<CaretKind, CaretMenu | null>>>({});
@@ -381,7 +384,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
         .map((u) => ({
           label: u.name,
           seed: u.id,
-          hint: "sends it to them too",
+          hint: "assigns them",
           pick: () => menu.pick({ id: u.id, name: u.name }),
         }));
     const found = store
@@ -395,13 +398,12 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       }));
     const title = menu.query.trim();
     const branch = (): void => {
-      const made = store.create(Thread, {
+      // With the same people, so it reaches them.
+      const others = [...c().assigneeIds, c().ownerId ?? ""].filter((id) => id !== me().id);
+      const made = createThread({
         title,
-        state: "open",
-        priority: "none",
-        workspace: c().workspace,
         labelIds: [...c().labelIds],
-        owner: me(),
+        assignees: [...new Set(others)].flatMap((id) => store.findById(User, id) ?? []),
         branchedFrom: c(),
       });
       menu.pick({ id: made.id, title });
@@ -428,7 +430,8 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     else if (count === 0) return false;
     else if (event.key === "ArrowDown" || event.key === "ArrowUp")
       setAt((index() + (event.key === "ArrowDown" ? 1 : -1) + count) % count);
-    else if (event.key === "Enter" || event.key === "Tab") options()[index()].pick();
+    else if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab")
+      options()[index()].pick();
     else return false;
     return true;
   };
@@ -442,14 +445,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           extensions: [
             // No underline, so ⌘U stays View As.
             StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
-            Placeholder.configure({
-              placeholder: () => {
-                const to = untrack(() => replyTo(c()));
-                return to.length
-                  ? `Reply to ${to.map((u) => u.name.split(" ")[0]).join(", ")}…`
-                  : "Write a note…";
-              },
-            }),
+            Placeholder.configure({ placeholder: "Reply… @mention someone to bring them in" }),
             ...caretExtensions(
               (caret, menu) => (setMenus((all) => ({ ...all, [caret]: menu })), setAt(0)),
             ),
@@ -464,15 +460,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
               if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
               const body = editor.getText({ blockSeparator: "\n" }).trim();
               if (!body) return true;
-              const to = [
-                ...replyTo(c()),
-                ...mentionsIn(body).flatMap((id) => store.findById(User, id) ?? []),
-              ];
-              send(
-                c(),
-                body,
-                [...new Set(to)].filter((u) => u.id !== me().id),
-              );
+              send(c(), body);
               view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
               return true;
             },
@@ -536,10 +524,13 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.Element {
   let end!: HTMLDivElement;
   const messages = (): Message[] => props.thread.messages.sorted("createdAt");
+  // To the end on opening to reply, and whenever you send something.
+  let opened = false;
   createEffect(
-    () => props.autofocus || messages().at(-1)?.authorId === me().id,
-    (follow) => {
-      if (follow) end.scrollIntoView({ block: "end" });
+    () => (messages().at(-1)?.authorId === me().id ? messages().length : 0),
+    (mine) => {
+      if (opened ? mine : props.autofocus) end.scrollIntoView({ block: "end" });
+      opened = true;
     },
   );
   return (

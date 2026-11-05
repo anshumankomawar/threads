@@ -10,6 +10,7 @@ import {
   type Writer,
 } from "server";
 import "./models";
+import { mentionsIn } from "./text";
 import { DEFAULT_BUCKETS, seed } from "./seed";
 
 const memberOf = (db: Reader, userId: string, workspaceId: unknown): Row | undefined =>
@@ -95,9 +96,23 @@ const effects: ServerOptions["effects"] = {
   },
   Thread: ({ kind, before, after }, db) => {
     if (kind === "create") {
-      if (after!.ownerId != null) deliver(db, after!.ownerId as string, after!.id);
+      // Assigned to someone else from the start, it's in its owner's Sent.
+      const assigned = after!.assigneeIds as string[];
+      const owner = after!.ownerId as string | null;
+      if (owner != null && (assigned.length === 0 || assigned.includes(owner)))
+        deliver(db, owner, after!.id);
       if (after!.blocksId != null)
         update(db, "Thread", after!.blocksId as string, { state: "blocked" });
+    }
+    if (after) {
+      const assignees = after.assigneeIds as string[];
+      const was = (before?.assigneeIds ?? []) as string[];
+      for (const id of assignees) if (!was.includes(id)) deliver(db, id, after.id);
+      for (const id of was)
+        if (!assignees.includes(id)) {
+          const item = itemOf(db, id, after.id);
+          if (item) update(db, "InboxItem", item.id, { doneAt: after.updatedAt });
+        }
     }
     const blocked = after?.blocksId as string | undefined;
     if (after?.state !== "resolved" || before?.state === "resolved" || blocked == null) return;
@@ -107,30 +122,35 @@ const effects: ServerOptions["effects"] = {
     if (!stillBlocked && db.get("Thread", blocked)?.state === "blocked")
       update(db, "Thread", blocked, { state: "open" });
   },
+  // What was in a deleted bucket is sorted again.
+  Bucket: ({ kind, modelId }, db) => {
+    if (kind !== "delete") return;
+    for (const item of db.all("InboxItem"))
+      if (item.bucketId === modelId)
+        update(db, "InboxItem", item.id, { bucketId: null, manual: false });
+  },
   Message: ({ kind, after }, db) => {
     if (kind !== "create") return;
-    const { threadId, workspaceId, authorId, toIds, createdAt } = after as Row & {
+    const { threadId, workspaceId, authorId, body, createdAt } = after as Row & {
       threadId: string;
       authorId: string;
-      toIds: string[];
+      body: string;
     };
     const thread = db.get("Thread", threadId);
     if (thread === undefined || thread.workspaceId !== workspaceId)
       throw new Refusal("invalid", "A message's workspaceId is its thread's");
-    for (const toId of toIds) deliver(db, toId, threadId);
-    // An owner who hands their thread to someone has it in Sent, out of their inbox, until someone sends them something
-    // there.
-    if (authorId !== thread.ownerId || !toIds.some((id) => id !== authorId)) return;
-    const asked = db
-      .all("Message")
-      .some(
-        (m) =>
-          m.threadId === threadId &&
-          (m.toIds as string[]).includes(authorId) &&
-          m.authorId !== authorId,
-      );
+    // An @mention involves someone; a message that mentions nobody tells nobody.
+    const assignees = thread.assigneeIds as string[];
+    const mentioned = [...new Set(mentionsIn(body))].filter(
+      (id) => id !== authorId && db.get("User", id) !== undefined,
+    );
+    if (mentioned.length === 0) return;
+    for (const id of mentioned) deliver(db, id, threadId);
+    if (mentioned.some((id) => !assignees.includes(id)))
+      update(db, "Thread", threadId, { assigneeIds: [...new Set([...assignees, ...mentioned])] });
+    // An owner who hands their thread to someone has it in Sent, until someone @mentions them there.
     const item = itemOf(db, authorId, threadId);
-    if (!asked && item !== undefined && item.doneAt == null)
+    if (authorId === thread.ownerId && !assignees.includes(authorId) && item && item.doneAt == null)
       update(db, "InboxItem", item.id, { doneAt: createdAt });
   },
 };

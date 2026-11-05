@@ -14,6 +14,7 @@ import {
   setSidebarOpen,
   setSplit,
   showMenu,
+  setState,
   store,
   unread,
   view,
@@ -242,7 +243,7 @@ const menuFor = (c: Thread) => (event: MouseEvent) =>
     { label: "Open beside", run: () => setSplit(c.id) },
     {
       label: c.isOpen ? "Resolve" : "Reopen",
-      run: () => ((c.state = c.isOpen ? "resolved" : "open"), c.save()),
+      run: () => setState(c, c.isOpen ? "resolved" : "open"),
     },
   ]);
 
@@ -421,7 +422,10 @@ function BucketSection(props: {
             { label: "Move up", run: move(-1) },
             { label: "Move down", run: move(1) },
             "separator",
-            { label: "Delete bucket", run: () => void props.bucket.delete() },
+            // Sorting needs somewhere to put things.
+            ...(store.where(Bucket, "userId", me().id).length > 1
+              ? [{ label: "Delete bucket", run: () => void props.bucket.delete() }]
+              : []),
           ])
         }
       >

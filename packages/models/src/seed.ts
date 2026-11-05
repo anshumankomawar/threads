@@ -1,4 +1,5 @@
 import type { Write } from "server";
+import { mention } from "./text";
 
 // Everyone's buckets when they're first seen. The last one catches whatever fits nowhere else.
 export const DEFAULT_BUCKETS = [
@@ -217,6 +218,7 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
         ownerId: t.owner,
         workspaceId: workspace,
         labelIds: t.labels ?? [],
+        assigneeIds: [],
         dueAt: t.dueIn === undefined ? null : nowMs + t.dueIn,
         blocksId: t.blocks ?? null,
       }),
@@ -224,8 +226,7 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
         create("Message", `${t.id}-${index}`, {
           threadId: t.id,
           authorId,
-          body,
-          toIds,
+          body: [...toIds.map(mention), body].join(" "),
           workspaceId: workspace,
         }),
       ),

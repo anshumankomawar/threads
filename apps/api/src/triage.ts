@@ -1,5 +1,5 @@
 import type { Row, TxRecord } from "protocol";
-import { plainText } from "models";
+import { mentionsIn, plainText } from "models";
 import type { Reader, Session, SyncServer } from "server";
 
 // What the model needs to sort one person's inbox: their buckets, their inbox items that aren't sorted yet, and the
@@ -82,14 +82,16 @@ function triageRequests(db: Reader, skip: ReadonlySet<string>): TriageRequest[] 
           .map((item) => {
             const thread = db.get("Thread", item.threadId as string)!;
             const messages = db.all("Message").filter((message) => message.threadId === thread.id);
-            // What it's about: its first message, and the latest one sent to them.
+            // What it's about: its first message, and the latest one that mentions them.
             const sent = messages.findLast((message) =>
-              (message.toIds as string[]).includes(userId),
+              mentionsIn(message.body as string).includes(userId),
             );
-            const text = [...new Set([messages[0], sent])]
-              .filter((message) => message !== undefined)
-              .map((message) => plain(message.body as string))
-              .join("\n");
+            const text = [
+              (thread.description as string | null) ?? "",
+              ...[...new Set([messages[0], sent])]
+                .filter((message) => message !== undefined)
+                .map((message) => plain(message.body as string)),
+            ].join("\n");
             return {
               id: item.id,
               title: thread.title as string,

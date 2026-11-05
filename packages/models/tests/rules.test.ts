@@ -25,6 +25,7 @@ const thread = (id: string, changes: Record<string, unknown> = {}) =>
     ownerId: "anshu",
     workspaceId: "local",
     labelIds: [],
+    assigneeIds: [],
     ...changes,
   });
 const message = (id: string, changes: Record<string, unknown> = {}) =>
@@ -32,7 +33,6 @@ const message = (id: string, changes: Record<string, unknown> = {}) =>
     threadId: "t",
     authorId: "anshu",
     body: "Hi",
-    toIds: [],
     workspaceId: "local",
     ...changes,
   });
@@ -159,28 +159,93 @@ test("a message's author is you, and only the author deletes it", () => {
   ]);
 });
 
-test("a message reaches each recipient's inbox, again if they'd marked it done", () => {
+const at = (...people: string[]) => people.map((id) => `[[person:${id}]]`).join(" ");
+const inInbox = (server: ReturnType<typeof setup>, person: string) =>
+  inboxOf(server, person).some((item) => item.threadId === "t" && item.doneAt == null);
+const assignees = (server: ReturnType<typeof setup>) => row(server, "Thread", "t")!.assigneeIds;
+
+test("an @mention assigns someone: in their inbox until they mark it done, and again if mentioned again", () => {
   const server = setup();
-  run(server, arjun, message("m1", { authorId: "arjun", toIds: ["kk"] }));
+  run(server, arjun, message("m1", { authorId: "arjun", body: `${at("kk")} look` }));
+  expect(assignees(server)).toEqual(["kk"]);
+  expect(inInbox(server, "kk")).toBe(true);
   const [item] = inboxOf(server, "kk");
-  expect(item).toMatchObject({ threadId: "t" });
   run(server, kk, tx("update", "InboxItem", item!.id, { doneAt: 5 }));
-  run(server, arjun, message("m2", { authorId: "arjun", toIds: ["kk"] }));
-  expect(inboxOf(server, "kk")).toEqual([expect.objectContaining({ id: item!.id, doneAt: null })]);
+  expect(inInbox(server, "kk")).toBe(false);
+  run(server, arjun, message("m2", { authorId: "arjun", body: `${at("kk")} again` }));
+  expect(inInbox(server, "kk")).toBe(true);
+  expect(assignees(server)).toEqual(["kk"]);
 });
 
-test("a new thread is in its owner's inbox until they send it to someone; a message to them brings it back", () => {
+test("a message with no @mention tells nobody and assigns nobody", () => {
   const server = setup();
-  const inInbox = () =>
-    inboxOf(server, "anshu").map((item) => [item.threadId, item.doneAt == null]);
-  expect(inInbox()).toEqual([["t", true]]);
-  run(server, anshu, message("m1", { toIds: ["arjun"] }));
-  expect(inInbox()).toEqual([["t", false]]);
-  run(server, arjun, message("m2", { authorId: "arjun", toIds: ["anshu"] }));
-  expect(inInbox()).toEqual([["t", true]]);
-  // Once someone has sent the owner something here, the owner's own messages leave it in their inbox.
-  run(server, anshu, message("m3", { toIds: ["arjun"] }));
-  expect(inInbox()).toEqual([["t", true]]);
+  run(server, anshu, message("m1", { body: `${at("arjun")} over to you` }));
+  expect(inInbox(server, "anshu")).toBe(false);
+  // Arjun answers without mentioning the owner: it stays in Arjun's inbox, and out of the owner's.
+  run(server, arjun, message("m2", { authorId: "arjun", body: "on it" }));
+  expect(inInbox(server, "anshu")).toBe(false);
+  expect(inInbox(server, "arjun")).toBe(true);
+  expect(assignees(server)).toEqual(["arjun"]);
+});
+
+test("a new thread is in its owner's inbox until they hand it off; an @mention brings it back to stay", () => {
+  const server = setup();
+  expect(inInbox(server, "anshu")).toBe(true);
+  run(server, anshu, message("m1", { body: "a note" }));
+  expect(inInbox(server, "anshu")).toBe(true);
+  run(server, anshu, message("m2", { body: `${at("arjun")} yours` }));
+  expect(inInbox(server, "anshu")).toBe(false);
+  run(server, arjun, message("m3", { authorId: "arjun", body: `${at("anshu")} a question` }));
+  expect(inInbox(server, "anshu")).toBe(true);
+  // Now they're involved, mentioning someone else doesn't take it out of their inbox.
+  run(server, anshu, message("m4", { body: `${at("kk")} can you help` }));
+  expect(inInbox(server, "anshu")).toBe(true);
+  expect(assignees(server)).toEqual(["arjun", "anshu", "kk"]);
+});
+
+test("someone who isn't the owner keeps it when they mention someone else", () => {
+  const server = setup();
+  run(server, anshu, message("m1", { body: at("arjun") }));
+  run(server, arjun, message("m2", { authorId: "arjun", body: at("kk") }));
+  expect(inInbox(server, "arjun")).toBe(true);
+  expect(inInbox(server, "kk")).toBe(true);
+});
+
+test("mentioning yourself or nobody real assigns nobody", () => {
+  const server = setup();
+  run(server, anshu, message("m1", { body: `${at("anshu", "stranger-who-isnt-here")} hi` }));
+  expect(assignees(server)).toEqual([]);
+});
+
+test("assigning from the thread reaches their inbox, and unassigning takes it out", () => {
+  const server = setup();
+  run(server, anshu, tx("update", "Thread", "t", { assigneeIds: ["kk"] }));
+  expect(inInbox(server, "kk")).toBe(true);
+  run(server, anshu, tx("update", "Thread", "t", { assigneeIds: [] }));
+  expect(inInbox(server, "kk")).toBe(false);
+});
+
+test("a thread assigned to someone from the start is in their inbox, not its owner's", () => {
+  const server = setup();
+  run(server, anshu, thread("assigned", { assigneeIds: ["kk"] }));
+  run(server, anshu, thread("mine", { assigneeIds: ["anshu"] }));
+  const threadsIn = (person: string) => inboxOf(server, person).map((item) => item.threadId);
+  expect(threadsIn("kk")).toContain("assigned");
+  expect(threadsIn("anshu")).not.toContain("assigned");
+  expect(threadsIn("anshu")).toContain("mine");
+});
+
+test("what was in a deleted bucket is sorted again", () => {
+  const server = setup();
+  const [item] = inboxOf(server, "anshu");
+  run(
+    server,
+    anshu,
+    tx("create", "Bucket", "b", { userId: "anshu", name: "B", description: "", position: 9 }),
+    tx("update", "InboxItem", item.id, { bucketId: "b", manual: true }),
+  );
+  run(server, anshu, tx("delete", "Bucket", "b"));
+  expect(inboxOf(server, "anshu")[0]).toMatchObject({ bucketId: null, manual: false });
 });
 
 test("a blocker blocks its thread until the last open blocker is resolved", () => {

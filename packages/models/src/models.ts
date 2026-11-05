@@ -57,12 +57,15 @@ export class Label extends Model {
 @ClientModel("Thread", { syncGroup: inWorkspace })
 export class Thread extends Model {
   @Property() title!: string;
+  @Property({ nullable: true }) description?: string;
   @Property({ enum: STATES, indexed: true }) state!: State;
   @Reference(() => User, "ownedThreads", { nullable: true }) owner?: User;
   @Reference(() => Workspace, "threads") workspace!: Workspace;
   @Property({ nullable: true, serializer: date }) dueAt?: Date;
   @Property({ enum: PRIORITIES }) priority!: Priority;
   @Property() labelIds!: string[];
+  // Who's involved: an @mention adds someone, and it stays in their inbox until they mark it done or it's resolved.
+  @Property() assigneeIds!: string[];
   @Reference(() => Thread, "branches", { nullable: true }) branchedFrom?: Thread;
   // Made with /blocked: that thread stays blocked until this one is resolved.
   @Reference(() => Thread, "blockers", { nullable: true }) blocks?: Thread;
@@ -79,14 +82,12 @@ export class Thread extends Model {
   }
 }
 
-// Created once, never edited. `toIds` is who it was sent to (none: a note). It carries its thread's `workspaceId`
-// because a row computes its own sync group.
+// Created once, never edited. It carries its thread's `workspaceId` because a row computes its own sync group.
 @ClientModel("Message", { syncGroup: inWorkspace })
 export class Message extends Model {
   @Reference(() => Thread, "messages") thread!: Thread;
   @Reference(() => User, "messages") author!: User;
   @Property() body!: string;
-  @Property() toIds!: string[];
   @Property() workspaceId!: string;
   declare threadId: string;
   declare authorId: string;

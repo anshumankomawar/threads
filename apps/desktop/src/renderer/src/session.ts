@@ -65,15 +65,16 @@ export const signedIn = (): boolean =>
 export const draftWith = async (
   request: ComposeRequest,
   signal: AbortSignal,
-): Promise<ComposeDraft> =>
-  (
-    await fetch(`${server.url}/ai/compose`, {
-      method: "POST",
-      signal,
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(request),
-    })
-  ).json() as Promise<ComposeDraft>;
+): Promise<ComposeDraft> => {
+  const response = await fetch(`${server.url}/ai/compose`, {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) throw new Error(`Compose failed (${response.status})`);
+  return response.json() as Promise<ComposeDraft>;
+};
 
 // ── What's on screen ──
 export type View = { thread: string | null } | { label: string } | { person: string };
@@ -118,10 +119,23 @@ function offerUndo(text: string, run: () => void): void {
 // ── The inbox ──
 export const itemFor = (thread: Thread): InboxItem | undefined =>
   thread.inboxItems.filter((item) => item.userId === me().id)[0];
-export const unread = (item: InboxItem): boolean =>
+const hasNew = (item: InboxItem): boolean =>
   item.thread.messages.filter(
     (m) => m.authorId !== me().id && m.createdAt.getTime() > (item.seenAt?.getTime() ?? 0),
   ).length > 0;
+// The thread you're reading is never unread; leaving it marks it seen.
+export const unread = (item: InboxItem): boolean => item.thread !== active() && hasNew(item);
+
+// A message counts as activity on its thread, though it doesn't change the Thread's row.
+const lastActive = (thread: Thread): number =>
+  Math.max(
+    thread.updatedAt.getTime(),
+    thread.messages.sorted("createdAt").at(-1)?.createdAt.getTime() ?? 0,
+  );
+
+// Snoozed threads come back on the minute.
+const [now, setNow] = createSignal(Date.now());
+setInterval(() => setNow(Date.now()), 60_000);
 
 const RANK = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
 const byUrgency = (a: InboxItem, b: InboxItem): number => {
@@ -130,17 +144,17 @@ const byUrgency = (a: InboxItem, b: InboxItem): number => {
     Number(x.state === "blocked") - Number(y.state === "blocked") ||
     RANK[x.priority] - RANK[y.priority] ||
     (x.dueAt?.getTime() ?? Infinity) - (y.dueAt?.getTime() ?? Infinity) ||
-    y.updatedAt.getTime() - x.updatedAt.getTime()
+    lastActive(y) - lastActive(x)
   );
 };
 
 // Your inbox in your buckets, most urgent first; what the model hasn't sorted yet waits apart.
 export const inbox = store.view(() => {
-  const now = Date.now();
+  const time = now();
   const items = store
     .where(InboxItem, "userId", me().id)
     .filter(
-      (i) => i.thread?.isOpen && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > now),
+      (i) => i.thread?.isOpen && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > time),
     )
     .sort(byUrgency);
   const buckets = store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
@@ -156,14 +170,14 @@ export const inbox = store.view(() => {
   };
 });
 
-// Open threads you own that you've sent to someone.
+// Open threads you own that someone else is on, unless they're back in your inbox.
 export const sent = store.view(() =>
   store
     .where(Thread, "ownerId", me().id)
     .filter(
-      (c) => c.isOpen && c.messages.filter((m) => m.toIds.some((id) => id !== me().id)).length > 0,
+      (c) => c.isOpen && !inbox().order.includes(c) && c.assigneeIds.some((id) => id !== me().id),
     )
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
+    .sort((a, b) => lastActive(b) - lastActive(a)),
 );
 
 // ── Navigation and the actions it takes ──
@@ -173,17 +187,20 @@ const activeId = (): string | null => {
 };
 export const active = (): Thread | undefined => store.findById(Thread, activeId() ?? "");
 
-// Opening a thread marks it seen.
+function markSeen(thread: Thread | undefined): void {
+  const item = thread && itemFor(thread);
+  if (!item || !hasNew(item)) return;
+  item.seenAt = new Date();
+  item.save();
+}
+
+// Opening a thread, or leaving one, marks it seen.
 export function open(next: View): void {
+  markSeen(active());
   setView(next);
   if (!("thread" in next) || next.thread === null) return;
   if (next.thread === split()) setSplit(null);
-  const thread = store.findById(Thread, next.thread);
-  const item = thread && itemFor(thread);
-  if (item) {
-    item.seenAt = new Date();
-    item.save();
-  }
+  markSeen(store.findById(Thread, next.thread));
 }
 
 // After you finish one, the next in your inbox opens; in the split view, the split closes.
@@ -220,7 +237,8 @@ function snooze(item: InboxItem): void {
 }
 
 export function setState(thread: Thread, state: Thread["state"]): void {
-  if (state === "resolved" && itemFor(thread)) moveOn(thread);
+  const showing = thread === active() || thread.id === split();
+  if (state === "resolved" && showing && inbox().order.includes(thread)) moveOn(thread);
   thread.state = state;
   thread.save();
 }
@@ -241,11 +259,19 @@ window.addEventListener("keydown", (event) => {
   const reading = free && !typing;
   const run: Record<string, (() => void) | false | undefined> = {
     "⌘k": () => setDialog({ kind: "search" }),
-    "⌘n": () => setDialog({ kind: "newThread" }),
+    "⌘n": () => {
+      const shown = view();
+      setDialog({
+        kind: "newThread",
+        labelId: "label" in shown ? shown.label : undefined,
+        to: "person" in shown ? store.findById(User, shown.person) : undefined,
+      });
+    },
     "⌘⇧n": () => setDialog({ kind: "compose" }),
     // Signed in, you're who you signed in as.
     "⌘u": !account && (() => setDialog({ kind: "viewAs" })),
     "⌘=": () => applyZoom(zoom() + 0.1),
+    "⌘⇧+": () => applyZoom(zoom() + 0.1),
     "⌘-": () => applyZoom(zoom() - 0.1),
     "⌘0": () => applyZoom(1),
     "⌘e": free && item && (() => markDone(item)),
@@ -253,7 +279,13 @@ window.addEventListener("keydown", (event) => {
     k: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
     h: reading && item && (() => snooze(item)),
     r: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
-    escape: typing && free && target.closest(".reply") !== null && (() => target.blur()),
+    // Not when Escape just closed one of the reply's menus.
+    escape:
+      typing &&
+      free &&
+      !event.defaultPrevented &&
+      target.closest(".reply") !== null &&
+      (() => target.blur()),
   };
   const action = run[key];
   if (!action) return;

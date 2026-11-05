@@ -41,6 +41,8 @@ export const thread = stylex.create({
   headerTitle: {
     marginTop: { default: null, [stylex.when.siblingBefore(":is(*)", threadLineMarker)]: -6 },
   },
+  description: { whiteSpace: "pre-wrap", userSelect: "text" },
+  headerDescription: { marginTop: -4 },
   avatar: {
     display: "flex",
     flexShrink: 0,

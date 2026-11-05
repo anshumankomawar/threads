@@ -91,6 +91,8 @@ export const palette = stylex.create({
 
 // Compose (⌘⇧N): what you write on top, the model's draft of the thread under it.
 export const compose = stylex.create({
+  // Holds the panel's keys without changing its layout.
+  keys: { display: "contents" },
   input: {
     ...base.below,
     ...base.bare,
@@ -104,34 +106,67 @@ export const compose = stylex.create({
     resize: "none",
     fieldSizing: "content",
   },
+  mentions: { ...base.below, flexShrink: 0, padding: "4px 0" },
   preview: {
-    display: "flex",
-    flexDirection: "column",
     minHeight: 0,
-    padding: "10px 12px",
+    padding: "10px 0",
     overflowY: "auto",
     transitionProperty: "opacity",
     transitionDuration: "120ms",
   },
   stale: { opacity: 0.6 },
-  label: { paddingLeft: 0 },
+  label: { gap: 8 },
+  redraft: { ...base.bare, color: colors.accent, cursor: "pointer" },
+  // Fields read as text and edit in place: no box until you're in one.
+  field: {
+    display: "block",
+    boxSizing: "border-box",
+    width: "100%",
+    padding: "2px 6px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: { default: "transparent", ":focus": colors.strokeFocused },
+    borderRadius: radii.control,
+    color: text,
+    font: "inherit",
+    backgroundColor: {
+      default: "transparent",
+      ":hover": colors.bgQuaternary,
+      ":focus": "transparent",
+    },
+    outline: "none",
+    resize: "none",
+    fieldSizing: "content",
+  },
   title: {
-    color: colors.textPrimary,
+    width: "calc(100% - 12px)",
+    margin: "0 6px",
     fontSize: fontSizes.message,
     fontWeight: 600,
     lineHeight: "22px",
   },
-  context: { marginTop: 2, color: colors.textSecondary, whiteSpace: "pre-wrap" },
-  asks: { display: "flex", flexDirection: "column", gap: 8, marginTop: 10 },
+  context: {
+    width: "calc(100% - 12px)",
+    margin: "2px 6px 0",
+    color: { default: colors.textSecondary, "::placeholder": colors.textTertiary },
+  },
+  empty: { margin: "6px 12px 0", color: colors.textSecondary },
+  asks: { display: "flex", flexDirection: "column", gap: 8, margin: "10px 0 0", padding: "0 6px" },
   ask: { display: "flex", flexDirection: "column", gap: 2 },
   people: {
     display: "flex",
     flexWrap: "wrap",
     gap: 8,
+    padding: "0 6px",
     color: colors.textSecondary,
     fontSize: fontSizes.body,
   },
   person: { display: "inline-flex", gap: 5, alignItems: "center" },
+  remove: {
+    ...base.bare,
+    color: { default: colors.textTertiary, ":hover": colors.textPrimary },
+    cursor: "pointer",
+  },
   footer: {
     ...base.flex,
     gap: 8,
