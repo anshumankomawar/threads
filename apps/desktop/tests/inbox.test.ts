@@ -143,19 +143,19 @@ test("within a bucket, blocked threads trail and the rest go by score", () => {
   ]);
 });
 
-test("each row says who it's from and how soon it's due", () => {
+test("each row says who it's from and when it's due, without urgency", () => {
   const due = thread({ dueAtMs: NOW + DAY, priority: "urgent" });
-  const late = thread({ dueAtMs: NOW - HOUR });
+  const late = thread({ dueAtMs: NOW - 2 * DAY });
   const [first, second] = buildInbox([late, due], me, [], NOW).unsorted;
   expect([first.thread, first.reason, first.dueLabel]).toEqual([
     due,
-    "From Sam Rivera · due tomorrow · urgent",
+    "From Sam Rivera",
     "Tomorrow",
   ]);
-  expect([second.reason, second.dueLabel, second.overdue]).toEqual([
-    "From Sam Rivera · overdue",
-    "Overdue",
-    true,
+  // Past due shows its date, like any other.
+  expect([second.reason, second.dueLabel]).toEqual([
+    "From Sam Rivera",
+    new Date(NOW - 2 * DAY).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
   ]);
 });
 

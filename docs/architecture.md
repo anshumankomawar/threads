@@ -408,7 +408,7 @@ A board and a sprint are ways of looking at threads; neither changes one.
 
 ## Buckets, sorting and scoring
 
-The inbox (the sidebar's Inbox tab) is grouped into your **buckets** and ordered within each by **score**. There's no schedule: the app helps you get through your work, not plan your hours.
+The inbox (the sidebar's Inbox tab) is grouped into your **buckets** and ordered within each by **score**. Each bucket shows its first five threads (`BUCKET_ROWS` in `Sidebar.tsx`) and scrolls the rest inside it, fading out at an end with more past it; "6 more" under it opens the rest in place. A bucket's name stays pinned at the top of the sidebar while you scroll through it, with its own icon, picked from what it's about and never the same as another bucket's (`bucketIcons.ts`; the thread's bucket chip uses it too). Rows show who it's from and the due date, with no urgency labels. Unread is a bold title, with no dot. There's no schedule: the app helps you get through your work, not plan your hours.
 
 - **Buckets** are per person (`Person.buckets`, edited as a whole list with `PersonChanges`; `DEFAULT_BUCKETS` until
   you make your own): a name, and a plain-language description of what goes in it, which is what the model reads. The

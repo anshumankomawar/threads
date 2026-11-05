@@ -21,10 +21,9 @@ export type InboxItem = {
   from: Person;
   // Who to show it by: who it's from, or for your outbox, who else is on it ("Sam +2").
   who: string | null;
-  // Why it's where it is in its bucket: who it's from, how soon it's due, and so on.
+  // Who it's from, or that it's your own (or what it's blocked on).
   reason: string;
   dueLabel: string | null;
-  overdue: boolean;
   // How important it is, from 1 to 100, which orders it within its bucket.
   score: number;
 };
@@ -60,26 +59,12 @@ export function scoreOf(thread: Thread, people: Person[], nowMs: number): number
   return threadScore(thread, levelPositions(people)(thread.owner.id), nowMs);
 }
 
-function reasonFor(thread: Thread, me: Person, sender: Person, nowMs: number): string {
-  const due = thread.dueAtMs;
-  const days = due === null ? null : daysUntil(due, nowMs);
-  return [
-    sender.id === me.id
-      ? "Your own"
-      : sender.id === me.managerId
-        ? "From your manager"
-        : `From ${sender.name}`,
-    due !== null && due < nowMs
-      ? "overdue"
-      : days === 0
-        ? "due today"
-        : days === 1
-          ? "due tomorrow"
-          : null,
-    thread.priority === "urgent" ? "urgent" : null,
-  ]
-    .filter((reason): reason is string => reason !== null)
-    .join(" · ");
+function reasonFor(me: Person, sender: Person): string {
+  return sender.id === me.id
+    ? "Your own"
+    : sender.id === me.managerId
+      ? "From your manager"
+      : `From ${sender.name}`;
 }
 
 // Everyone else on a thread you own: its assignees and whoever you've sent it to.
@@ -117,7 +102,6 @@ export function buildInbox(threads: Thread[], me: Person, people: Person[], nowM
     const owned = thread.owner.id === me.id && !isPersonal(thread);
     if (why === null && !owned) continue;
     const due = thread.dueAtMs;
-    const overdue = due !== null && due < nowMs;
     const isBlocked = thread.status === "blocked";
     const blockedOn = isBlocked ? blockerOf(thread)?.assignees[0] : undefined;
     const sender = lastSentTo(thread, me.id)?.author;
@@ -132,15 +116,8 @@ export function buildInbox(threads: Thread[], me: Person, people: Person[], nowM
         ? blockedOn
           ? `Blocked on ${blockedOn.name}`
           : "Blocked"
-        : reasonFor(thread, me, from, nowMs),
-      dueLabel: isBlocked
-        ? "Blocked"
-        : overdue
-          ? "Overdue"
-          : due === null
-            ? null
-            : shortDate(due, nowMs),
-      overdue,
+        : reasonFor(me, from),
+      dueLabel: isBlocked ? "Blocked" : due === null ? null : shortDate(due, nowMs),
       score: scoreOf(thread, people, nowMs),
     };
     if (why === null) {

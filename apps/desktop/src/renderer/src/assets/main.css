@@ -5,7 +5,6 @@
   --chrome: oklch(0.191 0 0);
   /* The side panels and the title bar are solid, at the shades they had over the window's glass. */
   --sidebar-solid: #1a1a1a;
-  --titlebar-solid: #161515;
 
   --text-primary: var(--base);
   --text-secondary: color-mix(in srgb, var(--base) 74%, transparent);
@@ -50,7 +49,6 @@
   --sidebar: oklch(0.965 0 0);
   --chrome: oklch(0.985 0 0);
   --sidebar-solid: #f4f4f3;
-  --titlebar-solid: #f0efee;
 
   --text-secondary: color-mix(in srgb, var(--base) 72%, transparent);
   --text-tertiary: color-mix(in srgb, var(--base) 55%, transparent);
@@ -93,7 +91,8 @@ body {
   color: var(--text-primary);
   /* Dark glass surface over the window vibrancy (darker than Cursor's 42%). */
   background: var(--glass);
-  font-family: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  /* SF Pro, the macOS system font, as Things uses (Apple's licence keeps it out of the bundle); Segoe UI elsewhere. */
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
   font-size: 12px;
   line-height: 16px;
   -webkit-font-smoothing: antialiased;
@@ -149,18 +148,14 @@ body * {
   border-right: 1px solid var(--stroke-tertiary);
 }
 
-/* Delta's top bar: 33px plus a 1px divider; each column draws its own so they line up while resizing. */
+/* The top bar: 34px, with no divider; each column's top bar is its own colour, so the sidebar is one tone top to
+   bottom and the main area another. */
 .topbar {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: 2.5px;
   height: 34px;
-  border-bottom: 1px solid var(--stroke-tertiary);
-}
-
-.main-topbar {
-  background-color: var(--titlebar-solid);
 }
 
 /* The toggle icon sits as far from the last traffic light (larger on macOS 26) as the top bar's last icon sits from the
@@ -465,11 +460,13 @@ body * {
   overflow-y: auto;
 }
 
+/* A reading column centred in the main area, as in Things. */
 .thread-doc {
   display: flex;
   flex-direction: column;
   gap: 20.5px;
   max-width: 773px;
+  margin: 0 auto;
   padding: 13.75px 15px 48px;
 }
 
@@ -480,13 +477,13 @@ body * {
 }
 
 /* The thread's title, the same on every kind: a compact heading aligned with the text column. */
+/* The thread's name, a touch bolder than its messages: a subject line, not a page title. */
 .thread-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 20px;
-  font-weight: 600;
-  line-height: 28px;
-  letter-spacing: -0.2px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
   overflow-wrap: anywhere;
   user-select: text;
 }
@@ -1448,12 +1445,15 @@ body * {
 
 /* A thread's header, in the column the conversation's text uses: title, byline, properties, then the rest of the
    opening message, with room before the conversation starts. */
+/* The thread opens like its first message (avatar, who and when), with the title as its subject line. */
 .thread-header {
+  padding-bottom: 12px;
+}
+
+.thread-header .thread-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 4px 0 12px 37px;
-  scroll-margin-top: 14px;
+  gap: 6px;
 }
 
 .thread-byline {
@@ -1472,8 +1472,13 @@ body * {
 
 /* Who and when sit just above the title, the description follows it, and the properties come last with a little
    more room, so the heading reads as title then description. */
+.thread-header .thread-meta + .thread-title,
 .thread-header .thread-byline + .thread-title {
   margin-top: -6px;
+}
+
+.thread-header .thread-title + .thread-description {
+  margin-top: -4px;
 }
 
 .thread-header .thread-properties {
@@ -1879,8 +1884,7 @@ body * {
   -webkit-line-clamp: 2;
 }
 
-/* The sidebar's bottom row, as in Delta: a divider above, as tall as the top bar, your avatar and name, then a thin
-   line and a quiet detail. */
+/* The sidebar's bottom row, as in Delta: as tall as the top bar, your avatar and name. */
 .sidebar-footer {
   display: flex;
   flex-shrink: 0;
@@ -1889,7 +1893,6 @@ body * {
   height: 34px;
   padding: 0 var(--sidebar-inset);
   border: none;
-  border-top: 1px solid var(--stroke-tertiary);
   color: var(--text-primary);
   font: inherit;
   text-align: left;
@@ -2478,11 +2481,16 @@ body * {
 }
 /* The inbox: your buckets in order, each a quiet header (name and count, which folds it) over its threads. A bucket
    lights up while a thread is dragged over it. */
+/* Buckets stand apart, so a bucket's faded last row doesn't run into the next one's name; folded ones sit closer. */
 .inbox {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding-bottom: 12px;
+}
+
+.bucket:has(.bucket-threads) + .bucket {
+  margin-top: 12px;
 }
 
 .bucket {
@@ -2495,11 +2503,18 @@ body * {
   background-color: var(--bg-quaternary);
 }
 
+/* A bucket's name stays at the top of the sidebar while you scroll through its threads, until the next one's takes
+   its place. */
 .bucket-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: var(--sidebar-solid);
   display: flex;
   align-items: center;
   height: 26px;
-  padding: 0 calc(var(--sidebar-inset) - var(--row-gutter) - 4px) 0 0;
+  /* The fold arrow ends on the inset, under the new-thread button; right-click has the bucket's options. */
+  padding: 0 calc(var(--sidebar-inset) - var(--row-gutter)) 0 0;
 }
 
 .bucket-toggle {
@@ -2509,7 +2524,8 @@ body * {
   align-items: center;
   min-width: 0;
   height: 100%;
-  padding: 0 0 0 calc(var(--sidebar-inset) - var(--row-gutter) + 3px);
+  /* Its icon lines up with the tabs' icons above, on the sidebar inset. */
+  padding: 0 0 0 calc(var(--sidebar-inset) - var(--row-gutter));
   border: none;
   color: var(--text-tertiary);
   font: inherit;
@@ -2524,8 +2540,10 @@ body * {
   color: var(--text-secondary);
 }
 
+/* The fold arrow sits at the right end, beside the bucket's options. */
 .bucket-chevron {
   flex-shrink: 0;
+  margin-left: auto;
   transition: transform 120ms ease;
 }
 
@@ -2533,9 +2551,9 @@ body * {
   transform: rotate(90deg);
 }
 
-/* Sorting isn't a bucket you fold: no chevron, its name where the others' are. */
+/* Sorting isn't a bucket you fold: no icon or arrow, its name where the others' are. */
 .bucket-sorting {
-  padding-left: calc(var(--sidebar-inset) - var(--row-gutter) + 19px);
+  padding-left: calc(var(--sidebar-inset) - var(--row-gutter) + 20px);
   cursor: default;
 }
 
@@ -2543,10 +2561,32 @@ body * {
   color: var(--text-tertiary);
 }
 
+/* Each bucket's own icon, in its own colour (`bucketLooks`). */
+.bucket-icon {
+  flex-shrink: 0;
+}
+
 .bucket-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* "6 more" under a bucket's last showing row, in line with the titles, opening the rest in place; "Show less" folds them back. */
+.bucket-more-rows {
+  display: block;
+  margin: 2px 0 0;
+  padding: 2px calc(var(--sidebar-inset) - var(--row-gutter) + 24px);
+  border: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: 11px;
+  background: none;
+  cursor: pointer;
+}
+
+.bucket-more-rows:hover {
+  color: var(--text-primary);
 }
 
 .bucket-count {
@@ -2559,21 +2599,29 @@ body * {
   opacity: 0.6;
 }
 
-/* Bucket options: quiet until its header is hovered. */
-.bucket-more {
-  width: 20px;
-  height: 20px;
-  color: var(--text-tertiary);
-  opacity: 0;
+/* A bucket shows its first few threads (`BUCKET_ROWS`) and scrolls the rest, fading out at an end with more past it. */
+.bucket-threads {
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
 }
 
-.bucket-header:hover .bucket-more,
-.bucket-more:focus-visible {
-  opacity: 1;
+.bucket-threads[data-more-below] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 32px), transparent);
 }
 
-.bucket-more:hover {
-  color: var(--text-primary);
+.bucket-threads[data-more-above] {
+  mask-image: linear-gradient(to bottom, transparent, #000 32px);
+}
+
+.bucket-threads[data-more-above][data-more-below] {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 32px,
+    #000 calc(100% - 32px),
+    transparent
+  );
 }
 
 /* One thread: who it's from beside its title and due date, and under them why it's here. */
@@ -2625,8 +2673,9 @@ body * {
   mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
 
+/* Unread is the bold title alone: a dot on every row of a busy inbox stops meaning anything. */
 .inbox-row[data-unread="true"] .inbox-row-title {
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .inbox-row-due {
@@ -2636,10 +2685,6 @@ body * {
   color: var(--text-tertiary);
   font-size: 11px;
   white-space: nowrap;
-}
-
-.inbox-row-due[data-overdue="true"] {
-  color: var(--urgent);
 }
 
 .inbox-row-why {

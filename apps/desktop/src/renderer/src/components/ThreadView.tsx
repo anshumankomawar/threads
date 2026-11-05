@@ -68,6 +68,7 @@ import {
   inboxPeople,
   replyTo,
 } from "model";
+import { bucketIcons } from "../bucketIcons";
 import { DAY, formatDue, formatRelativeTime, startOfDay } from "../format";
 import { recipientsOf } from "../compose";
 import { Identicon } from "./Identicon";
@@ -399,88 +400,118 @@ function ThreadHeader({
   const buckets = bucketsOf(me);
   const triage = thread.triage[me.id] ?? null;
   const bucket = buckets.find((candidate) => candidate.id === triage?.bucketId);
+  const icons = bucketIcons(buckets);
 
   const description = ask?.text.trim() ?? "";
+  const { openPerson } = useThreadLinks();
 
   return (
-    <header className="thread-header" id={ask === undefined ? undefined : `entry-${ask.id}`}>
-      {thread.branchedFromId !== null && (
-        <div className="thread-byline">
-          <span>Branched from</span>
-          <ThreadLinkChip threadId={thread.branchedFromId} />
-        </div>
-      )}
-      <h1 className="thread-title">{thread.title}</h1>
-      {description !== "" && (
-        <MessageText text={description} className="thread-text thread-description" />
-      )}
-      <div className="thread-properties">
-        <MenuChip
-          label={STATUS_LABELS[thread.status]}
-          icon={<StatusDot status={thread.status} />}
-          options={statuses.map((status) => ({
-            label: STATUS_LABELS[status],
-            value: status,
-            icon: <StatusDot status={status} />,
-          }))}
-          onSelect={actions.onSetStatus}
-        />
-        {inMyInbox && (
-          <MenuChip
-            label={bucket?.name ?? "Sorting…"}
-            icon={<HugeiconsIcon icon={InboxIcon} {...ICON_PROPS} />}
-            tone={bucket === undefined ? "muted" : undefined}
-            title={
-              triage === null
-                ? "Being sorted into one of your buckets"
-                : triage.manual
-                  ? "Placed by you"
-                  : triage.reason
-            }
-            options={[
-              ...buckets.map((option) => ({
-                label: option.name,
-                value: option.id as string | null,
-                icon:
-                  option.id === bucket?.id ? (
-                    <HugeiconsIcon icon={Tick02Icon} {...ICON_PROPS} />
-                  ) : undefined,
-              })),
-              ...(triage?.manual ? [{ label: "Sort it for me", value: null }] : []),
-            ]}
-            onSelect={actions.onSetBucket}
-          />
+    <header
+      className="thread-header thread-block"
+      id={ask === undefined ? undefined : `entry-${ask.id}`}
+    >
+      {/* The thread opens like its first message: who asked and when, then what it's about. */}
+      {ask === undefined ? <span className="thread-avatar" /> : <Avatar person={ask.author} />}
+      <div className="thread-body">
+        {ask !== undefined && (
+          <div className="thread-meta">
+            <button
+              type="button"
+              className="thread-author person-link"
+              onClick={() => openPerson(ask.author.id)}
+            >
+              {ask.author.name}
+            </button>
+            <span className="thread-time">{formatRelativeTime(ask.createdAtMs, nowMs)}</span>
+          </div>
         )}
-        <MenuChip
-          label={PRIORITY_LABELS[thread.priority]}
-          tone={priorityTone}
-          options={priorities.map((priority) => ({
-            label: PRIORITY_LABELS[priority],
-            value: priority,
-          }))}
-          onSelect={actions.onSetPriority}
-        />
-        <MenuChip
-          label={due?.label ?? "No due date"}
-          icon={<HugeiconsIcon icon={Calendar01Icon} {...ICON_PROPS} />}
-          tone={dueTone}
-          options={dueOptions(nowMs)}
-          onSelect={actions.onSetDue}
-        />
-        <MenuChip
-          label={thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
-          icon={<HugeiconsIcon icon={HourglassIcon} {...ICON_PROPS} />}
-          tone={thread.effortHours === null ? "muted" : undefined}
-          options={[
-            ...EFFORT_OPTIONS.map((hours) => ({
-              label: formatEffort(hours),
-              value: hours as number | null,
-            })),
-            { label: "No estimate", value: null },
-          ]}
-          onSelect={actions.onSetEffort}
-        />
-        <LabelChip thread={thread} actions={actions} />
+        {thread.branchedFromId !== null && (
+          <div className="thread-byline">
+            <span>Branched from</span>
+            <ThreadLinkChip threadId={thread.branchedFromId} />
+          </div>
+        )}
+        <h1 className="thread-title">{thread.title}</h1>
+        {description !== "" && (
+          <MessageText text={description} className="thread-text thread-description" />
+        )}
+        <div className="thread-properties">
+          <MenuChip
+            label={STATUS_LABELS[thread.status]}
+            icon={<StatusDot status={thread.status} />}
+            options={statuses.map((status) => ({
+              label: STATUS_LABELS[status],
+              value: status,
+              icon: <StatusDot status={status} />,
+            }))}
+            onSelect={actions.onSetStatus}
+          />
+          {inMyInbox && (
+            <MenuChip
+              label={bucket?.name ?? "Sorting…"}
+              icon={
+                <HugeiconsIcon
+                  icon={(bucket && icons.get(bucket.id)) ?? InboxIcon}
+                  {...ICON_PROPS}
+                />
+              }
+              tone={bucket === undefined ? "muted" : undefined}
+              title={
+                triage === null
+                  ? "Being sorted into one of your buckets"
+                  : triage.manual
+                    ? "Placed by you"
+                    : triage.reason
+              }
+              options={[
+                ...buckets.map((option) => ({
+                  label: option.name,
+                  value: option.id as string | null,
+                  icon: (
+                    <HugeiconsIcon
+                      icon={
+                        option.id === bucket?.id ? Tick02Icon : (icons.get(option.id) ?? InboxIcon)
+                      }
+                      {...ICON_PROPS}
+                    />
+                  ),
+                })),
+                ...(triage?.manual ? [{ label: "Sort it for me", value: null }] : []),
+              ]}
+              onSelect={actions.onSetBucket}
+            />
+          )}
+          <MenuChip
+            label={PRIORITY_LABELS[thread.priority]}
+            tone={priorityTone}
+            options={priorities.map((priority) => ({
+              label: PRIORITY_LABELS[priority],
+              value: priority,
+            }))}
+            onSelect={actions.onSetPriority}
+          />
+          <MenuChip
+            label={due?.label ?? "No due date"}
+            icon={<HugeiconsIcon icon={Calendar01Icon} {...ICON_PROPS} />}
+            tone={dueTone}
+            options={dueOptions(nowMs)}
+            onSelect={actions.onSetDue}
+          />
+          <MenuChip
+            label={thread.effortHours === null ? "No estimate" : formatEffort(thread.effortHours)}
+            icon={<HugeiconsIcon icon={HourglassIcon} {...ICON_PROPS} />}
+            tone={thread.effortHours === null ? "muted" : undefined}
+            options={[
+              ...EFFORT_OPTIONS.map((hours) => ({
+                label: formatEffort(hours),
+                value: hours as number | null,
+              })),
+              { label: "No estimate", value: null },
+            ]}
+            onSelect={actions.onSetEffort}
+          />
+          <LabelChip thread={thread} actions={actions} />
+        </div>
       </div>
     </header>
   );

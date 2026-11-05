@@ -3,7 +3,6 @@ import {
   Add01Icon,
   ArrowRight01Icon,
   InboxIcon,
-  MoreHorizontalIcon,
   NoteEditIcon,
   PanelLeftIcon,
   PanelRightIcon,
@@ -28,6 +27,7 @@ import {
   type Thread,
 } from "model";
 import { filterLabels, threadsWithLabel, type GroupLists, type GroupNotice } from "../groups";
+import { bucketIcons } from "../bucketIcons";
 import { THREAD_ICON } from "../threadIcon";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu";
 import type { ActivityItem } from "../activity";
@@ -47,6 +47,39 @@ function useOverflowFade<T extends HTMLElement>(): React.RefObject<T | null> {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  return ref;
+}
+
+// How many of a bucket's threads show at once; the rest scroll inside it.
+const BUCKET_ROWS = 5;
+
+// Caps a list at `rows` rows, scrolling the rest, and marks the ends with more past them (data-more-above,
+// data-more-below), which fade out to say so.
+function useRowCap(rows: number): React.RefObject<HTMLUListElement | null> {
+  const ref = useRef<HTMLUListElement>(null);
+  useLayoutEffect(() => {
+    const list = ref.current;
+    if (list === null) return;
+    const update = (): void => {
+      const first = list.children[0] as HTMLElement | undefined;
+      const cut = list.children[rows] as HTMLElement | undefined;
+      list.style.maxHeight =
+        first === undefined || cut === undefined ? "" : `${cut.offsetTop - first.offsetTop}px`;
+      list.toggleAttribute("data-more-above", list.scrollTop > 0);
+      list.toggleAttribute(
+        "data-more-below",
+        list.scrollTop + list.clientHeight < list.scrollHeight - 1,
+      );
+    };
+    update();
+    list.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(list);
+    return () => {
+      list.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  });
   return ref;
 }
 
@@ -156,6 +189,11 @@ function InboxRow({
   const { titleOf, nameOf } = useThreadLinks();
   const { thread } = item;
   const titleRef = useOverflowFade<HTMLSpanElement>();
+  // The open thread stays in view in its bucket, as J and K move past the rows showing.
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (active) rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [active]);
   const sorted = thread.triage[me.id];
   const why = sorted?.manual ? "Placed here by you" : (sorted?.reason ?? "");
   const person = item.from;
@@ -167,6 +205,7 @@ function InboxRow({
   return (
     <li className="thread-item">
       <div
+        ref={rowRef}
         className="inbox-row"
         draggable
         onDragStart={(event) => {
@@ -189,12 +228,7 @@ function InboxRow({
             <span ref={titleRef} className="inbox-row-title">
               {thread.title}
             </span>
-            {unread && <span className="unread-dot" aria-label="Unread" />}
-            {item.dueLabel !== null && (
-              <span className="inbox-row-due" data-overdue={item.overdue}>
-                {item.dueLabel}
-              </span>
-            )}
+            {item.dueLabel !== null && <span className="inbox-row-due">{item.dueLabel}</span>}
           </span>
           <span className="inbox-row-why">{line}</span>
         </span>
@@ -216,6 +250,7 @@ export type BucketActions = {
 // One bucket: its name and count, which folds it, and its threads. Threads dragged onto it move into it.
 function BucketSection({
   group,
+  icon,
   collapsed,
   canDelete,
   first,
@@ -227,6 +262,7 @@ function BucketSection({
   onOpenThread,
 }: {
   group: BucketGroup;
+  icon: IconSvgElement | undefined;
   collapsed: boolean;
   canDelete: boolean;
   first: boolean;
@@ -238,6 +274,10 @@ function BucketSection({
   onOpenThread: (id: string) => void;
 }): React.JSX.Element {
   const { bucket, items } = group;
+  // A bucket shows its first few threads until you ask for the rest ("6 more").
+  const [expanded, setExpanded] = useState(false);
+  const listRef = useRowCap(expanded ? items.length : BUCKET_ROWS);
+  const hidden = items.length - BUCKET_ROWS;
   const [dropping, setDropping] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const menuItems: ContextMenuItem[] = [
@@ -286,21 +326,14 @@ function BucketSection({
           title={bucket.description}
           onClick={onToggle}
         >
-          <HugeiconsIcon icon={ArrowRight01Icon} size={10} className="bucket-chevron" aria-hidden />
+          <HugeiconsIcon icon={icon ?? InboxIcon} size={14} className="bucket-icon" aria-hidden />
           <span className="bucket-name">{bucket.name}</span>
           {items.length > 0 && <span className="bucket-count">{items.length}</span>}
-        </button>
-        <button
-          type="button"
-          className="icon-button bucket-more"
-          aria-label={`${bucket.name} options`}
-          onClick={openMenu}
-        >
-          <HugeiconsIcon icon={MoreHorizontalIcon} {...ICON_PROPS} />
+          <HugeiconsIcon icon={ArrowRight01Icon} size={10} className="bucket-chevron" aria-hidden />
         </button>
       </div>
       {!collapsed && items.length > 0 && (
-        <ul className="thread-list" aria-label={bucket.name}>
+        <ul ref={listRef} className="thread-list bucket-threads" aria-label={bucket.name}>
           {items.map((item) => (
             <InboxRow
               key={item.thread.id}
@@ -311,6 +344,11 @@ function BucketSection({
             />
           ))}
         </ul>
+      )}
+      {!collapsed && hidden > 0 && (
+        <button type="button" className="bucket-more-rows" onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Show less" : `${hidden} more`}
+        </button>
       )}
       {menu !== null && (
         <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
@@ -348,6 +386,7 @@ function InboxView({
       return next;
     });
   const nothing = inbox.order.length === 0;
+  const icons = bucketIcons(inbox.buckets.map((group) => group.bucket));
   return (
     <div className="inbox">
       {inbox.unsorted.length > 0 && (
@@ -376,6 +415,7 @@ function InboxView({
         <BucketSection
           key={group.bucket.id}
           group={group}
+          icon={icons.get(group.bucket.id)}
           collapsed={collapsed.includes(group.bucket.id)}
           canDelete={inbox.buckets.length > 1}
           first={index === 0}
@@ -483,6 +523,8 @@ function GroupList({
       </li>
     );
   };
+  // As in Things, the sections stand apart by space alone; only archived groups, which aren't obvious, say what
+  // they are.
   const section = (
     title: string,
     items: { id: string; labelId: string; name: string }[],
