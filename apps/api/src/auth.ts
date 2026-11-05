@@ -75,37 +75,100 @@ export const SIGNED_IN_PAGE = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Arc</title>
 <style>
-  :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-  body { display: grid; min-height: 100vh; margin: 0; place-items: center; background: Canvas; color: CanvasText; }
-  main { width: min(380px, calc(100vw - 32px)); padding: 28px; border: 1px solid #8884; border-radius: 12px; }
-  h1 { margin: 0 0 12px; font-size: 22px; }
-  p { margin: 8px 0; }
-  .muted { opacity: 0.7; }
-  code { display: block; padding: 10px 12px; border: 1px solid #8884; border-radius: 8px; word-break: break-all;
-    user-select: all; }
+  /* The desktop app's sign-in screen: its colours, type and pill buttons. */
+  :root {
+    color-scheme: light dark;
+    --ground: oklch(0.985 0 0);
+    --text: oklch(0.21 0 0);
+    --muted: color-mix(in srgb, var(--text) 55%, transparent);
+    --fill: color-mix(in srgb, var(--text) 4%, transparent);
+    --fill-hover: color-mix(in srgb, var(--text) 8%, transparent);
+    --stroke: color-mix(in srgb, var(--text) 10%, transparent);
+    --arc-1: #5b8cff;
+    --arc-2: #8e6bff;
+    --arc-3: #ff6fb1;
+    --arc-4: #ffa45c;
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: oklch(0.191 0 0);
+      --text: oklch(0.955 0 0);
+      --muted: color-mix(in srgb, var(--text) 60%, transparent);
+      --fill: color-mix(in srgb, var(--text) 5%, transparent);
+      --fill-hover: color-mix(in srgb, var(--text) 9%, transparent);
+      --stroke: color-mix(in srgb, var(--text) 8%, transparent);
+      --arc-1: #7fa6ff;
+      --arc-2: #a88bff;
+      --arc-3: #ff86c0;
+      --arc-4: #ffb37a;
+    }
+  }
+  body { display: grid; min-height: 100vh; margin: 0; place-items: center; background: var(--ground); color: var(--text); }
+  main { display: flex; flex-direction: column; align-items: center; width: min(320px, calc(100vw - 32px)); text-align: center; }
+  svg { width: 44px; height: 44px; margin-bottom: 24px; }
+  h1 { margin: 0 0 8px; font-size: 19px; font-weight: 500; }
+  p { margin: 0; color: var(--muted); text-wrap: balance; }
+  #signed-in { width: 100%; margin-top: 24px; }
+  #signed-in[hidden] { display: none; }
+  a { display: flex; height: 44px; align-items: center; justify-content: center; border-radius: 22px; background: var(--text);
+    color: var(--ground); font-weight: 500; text-decoration: none; }
+  a:hover { opacity: 0.85; }
+  #signed-in p { margin: 24px 0 8px; font-size: 13px; }
+  .code { display: flex; height: 44px; box-sizing: border-box; align-items: center; gap: 8px; padding: 0 6px 0 18px;
+    border: 1px solid var(--stroke); border-radius: 22px; background: var(--fill); }
+  code { flex: 1; overflow: hidden; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: left;
+    text-overflow: ellipsis; white-space: nowrap; user-select: all; }
+  button { height: 32px; padding: 0 14px; border: 0; border-radius: 16px; background: var(--fill-hover); color: inherit;
+    font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover { background: var(--stroke); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--arc-1); outline-offset: 2px; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Arc</h1>
-  <p id="status">Nothing to do here. You can close this tab.</p>
-  <div id="fallback" hidden>
-    <p class="muted">If Arc didn't open, paste this code into it:</p>
-    <code id="code"></code>
+  <svg viewBox="237 247 550 506" aria-hidden="true">
+    <defs>
+      <linearGradient id="arc" gradientUnits="userSpaceOnUse" x1="290" y1="270" x2="740" y2="760">
+        <stop offset="0" style="stop-color: var(--arc-1)"/>
+        <stop offset="0.38" style="stop-color: var(--arc-2)"/>
+        <stop offset="0.72" style="stop-color: var(--arc-3)"/>
+        <stop offset="1" style="stop-color: var(--arc-4)"/>
+      </linearGradient>
+    </defs>
+    <path d="M321.6 668 V522.4 A190.4 190.4 0 0 1 702.4 522.4 V668" fill="none" stroke="url(#arc)" stroke-width="168" stroke-linecap="round"/>
+  </svg>
+  <h1 id="title">Arc</h1>
+  <p id="status" role="status">Log in from the Arc app. You can close this tab.</p>
+  <div id="signed-in" hidden>
+    <a id="open">Open Arc</a>
+    <p>Or paste this code into Arc</p>
+    <div class="code">
+      <code id="code"></code>
+      <button id="copy" type="button">Copy</button>
+    </div>
   </div>
 </main>
 <script>
+  const title = document.getElementById("title");
   const status = document.getElementById("status");
   const error = new URLSearchParams(location.search).get("error");
   const cookie = document.cookie.split("; ").find((c) => c.startsWith("better-auth.electron="));
   const code = cookie && cookie.slice(cookie.indexOf("=") + 1);
-  if (error) status.textContent = "Signing in didn't work: " + error.replaceAll("_", " ");
-  else if (code) {
+  if (error) {
+    title.textContent = "Couldn't log you in";
+    status.textContent = "Go back to Arc and try again. (" + error.replaceAll("_", " ") + ")";
+  } else if (code) {
     document.cookie = "better-auth.electron=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/";
-    status.textContent = "Signed in. Returning to Arc…";
+    const link = "${APP_SCHEME}://auth/callback#token=" + code;
+    title.textContent = "You're logged in";
+    status.textContent = "Returning to Arc…";
+    document.getElementById("open").href = link;
     document.getElementById("code").textContent = code;
-    document.getElementById("fallback").hidden = false;
-    location.replace("${APP_SCHEME}://auth/callback#token=" + code);
+    document.getElementById("signed-in").hidden = false;
+    const copy = document.getElementById("copy");
+    copy.onclick = () => navigator.clipboard.writeText(code).then(() => { copy.textContent = "Copied"; });
+    location.replace(link);
   }
 </script>
 </body>
