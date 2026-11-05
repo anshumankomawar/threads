@@ -31,7 +31,7 @@ export function indexedLocalDB(): LocalDB {
   return {
     async open(workspace, hash) {
       schemaHash = hash;
-      const name = `engine:${workspace}`;
+      const name = `sync:${workspace}`;
       db = await openDB(name);
       const missing = [...models(), META, OUTBOX].filter(
         (store) => !db.objectStoreNames.contains(store),
