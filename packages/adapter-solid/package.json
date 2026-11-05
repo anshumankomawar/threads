@@ -1,0 +1,20 @@
+{
+  "name": "adapter-solid",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test"
+  },
+  "dependencies": {
+    "engine": "workspace:*",
+    "solid-js": "2.0.0-rc.21"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite-plus": "catalog:"
+  }
+}
