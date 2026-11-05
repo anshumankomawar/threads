@@ -13,12 +13,16 @@ asarUnpack:
   - resources/**
 win:
   executableName: desktop
+  icon: build/icon.ico
 nsis:
   artifactName: ${name}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  # The Icon Composer bundle (Glass): macOS 26 switches light, dark, clear and tinted itself. Building it needs Xcode 26;
+  # electron-builder also makes an .icns from it for older macOS.
+  icon: build/AppIcon.icon
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -29,6 +33,7 @@ mac:
 dmg:
   artifactName: ${name}-${version}.${ext}
 linux:
+  icon: build/icons
   target:
     - AppImage
     - snap

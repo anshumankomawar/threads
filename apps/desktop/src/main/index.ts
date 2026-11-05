@@ -2,11 +2,20 @@ import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, systemPreference
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
+import iconDark from "../../resources/icon-dark.png?asset";
 
 const UI_SCALE = 1.1;
 
 // In development, expose the Chrome DevTools protocol on localhost so scripts can drive and inspect the app.
 if (is.dev) app.commandLine.appendSwitch("remote-debugging-port", "9333");
+
+// The Dock icon in the app's theme. A packaged app on macOS 26 has the Icon Composer bundle, which macOS switches
+// itself (with Liquid Glass, clear and tinted); in development, and on older macOS, the Dock shows this instead.
+function syncDockIcon(): void {
+  if (process.platform !== "darwin") return;
+  if (app.isPackaged && Number(process.getSystemVersion().split(".")[0]) >= 26) return;
+  app.dock?.setIcon(nativeTheme.shouldUseDarkColors ? iconDark : icon);
+}
 
 function createWindow(): void {
   // Create the browser window.
@@ -70,6 +79,8 @@ void app.whenReady().then(() => {
 
   // Dark until the renderer says otherwise (it sends its saved theme as it starts), so the vibrancy material matches.
   nativeTheme.themeSource = "dark";
+  syncDockIcon();
+  nativeTheme.on("updated", syncDockIcon);
   // The renderer's theme (⌘K): the vibrancy material follows it, under a black tint in dark mode and none in light.
   ipcMain.on("set-theme", (event, theme: unknown) => {
     const light = theme === "light";
