@@ -8,6 +8,7 @@
     "build": "vp build"
   },
   "dependencies": {
+    "@better-auth/electron": "1.7.17",
     "better-auth": "1.7.17"
   },
   "devDependencies": {

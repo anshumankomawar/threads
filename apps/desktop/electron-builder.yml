@@ -1,5 +1,10 @@
 appId: com.electron.app
 productName: desktop
+# Signing in comes back to the app on a threads:// link (src/main/signIn.ts).
+protocols:
+  - name: Threads
+    schemes:
+      - threads
 directories:
   buildResources: build
 files:

@@ -85,9 +85,18 @@ their email, through [Better Auth](https://www.better-auth.com) in the Worker (`
 - **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the page's origin,
   `http://localhost:5180` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google is offered only with both),
   and `RESEND_API_KEY`. Locally they go in `apps/api/.dev.vars`; hosted, they're secrets.
-- **Not yet**: the desktop app still trades the API token for a person (⌘U). Signing it in means opening this page in
-  the system browser and receiving the token on a `threads://` link (Better Auth's Electron plugin), then dropping ⌘U
-  outside development.
+- **The desktop app** signs in through this page with Better Auth's Electron plugin (`apps/desktop/src/main/signIn.ts`):
+  ⌘K, Sign in, opens the page in the browser with the app's request (`client_id`, `state`, `code_challenge`, PKCE), which
+  goes along with the sign-in. Signed in, the page sends you back on `threads:/auth/callback#token=…` with a one-time
+  code, and shows the code to paste into the app (⌘K, Sign in) in case the link doesn't open it, which can happen in
+  development; an already signed-in page asks for a fresh code (`/electron/transfer-user`). The main process trades the
+  code for the app's own session (`/electron/token`) and keeps it encrypted with the OS keychain (`safeStorage`); the
+  window only ever gets the Threads token, from `POST /auth/token` (`window.threads.signedIn()`). Signed in, you're that
+  person and ⌘U is off; signing out returns to View As. The sign-in page talks to the local API, so this is the Local
+  source's for now; `THREADS_SIGN_IN_URL` points the app at another sign-in page. The plugin's content security policy is
+  left off, since it would keep the window from reaching the API.
+- **Not yet**: a hosted sign-in page (and its `BETTER_AUTH_URL`), so the Cloudflare source signs in too; then the app
+  stops holding the API token, and ⌘U is for development only.
 
 ## Running and testing
 

@@ -41,7 +41,10 @@ export const source: Source = saved<Source>(
   "cloudflare" in SOURCES ? "cloudflare" : "local",
 );
 const viewerKey = `viewer:${source}`;
-const viewerId = saved<string | null>(viewerKey, null);
+// Signed in (through the browser, src/main/signIn.ts), you're that person. The sign-in page talks to the local API for
+// now, so signing in is the Local source's; elsewhere, and while you're not signed in, View As (⌘U) picks who you are.
+export const account = source === "local" ? ((await window.threads?.signedIn()) ?? null) : null;
+const viewerId = account?.personId ?? saved<string | null>(viewerKey, null);
 export const server =
   source === "cloudflare"
     ? { url: HOSTED.url!, workspace: "local" }
@@ -58,7 +61,14 @@ async function tokenFor(userId: string | null): Promise<string> {
   });
   return ((await response.json()) as { token: string }).token;
 }
-const token = await tokenFor(viewerId);
+const token = account?.token ?? (await tokenFor(viewerId));
+
+// Signing in or out reloads, like switching person.
+window.onAuthenticated?.(() => location.reload());
+export async function signOut(): Promise<void> {
+  await window.signOut();
+  location.reload();
+}
 
 export const store = createStore({
   transport: httpTransport({ ...server, token }),
@@ -79,7 +89,7 @@ void store.ready().then(() => {
   if (viewerId === null) {
     const first = store.all(User)[0];
     if (first) switchTo({ viewer: first.id });
-  } else if (!store.findById(User, viewerId)) switchTo({ viewer: null });
+  } else if (!account && !store.findById(User, viewerId)) switchTo({ viewer: null });
 });
 
 export const me = (): User => store.findById(User, viewerId ?? "")!;
@@ -106,7 +116,7 @@ export type MenuItem =
   | { label: string; run: () => void; icon?: JSX.Element; shortcut?: string }
   | "separator";
 export type Dialog =
-  | { kind: "search" | "newTeam" | "viewAs" }
+  | { kind: "search" | "newTeam" | "viewAs" | "signIn" }
   | { kind: "newConversation"; teamId?: string; to?: User }
   | { kind: "compose"; draftId?: string }
   | { kind: "bucket"; bucket?: Bucket }
@@ -281,7 +291,8 @@ window.addEventListener("keydown", (event) => {
     "⌘k": () => setDialog({ kind: "search" }),
     "⌘n": () => setDialog({ kind: "newConversation" }),
     "⌘⇧n": () => setDialog({ kind: "compose" }),
-    "⌘u": () => setDialog({ kind: "viewAs" }),
+    // Signed in, you're who you signed in as.
+    "⌘u": !account && (() => setDialog({ kind: "viewAs" })),
     "⌘=": () => applyZoom(zoom() + 0.1),
     "⌘-": () => applyZoom(zoom() - 0.1),
     "⌘0": () => applyZoom(1),

@@ -2,6 +2,7 @@ import { betterAuth, type BetterAuthOptions } from "better-auth";
 import { APIError } from "better-auth/api";
 import { getMigrations } from "better-auth/db/migration";
 import { emailOTP } from "better-auth/plugins";
+import { electron } from "@better-auth/electron";
 
 // Signing in, with Better Auth: Google, or a one-time code sent to your email. Its users and sessions live in D1
 // (`AUTH_DB`), apart from the workspaces. Only invited emails get in (`INVITES`), each as one Person; a signed-in
@@ -26,6 +27,8 @@ export type AuthEnv = {
 
 const DEV_SECRET = "threads-local-development-secret-not-for-production";
 const LOCAL_ORIGIN = "http://localhost:5180";
+// The desktop app's link scheme, which the sign-in page sends you back to it on.
+export const APP_SCHEME = "threads";
 
 // The invite list: each invited email (lower case) and the Person it signs in as.
 export function parseInvites(text: string | undefined): Map<string, string> {
@@ -76,9 +79,11 @@ function authOptions(env: AuthEnv) {
     database: env.AUTH_DB,
     secret: env.BETTER_AUTH_SECRET || (env.API_TOKEN ? undefined : DEV_SECRET),
     baseURL: origin,
-    trustedOrigins: [origin],
+    // The desktop app signs in through the browser and comes back on a `threads://` link (Better Auth's Electron plugin).
+    trustedOrigins: [origin, `${APP_SCHEME}:/`],
     socialProviders: google === undefined ? {} : { google },
     plugins: [
+      electron(),
       emailOTP({
         // Uninvited emails are told nothing, so the form can't be used to find out who's invited.
         async sendVerificationOTP({ email, otp, type }) {

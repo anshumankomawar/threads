@@ -3,6 +3,10 @@ import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
 import iconDark from "../../resources/icon-dark.png?asset";
+import { setupSignIn } from "./signIn";
+
+// Signing in through the browser (src/main/signIn.ts), which has to be set up before the app is ready.
+setupSignIn();
 
 const UI_SCALE = 1.1;
 

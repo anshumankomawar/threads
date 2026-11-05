@@ -3,11 +3,13 @@ import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Conversation, Message, Team, User } from "models";
 import {
+  account,
   applyTheme,
   dialog,
   me,
   open,
   setDialog,
+  signOut,
   source,
   SOURCES,
   store,
@@ -163,12 +165,38 @@ function Search(): JSX.Element {
       section: "Views",
       run: done(() => applyTheme(theme() === "dark" ? "light" : "dark")),
     },
-    {
-      label: "View as…",
-      hint: "⌘ U",
-      section: "Data",
-      run: () => setDialog({ kind: "viewAs" }),
-    },
+    // Signing in is the Local source's for now (the sign-in page talks to the local API); signed in, you can't view as
+    // anyone else.
+    ...(account
+      ? [
+          {
+            label: `Sign out (${account.email})`,
+            section: "Account",
+            run: done(() => void signOut()),
+          },
+        ]
+      : source === "local"
+        ? [
+            {
+              label: "Sign in…",
+              section: "Account",
+              run: () => {
+                void window.requestAuth();
+                setDialog({ kind: "signIn" });
+              },
+            },
+          ]
+        : []),
+    ...(account
+      ? []
+      : [
+          {
+            label: "View as…",
+            hint: "⌘ U",
+            section: "Data",
+            run: () => setDialog({ kind: "viewAs" }),
+          },
+        ]),
     ...(Object.keys(SOURCES) as Source[])
       .filter((s) => s !== source)
       .map((s) => ({
@@ -317,6 +345,23 @@ function ViewAs(): JSX.Element {
   );
 }
 
+// Signing in happens in the browser, which sends you back here on a `threads://` link. When the link doesn't open the
+// app, the sign-in page shows a code to paste here instead.
+function SignIn(): JSX.Element {
+  return (
+    <Picker
+      placeholder="Signing in in your browser… or paste the code it shows"
+      rows={(query) =>
+        entry(
+          query.trim(),
+          "Sign in with code",
+          (code) => void window.authenticate({ token: code }),
+        )
+      }
+    />
+  );
+}
+
 const PALETTES = {
   search: Search,
   newConversation: NewConversation,
@@ -324,6 +369,7 @@ const PALETTES = {
   blocked: Blocked,
   bucket: BucketEditor,
   viewAs: ViewAs,
+  signIn: SignIn,
   compose: Compose,
 };
 
