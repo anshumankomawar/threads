@@ -65,6 +65,30 @@ sends the token in its `Hello`. Hosted, the `API_TOKEN` is the admin (sees every
 token is the person's id, and an empty token is the admin. The desktop app loads once as the admin to find who's
 there, then reloads as the first person; switching source or person (⌘U, ⌘K) reloads with the new session.
 
+### Signing in
+
+People sign in on the sign-in page (`apps/web`, a plain page with no framework) with Google or a one-time code sent to
+their email, through [Better Auth](https://www.better-auth.com) in the Worker (`apps/api/src/auth.ts`):
+
+- **Better Auth keeps its own users and sessions** in a D1 database (`AUTH_DB`), apart from the workspaces. Its tables
+  are made the first time the Worker signs anyone in (`getMigrations`), so there's no migration step to run.
+- **Only invited emails get in.** `INVITES` (a secret: `email=personId` pairs, separated by commas) is the invite list
+  and says which Person each email is. An uninvited email can't get an account by either route (a `user.create` hook
+  refuses it), and asking for a code for one looks the same as for an invited one but sends nothing.
+- **Codes** go out through Resend when `RESEND_API_KEY` is set; without it they're only written to the Worker's log,
+  which is allowed locally only (no `API_TOKEN`).
+- **From a Better Auth session to the sync API's token**: `POST /auth/token`, with the sign-in page's cookie, answers the
+  invited person and their token: hosted, a signed session token, as `POST /auth/session` mints; locally, their id.
+- **The page** proxies `/api` and `/auth` to the API in development (`THREADS_API` points it elsewhere), so the cookie is
+  same-origin and Google redirects back to it, at `<BETTER_AUTH_URL>/api/auth/callback/google`
+  (`http://localhost:5180/api/auth/callback/google` locally).
+- **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the page's origin,
+  `http://localhost:5180` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google is offered only with both),
+  and `RESEND_API_KEY`. Locally they go in `apps/api/.dev.vars`; hosted, they're secrets.
+- **Not yet**: the desktop app still trades the API token for a person (⌘U). Signing it in means opening this page in
+  the system browser and receiving the token on a `threads://` link (Better Auth's Electron plugin), then dropping ⌘U
+  outside development.
+
 ## Running and testing
 
 - `vp run api#dev` serves the API on `http://127.0.0.1:3030` (needs `cf` logged in to the Threads account for Workers

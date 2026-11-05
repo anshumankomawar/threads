@@ -10,6 +10,19 @@ All AI-written code must go on the `prototype` branch. Before writing or editing
 - `apps/desktop`: Electron app. Start it with `vp run desktop#dev`. Its data source is picked in ⌘K and remembered: Cloudflare (the shared workspace on the hosted API), Local (the local Worker's `local` workspace) or Sample (its demo team). Cloudflare is offered, and is the default, when `apps/desktop/.env.local` sets `VITE_API_URL` and `VITE_API_TOKEN` (gitignored; never commit the token). Switching source or person (⌘U) reloads the window with the new session.
 - **Future plans.** Parked product ideas live in `docs/future-plans.md`.
 - `vp run dev` at the root starts both.
+- `apps/web`: the sign-in page (Google, or a code sent to your email). Start it with `vp run web#dev` on `http://localhost:5180`, with the API running; it proxies the API's sign-in routes. Only invited emails get in. Google sign-in needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from a Google Cloud OAuth client whose redirect URI is `http://localhost:5180/api/auth/callback/google`. See "Signing in" in `docs/architecture.md`.
+- `apps/api/.dev.vars` (gitignored) holds the API's secrets locally. List them all, blank where unused, or the API warns about each missing one; a blank value counts as unset. Keep `API_TOKEN` blank so the local API stays open, and leave `RESEND_API_KEY` blank so sign-in codes print in the API's log:
+
+  ```
+  API_TOKEN=
+  INVITES=you@example.com=arjun,teammate@example.com=anshu
+  BETTER_AUTH_SECRET=
+  BETTER_AUTH_URL=
+  GOOGLE_CLIENT_ID=
+  GOOGLE_CLIENT_SECRET=
+  RESEND_API_KEY=
+  ```
+
 - electron-vite only hot-reloads the renderer. After changing `src/main` or `src/preload`, restart the desktop dev task. API changes need an API restart.
 - Test with `vp test` in `packages/sync` (unit tests), `packages/testing` (the deterministic simulation), `packages/server`, `packages/models` and `apps/api`.
 - In the app, ⌘K opens search (people, teams, conversations, the data source, dark or light mode), ⌘N starts a conversation, ⌘⇧N writes one as a message the model drafts, ⌘U switches who you view the app as, and ⌘+ / ⌘- / ⌘0 zoom the main content. In the inbox: J/K next and previous, ⌘E done, H snooze until tomorrow, R reply.
