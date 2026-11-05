@@ -9,6 +9,8 @@
   ],
   "compilerOptions": {
     "composite": true,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
     "jsx": "preserve",
     "jsxImportSource": "@solidjs/web",
     "paths": {

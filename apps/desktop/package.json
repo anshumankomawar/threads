@@ -10,7 +10,6 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "vp run typecheck:node && vp run typecheck:web",
-    "test": "vp test",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "vp run typecheck && electron-vite build",
@@ -27,9 +26,11 @@
     "@solidjs/web": "2.0.0-rc.21",
     "@stylexjs/stylex": "0.19.1",
     "@tiptap/core": "3.32.0",
+    "adapter-solid": "workspace:*",
     "electron-updater": "^6.8.9",
-    "solid-js": "2.0.0-rc.21",
-    "sync": "workspace:*"
+    "engine": "workspace:*",
+    "model": "workspace:*",
+    "solid-js": "2.0.0-rc.21"
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^2.0.0",
@@ -43,9 +44,7 @@
     "electron": "^44.7.2",
     "electron-builder": "^26.15.3",
     "electron-vite": "^6.0.0",
-    "model": "workspace:*",
     "typescript": "7.0.2",
-    "ui": "workspace:*",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

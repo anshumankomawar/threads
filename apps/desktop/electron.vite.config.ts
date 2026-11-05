@@ -12,6 +12,8 @@ export default defineConfig({
         "@renderer": resolve("src/renderer/src"),
       },
     },
+    // Models use legacy decorators.
+    oxc: { decorator: { legacy: true } },
     // StyleX compiles `stylex.create` calls into atomic classes before Solid compiles the JSX.
     plugins: [stylex({ useCSSLayers: true }), solid()],
   },

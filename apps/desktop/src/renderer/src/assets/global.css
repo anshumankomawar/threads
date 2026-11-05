@@ -39,12 +39,29 @@
     height: 100%;
   }
 
+  /* Popovers and dialogs lose the browser's look; StyleX places them and gives them one. */
+  [popover],
+  dialog {
+    inset: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: none;
+  }
+
+  dialog::backdrop {
+    background: none;
+  }
+
   /* The reply editor's content, which ProseMirror makes itself. */
-  .thread-reply-editor p {
+  .reply p {
     margin: 0;
   }
 
-  .thread-reply-editor p.is-editor-empty:first-child::before {
+  .reply p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     float: left;
     height: 0;
