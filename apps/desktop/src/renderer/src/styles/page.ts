@@ -21,6 +21,7 @@ export const page = stylex.create({
     fontWeight: 600,
     lineHeight: "28px",
     letterSpacing: "-0.2px",
+    fontFeatureSettings: '"calt"',
   },
   summary: { margin: "2px 0 0", color: muted },
   summaryIcon: { verticalAlign: "-1px" },

@@ -56,10 +56,14 @@ export class SyncClient {
     );
     this.#update(loaded.flat(), (await localDB.meta.get()).lastSyncId);
     await queue.replayOutbox();
-    // Offline, the socket's Hello catches up once it connects.
+    // Offline, the socket's Hello catches up once it connects. A server behind this cache has started over.
     await transport
       .deltas(this.lastSyncId)
-      .then((packet) => this.applyDelta(packet))
+      .then((packet) =>
+        packet.lastSyncId < this.lastSyncId
+          ? this.#locked(() => this.#full())
+          : this.applyDelta(packet),
+      )
       .catch(() => {});
   }
 

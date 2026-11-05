@@ -101,3 +101,29 @@ test("a reload replays the outbox over the local database and resends it", async
     { modelId: "c1", changes: { title: "Unsent" } },
   ]);
 });
+
+test("a server that started over replaces what the local database kept", async () => {
+  const localDB = memoryLocalDB();
+  const first = await setup(seed, localDB);
+  first.transport.send({ type: "delta", actions: [update(1, { title: "Old" })], lastSyncId: 1 });
+  await tick();
+
+  const transport = fakeTransport();
+  transport.rows = [
+    {
+      model: "Conversation",
+      row: row("c2", { title: "Fresh", state: "open", teamId: "t1", dueAt: null, ownerId: null }),
+    },
+  ];
+  const store = createStore({
+    transport,
+    localDB,
+    workspace: "w",
+    token: "t",
+    setTimeout: () => {},
+  });
+  await store.ready();
+  await tick();
+  expect(transport.bootstraps).toBe(1);
+  expect(store.all(Conversation).map((c) => c.id)).toEqual(["c2"]);
+});

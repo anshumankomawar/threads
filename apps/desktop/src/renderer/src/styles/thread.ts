@@ -36,6 +36,7 @@ export const thread = stylex.create({
     lineHeight: "22px",
     overflowWrap: "anywhere",
     userSelect: "text",
+    fontFeatureSettings: '"calt"',
   },
   headerTitle: {
     marginTop: { default: null, [stylex.when.siblingBefore(":is(*)", threadLineMarker)]: -6 },

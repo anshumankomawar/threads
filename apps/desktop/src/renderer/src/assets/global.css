@@ -23,7 +23,10 @@
     user-select: none;
     color: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
     background: light-dark(rgb(255 255 255 / 72%), rgb(0 0 0 / 62%));
-    font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+    /* Linear's stack. Inter's optical size follows the text size, so large titles get its Display design. */
+    font-family:
+      "Inter Variable", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      "Helvetica Neue", sans-serif;
     font-size: 12px;
     line-height: 16px;
     -webkit-font-smoothing: antialiased;
@@ -32,6 +35,12 @@
   body * {
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  code,
+  kbd,
+  pre {
+    font-family: "SFMono-Regular", ui-monospace, Consolas, "Liberation Mono", Menlo, monospace;
   }
 
   #root {

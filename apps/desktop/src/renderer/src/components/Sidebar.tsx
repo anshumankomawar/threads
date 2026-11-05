@@ -543,10 +543,12 @@ export const TopButton = (props: {
 export function Sidebar(): JSX.Element {
   const [tab, setTab] = createSignal(TABS[0]);
   const labels: HTMLElement[] = [];
-  // Each name's own width, so the chosen tab grows to exactly fit it.
-  createEffect(tab, () => {
+  // Each name's own width, so the chosen tab grows to exactly fit it; again once the font has loaded.
+  const measure = (): void => {
     for (const label of labels) label.style.setProperty("--label-width", `${label.scrollWidth}px`);
-  });
+  };
+  createEffect(tab, measure);
+  onSettled(() => void document.fonts.ready.then(measure));
   const profile = (): boolean => (view() as { person?: string }).person === me().id;
   return (
     <aside class={sx(s.sidebar)}>
