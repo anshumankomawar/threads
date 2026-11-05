@@ -67,19 +67,21 @@ Change `packages/sync` only to change how syncing works, and keep its tests (`vp
 
 ## Where things live
 
-| Path                                               | What it is                                                                                                                                        |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/sync`                                    | The sync engine (see above and its README)                                                                                                        |
-| `packages/model/src/model.ts`                      | The app's view types (`Thread` with nested `Entry`s and `Person`s), labels, inbox rules                                                           |
-| `packages/model/src/sync.ts`                       | Threads on the engine: records, `threadsSchema`, `SCHEMA_HASH`, `TransactionInput`, `threadsMutations`, records ↔ `Thread` conversion             |
-| `packages/model/src/sample.ts`                     | Seed data: local people, the sample team and threads                                                                                              |
-| `apps/api/src/engine.ts`                           | `SyncEngine`: the engine's server with Threads' validation (zod), rules and side effects (`#apply`), sync groups, seeding, inbox sorting requests |
-| `apps/api/src/triage.ts`                           | `Triager` and the Workers AI classifier: sorting each inbox into its owner's buckets                                                              |
-| `packages/model/src/score.ts`                      | `threadScore`, `SEEDED_LABELS`, effort options: how important a thread is, which orders it within its bucket                                      |
-| `apps/api/src/worker.ts`                           | The Worker entry (sessions: `authenticate`, `POST /auth/session`) and the `Workspace` Durable Object (storage, sockets, sorting, retry alarm)     |
-| `apps/api/src/app.ts`                              | One workspace's routes (`serveWorkspace`), local sessions (`openSession`); `createApp` runs all workspaces in memory for tests                    |
-| `apps/desktop/src/renderer/src/sync/syncClient.ts` | `ThreadsClient`: the engine's client with the app's reads and changes                                                                             |
-| `apps/desktop/src/renderer/src/api.ts`             | Data sources (Cloudflare / Local / Sample), sessions, and the HTTP + WebSocket transport                                                          |
+| Path                                               | What it is                                                                                                                                          |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/sync`                                    | The sync engine (see above and its README)                                                                                                          |
+| `packages/model/src/model.ts`                      | The app's view types (`Thread` with nested `Entry`s and `Person`s), labels, inbox rules                                                             |
+| `packages/model/src/sync.ts`                       | Threads on the engine: records, `threadsSchema`, `SCHEMA_HASH`, `TransactionInput`, `threadsMutations`, records ↔ `Thread` conversion               |
+| `packages/model/src/sample.ts`                     | Seed data: local people, the sample team and threads                                                                                                |
+| `apps/api/src/engine.ts`                           | `SyncEngine`: the engine's server with Threads' validation (zod), rules and side effects (`#apply`), sync groups, seeding, inbox sorting requests   |
+| `apps/api/src/triage.ts`                           | `Triager` and the Workers AI classifier: sorting each inbox into its owner's buckets                                                                |
+| `packages/model/src/score.ts`                      | `threadScore`, `SEEDED_LABELS`, effort options: how important a thread is, which orders it within its bucket                                        |
+| `apps/api/src/worker.ts`                           | The Worker entry (sessions: `authenticate`, `POST /auth/session`) and the `Workspace` Durable Object (storage, sockets, sorting, retry alarm)       |
+| `apps/api/src/app.ts`                              | One workspace's routes (`serveWorkspace`), local sessions (`openSession`); `createApp` runs all workspaces in memory for tests                      |
+| `apps/desktop/src/renderer/src/sync/syncClient.ts` | `ThreadsClient`: the engine's client with the app's reads and changes                                                                               |
+| `apps/desktop/src/renderer/src/api.ts`             | Data sources (Cloudflare / Local / Sample), sessions, and the HTTP + WebSocket transport                                                            |
+| `apps/desktop/src/renderer/src/app/state.ts`       | The app store (Solid 2): data, navigation, what's open, inbox, threads' actions; components read it with `useApp()` instead of drilled props        |
+| `apps/desktop/src/renderer/src/styles`             | StyleX: tokens and the light theme, shared styles, `sx`; see its README. Components keep their own `stylex.create`; `assets/global.css` is the rest |
 
 ## Models
 

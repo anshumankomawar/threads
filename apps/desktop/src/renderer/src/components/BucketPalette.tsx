@@ -1,6 +1,8 @@
 import type { Bucket } from "model";
 import { createEffect, createSignal, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
 
 type Step = "name" | "describe";
 
@@ -59,18 +61,18 @@ export function BucketPalette(props: {
           : "Save bucket";
 
   return (
-    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
+    <div class={sx(palette.overlay)} onMouseDown={() => props.onClose()}>
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label={props.bucket === null ? "New bucket" : "Edit bucket"}
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder={
               step() === "name"
                 ? "Name the bucket… (Follow-ups)"
@@ -85,11 +87,11 @@ export function BucketPalette(props: {
                 : setDescription(event.currentTarget.value)
             }
           />
-          <span class="palette-step">Step {step() === "name" ? 1 : 2} of 2</span>
+          <span class={sx(palette.step)}>Step {step() === "name" ? 1 : 2} of 2</span>
         </div>
-        <div class="palette-results">
-          <div class="palette-section">
-            <div class="palette-section-label palette-summary">
+        <div class={sx(palette.results)}>
+          <div class={sx(palette.section)}>
+            <div class={sx(palette.sectionLabel, palette.summary)}>
               {step() === "name" ? (
                 props.bucket === null ? (
                   "New bucket"
@@ -98,22 +100,24 @@ export function BucketPalette(props: {
                 )
               ) : (
                 <>
-                  Describe <span class="palette-summary-title">“{title()}”</span> so threads are
+                  Describe <span class={sx(palette.summaryTitle)}>“{title()}”</span> so threads are
                   sorted into it
                 </>
               )}
             </div>
             <div
-              class="palette-row"
-              data-selected={String(title() !== "")}
-              data-disabled={String(title() === "")}
+              class={sx(
+                palette.row,
+                title() !== "" && palette.rowSelected,
+                title() === "" && palette.rowDisabled,
+              )}
               role="option"
               aria-selected={title() !== "" ? "true" : "false"}
               onMouseDown={(event) => event.preventDefault()}
               onClick={forward}
             >
-              <span class="palette-row-label">{label()}</span>
-              <span class="palette-row-shortcut">↵</span>
+              <span class={sx(palette.rowLabel)}>{label()}</span>
+              <span class={sx(palette.rowShortcut)}>↵</span>
             </div>
           </div>
         </div>

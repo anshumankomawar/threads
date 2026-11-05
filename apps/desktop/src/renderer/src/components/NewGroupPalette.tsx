@@ -1,19 +1,20 @@
 import { Tick02Icon } from "@hugeicons/core-free-icons";
-import { labelSlug, type Label, type Person } from "model";
+import { labelSlug, type Person } from "model";
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { useApp } from "../app/state";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 
 // Making a group: name it, then pick anyone in the organization to include. You're in it either way, and more people
 // can join later.
 export function NewGroupPalette(props: {
-  people: Person[];
-  me: Person;
-  labels: Label[];
   onCreate: (name: string, members: Person[]) => void;
   onClose: () => void;
 }): JSX.Element {
+  const app = useApp();
   let input!: HTMLInputElement;
   const [step, setStep] = createSignal<"name" | "members">("name");
   const [name, setName] = createSignal("");
@@ -26,23 +27,25 @@ export function NewGroupPalette(props: {
   const title = (): string => name().trim();
   const slug = (): string => labelSlug(title());
   const taken = createMemo(() =>
-    props.labels.some((label) => label.id === slug() || labelSlug(label.name) === slug()),
+    app.data.labels().some((label) => label.id === slug() || labelSlug(label.name) === slug()),
   );
   const canContinue = (): boolean => slug() !== "" && !taken();
   const options = createMemo(() => {
     const query = filter().trim().toLowerCase();
-    return props.people.filter(
-      (person) => person.id !== props.me.id && person.name.toLowerCase().includes(query),
-    );
+    const me = app.me();
+    return app.data
+      .people()
+      .filter((person) => person.id !== me.id && person.name.toLowerCase().includes(query));
   });
   const selectedIndex = (): number => Math.min(selected(), Math.max(0, options().length - 1));
   const isIn = (person: Person): boolean => members().some((member) => member.id === person.id);
-  const toggle = (person: Person): void =>
-    void setMembers((current) =>
+  const toggle = (person: Person): void => {
+    setMembers((current) =>
       current.some((member) => member.id === person.id)
         ? current.filter((member) => member.id !== person.id)
         : [...current, person],
     );
+  };
   const toMembers = (): void => {
     if (!canContinue()) return;
     setStep("members");
@@ -85,18 +88,18 @@ export function NewGroupPalette(props: {
   };
 
   return (
-    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
+    <div class={sx(palette.overlay)} onMouseDown={() => props.onClose()}>
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label="New group"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder={
               step() === "name" ? "Name the group: a project, program or team" : "Add people…"
             }
@@ -111,22 +114,24 @@ export function NewGroupPalette(props: {
               }
             }}
           />
-          <span class="palette-step">Step {step() === "name" ? 1 : 2} of 2</span>
+          <span class={sx(palette.step)}>Step {step() === "name" ? 1 : 2} of 2</span>
         </div>
-        <div class="palette-results">
+        <div class={sx(palette.results)}>
           {step() === "name" ? (
-            <div class="palette-section">
-              <div class="palette-section-label">Next</div>
+            <div class={sx(palette.section)}>
+              <div class={sx(palette.sectionLabel)}>Next</div>
               <div
-                class="palette-row"
-                data-selected={String(canContinue())}
-                data-disabled={String(!canContinue())}
+                class={sx(
+                  palette.row,
+                  canContinue() && palette.rowSelected,
+                  !canContinue() && palette.rowDisabled,
+                )}
                 role="option"
                 aria-selected={canContinue() ? "true" : "false"}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={toMembers}
               >
-                <span class="palette-row-label">
+                <span class={sx(palette.rowLabel)}>
                   {taken()
                     ? `“${title()}” is taken in your organization`
                     : slug() === ""
@@ -134,26 +139,25 @@ export function NewGroupPalette(props: {
                       : "Continue to add people"}
                 </span>
                 <Show when={canContinue()}>
-                  <span class="palette-row-shortcut">↵</span>
+                  <span class={sx(palette.rowShortcut)}>↵</span>
                 </Show>
               </div>
             </div>
           ) : (
-            <div class="palette-section">
-              <div class="palette-section-label palette-summary">
-                Add people to <span class="palette-summary-title">“{title()}”</span>
-                <span class="palette-summary-count">
+            <div class={sx(palette.section)}>
+              <div class={sx(palette.sectionLabel, palette.summary)}>
+                Add people to <span class={sx(palette.summaryTitle)}>“{title()}”</span>
+                <span class={sx(palette.summaryCount)}>
                   {members().length === 0 ? "Just you so far" : `You + ${members().length}`}
                 </span>
               </div>
               <Show when={options().length === 0}>
-                <div class="palette-empty">No matches</div>
+                <div class={sx(palette.empty)}>No matches</div>
               </Show>
               <For each={options()}>
                 {(person, index) => (
                   <div
-                    class="palette-row"
-                    data-selected={String(index() === selectedIndex())}
+                    class={sx(palette.row, index() === selectedIndex() && palette.rowSelected)}
                     role="option"
                     aria-selected={isIn(person) ? "true" : "false"}
                     onMouseDown={(event) => event.preventDefault()}
@@ -161,10 +165,9 @@ export function NewGroupPalette(props: {
                     onClick={() => toggle(person)}
                   >
                     <Identicon seed={person.id} size={16} />
-                    <span class="palette-row-label">{person.name}</span>
+                    <span class={sx(palette.rowLabel)}>{person.name}</span>
                     <span
-                      class="palette-check"
-                      data-checked={String(isIn(person))}
+                      class={sx(palette.check, isIn(person) && palette.checkChecked)}
                       aria-hidden="true"
                     >
                       <Show when={isIn(person)}>
@@ -175,14 +178,14 @@ export function NewGroupPalette(props: {
                 )}
               </For>
               <div
-                class="palette-row palette-continue"
+                class={sx(palette.row, palette.continue)}
                 role="option"
                 aria-selected="false"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => props.onCreate(title(), members())}
               >
-                <span class="palette-row-label">Create the group</span>
-                <span class="palette-row-shortcut">↵</span>
+                <span class={sx(palette.rowLabel)}>Create the group</span>
+                <span class={sx(palette.rowShortcut)}>↵</span>
               </div>
             </div>
           )}

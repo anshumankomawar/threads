@@ -1,5 +1,7 @@
-import { createSignal, onSettled } from "solid-js";
+import { createSignal, onSettled, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
 
 // Naming the organization: the first time anyone opens a workspace, when it can't be skipped, or renaming it later.
 export function OrganizationPrompt(props: {
@@ -8,7 +10,7 @@ export function OrganizationPrompt(props: {
   onClose: () => void;
 }): JSX.Element {
   let input!: HTMLInputElement;
-  const [name, setName] = createSignal(props.current);
+  const [name, setName] = createSignal(untrack(() => props.current));
   const renaming = (): boolean => props.current !== "";
   const trimmed = (): string => name().trim();
 
@@ -20,21 +22,21 @@ export function OrganizationPrompt(props: {
 
   return (
     <div
-      class="palette-overlay"
+      class={sx(palette.overlay)}
       onMouseDown={() => {
         if (renaming()) props.onClose();
       }}
     >
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label={renaming() ? "Rename the organization" : "Name your organization"}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder="Your organization's name"
             spellcheck={false}
             maxlength={100}
@@ -51,24 +53,26 @@ export function OrganizationPrompt(props: {
             }}
           />
         </div>
-        <div class="palette-results">
-          <div class="palette-section">
-            <div class="palette-section-label">
+        <div class={sx(palette.results)}>
+          <div class={sx(palette.section)}>
+            <div class={sx(palette.sectionLabel)}>
               {renaming() ? "Rename the organization" : "Welcome. What's your organization called?"}
             </div>
             <div
-              class="palette-row"
-              data-selected={String(trimmed() !== "")}
-              data-disabled={String(trimmed() === "")}
+              class={sx(
+                palette.row,
+                trimmed() !== "" && palette.rowSelected,
+                trimmed() === "" && palette.rowDisabled,
+              )}
               role="option"
               aria-selected={trimmed() !== "" ? "true" : "false"}
               onMouseDown={(event) => event.preventDefault()}
               onClick={save}
             >
-              <span class="palette-row-label">
+              <span class={sx(palette.rowLabel)}>
                 {trimmed() === "" ? "Type a name to continue" : renaming() ? "Save" : "Get started"}
               </span>
-              <span class="palette-row-shortcut">↵</span>
+              <span class={sx(palette.rowShortcut)}>↵</span>
             </div>
           </div>
         </div>

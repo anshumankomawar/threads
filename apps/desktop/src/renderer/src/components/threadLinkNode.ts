@@ -3,6 +3,7 @@ import { PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { exitSuggestion, Suggestion, type SuggestionProps } from "@tiptap/suggestion";
 import { threadLink } from "model";
+import { editorClass } from "../styles/controls";
 
 // Typing `#` in a reply opens the thread menu. The node announces the menu on the editor's DOM, so the reply
 // component can render it: THREAD_MENU_EVENT carries the menu's state (or null when it closes), and THREAD_MENU_KEY
@@ -47,7 +48,7 @@ export const ThreadLinkNode = Node.create({
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-thread-link": String(node.attrs.id),
-        class: "thread-link",
+        class: editorClass.threadLink,
       }),
       `# ${String(node.attrs.title) || "thread"}`,
     ];

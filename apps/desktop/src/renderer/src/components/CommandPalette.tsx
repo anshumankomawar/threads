@@ -1,9 +1,13 @@
-import type { Label, Person, Thread } from "model";
+import * as stylex from "@stylexjs/stylex";
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { CLOUDFLARE_AVAILABLE, SOURCE_LABELS, type DataSource } from "../api";
+import { useApp } from "../app/state";
 import { orgDetails } from "../org";
-import type { Theme } from "../theme";
+import { paletteSectionMarker } from "../styles/markers.stylex";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
+import { colors } from "../styles/tokens.stylex";
 
 type Tab = "all" | "threads" | "groups" | "people";
 
@@ -30,27 +34,8 @@ type Section = { title: string; items: Item[] };
 type Row = Item & { index: number };
 
 // Delta's command palette: search input, filter tabs, then sectioned results.
-export function CommandPalette(props: {
-  threads: Thread[];
-  source: DataSource;
-  me: Person;
-  onSwitchSource: (source: DataSource) => void;
-  theme: Theme;
-  onToggleTheme: () => void;
-  onViewAs: () => void;
-  onOpenProfile: () => void;
-  people: Person[];
-  onOpenPerson: (id: string) => void;
-  labels: Label[];
-  onOpenLabel: (id: string) => void;
-  // Groups' sprints, each named with its group.
-  sprints: { id: string; label: string }[];
-  onOpenSprint: (id: string) => void;
-  onNewGroup: () => void;
-  onNewThread: () => void;
-  onOpenThread: (id: string) => void;
-  onClose: () => void;
-}): JSX.Element {
+export function CommandPalette(props: { onClose: () => void }): JSX.Element {
+  const app = useApp();
   let input!: HTMLInputElement;
   const [query, setQuery] = createSignal("");
   const [tab, setTab] = createSignal<Tab>("all");
@@ -64,39 +49,54 @@ export function CommandPalette(props: {
     action();
     props.onClose();
   };
+  // Swaps this palette for the new group one.
+  const newGroup = (): void => {
+    props.onClose();
+    app.ui.setNewGroupOpen(true);
+  };
+  // Groups' sprints, each named with its group.
+  const sprints = (): { id: string; label: string }[] =>
+    app.data.groups().flatMap((group) =>
+      app.groups.sprintsOf(group.id).map((sprint) => ({
+        id: sprint.id,
+        label: `${group.name} › ${sprint.name}`,
+      })),
+    );
 
   const sections = createMemo((): { title: string; items: Row[] }[] => {
     const groupsAndLabels: Section = {
       title: "Groups and Labels",
       items: [
-        ...props.labels
+        ...app.data
+          .labels()
           .toSorted((a, b) => a.name.localeCompare(b.name))
           .map((label) => ({
             id: `label-${label.id}`,
             label: label.name,
             shortcut: label.groupId === null ? "Label" : "Group",
-            run: run(() => props.onOpenLabel(label.id)),
+            run: run(() => app.nav.openLabel(label.id)),
           })),
-        ...props.sprints.map((sprint) => ({
+        ...sprints().map((sprint) => ({
           id: `sprint-${sprint.id}`,
           label: sprint.label,
           shortcut: "Sprint",
-          run: run(() => props.onOpenSprint(sprint.id)),
+          run: run(() => app.nav.openSprint(sprint.id)),
         })),
       ],
     };
     // Everyone else, by name; opening one shows their profile and the threads you're both in.
     const peopleSection: Section = {
       title: "People",
-      items: props.people
-        .filter((person) => person.id !== props.me.id)
+      items: app.data
+        .people()
+        .filter((person) => person.id !== app.me().id)
         .toSorted((a, b) => a.name.localeCompare(b.name))
         .map((person) => ({
           id: `person-${person.id}`,
           label: person.name,
           shortcut: orgDetails(person) || undefined,
           keywords: [person.level, person.role].filter(Boolean).join(" "),
-          run: run(() => props.onOpenPerson(person.id)),
+          run: run(() => app.nav.openPerson(person.id)),
         })),
     };
     const current = tab();
@@ -106,13 +106,13 @@ export function CommandPalette(props: {
         title: "Quick Actions",
         items:
           current === "groups"
-            ? [{ id: "new-group", label: "New Group", run: props.onNewGroup }]
+            ? [{ id: "new-group", label: "New Group", run: newGroup }]
             : [
                 {
                   id: "new-thread",
                   label: "New Thread",
                   shortcut: "⌘ N",
-                  run: run(props.onNewThread),
+                  run: run(() => app.ui.openNewThread()),
                 },
               ],
       },
@@ -122,13 +122,13 @@ export function CommandPalette(props: {
             {
               title: "Views",
               items: [
-                { id: "profile", label: "Profile and organization", run: run(props.onOpenProfile) },
-                { id: "new-group", label: "New Group", run: props.onNewGroup },
+                { id: "profile", label: "Profile and organization", run: run(app.nav.openProfile) },
+                { id: "new-group", label: "New Group", run: newGroup },
                 {
                   id: "theme",
-                  label: props.theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
+                  label: app.ui.theme() === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
                   keywords: "theme appearance light dark mode",
-                  run: run(props.onToggleTheme),
+                  run: run(app.ui.toggleTheme),
                 },
               ],
             },
@@ -139,18 +139,18 @@ export function CommandPalette(props: {
               items: [
                 {
                   id: "view-as",
-                  label: `View As… (${props.me.name})`,
+                  label: `View As… (${app.me().name})`,
                   shortcut: "⌘ U",
-                  run: props.onViewAs,
+                  run: app.ui.openViewAs,
                 },
                 ...SOURCES.filter(
                   (option) =>
-                    option !== props.source && (option !== "cloudflare" || CLOUDFLARE_AVAILABLE),
+                    option !== app.source() && (option !== "cloudflare" || CLOUDFLARE_AVAILABLE),
                 ).map((option) => ({
                   id: `source-${option}`,
                   label: `Use ${SOURCE_LABELS[option]} Data`,
                   shortcut: SOURCE_HINTS[option],
-                  run: run(() => props.onSwitchSource(option)),
+                  run: run(() => app.switchSource(option)),
                 })),
               ],
             },
@@ -163,10 +163,10 @@ export function CommandPalette(props: {
         : [
             {
               title: "Threads",
-              items: props.threads.map((thread) => ({
+              items: app.data.threads().map((thread) => ({
                 id: thread.id,
                 label: thread.title,
-                run: run(() => props.onOpenThread(thread.id)),
+                run: run(() => app.nav.openThread(thread.id)),
               })),
             },
           ]),
@@ -212,18 +212,18 @@ export function CommandPalette(props: {
   };
 
   return (
-    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
+    <div class={sx(palette.overlay)} onMouseDown={() => props.onClose()}>
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label="Search"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder="Search..."
             spellcheck="false"
             value={query()}
@@ -233,40 +233,39 @@ export function CommandPalette(props: {
             }}
           />
         </div>
-        <div class="palette-tabs" role="tablist">
+        <div class={sx(styles.tabs)} role="tablist">
           <For each={TABS}>
             {(item) => (
               <button
                 type="button"
                 role="tab"
-                class="palette-tab"
+                class={sx(styles.tab, tab() === item.id && styles.tabSelected)}
                 aria-selected={tab() === item.id ? "true" : "false"}
                 onClick={() => changeTab(item.id)}
               >
                 <span>{item.label}</span>
-                <span class="palette-tab-shortcut">{item.shortcut}</span>
+                <span class={sx(styles.tabShortcut)}>{item.shortcut}</span>
               </button>
             )}
           </For>
         </div>
-        <div class="palette-results">
+        <div class={sx(palette.results)}>
           <For each={sections()}>
             {(section) => (
-              <div class="palette-section">
-                <div class="palette-section-label">{section.title}</div>
+              <div {...stylex.attrs(palette.section, paletteSectionMarker)}>
+                <div class={sx(palette.sectionLabel)}>{section.title}</div>
                 <For each={section.items}>
                   {(item) => (
                     <div
-                      class="palette-row"
-                      data-selected={String(item.index === selectedIndex())}
+                      class={sx(palette.row, item.index === selectedIndex() && palette.rowSelected)}
                       role="option"
                       aria-selected={item.index === selectedIndex() ? "true" : "false"}
                       onMouseMove={() => setSelected(item.index)}
                       onClick={() => item.run()}
                     >
-                      <span class="palette-row-label">{item.label}</span>
+                      <span class={sx(palette.rowLabel)}>{item.label}</span>
                       <Show when={item.shortcut !== undefined}>
-                        <span class="palette-row-shortcut">{item.shortcut}</span>
+                        <span class={sx(palette.rowShortcut)}>{item.shortcut}</span>
                       </Show>
                     </div>
                   )}
@@ -279,3 +278,44 @@ export function CommandPalette(props: {
     </div>
   );
 }
+
+// The filter tabs under the search field.
+const styles = stylex.create({
+  // .palette-tabs
+  tabs: {
+    display: "flex",
+    flexShrink: 0,
+    alignItems: "center",
+    gap: "4px",
+    height: "35px",
+    padding: "0 8px",
+    borderBottomWidth: "1px",
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.panelDivider,
+  },
+  // .palette-tab
+  tab: {
+    display: "flex",
+    alignItems: "center",
+    gap: "5px",
+    height: "20px",
+    padding: "0 4px",
+    borderStyle: "none",
+    borderRadius: "3px",
+    color: colors.textSecondary,
+    font: "inherit",
+    fontSize: "10.5px",
+    backgroundColor: "transparent",
+    cursor: "pointer",
+  },
+  // .palette-tab[aria-selected="true"]
+  tabSelected: {
+    color: colors.accent,
+    backgroundColor: colors.accentFill,
+  },
+  // .palette-tab-shortcut
+  tabShortcut: {
+    paddingRight: "2px",
+    opacity: 0.8,
+  },
+});

@@ -1,5 +1,17 @@
 import { createMemo, createUniqueId, For, merge } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import * as stylex from "@stylexjs/stylex";
+import { sx } from "../styles/sx";
+import { colors } from "../styles/tokens.stylex";
+
+const styles = stylex.create({
+  // About 1px wide at the usual sizes: half of the stroke is outside the clip. None on dark, where the pale
+  // background stands out already.
+  ring: {
+    stroke: colors.avatarRing,
+    strokeWidth: "0.5",
+  },
+});
 
 // FNV-1a: a small, stable string hash.
 function hash(value: string): number {
@@ -12,7 +24,8 @@ function hash(value: string): number {
 }
 
 // GitHub-style identicon: a mirrored 5x5 grid in one seeded color, clipped to a circle like Delta's avatars.
-export function Identicon(props: { seed: string; size?: number }): JSX.Element {
+// `class` places it where it sits (a StyleX class, say).
+export function Identicon(props: { seed: string; size?: number; class?: string }): JSX.Element {
   const merged = merge({ size: 22 }, props);
   const clipId = createUniqueId();
   const h = createMemo(() => hash(merged.seed));
@@ -31,7 +44,7 @@ export function Identicon(props: { seed: string; size?: number }): JSX.Element {
 
   return (
     <svg
-      class="identicon"
+      class={merged.class}
       width={merged.size}
       height={merged.size}
       viewBox="-0.5 -0.5 6 6"
@@ -54,7 +67,7 @@ export function Identicon(props: { seed: string; size?: number }): JSX.Element {
           )}
         </For>
         {/* An edge, so the pale background doesn't melt into a light page; clipped to its inner half. */}
-        <circle class="identicon-ring" cx="2.5" cy="2.5" r="3" fill="none" />
+        <circle class={sx(styles.ring)} cx="2.5" cy="2.5" r="3" fill="none" />
       </g>
     </svg>
   );

@@ -1,4 +1,37 @@
 import type { JSX } from "@solidjs/web";
+import * as stylex from "@stylexjs/stylex";
+import { sx } from "../styles/sx";
+import { colors, layers } from "../styles/tokens.stylex";
+
+// The 1px line the handle shows while hovered or dragged, 2px into the handle: exactly on the panel's 1px border, so
+// hover and drag only recolor it.
+const LINE = `linear-gradient(to right, transparent 2px, ${colors.strokeFocused} 2px, ${colors.strokeFocused} 3px, transparent 3px)`;
+
+const styles = stylex.create({
+  // A 4px hit area straddling the panel's right border.
+  handle: {
+    position: "absolute",
+    top: 0,
+    right: "-2px",
+    bottom: 0,
+    zIndex: layers.titlebar,
+    width: "4px",
+    margin: 0,
+    borderStyle: "none",
+    cursor: "col-resize",
+    // `data-resizing` is set by the drag code below, not by Solid.
+    backgroundImage: {
+      default: null,
+      ":hover": LINE,
+      ":is([data-resizing])": LINE,
+    },
+  },
+  // On a right-hand panel the handle straddles its left border instead.
+  left: {
+    right: "auto",
+    left: "-3px",
+  },
+});
 
 export type PanelSize = {
   storageKey: string;
@@ -52,8 +85,7 @@ export function ResizeHandle(props: {
 
   return (
     <hr
-      class="resize-handle"
-      data-edge={props.size.edge}
+      class={sx(styles.handle, props.size.edge === "left" && styles.left)}
       aria-label="Resize panel"
       aria-orientation="vertical"
       aria-valuemax={props.size.maxWidth}

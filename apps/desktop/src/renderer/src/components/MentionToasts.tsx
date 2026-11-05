@@ -1,8 +1,20 @@
 import { plainThreadLinks, withoutLeadingMentions, type Person, type Thread } from "model";
 import { createMemo, createSignal, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { useThreadLinks } from "../threadLinks";
+import * as stylex from "@stylexjs/stylex";
+import { useApp } from "../app/state";
+import { toast } from "../styles/controls";
+import { sx } from "../styles/sx";
 import { Identicon } from "./Identicon";
+import { Keyed } from "./Keyed";
+
+// The toast's slide while dragged, set as it moves.
+const dyn = stylex.create({
+  slide: (offset: number) => ({
+    transform: `translateX(${offset}px)`,
+    opacity: Math.max(0, 1 - offset / 320),
+  }),
+});
 
 // How long a toast stays up.
 const SHOW_MS = 6000;
@@ -11,29 +23,24 @@ type Sent = { id: string; thread: Thread; author: Person; text: string; atMs: nu
 
 // Something sent to you, as a short toast in the top right: who, in which thread, and what they said. Clicking it
 // opens the thread; it goes away on its own after a few seconds. Messages arriving together share one toast. Only
-// ones that arrive while the app is open show, never ones from before it loaded; notes never do.
-export function MentionToasts(props: {
-  threads: Thread[];
-  me: Person;
-  // When the app finished loading; anything older isn't news.
-  sinceMs: number;
-  onOpen: (threadId: string) => void;
-}): JSX.Element {
-  const links = useThreadLinks();
+// ones that arrive while the app is open show, never ones from before it loaded (`readyAtMs`); notes never do.
+export function MentionToasts(): JSX.Element {
+  const app = useApp();
   const [nowMs, setNowMs] = createSignal(Date.now());
   const [dismissed, setDismissed] = createSignal<Set<string>>(new Set());
 
   const toasts = createMemo((): Sent[] =>
-    props.threads
+    app.data
+      .threads()
       .flatMap((thread) =>
         thread.entries.flatMap((entry) =>
           entry.kind === "message" &&
-          entry.author.id !== props.me.id &&
-          entry.createdAtMs >= props.sinceMs &&
+          entry.author.id !== app.me().id &&
+          entry.createdAtMs >= app.client().readyAtMs &&
           entry.createdAtMs <= nowMs() &&
           nowMs() - entry.createdAtMs < SHOW_MS &&
           !dismissed().has(entry.id) &&
-          entry.sentTo.some((person) => person.id === props.me.id)
+          entry.sentTo.some((person) => person.id === app.me().id)
             ? [
                 {
                   id: entry.id,
@@ -58,52 +65,51 @@ export function MentionToasts(props: {
   // Several at once (most often, the ones held through a meeting) become one toast, so a break starts with a single
   // summary rather than a stack. It opens the newest.
   const latest = (): Sent => toasts()[0];
-  // A new newest message starts a fresh toast.
-  const latestId = createMemo(() => toasts()[0]?.id);
   const authors = (): Person[] => [
-    ...new Map(toasts().map((toast) => [toast.author.id, toast.author])).values(),
+    ...new Map(toasts().map((sent) => [sent.author.id, sent.author])).values(),
   ];
   const dismissAll = (): void => {
-    const ids = toasts().map((toast) => toast.id);
+    const ids = toasts().map((sent) => sent.id);
     setDismissed((current) => new Set([...current, ...ids]));
   };
   const open = (): void => {
     const threadId = latest().thread.id;
     dismissAll();
-    props.onOpen(threadId);
+    app.nav.openThread(threadId);
   };
   return (
     <Show when={toasts().length > 0}>
-      <div class="toasts" role="status" aria-live="polite">
-        <Show when={latestId()} keyed>
-          {(_newestId) => (
+      <div class={sx(toast.stack)} role="status" aria-live="polite">
+        {/* A new newest message starts a fresh toast. */}
+        <Keyed value={toasts()[0]} by={(newest) => newest.id}>
+          {(newest) => (
             <SwipeToast onOpen={open} onDismiss={dismissAll}>
-              <Identicon seed={latest().author.id} size={18} />
-              <div class="toast-body">
-                <div class="toast-title">
+              <Identicon seed={newest().author.id} size={18} class={sx(toast.avatar)} />
+              <div class={sx(toast.body)}>
+                <div class={sx(toast.title)}>
                   {toasts().length === 1 ? (
                     <>
-                      <span class="toast-author">{latest().author.name}</span> sent you{" "}
-                      <span class="toast-thread">{latest().thread.title}</span>
+                      <span class={sx(toast.emphasis)}>{newest().author.name}</span> sent you{" "}
+                      <span class={sx(toast.emphasis)}>{newest().thread.title}</span>
                     </>
                   ) : (
                     <>
-                      <span class="toast-author">{toasts().length} messages</span> from{" "}
-                      <span class="toast-author">{namesList(authors())}</span>
+                      <span class={sx(toast.emphasis)}>{toasts().length} messages</span> from{" "}
+                      <span class={sx(toast.emphasis)}>{namesList(authors())}</span>
                     </>
                   )}
                 </div>
-                <div class="toast-text">
+                <div class={sx(toast.text)}>
                   {plainThreadLinks(
-                    withoutLeadingMentions(latest().text),
-                    links.titleOf,
-                    links.nameOf,
+                    withoutLeadingMentions(newest().text),
+                    app.links.titleOf,
+                    app.links.nameOf,
                   )}
                 </div>
               </div>
             </SwipeToast>
           )}
-        </Show>
+        </Keyed>
       </div>
     </Show>
   );
@@ -141,14 +147,9 @@ function SwipeToast(props: {
 
   return (
     <div
-      class="toast"
+      {...stylex.attrs(toast.toast, moving() && toast.moving, dyn.slide(offset()))}
       role="button"
       tabindex={0}
-      data-moving={String(moving())}
-      style={{
-        transform: `translateX(${offset()}px)`,
-        opacity: String(Math.max(0, 1 - offset() / 320)),
-      }}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         drag = { startX: event.clientX, moved: false };

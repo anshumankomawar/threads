@@ -1,4 +1,5 @@
-import "./assets/main.css";
+// The few global rules StyleX can't reach (reset, body, #root, the editor's content); everything else is StyleX.
+import "./assets/global.css";
 
 import { render } from "@solidjs/web";
 import { setReactivity } from "sync/client";

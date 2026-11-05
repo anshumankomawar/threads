@@ -29,8 +29,21 @@ import {
   useContext,
 } from "solid-js";
 import { Portal, type JSX } from "@solidjs/web";
-import { useMe } from "../me";
-import { CurrentThreadContext, useThreadLinks } from "../threadLinks";
+import * as stylex from "@stylexjs/stylex";
+import { useApp } from "../app/state";
+import { CurrentThreadContext } from "../threadLinks";
+import { sx } from "../styles/sx";
+import { thread } from "../styles/thread";
+import { threadLineMarker } from "../styles/markers.stylex";
+import {
+  chip,
+  chipTone,
+  link,
+  menu as menuStyles,
+  status as statusStyles,
+  statusDot,
+} from "../styles/controls";
+import { styles } from "./ThreadView.styles";
 import {
   closeThreadMenu,
   offerKey,
@@ -81,6 +94,7 @@ import {
 } from "model";
 import { bucketIcons } from "../bucketIcons";
 import { DAY, formatDue, formatRelativeTime, startOfDay } from "../format";
+import { Keyed } from "./Keyed";
 import { recipientsOf } from "../compose";
 import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
@@ -128,35 +142,48 @@ export type ThreadActions = {
   onDeleteMessage: (message: MessageEntry) => void;
 };
 
-// A thread link as a chip with the linked thread's current title; clicking opens it beside this one.
-function ThreadLinkChip(props: { threadId: string }): JSX.Element {
-  const links = useThreadLinks();
+// A thread link as a chip with the linked thread's current title; clicking opens it beside this one. In a byline
+// ("Branched from") it's smaller, with the byline's icon colour.
+function ThreadLinkChip(props: { threadId: string; inByline?: boolean }): JSX.Element {
+  const app = useApp();
   const currentThreadId = useContext(CurrentThreadContext);
-  const title = (): string => links.titleOf(props.threadId) ?? "Thread";
+  const title = (): string => app.links.titleOf(props.threadId) ?? "Thread";
   return (
     <Show
       when={currentThreadId() !== props.threadId}
-      fallback={<span class="thread-link-self">#{title()}</span>}
+      fallback={<span class={sx(styles.linkSelf)}>#{title()}</span>}
     >
       <button
         type="button"
-        class="thread-link"
+        class={sx(link.thread, props.inByline && link.threadInByline)}
         onClick={(event) => {
           event.stopPropagation();
-          links.open(props.threadId);
+          app.links.open(props.threadId);
         }}
       >
-        <Icon icon={GitBranchIcon} size={11} aria-hidden="true" />
+        <Icon
+          icon={GitBranchIcon}
+          size={11}
+          aria-hidden="true"
+          class={props.inByline ? sx(thread.bylineIcon) : undefined}
+        />
         {title()}
       </button>
     </Show>
   );
 }
 
-// A message's text, with its thread links as chips.
-function MessageText(props: { text: string; class?: string }): JSX.Element {
+// A message's text, with its thread links as chips. The thread's description, under its title in the header, is
+// the same text styled as one.
+function MessageText(props: { text: string; description?: boolean }): JSX.Element {
   return (
-    <div class={props.class ?? "thread-text"}>
+    <div
+      class={sx(
+        thread.text,
+        props.description && thread.description,
+        props.description && thread.headerDescription,
+      )}
+    >
       <LinkedText text={props.text} />
     </div>
   );
@@ -164,7 +191,7 @@ function MessageText(props: { text: string; class?: string }): JSX.Element {
 
 // Text with its thread links as chips, inline.
 function LinkedText(props: { text: string }): JSX.Element {
-  const links = useThreadLinks();
+  const links = useApp().links;
   return (
     <For each={splitThreadLinks(props.text)}>
       {(part) =>
@@ -173,18 +200,20 @@ function LinkedText(props: { text: string }): JSX.Element {
         ) : "personId" in part ? (
           <Show
             when={links.nameOf(part.personId) !== undefined}
-            fallback={<span class="mention">@someone</span>}
+            fallback={<span class={sx(link.mention)}>@someone</span>}
           >
             <button
               type="button"
-              class="mention person-link"
+              class={sx(link.person, link.mention)}
               onClick={() => links.openPerson(part.personId)}
             >
               @{links.nameOf(part.personId)}
             </button>
           </Show>
         ) : "groupId" in part ? (
-          <span class="mention">@{links.nameOf(groupTarget(part.groupId)) ?? "group"}</span>
+          <span class={sx(link.mention)}>
+            @{links.nameOf(groupTarget(part.groupId)) ?? "group"}
+          </span>
         ) : (
           <span>{part.text}</span>
         )
@@ -210,28 +239,21 @@ function dueOptions(nowMs: number): { label: string; value: number | null }[] {
   ];
 }
 
-function useNow(intervalMs: number): () => number {
-  const [now, setNow] = createSignal(Date.now());
-  onSettled(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(id);
-  });
-  return now;
-}
-
 function Avatar(props: { person: Person }): JSX.Element {
   return (
-    <span class="thread-avatar">
+    <span class={sx(thread.avatar)}>
       <Identicon seed={props.person.id} size={20} />
     </span>
   );
 }
 
+type ChipTone = keyof typeof chipTone;
+
 // A property chip that opens a small menu of options, styled like the search panel.
 export function MenuChip<T>(props: {
   label: string;
   icon?: JSX.Element;
-  tone?: string;
+  tone?: ChipTone;
   options: { label: string; value: T; icon?: JSX.Element }[];
   onSelect: (value: T) => void;
   // Shown on hover.
@@ -269,11 +291,10 @@ export function MenuChip<T>(props: {
   );
 
   return (
-    <span ref={root} class="chip-anchor">
+    <span ref={root} class={sx(styles.chipAnchor)}>
       <button
         type="button"
-        class="chip"
-        data-tone={props.tone}
+        class={sx(chip.chip, open() && chip.open, props.tone && chipTone[props.tone])}
         title={props.title}
         aria-haspopup="menu"
         aria-expanded={open() ? "true" : "false"}
@@ -283,12 +304,12 @@ export function MenuChip<T>(props: {
         {props.label}
       </button>
       <Show when={open()}>
-        <div class="menu chip-menu" role="menu">
+        <div class={[sx(menuStyles.menu, chip.menu), "chip-menu"]} role="menu">
           <Show when={props.typed}>
             {(typed) => (
               <input
                 ref={(input) => queueMicrotask(() => input.focus())}
-                class="menu-input"
+                class={sx(menuStyles.input)}
                 placeholder={typed().placeholder}
                 spellcheck={false}
                 value={text()}
@@ -302,14 +323,22 @@ export function MenuChip<T>(props: {
           </Show>
           <Show when={parsed()}>
             {(value) => (
-              <div class="menu-item" role="menuitem" onClick={() => choose(value().value)}>
+              <div
+                class={sx(menuStyles.item, menuStyles.itemHover)}
+                role="menuitem"
+                onClick={() => choose(value().value)}
+              >
                 {value().label}
               </div>
             )}
           </Show>
           <For each={props.options}>
             {(option) => (
-              <div class="menu-item" role="menuitem" onClick={() => choose(option.value)}>
+              <div
+                class={sx(menuStyles.item, menuStyles.itemHover)}
+                role="menuitem"
+                onClick={() => choose(option.value)}
+              >
                 {option.icon}
                 {option.label}
               </div>
@@ -323,7 +352,7 @@ export function MenuChip<T>(props: {
 
 // A thread's labels: pick any, or type a new one. A group's label puts the thread in that group.
 function LabelChip(props: { thread: Thread; actions: ThreadActions }): JSX.Element {
-  const links = useThreadLinks();
+  const links = useApp().links;
   const offered = createMemo(() => [
     ...new Map(
       [
@@ -371,7 +400,12 @@ function labelsLabel(labelIds: string[], labels: { id: string; name: string }[])
 }
 
 function StatusDot(props: { status: Status }): JSX.Element {
-  return <span class="status-dot" data-status={props.status} aria-hidden="true" />;
+  return (
+    <span
+      class={sx(statusStyles.dot, props.status !== "open" && statusDot[props.status])}
+      aria-hidden="true"
+    />
+  );
 }
 
 // The top of every thread. An issue shows the ask (who wants what from whom), its title and description, and its
@@ -379,25 +413,25 @@ function StatusDot(props: { status: Status }): JSX.Element {
 function ThreadHeader(props: {
   thread: Thread;
   ask: MessageEntry | undefined;
-  nowMs: number;
   actions: ThreadActions;
 }): JSX.Element {
+  const app = useApp();
+  const me = app.me;
   const due = createMemo(() =>
-    props.thread.dueAtMs === null ? null : formatDue(props.thread.dueAtMs, props.nowMs),
+    props.thread.dueAtMs === null ? null : formatDue(props.thread.dueAtMs, app.now()),
   );
   const statuses = Object.keys(STATUS_LABELS) as Status[];
   const priorities = Object.keys(PRIORITY_LABELS) as Priority[];
-  const priorityTone = (): string | undefined =>
+  const priorityTone = (): ChipTone | undefined =>
     props.thread.priority === "urgent"
       ? "urgent"
       : props.thread.priority === "none"
         ? "muted"
         : undefined;
-  const dueTone = (): string | undefined => {
+  const dueTone = (): ChipTone | undefined => {
     const shown = due();
     return shown === null ? "muted" : shown.overdue ? "urgent" : undefined;
   };
-  const me = useMe();
   // Its bucket shows only to people whose inbox it's in, since buckets are theirs.
   const inMyInbox = createMemo(() => inboxPeople(props.thread).includes(me().id));
   const buckets = createMemo(() => bucketsOf(me()));
@@ -412,45 +446,46 @@ function ThreadHeader(props: {
   });
 
   const description = (): string => props.ask?.text.trim() ?? "";
-  const links = useThreadLinks();
 
   return (
     <header
-      class="thread-header thread-block"
+      class={sx(thread.block, thread.header)}
       id={props.ask === undefined ? undefined : `entry-${props.ask.id}`}
     >
       {/* The thread opens like its first message: who asked and when, then what it's about. */}
-      <Show when={props.ask} fallback={<span class="thread-avatar" />}>
+      <Show when={props.ask} fallback={<span class={sx(thread.avatar)} />}>
         {(ask) => <Avatar person={ask().author} />}
       </Show>
-      <div class="thread-body">
+      <div class={sx(thread.body, thread.headerBody)}>
         <Show when={props.ask}>
           {(ask) => (
-            <div class="thread-meta">
+            <div {...stylex.attrs(thread.meta, threadLineMarker)}>
               <button
                 type="button"
-                class="thread-author person-link"
-                onClick={() => links.openPerson(ask().author.id)}
+                class={sx(link.person, thread.author)}
+                onClick={() => app.links.openPerson(ask().author.id)}
               >
                 {ask().author.name}
               </button>
-              <span class="thread-time">{formatRelativeTime(ask().createdAtMs, props.nowMs)}</span>
+              <span class={sx(styles.time)}>
+                {formatRelativeTime(ask().createdAtMs, app.now())}
+              </span>
             </div>
           )}
         </Show>
         <Show when={props.thread.branchedFromId}>
           {(branchedFromId) => (
-            <div class="thread-byline">
+            <div {...stylex.attrs(thread.byline, threadLineMarker)}>
               <span>Branched from</span>
-              <ThreadLinkChip threadId={branchedFromId()} />
+              <ThreadLinkChip threadId={branchedFromId()} inByline />
             </div>
           )}
         </Show>
-        <h1 class="thread-title">{props.thread.title}</h1>
+        <h1 class={sx(thread.title, thread.headerTitle)}>{props.thread.title}</h1>
         <Show when={description() !== ""}>
-          <MessageText text={description()} class="thread-text thread-description" />
+          <MessageText text={description()} description />
         </Show>
-        <div class="thread-properties">
+        <div class={sx(styles.properties)}>
           <MenuChip
             label={STATUS_LABELS[props.thread.status]}
             icon={<StatusDot status={props.thread.status} />}
@@ -507,7 +542,7 @@ function ThreadHeader(props: {
             label={due()?.label ?? "No due date"}
             icon={<Icon icon={Calendar01Icon} {...ICON_PROPS} />}
             tone={dueTone()}
-            options={dueOptions(props.nowMs)}
+            options={dueOptions(app.now())}
             onSelect={(dueAtMs) => props.actions.onSetDue(dueAtMs)}
           />
           <MenuChip
@@ -536,7 +571,6 @@ function ThreadHeader(props: {
 
 function MessageBlock(props: {
   message: MessageEntry;
-  nowMs: number;
   selected: boolean;
   // Where a selected message sits in a run of selected neighbours, so the run reads as one box.
   run: "single" | "start" | "middle" | "end" | undefined;
@@ -546,7 +580,8 @@ function MessageBlock(props: {
   onContextMenu?: (event: MouseEvent) => void;
 }): JSX.Element {
   // Whoever the message names: the people it mentions and the members of the groups it mentions.
-  const links = useThreadLinks();
+  const app = useApp();
+  const links = app.links;
   const named = createMemo(
     () =>
       new Set([
@@ -560,11 +595,16 @@ function MessageBlock(props: {
     event.shiftKey ? "range" : event.metaKey || props.selecting ? "toggle" : undefined;
   return (
     <div
-      class="thread-block thread-message"
+      class={sx(
+        thread.block,
+        styles.message,
+        props.selected && styles.selected,
+        props.run === "start" && styles.runStart,
+        props.run === "middle" && styles.runMiddle,
+        props.run === "end" && styles.runEnd,
+        props.selecting && styles.selecting,
+      )}
       id={`entry-${props.message.id}`}
-      data-selected={String(props.selected)}
-      data-run={props.run}
-      data-selecting={String(props.selecting)}
       onMouseDown={(event) => {
         // Shift-click selects messages, not text.
         if (event.shiftKey) event.preventDefault();
@@ -577,11 +617,11 @@ function MessageBlock(props: {
       onContextMenu={(event) => props.onContextMenu?.(event)}
     >
       <Avatar person={props.message.author} />
-      <div class="thread-body">
-        <div class="thread-meta">
+      <div class={sx(thread.body)}>
+        <div class={sx(thread.meta)}>
           <button
             type="button"
-            class="thread-author person-link"
+            class={sx(link.person, thread.author)}
             onClick={() => links.openPerson(props.message.author.id)}
           >
             {props.message.author.name}
@@ -590,16 +630,16 @@ function MessageBlock(props: {
               a note nobody was told about. The description is neither. */}
           <Show
             when={props.message.sentTo.length !== 0}
-            fallback={<span class="thread-note">Note</span>}
+            fallback={<span class={sx(styles.note)}>Note</span>}
           >
             <Show when={!props.message.sentTo.every((person) => named().has(person.id))}>
-              <span class="thread-sent-to">
+              <span class={sx(styles.sentTo)}>
                 to {props.message.sentTo.map((person) => person.name.split(" ")[0]).join(", ")}
               </span>
             </Show>
           </Show>
-          <span class="thread-time">
-            {formatRelativeTime(props.message.createdAtMs, props.nowMs)}
+          <span class={sx(styles.time)}>
+            {formatRelativeTime(props.message.createdAtMs, app.now())}
           </span>
         </div>
         <MessageText text={props.message.text} />
@@ -608,18 +648,20 @@ function MessageBlock(props: {
   );
 }
 
-function EventLine(props: { event: EventEntry; nowMs: number }): JSX.Element {
+// An activity line; one right after another sits closer to it.
+function EventLine(props: { event: EventEntry; afterEvent: boolean }): JSX.Element {
+  const app = useApp();
   return (
-    <div class="thread-block thread-event" id={`entry-${props.event.id}`}>
+    <div
+      class={sx(thread.block, styles.event, props.afterEvent && styles.eventAfterEvent)}
+      id={`entry-${props.event.id}`}
+    >
       {/* No marker, just the avatar's width, so the line lines up with the text column. */}
-      <span class="thread-avatar thread-event-marker" aria-hidden="true" />
-      <div class="thread-event-text">
-        <span class="thread-event-actor">{props.event.actor.name}</span>{" "}
+      <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true" />
+      <div class={sx(styles.eventText)}>
+        <span class={sx(styles.eventActor)}>{props.event.actor.name}</span>{" "}
         <LinkedText text={props.event.text} />
-        <span class="thread-event-time">
-          {" "}
-          · {formatRelativeTime(props.event.createdAtMs, props.nowMs)}
-        </span>
+        <span> · {formatRelativeTime(props.event.createdAtMs, app.now())}</span>
       </div>
     </div>
   );
@@ -627,22 +669,23 @@ function EventLine(props: { event: EventEntry; nowMs: number }): JSX.Element {
 
 function ResolutionMarker(): JSX.Element {
   return (
-    <span class="thread-avatar thread-resolution-marker" aria-hidden="true">
+    <span class={sx(thread.avatar, styles.resolutionMarker)} aria-hidden="true">
       <Icon icon={Tick02Icon} size={12} />
     </span>
   );
 }
 
-function ResolutionBlock(props: { resolution: ResolutionEntry; nowMs: number }): JSX.Element {
+function ResolutionBlock(props: { resolution: ResolutionEntry }): JSX.Element {
+  const app = useApp();
   return (
-    <div class="thread-block thread-resolution" id={`entry-${props.resolution.id}`}>
+    <div class={sx(thread.block)} id={`entry-${props.resolution.id}`}>
       <ResolutionMarker />
-      <div class="thread-body">
-        <div class="thread-meta">
-          <span class="thread-author">Done</span>
-          <span class="thread-time">
+      <div class={sx(thread.body)}>
+        <div class={sx(thread.meta)}>
+          <span class={sx(thread.author, thread.authorResolved)}>Done</span>
+          <span class={sx(styles.time)}>
             {props.resolution.author.name} ·{" "}
-            {formatRelativeTime(props.resolution.createdAtMs, props.nowMs)}
+            {formatRelativeTime(props.resolution.createdAtMs, app.now())}
           </span>
         </div>
         <MessageText text={props.resolution.text} />
@@ -662,7 +705,6 @@ function ReplyBlock(props: {
   focusRef: (focus: (() => void) | null) => void;
   // Who Enter sends to, before mentions.
   defaultTo: Person[];
-  people: Person[];
   onNote: (text: string) => void;
   onSend: (text: string, to: Person[]) => void;
   onBranch: ThreadActions["onBranch"];
@@ -670,18 +712,19 @@ function ReplyBlock(props: {
   // Whether the reply takes the cursor when it appears.
   autoFocus: boolean;
 }): JSX.Element {
-  const me = useMe();
+  const app = useApp();
+  const me = app.me;
   // Who's @mentioned in the draft, read from the editor, and who's been added or taken off the To line by hand. Both
   // clear once the message is sent.
   const [mentionedIds, setMentionedIds] = createSignal<string[]>([]);
   const [addedIds, setAddedIds] = createSignal<string[]>([]);
   const [removedIds, setRemovedIds] = createSignal<string[]>([]);
   // A mentioned group sends it to its members as they are now.
-  const links = useThreadLinks();
+  const links = app.links;
   const to = createMemo(() =>
     [
       ...props.defaultTo,
-      ...recipientsOf([...mentionedIds(), ...addedIds()], props.people, links.groups, me()),
+      ...recipientsOf([...mentionedIds(), ...addedIds()], app.data.people(), links.groups, me()),
     ].filter(
       (person, index, all) =>
         person.id !== me().id &&
@@ -722,7 +765,10 @@ function ReplyBlock(props: {
           setMentionedIds(ids);
       },
       editorProps: {
-        attributes: { class: "thread-text thread-reply-editor", "aria-label": "Reply" },
+        attributes: {
+          class: `${sx(thread.text, styles.replyEditor)} thread-reply-editor`,
+          "aria-label": "Reply",
+        },
         handleKeyDown: (view, event) => {
           // The `#` and `/` menus, when open, get keys first.
           if (offerKey(view.dom, event)) return true;
@@ -853,24 +899,24 @@ function ReplyBlock(props: {
   });
 
   return (
-    <div class="thread-block" onClick={() => editor?.commands.focus()}>
+    <div class={sx(thread.block)} onClick={() => editor?.commands.focus()}>
       <Avatar person={me()} />
-      <div class="thread-body">
-        <div class="thread-meta">
-          <span class="thread-author">{me().name}</span>
+      <div class={sx(thread.body)}>
+        <div class={sx(thread.meta)}>
+          <span class={sx(thread.author)}>{me().name}</span>
         </div>
-        <div ref={mountEditor} class="thread-reply" />
+        <div ref={mountEditor} class={sx(styles.reply)} />
         <Show when={mentionedIds().length > 0}>
-          <div class="reply-to" onClick={(event) => event.stopPropagation()}>
-            <span class="reply-to-label">To</span>
+          <div class={sx(styles.replyTo)} onClick={(event) => event.stopPropagation()}>
+            <span class={sx(styles.replyToLabel)}>To</span>
             <For each={to()}>
               {(person) => (
-                <span class="reply-to-person">
+                <span class={sx(styles.replyToPerson)}>
                   <Identicon seed={person.id} size={12} />
                   {person.name.split(" ")[0]}
                   <button
                     type="button"
-                    class="reply-to-remove"
+                    class={sx(styles.replyToRemove)}
                     aria-label={`Don't send to ${person.name}`}
                     onClick={() => setRemovedIds((current) => [...current, person.id])}
                   >
@@ -883,7 +929,8 @@ function ReplyBlock(props: {
               label={to().length === 0 ? "Add someone" : "Add"}
               icon={<Icon icon={Add01Icon} size={11} aria-hidden="true" />}
               tone="muted"
-              options={props.people
+              options={app.data
+                .people()
                 .filter(
                   (person) =>
                     person.id !== me().id && !to().some((other) => other.id === person.id),
@@ -951,7 +998,7 @@ function ThreadMenu(props: {
       {(rect) => (
         <Portal mount={document.body}>
           <div
-            class="menu thread-menu"
+            class={[sx(menuStyles.menu, styles.threadMenu), "thread-menu"]}
             role="listbox"
             aria-label="Link a thread"
             style={{ left: `${rect().left}px`, top: `${rect().bottom + 6}px` }}
@@ -963,16 +1010,16 @@ function ThreadMenu(props: {
                   type="button"
                   role="option"
                   aria-selected={index() === props.selected ? "true" : "false"}
-                  class="menu-item"
+                  class={sx(menuStyles.item, index() === props.selected && menuStyles.itemSelected)}
                   onMouseEnter={() => props.onHover(index())}
                   onClick={() => props.onChoose(option)}
                 >
                   {option.kind === "person" ? (
                     <>
                       <Identicon seed={option.person.id} size={14} />
-                      <span class="thread-menu-title">
+                      <span class={sx(styles.threadMenuTitle)}>
                         {option.person.name}{" "}
-                        <span class="thread-menu-hint">
+                        <span class={sx(styles.threadMenuHint)}>
                           {option.person.id.startsWith(GROUP_TARGET)
                             ? "sends it to everyone in the group"
                             : "sends it to them too"}
@@ -982,20 +1029,20 @@ function ThreadMenu(props: {
                   ) : option.kind === "command" ? (
                     <>
                       <Icon icon={COMMAND_ICONS[option.name]} {...ICON_PROPS} />
-                      <span class="thread-menu-title">
-                        {option.label} <span class="thread-menu-hint">{option.hint}</span>
+                      <span class={sx(styles.threadMenuTitle)}>
+                        {option.label} <span class={sx(styles.threadMenuHint)}>{option.hint}</span>
                       </span>
                     </>
                   ) : option.kind === "link" ? (
                     <>
                       <Icon icon={GitBranchIcon} {...ICON_PROPS} />
-                      <span class="thread-menu-title">{option.link.title}</span>
+                      <span class={sx(styles.threadMenuTitle)}>{option.link.title}</span>
                     </>
                   ) : (
                     <>
                       <Icon icon={Add01Icon} {...ICON_PROPS} />
-                      <span class="thread-menu-title">
-                        New thread <span class="thread-menu-new">“{option.title}”</span>
+                      <span class={sx(styles.threadMenuTitle)}>
+                        New thread <span class={sx(styles.threadMenuNew)}>“{option.title}”</span>
                       </span>
                     </>
                   )}
@@ -1018,8 +1065,6 @@ function entryPerson(entry: Entry): Person | undefined {
 
 export function ThreadView(props: {
   thread: Thread;
-  people: Person[];
-  actions: ThreadActions;
   // Off while working through the inbox, so its keys work until you choose to reply (R).
   autoFocusReply?: boolean;
 }): JSX.Element {
@@ -1028,8 +1073,10 @@ export function ThreadView(props: {
   let scrollEl!: HTMLDivElement;
   let docEl!: HTMLElement;
   let focusReply: (() => void) | null = null;
-  const nowMs = useNow(60_000);
-  const me = useMe();
+  const app = useApp();
+  const me = app.me;
+  // This thread's changes (each pane's own).
+  const actions = createMemo(() => app.threads.actionsFor(props.thread));
   const entries = (): Entry[] => props.thread.entries;
   // The description moves into the header, under the title.
   const ask = createMemo(() => descriptionOf(props.thread));
@@ -1083,7 +1130,7 @@ export function ThreadView(props: {
 
   // Messages selected to move, in thread order: right-click → Select, ⌘-click, or shift-click for a range. Kept
   // per thread; moved messages drop out of it on their own. Escape clears it.
-  const links = useThreadLinks();
+  const links = app.links;
   const [selection, setSelection] = createSignal<{
     threadId: string;
     ids: string[];
@@ -1151,13 +1198,13 @@ export function ThreadView(props: {
     if (pickedIds().includes(message.id)) {
       const picked = selected();
       return [
-        { label: moveLabel(picked.length), run: () => props.actions.onMoveMessages(picked) },
+        { label: moveLabel(picked.length), run: () => actions().onMoveMessages(picked) },
         "separator",
         { label: "Clear selection", shortcut: "Esc", run: clearSelection },
       ];
     }
     return [
-      { label: moveLabel(1), run: () => props.actions.onMoveMessages([message]) },
+      { label: moveLabel(1), run: () => actions().onMoveMessages([message]) },
       {
         label: selecting() ? "Add to selection" : "Select",
         shortcut: "⌘ Click",
@@ -1175,7 +1222,7 @@ export function ThreadView(props: {
       ...(message.author.id === me().id && message.id !== props.thread.id
         ? [
             "separator" as const,
-            { label: "Delete message", run: () => props.actions.onDeleteMessage(message) },
+            { label: "Delete message", run: () => actions().onDeleteMessage(message) },
           ]
         : []),
     ];
@@ -1222,20 +1269,15 @@ export function ThreadView(props: {
 
   return (
     <CurrentThreadContext value={() => props.thread.id}>
-      <div class="thread-view">
+      <div class={[sx(thread.view), "thread-view"]}>
         <div
           ref={scrollEl}
-          class="thread-scroll"
+          class={sx(thread.scroll)}
           onMouseDown={onBackgroundMouseDown}
           onScroll={onScroll}
         >
-          <article ref={docEl} class="thread-doc">
-            <ThreadHeader
-              thread={props.thread}
-              ask={ask()}
-              nowMs={nowMs()}
-              actions={props.actions}
-            />
+          <article ref={docEl} class={sx(thread.doc)}>
+            <ThreadHeader thread={props.thread} ask={ask()} actions={actions()} />
             <For each={rest()} keyed={(entry) => entry.id}>
               {(entry, index) => {
                 const kind = createMemo(() => entry().kind);
@@ -1244,7 +1286,6 @@ export function ThreadView(props: {
                     <Match when={kind() === "message"}>
                       <MessageBlock
                         message={entry() as MessageEntry}
-                        nowMs={nowMs()}
                         selected={pickedIds().includes(entry().id)}
                         run={runAt(index())}
                         selecting={selecting()}
@@ -1260,52 +1301,56 @@ export function ThreadView(props: {
                       />
                     </Match>
                     <Match when={kind() === "event"}>
-                      <EventLine event={entry() as EventEntry} nowMs={nowMs()} />
+                      <EventLine
+                        event={entry() as EventEntry}
+                        afterEvent={rest()[index() - 1]?.kind === "event"}
+                      />
                     </Match>
                     <Match when={kind() === "resolution"}>
-                      <ResolutionBlock resolution={entry() as ResolutionEntry} nowMs={nowMs()} />
+                      <ResolutionBlock resolution={entry() as ResolutionEntry} />
                     </Match>
                   </Switch>
                 );
               }}
             </For>
-            <Show when={replyKey()} keyed>
-              <ReplyBlock
-                placeholder={placeholder()}
-                focusRef={(focus) => (focusReply = focus)}
-                defaultTo={defaultTo()}
-                people={props.people}
-                onNote={(text) => props.actions.onNote(text)}
-                onSend={(text, to) => props.actions.onSend(text, to)}
-                onBranch={(title) => props.actions.onBranch(title)}
-                onCommand={(name) => {
-                  if (name === "blocked") props.actions.onBlocked();
-                  if (name === "close") props.actions.onSetStatus("closed");
-                  if (name === "task") props.actions.onTask();
-                }}
-                threadId={props.thread.id}
-                autoFocus={merged.autoFocusReply}
-              />
-            </Show>
+            <Keyed value={replyKey()} by={(key) => key}>
+              {() => (
+                <ReplyBlock
+                  placeholder={placeholder()}
+                  focusRef={(focus) => (focusReply = focus)}
+                  defaultTo={defaultTo()}
+                  onNote={(text) => actions().onNote(text)}
+                  onSend={(text, to) => actions().onSend(text, to)}
+                  onBranch={(title) => actions().onBranch(title)}
+                  onCommand={(name) => {
+                    if (name === "blocked") actions().onBlocked();
+                    if (name === "close") actions().onSetStatus("closed");
+                    if (name === "task") actions().onTask();
+                  }}
+                  threadId={props.thread.id}
+                  autoFocus={merged.autoFocusReply}
+                />
+              )}
+            </Keyed>
             <div ref={endEl} />
           </article>
           {/* Room to scroll the last entry up to the top without losing it off screen. */}
-          <div class="thread-overscroll" aria-hidden="true" />
+          <div class={[sx(styles.overscroll), "thread-overscroll"]} aria-hidden="true" />
         </div>
         <Show when={selecting()}>
-          <div class="selection-bar" role="toolbar" aria-label="Selected messages">
-            <span class="selection-bar-count">{selected().length} selected</span>
+          <div class={sx(styles.selectionBar)} role="toolbar" aria-label="Selected messages">
+            <span class={sx(styles.selectionBarCount)}>{selected().length} selected</span>
             <button
               type="button"
-              class="selection-bar-move"
-              onClick={() => props.actions.onMoveMessages(selected())}
+              class={sx(styles.selectionBarMove)}
+              onClick={() => actions().onMoveMessages(selected())}
             >
               <Icon icon={GitBranchIcon} {...ICON_PROPS} />
               Move to thread…
             </button>
             <button
               type="button"
-              class="icon-button selection-bar-clear"
+              class={sx(styles.selectionBarClear)}
               aria-label="Clear selection"
               title="Clear selection (Esc)"
               onClick={clearSelection}
@@ -1327,7 +1372,7 @@ export function ThreadView(props: {
         <Show when={unseen().length > 0 && !selecting()}>
           <button
             type="button"
-            class="thread-new-pill"
+            class={sx(styles.newPill)}
             onClick={() => bringReplyIntoView("smooth")}
           >
             <Icon icon={ArrowDown02Icon} {...ICON_PROPS} />
@@ -1336,7 +1381,7 @@ export function ThreadView(props: {
               : `${unseenMessages()} new ${unseenMessages() === 1 ? "message" : "messages"}`}
           </button>
         </Show>
-        <ThreadMinimap entries={entries()} scrollRef={() => scrollEl} nowMs={nowMs()} />
+        <ThreadMinimap entries={entries()} scrollRef={() => scrollEl} />
       </div>
     </CurrentThreadContext>
   );

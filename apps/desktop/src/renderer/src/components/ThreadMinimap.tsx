@@ -1,8 +1,11 @@
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import * as stylex from "@stylexjs/stylex";
 import { formatRelativeTime } from "../format";
 import { plainThreadLinks, type Entry, type Person } from "model";
-import { useThreadLinks } from "../threadLinks";
+import { useApp } from "../app/state";
+import { sx } from "../styles/sx";
+import { colors, layers, radii, shadows } from "../styles/tokens.stylex";
 import { Identicon } from "./Identicon";
 
 const TICK_SPACING = 6;
@@ -13,6 +16,112 @@ const PEAK_LENGTH = 14;
 const TAPER_PER_TICK = 2;
 // Gap between ⌥ + scroll jumps, so one flick moves one marker.
 const JUMP_THROTTLE_MS = 180;
+
+// One tick per entry, right-aligned and centered on the thread.
+const styles = stylex.create({
+  // .minimap
+  minimap: {
+    position: "absolute",
+    top: "50%",
+    right: "14px",
+    zIndex: layers.float,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-end",
+    transform: "translateY(-50%)",
+  },
+  // .minimap-tick
+  tick: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    width: "32px",
+    // TICK_SPACING.
+    height: "6px",
+    padding: 0,
+    borderStyle: "none",
+    backgroundColor: "transparent",
+    cursor: "pointer",
+  },
+  // .minimap-tick::after — the tick's line, its length set inline.
+  line: {
+    height: "1.5px",
+    borderRadius: "1px",
+    backgroundColor: colors.iconTertiary,
+    opacity: 0.45,
+    transitionProperty: "width",
+    transitionDuration: "120ms",
+    transitionTimingFunction: "ease-out",
+  },
+  // .minimap-tick[data-active="true"]::after, .minimap-tick[data-hovered="true"]::after
+  lineLit: {
+    backgroundColor: colors.textPrimary,
+    opacity: 1,
+  },
+  // .minimap-card — hover card: the entry's text, who and when, then the shortcuts. Its top is set inline.
+  card: {
+    position: "absolute",
+    right: "38px",
+    width: "300px",
+    padding: "8px 10px",
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: colors.panelBorder,
+    borderRadius: radii.panel,
+    backgroundColor: colors.panel,
+    boxShadow: shadows.panel,
+    transform: "translateY(-16px)",
+    pointerEvents: "none",
+  },
+  // .minimap-card-text
+  cardText: {
+    display: "-webkit-box",
+    overflow: "hidden",
+    color: colors.textPrimary,
+    fontSize: "13px",
+    lineHeight: "19px",
+    WebkitLineClamp: 5,
+    WebkitBoxOrient: "vertical",
+  },
+  // .minimap-card-meta
+  cardMeta: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: "8px",
+    marginTop: "8px",
+    paddingTop: "8px",
+    borderTopWidth: "1px",
+    borderTopStyle: "solid",
+    borderTopColor: colors.panelDivider,
+    color: colors.textSecondary,
+    fontSize: "12px",
+  },
+  // .minimap-card-person
+  cardPerson: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    color: colors.textPrimary,
+  },
+  // .minimap-card-time
+  cardTime: {
+    color: colors.textTertiary,
+  },
+  // .minimap-card-hints
+  cardHints: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    marginTop: "8px",
+    paddingTop: "8px",
+    borderTopWidth: "1px",
+    borderTopStyle: "solid",
+    borderTopColor: colors.panelDivider,
+    color: colors.textTertiary,
+    fontSize: "12px",
+  },
+});
 
 type Marker = {
   id: string;
@@ -65,9 +174,9 @@ export function ThreadMinimap(props: {
   entries: Entry[];
   // The thread's scrolling element, once it's there.
   scrollRef: () => HTMLDivElement | undefined;
-  nowMs: number;
 }): JSX.Element {
-  const links = useThreadLinks();
+  const app = useApp();
+  const links = app.links;
   const markers = createMemo(() =>
     props.entries.map((entry) => toMarker(entry, links.titleOf, links.nameOf)),
   );
@@ -142,46 +251,55 @@ export function ThreadMinimap(props: {
 
   return (
     <Show when={markers().length >= 2}>
-      <nav class="minimap" aria-label="Thread outline" onMouseLeave={() => setHovered(null)}>
+      <nav
+        class={sx(styles.minimap)}
+        aria-label="Thread outline"
+        onMouseLeave={() => setHovered(null)}
+      >
         <For each={markers()} keyed={(marker) => marker.id}>
           {(marker, index) => (
             <button
               type="button"
-              class="minimap-tick"
+              class={sx(styles.tick)}
               aria-label={`${marker().label}: ${marker().text}`}
-              data-active={String(index() === active())}
-              data-hovered={String(hovered() === index())}
-              style={{ "--tick-length": `${lengthAt(index())}px` }}
               onMouseEnter={() => setHovered(index())}
               onClick={() =>
                 elementFor(marker().id)?.scrollIntoView({ block: "start", behavior: "smooth" })
               }
-            />
+            >
+              <span
+                class={sx(
+                  styles.line,
+                  (index() === active() || hovered() === index()) && styles.lineLit,
+                )}
+                style={{ width: `${lengthAt(index())}px` }}
+              />
+            </button>
           )}
         </For>
         <Show when={card()}>
           {(shown) => (
             <div
-              class="minimap-card"
+              class={sx(styles.card)}
               style={{ top: `${(hovered() ?? 0) * TICK_SPACING}px` }}
               role="tooltip"
             >
-              <div class="minimap-card-text">{shown().text}</div>
-              <div class="minimap-card-meta">
+              <div class={sx(styles.cardText)}>{shown().text}</div>
+              <div class={sx(styles.cardMeta)}>
                 <Show when={shown().person}>
                   {(person) => (
-                    <span class="minimap-card-person">
+                    <span class={sx(styles.cardPerson)}>
                       <Identicon seed={person().id} size={16} />
                       {person().name}
                     </span>
                   )}
                 </Show>
-                <span class="minimap-card-time">
+                <span class={sx(styles.cardTime)}>
                   {shown().label === shown().person?.name ? "" : `${shown().label} · `}
-                  {formatRelativeTime(shown().atMs, props.nowMs)}
+                  {formatRelativeTime(shown().atMs, app.now())}
                 </span>
               </div>
-              <div class="minimap-card-hints">
+              <div class={sx(styles.cardHints)}>
                 <span>⌥ + scroll by marker</span>
               </div>
             </div>

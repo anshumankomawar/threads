@@ -1,0 +1,64 @@
+/* The global stylesheet: what StyleX can't reach. It sits in the lowest layer (its order is set first, in index.html),
+   under StyleX's layers, so a StyleX margin or scrollbar style isn't overridden by it. Colours that follow the theme
+   use `light-dark(light, dark)`, which follows `color-scheme` (dark, or light under `data-theme="light"`). */
+@layer reset {
+  /* Form controls and scrollbars follow the theme. The scrollbar thumb is the tertiary stroke (`colors.strokeTertiary`). */
+  :root {
+    --scrollbar-thumb: color-mix(in srgb, oklch(0.955 0 0) 8%, transparent);
+    color-scheme: dark;
+  }
+
+  :root[data-theme="light"] {
+    --scrollbar-thumb: color-mix(in srgb, oklch(0.21 0 0) 10%, transparent);
+    color-scheme: light;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+  }
+
+  body {
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+    /* `colors.textPrimary`. */
+    color: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
+    /* Dark glass surface over the window vibrancy (darker than Cursor's 42%): `colors.glass`. */
+    background: light-dark(rgb(255 255 255 / 72%), rgb(0 0 0 / 62%));
+    /* SF Pro, the macOS system font, as Things uses (Apple's licence keeps it out of the bundle); Segoe UI elsewhere. */
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", sans-serif;
+    font-size: 12px;
+    line-height: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  #root {
+    display: flex;
+    height: 100%;
+  }
+
+  /* The reply editor's content, which ProseMirror makes itself: paragraphs, and the placeholder on an empty one
+     (`colors.textTertiary`). */
+  .thread-reply-editor p {
+    margin: 0;
+  }
+
+  .thread-reply-editor p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    color: light-dark(
+      color-mix(in srgb, oklch(0.21 0 0) 55%, transparent),
+      color-mix(in srgb, oklch(0.955 0 0) 60%, transparent)
+    );
+    pointer-events: none;
+  }
+}

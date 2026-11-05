@@ -1,6 +1,8 @@
 import { Portal } from "@solidjs/web";
 import { createEffect, createSignal, For, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { menu } from "../styles/controls";
+import { sx } from "../styles/sx";
 
 // An action, or a line between groups of them.
 export type ContextMenuItem = { label: string; shortcut?: string; run: () => void } | "separator";
@@ -52,7 +54,8 @@ export function ContextMenu(props: {
     <Portal mount={document.body}>
       <div
         ref={ref}
-        class="menu context-menu"
+        // `context-menu` stays as a hook: App's keys look for an open menu with `document.querySelector`.
+        class={[sx(menu.menu, menu.context), "context-menu"]}
         role="menu"
         style={{ left: `${position().left}px`, top: `${position().top}px` }}
         onMouseDown={(event) => event.stopPropagation()}
@@ -61,19 +64,21 @@ export function ContextMenu(props: {
         <For each={props.items}>
           {(item) =>
             item === "separator" ? (
-              <div class="menu-separator" role="separator" />
+              <div class={sx(menu.separator)} role="separator" />
             ) : (
               <button
                 type="button"
                 role="menuitem"
-                class="menu-item"
+                class={sx(menu.item, menu.itemHover)}
                 onClick={() => {
                   props.onClose();
                   item.run();
                 }}
               >
                 <span>{item.label}</span>
-                {item.shortcut !== undefined && <span class="menu-shortcut">{item.shortcut}</span>}
+                {item.shortcut !== undefined && (
+                  <span class={sx(menu.shortcut)}>{item.shortcut}</span>
+                )}
               </button>
             )
           }

@@ -1,6 +1,11 @@
 import type { Person } from "model";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import * as stylex from "@stylexjs/stylex";
+import { useApp } from "../app/state";
+import { colors, fontSizes, radii } from "../styles/tokens.stylex";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
 import { Identicon } from "./Identicon";
 
 type Step = "who" | "what" | "why";
@@ -9,14 +14,13 @@ type Step = "who" | "what" | "why";
 // you need from them (the new thread's title), and why it's blocking (its description; optional). It becomes a new
 // thread asking them, and the thread you're in waits until it's closed. Backspace on an empty field goes back a step.
 export function BlockedPalette(props: {
-  people: Person[];
-  me: Person;
   // The thread that's blocked, for the prompt.
   blockedTitle: string;
   // The new thread's title, and the reason as its description (empty for none).
   onCreate: (person: Person, title: string, description: string) => void;
   onClose: () => void;
 }): JSX.Element {
+  const app = useApp();
   let input!: HTMLInputElement;
   const [step, setStep] = createSignal<Step>("who");
   const [person, setPerson] = createSignal<Person | null>(null);
@@ -31,14 +35,15 @@ export function BlockedPalette(props: {
   // Everyone else, then you.
   const options = createMemo(() => {
     const query = text().trim().toLowerCase();
+    const me = app.me();
     return step() === "who"
-      ? [...props.people.filter((candidate) => candidate.id !== props.me.id), props.me].filter(
+      ? [...app.data.people().filter((candidate) => candidate.id !== me.id), me].filter(
           (candidate) => candidate.name.toLowerCase().includes(query),
         )
       : [];
   });
   const selectedIndex = (): number => Math.min(selected(), Math.max(0, options().length - 1));
-  const isMe = (): boolean => person()?.id === props.me.id;
+  const isMe = (): boolean => person()?.id === app.me().id;
   const firstName = (): string | undefined => person()?.name.split(" ")[0];
 
   const goTo = (next: Step, value = ""): void => {
@@ -100,18 +105,18 @@ export function BlockedPalette(props: {
   const ready = (): boolean => step() === "why" || text().trim().length > 0;
 
   return (
-    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
+    <div class={sx(palette.overlay)} onMouseDown={() => props.onClose()}>
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label="Blocked on someone"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <Show when={step() !== "who" ? person() : null}>
             {(chosen) => (
-              <span class="palette-chip">
+              <span class={sx(styles.chip)}>
                 <Identicon seed={chosen().id} size={14} />
                 {isMe() ? "Me" : chosen().name}
               </span>
@@ -119,7 +124,7 @@ export function BlockedPalette(props: {
           </Show>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder={placeholder()}
             spellcheck="false"
             value={text()}
@@ -129,16 +134,16 @@ export function BlockedPalette(props: {
             }}
           />
         </div>
-        <div class="palette-results">
-          <div class="palette-section">
-            <div class="palette-section-label palette-summary">
+        <div class={sx(palette.results)}>
+          <div class={sx(palette.section)}>
+            <div class={sx(palette.sectionLabel, palette.summary)}>
               {step() === "why" ? (
                 <>
-                  Asking for <span class="palette-summary-title">“{title()}”</span>
+                  Asking for <span class={sx(palette.summaryTitle)}>“{title()}”</span>
                 </>
               ) : (
                 <>
-                  Blocking <span class="palette-summary-title">“{props.blockedTitle}”</span>
+                  Blocking <span class={sx(palette.summaryTitle)}>“{props.blockedTitle}”</span>
                 </>
               )}
             </div>
@@ -146,31 +151,32 @@ export function BlockedPalette(props: {
               <For each={options()}>
                 {(candidate, index) => (
                   <div
-                    class="palette-row"
-                    data-selected={String(index() === selectedIndex())}
+                    class={sx(palette.row, index() === selectedIndex() && palette.rowSelected)}
                     role="option"
                     aria-selected={index() === selectedIndex() ? "true" : "false"}
                     onMouseMove={() => setSelected(index())}
                     onClick={() => pick(candidate)}
                   >
                     <Identicon seed={candidate.id} size={16} />
-                    <span class="palette-row-label">
-                      {candidate.id === props.me.id ? "Me" : candidate.name}
+                    <span class={sx(palette.rowLabel)}>
+                      {candidate.id === app.me().id ? "Me" : candidate.name}
                     </span>
                   </div>
                 )}
               </For>
             ) : (
               <div
-                class="palette-row"
-                data-selected={String(ready())}
-                data-disabled={String(!ready())}
+                class={sx(
+                  palette.row,
+                  ready() && palette.rowSelected,
+                  !ready() && palette.rowDisabled,
+                )}
                 role="option"
                 aria-selected={ready() ? "true" : "false"}
                 onClick={next}
               >
-                <span class="palette-row-label">{action()}</span>
-                <span class="palette-row-shortcut">↵</span>
+                <span class={sx(palette.rowLabel)}>{action()}</span>
+                <span class={sx(palette.rowShortcut)}>↵</span>
               </div>
             )}
           </div>
@@ -179,3 +185,20 @@ export function BlockedPalette(props: {
     </div>
   );
 }
+
+const styles = stylex.create({
+  // .palette-chip — who the next step is about, ahead of the input.
+  chip: {
+    display: "inline-flex",
+    flexShrink: 0,
+    gap: "6px",
+    alignItems: "center",
+    height: "22px",
+    marginRight: "8px",
+    padding: "0 8px 0 5px",
+    borderRadius: radii.control,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    backgroundColor: colors.panelSelected,
+  },
+});

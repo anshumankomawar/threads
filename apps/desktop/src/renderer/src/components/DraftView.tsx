@@ -1,30 +1,105 @@
 import type { ComposeDraft } from "model";
-import { plainDraft, type Target } from "../compose";
+import { plainDraft } from "../compose";
 import type { SavedDraft } from "../drafts";
 import { createMemo, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import * as stylex from "@stylexjs/stylex";
 import { formatRelativeTime } from "../format";
-import { useMe } from "../me";
+import { useApp } from "../app/state";
+import { sx } from "../styles/sx";
+import { thread } from "../styles/thread";
+import { threadLineMarker } from "../styles/markers.stylex";
+import { button } from "../styles/controls";
+import { colors, fontSizes } from "../styles/tokens.stylex";
 import { Identicon } from "./Identicon";
+
+// A draft's page: a thread as it will look once sent, editing in place. A quiet "Draft" says what it is.
+const styles = stylex.create({
+  // .draft-label
+  label: {
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+    fontWeight: 500,
+    letterSpacing: "0.4px",
+    textTransform: "uppercase",
+  },
+  // .draft-field — fields that look like the text they hold: after the text's own style.
+  field: {
+    display: "block",
+    boxSizing: "border-box",
+    width: "100%",
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: 0,
+    fontFamily: "inherit",
+    backgroundColor: "transparent",
+    outline: "none",
+    resize: "none",
+    fieldSizing: "content",
+    "::placeholder": {
+      color: colors.textTertiary,
+    },
+  },
+  // .draft-ask
+  ask: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "0 4px",
+    alignItems: "baseline",
+  },
+  // .draft-ask-text — after `field`.
+  askText: {
+    flex: 1,
+    width: "auto",
+    minWidth: "160px",
+  },
+  // .draft-mention — carries the default marker, so its remove button shows on hover.
+  mention: {
+    display: "inline-flex",
+    gap: "2px",
+    alignItems: "baseline",
+    color: colors.accent,
+  },
+  // .draft-mention-remove, shown while its mention is hovered (.draft-mention:hover .draft-mention-remove).
+  mentionRemove: {
+    padding: 0,
+    borderStyle: "none",
+    color: colors.textTertiary,
+    font: "inherit",
+    fontSize: fontSizes.small,
+    backgroundColor: "transparent",
+    cursor: "pointer",
+    opacity: {
+      default: 0,
+      [stylex.when.ancestor(":hover")]: 1,
+    },
+  },
+  // .draft-empty
+  empty: {
+    margin: "0 0 0 37px",
+    color: colors.textTertiary,
+  },
+  // .draft-actions
+  actions: {
+    display: "flex",
+    gap: "6px",
+    paddingLeft: "37px",
+  },
+});
 
 // A draft from the sidebar, laid out where a thread would be and as it will look once sent: its title and context,
 // then each ask as your message to its people. Everything edits in place and is kept as you type. Send makes the
 // thread (and drops the draft); Delete throws it away.
-export function DraftView(props: {
-  saved: SavedDraft;
-  // Who and which groups can be @mentioned (`targetsFor`).
-  targets: Target[];
-  nowMs: number;
-  onChange: (saved: SavedDraft) => void;
-  onSend: (draft: ComposeDraft) => void;
-  onDelete: () => void;
-}): JSX.Element {
-  const me = useMe();
+export function DraftView(props: { saved: SavedDraft }): JSX.Element {
+  const app = useApp();
+  const me = app.me;
+  // Who and which groups can be @mentioned.
+  const targets = app.data.targets;
   // Saved before the model had drafted it: start from the plain reading of what was written.
-  const draft = createMemo(() => props.saved.draft ?? plainDraft(props.saved.text, props.targets));
-  const byId = createMemo(() => new Map(props.targets.map((target) => [target.id, target])));
+  const draft = createMemo(() => props.saved.draft ?? plainDraft(props.saved.text, targets()));
+  const byId = createMemo(() => new Map(targets().map((target) => [target.id, target])));
   const change = (next: Partial<ComposeDraft>): void =>
-    props.onChange({ ...props.saved, draft: { ...draft(), ...next } });
+    app.drafts.save({ ...props.saved, draft: { ...draft(), ...next } });
   const changeAsk = (index: number, next: ComposeDraft["asks"][number]): void =>
     change({
       asks: draft().asks.flatMap((ask, at) =>
@@ -32,16 +107,19 @@ export function DraftView(props: {
       ),
     });
   const send = (): void =>
-    props.onSend({
-      ...draft(),
-      title:
-        draft().title.trim() || plainDraft(props.saved.text, props.targets).title || "New thread",
-    });
+    app.threads.compose(
+      {
+        ...draft(),
+        title:
+          draft().title.trim() || plainDraft(props.saved.text, targets()).title || "New thread",
+      },
+      props.saved.id,
+    );
 
   return (
-    <div class="thread-view">
+    <div class={[sx(thread.view), "thread-view"]}>
       <div
-        class="thread-scroll"
+        class={sx(thread.scroll)}
         onKeyDown={(event) => {
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
@@ -49,14 +127,14 @@ export function DraftView(props: {
           }
         }}
       >
-        <article class="thread-doc draft-doc">
-          <header class="thread-header">
-            <div class="thread-byline">
-              <span class="draft-label">Draft</span>
-              <span>saved {formatRelativeTime(props.saved.savedAtMs, props.nowMs)}</span>
+        <article class={sx(thread.doc)}>
+          <header class={sx(thread.header)}>
+            <div {...stylex.attrs(thread.byline, threadLineMarker)}>
+              <span class={sx(styles.label)}>Draft</span>
+              <span>saved {formatRelativeTime(props.saved.savedAtMs, app.now())}</span>
             </div>
             <input
-              class="thread-title draft-field"
+              class={sx(thread.title, thread.headerTitle, styles.field)}
               aria-label="Title"
               placeholder="Untitled"
               spellcheck={false}
@@ -64,7 +142,7 @@ export function DraftView(props: {
               onInput={(event) => change({ title: event.currentTarget.value })}
             />
             <textarea
-              class="thread-text thread-description draft-field"
+              class={sx(thread.text, thread.description, thread.headerDescription, styles.field)}
               aria-label="Context"
               placeholder="Add context…"
               rows={1}
@@ -73,27 +151,29 @@ export function DraftView(props: {
             />
           </header>
           <Show when={draft().asks.length === 0}>
-            <p class="draft-empty">Nobody's asked yet. Sending it makes a thread for you alone.</p>
+            <p class={sx(styles.empty)}>
+              Nobody's asked yet. Sending it makes a thread for you alone.
+            </p>
           </Show>
           {/* By position, as each edit replaces the ask; keeps the field you're typing in. */}
           <For each={draft().asks} keyed={false}>
             {(ask, index) => (
-              <div class="thread-block">
-                <span class="thread-avatar">
+              <div class={sx(thread.block)}>
+                <span class={sx(thread.avatar)}>
                   <Identicon seed={me().id} size={20} />
                 </span>
-                <div class="thread-body">
-                  <div class="thread-meta">
-                    <span class="thread-author">{me().name}</span>
+                <div class={sx(thread.body)}>
+                  <div class={sx(thread.meta)}>
+                    <span class={sx(thread.author)}>{me().name}</span>
                   </div>
-                  <div class="draft-ask">
+                  <div class={sx(styles.ask)}>
                     <For each={ask().personIds.flatMap((id) => byId().get(id) ?? [])}>
                       {(person) => (
-                        <span class="draft-mention">
+                        <span {...stylex.attrs(styles.mention, stylex.defaultMarker())}>
                           @{person.handle}
                           <button
                             type="button"
-                            class="draft-mention-remove"
+                            class={sx(styles.mentionRemove)}
                             aria-label={`Don't ask ${person.name}`}
                             onClick={() =>
                               changeAsk(index, {
@@ -108,7 +188,7 @@ export function DraftView(props: {
                       )}
                     </For>
                     <textarea
-                      class="thread-text draft-field draft-ask-text"
+                      class={sx(thread.text, styles.field, styles.askText)}
                       aria-label="Ask"
                       rows={1}
                       value={ask().text}
@@ -121,11 +201,15 @@ export function DraftView(props: {
               </div>
             )}
           </For>
-          <div class="draft-actions">
-            <button type="button" class="compose-button" data-primary onClick={send}>
-              Send <kbd>⌘↵</kbd>
+          <div class={sx(styles.actions)}>
+            <button type="button" class={sx(button.button, button.primary)} onClick={send}>
+              Send <kbd class={sx(button.kbd)}>⌘↵</kbd>
             </button>
-            <button type="button" class="compose-button" onClick={() => props.onDelete()}>
+            <button
+              type="button"
+              class={sx(button.button)}
+              onClick={() => app.drafts.remove(props.saved.id)}
+            >
               Delete draft
             </button>
           </div>

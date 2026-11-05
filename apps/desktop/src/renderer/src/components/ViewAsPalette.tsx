@@ -2,23 +2,27 @@ import { Tick02Icon } from "@hugeicons/core-free-icons";
 import type { Person } from "model";
 import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import * as stylex from "@stylexjs/stylex";
+import { useApp } from "../app/state";
+import { colors } from "../styles/tokens.stylex";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 
 // For local testing: pick who to view the app as, from the people in the current data.
 export function ViewAsPalette(props: {
-  people: Person[];
-  me: Person;
   onPick: (person: Person) => void;
   onClose: () => void;
 }): JSX.Element {
+  const app = useApp();
   let input!: HTMLInputElement;
   const [filter, setFilter] = createSignal("");
   const [selected, setSelected] = createSignal(
     untrack(() =>
       Math.max(
         0,
-        props.people.findIndex((person) => person.id === props.me.id),
+        app.data.people().findIndex((person) => person.id === app.me().id),
       ),
     ),
   );
@@ -27,7 +31,7 @@ export function ViewAsPalette(props: {
 
   const options = createMemo(() => {
     const query = filter().trim().toLowerCase();
-    return props.people.filter((person) => person.name.toLowerCase().includes(query));
+    return app.data.people().filter((person) => person.name.toLowerCase().includes(query));
   });
   const selectedIndex = (): number => Math.min(selected(), Math.max(0, options().length - 1));
 
@@ -49,18 +53,18 @@ export function ViewAsPalette(props: {
   };
 
   return (
-    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
+    <div class={sx(palette.overlay)} onMouseDown={() => props.onClose()}>
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label="View as"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder="View as…"
             spellcheck="false"
             value={filter()}
@@ -70,17 +74,16 @@ export function ViewAsPalette(props: {
             }}
           />
         </div>
-        <div class="palette-results">
-          <div class="palette-section">
-            <div class="palette-section-label">People</div>
+        <div class={sx(palette.results)}>
+          <div class={sx(palette.section)}>
+            <div class={sx(palette.sectionLabel)}>People</div>
             <Show when={options().length === 0}>
-              <div class="palette-empty">No matches</div>
+              <div class={sx(palette.empty)}>No matches</div>
             </Show>
             <For each={options()}>
               {(person, index) => (
                 <div
-                  class="palette-row"
-                  data-selected={String(index() === selectedIndex())}
+                  class={sx(palette.row, index() === selectedIndex() && palette.rowSelected)}
                   role="option"
                   aria-selected={index() === selectedIndex() ? "true" : "false"}
                   onMouseDown={(event) => event.preventDefault()}
@@ -88,9 +91,9 @@ export function ViewAsPalette(props: {
                   onClick={() => props.onPick(person)}
                 >
                   <Identicon seed={person.id} size={16} />
-                  <span class="palette-row-label">{person.name}</span>
-                  <Show when={person.id === props.me.id}>
-                    <Icon icon={Tick02Icon} size={12} class="palette-current" />
+                  <span class={sx(palette.rowLabel)}>{person.name}</span>
+                  <Show when={person.id === app.me().id}>
+                    <Icon icon={Tick02Icon} size={12} class={sx(styles.current)} />
                   </Show>
                 </div>
               )}
@@ -101,3 +104,12 @@ export function ViewAsPalette(props: {
     </div>
   );
 }
+
+const styles = stylex.create({
+  // .palette-current — a tick on who you're viewing as now.
+  current: {
+    flexShrink: 0,
+    marginLeft: "auto",
+    color: colors.accent,
+  },
+});

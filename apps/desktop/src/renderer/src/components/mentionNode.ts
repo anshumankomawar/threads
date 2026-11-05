@@ -3,6 +3,7 @@ import { PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { exitSuggestion, Suggestion, type SuggestionProps } from "@tiptap/suggestion";
 import { mentionToken } from "model";
+import { editorClass } from "../styles/controls";
 import { offerKey } from "./threadLinkNode";
 
 // Typing `@` in a reply opens the people menu, announced on the editor's DOM like the `#` menu: MENTION_MENU_EVENT
@@ -44,7 +45,10 @@ export const MentionNode = Node.create({
   renderHTML({ node, HTMLAttributes }) {
     return [
       "span",
-      mergeAttributes(HTMLAttributes, { "data-mention": String(node.attrs.id), class: "mention" }),
+      mergeAttributes(HTMLAttributes, {
+        "data-mention": String(node.attrs.id),
+        class: editorClass.mention,
+      }),
       `@${String(node.attrs.name) || "someone"}`,
     ];
   },

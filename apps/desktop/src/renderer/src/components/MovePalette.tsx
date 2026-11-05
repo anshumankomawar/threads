@@ -1,6 +1,8 @@
 import { createMemo, createSignal, For, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { useThreadLinks } from "../threadLinks";
+import { useApp } from "../app/state";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
 
 export type MoveTarget = { kind: "thread"; threadId: string } | { kind: "new"; title: string };
 
@@ -18,7 +20,7 @@ export function MovePalette(props: {
   onClose: () => void;
 }): JSX.Element {
   let input!: HTMLInputElement;
-  const links = useThreadLinks();
+  const app = useApp();
   const [query, setQuery] = createSignal("");
   const [selected, setSelected] = createSignal(0);
   onSettled(() => input.focus());
@@ -26,7 +28,7 @@ export function MovePalette(props: {
   type Item = { id: string; label: string; target: MoveTarget };
   const items = createMemo((): Item[] => {
     const typed = query().trim();
-    const threads = links
+    const threads = app.links
       .search(typed)
       .filter(
         (thread) => thread.id !== props.fromThreadId && !props.linkedThreadIds.includes(thread.id),
@@ -64,18 +66,18 @@ export function MovePalette(props: {
   };
 
   return (
-    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
+    <div class={sx(palette.overlay)} onMouseDown={() => props.onClose()}>
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label="Move messages"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder={`Move ${props.count === 1 ? "message" : `${props.count} messages`} to…`}
             spellcheck="false"
             value={query()}
@@ -85,22 +87,21 @@ export function MovePalette(props: {
             }}
           />
         </div>
-        <div class="palette-results">
-          <div class="palette-section">
+        <div class={sx(palette.results)}>
+          <div class={sx(palette.section)}>
             <For each={items()}>
               {(item, index) => (
                 <div
-                  class="palette-row"
-                  data-selected={String(index() === selectedIndex())}
+                  class={sx(palette.row, index() === selectedIndex() && palette.rowSelected)}
                   role="option"
                   aria-selected={index() === selectedIndex() ? "true" : "false"}
                   onMouseMove={() => setSelected(index())}
                   onClick={() => props.onMove(item.target)}
                 >
-                  <span class="palette-row-label">
+                  <span class={sx(palette.rowLabel)}>
                     {item.target.kind === "new" ? (
                       <>
-                        New thread <span class="palette-summary-title">“{item.label}”</span>
+                        New thread <span class={sx(palette.summaryTitle)}>“{item.label}”</span>
                       </>
                     ) : (
                       item.label

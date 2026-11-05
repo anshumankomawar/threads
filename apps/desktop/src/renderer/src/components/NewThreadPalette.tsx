@@ -1,7 +1,13 @@
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { labelSlug, type Label, type Person } from "model";
+import * as stylex from "@stylexjs/stylex";
 import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { useApp } from "../app/state";
+import { selectableLabels } from "../groups";
+import { palette } from "../styles/palette";
+import { sx } from "../styles/sx";
+import { colors } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 
@@ -26,10 +32,6 @@ type Option = { id: string; label: string; hint?: string; person?: Person; value
 // Starting a thread step by step: write its title, describe it if you like, then choose who it's assigned to. On that
 // step, Tab picks its labels. You own it; it lands in their inbox, sorted into one of their buckets.
 export function NewThreadPalette(props: {
-  people: Person[];
-  me: Person;
-  // The labels on offer.
-  labels: Label[];
   // What it starts with, such as the group you're making it in.
   initialLabels: Label[];
   // Who it's for, first in the list, such as whoever's profile you're making it from.
@@ -37,6 +39,7 @@ export function NewThreadPalette(props: {
   onCreate: (draft: NewThreadDraft) => void;
   onClose: () => void;
 }): JSX.Element {
+  const app = useApp();
   let input!: HTMLInputElement;
   const [step, setStep] = createSignal<Step>("write");
   const [text, setText] = createSignal("");
@@ -49,27 +52,31 @@ export function NewThreadPalette(props: {
 
   onSettled(() => input.focus());
 
+  // The labels on offer: all but archived groups'.
+  const labels = createMemo(() => selectableLabels(app.data.labels(), app.data.groups()));
   const query = (): string => filter().trim().toLowerCase();
   const matches = (label: string): boolean => label.toLowerCase().includes(query());
   const pickOptions = createMemo((): Option[] => {
-    const everyone: Option[] = props.people
-      .filter((person) => person.id !== props.me.id)
+    const me = app.me();
+    const everyone: Option[] = app.data
+      .people()
+      .filter((person) => person.id !== me.id)
       .map((person) => ({ id: person.id, label: person.name, person, value: person }));
     const first = props.initialAssignee?.id;
     return [
       { id: "unassigned", label: "Unassigned", value: null },
       ...everyone,
-      { id: props.me.id, label: "Me", person: props.me, value: props.me },
+      { id: me.id, label: "Me", person: me, value: me },
     ].toSorted((a, b) => Number(b.id === first) - Number(a.id === first));
   });
   const labelOptions = createMemo((): Option[] => {
     const newLabel = labelSlug(filter());
     return [
-      ...props.labels
+      ...labels()
         .filter((label) => matches(label.name))
         .map((label) => ({ id: label.id, label: label.name, value: null })),
       ...(newLabel !== "" &&
-      !props.labels.some((label) => label.id === newLabel || labelSlug(label.name) === newLabel)
+      !labels().some((label) => label.id === newLabel || labelSlug(label.name) === newLabel)
         ? [{ id: newLabel, label: `Make “${filter().trim()}”`, hint: filter().trim(), value: null }]
         : []),
     ];
@@ -187,18 +194,18 @@ export function NewThreadPalette(props: {
         : "Continue to assign";
 
   return (
-    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
+    <div class={sx(palette.overlay)} onMouseDown={() => props.onClose()}>
       <div
-        class="palette"
+        class={sx(palette.panel)}
         role="dialog"
         aria-label="New thread"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div class="palette-input-row">
+        <div class={sx(palette.inputRow)}>
           <input
             ref={input}
-            class="palette-input"
+            class={sx(palette.input)}
             placeholder={placeholder()}
             spellcheck="false"
             value={step() === "write" ? text() : step() === "describe" ? description() : filter()}
@@ -212,44 +219,46 @@ export function NewThreadPalette(props: {
               }
             }}
           />
-          <span class="palette-step">
+          <span class={sx(palette.step)}>
             Step {STEPS.indexOf(step() === "labels" ? "pick" : step()) + 1} of {STEPS.length}
           </span>
         </div>
-        <div class="palette-results">
+        <div class={sx(palette.results)}>
           {step() === "write" || step() === "describe" ? (
-            <div class="palette-section">
-              <div class="palette-section-label palette-summary">
+            <div class={sx(palette.section)}>
+              <div class={sx(palette.sectionLabel, palette.summary)}>
                 {step() === "write" ? (
                   "Next"
                 ) : (
                   <>
-                    {summary()} <span class="palette-summary-title">“{title()}”</span>
+                    {summary()} <span class={sx(palette.summaryTitle)}>“{title()}”</span>
                   </>
                 )}
               </div>
               <div
-                class="palette-row"
-                data-selected={String(title().length > 0)}
-                data-disabled={String(title().length === 0)}
+                class={sx(
+                  palette.row,
+                  title().length > 0 && palette.rowSelected,
+                  title().length === 0 && palette.rowDisabled,
+                )}
                 role="option"
                 aria-selected={title().length > 0 ? "true" : "false"}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={forward}
               >
-                <span class="palette-row-label">{nextLabel()}</span>
-                <span class="palette-row-shortcut">↵</span>
+                <span class={sx(palette.rowLabel)}>{nextLabel()}</span>
+                <span class={sx(palette.rowShortcut)}>↵</span>
               </div>
             </div>
           ) : (
-            <div class="palette-section">
-              <div class="palette-section-label palette-summary">
-                {summary()} <span class="palette-summary-title">“{title()}”</span>
+            <div class={sx(palette.section)}>
+              <div class={sx(palette.sectionLabel, palette.summary)}>
+                {summary()} <span class={sx(palette.summaryTitle)}>“{title()}”</span>
                 {step() === "pick" ? " to" : ""}
                 <Show when={step() === "pick"}>
                   <button
                     type="button"
-                    class="palette-side"
+                    class={sx(styles.side)}
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => goTo("labels")}
                   >
@@ -258,20 +267,19 @@ export function NewThreadPalette(props: {
                       : chosenLabels().length === 1
                         ? chosenLabels()[0].name
                         : `${chosenLabels()[0].name} +${chosenLabels().length - 1}`}
-                    <span class="palette-row-shortcut">⇥</span>
+                    <span class={sx(palette.rowShortcut)}>⇥</span>
                   </button>
                 </Show>
               </div>
               <Show when={options().length === 0}>
-                <div class="palette-empty">No matches</div>
+                <div class={sx(palette.empty)}>No matches</div>
               </Show>
               <For each={options()}>
                 {(option, index) => {
                   const checked = (): boolean => step() === "labels" && hasLabel(option.id);
                   return (
                     <div
-                      class="palette-row"
-                      data-selected={String(index() === selectedIndex())}
+                      class={sx(palette.row, index() === selectedIndex() && palette.rowSelected)}
                       role="option"
                       aria-selected={
                         (step() === "labels" ? checked() : index() === selectedIndex())
@@ -285,11 +293,10 @@ export function NewThreadPalette(props: {
                       <Show when={option.person}>
                         {(person) => <Identicon seed={person().id} size={16} />}
                       </Show>
-                      <span class="palette-row-label">{option.label}</span>
+                      <span class={sx(palette.rowLabel)}>{option.label}</span>
                       <Show when={step() === "labels"}>
                         <span
-                          class="palette-check"
-                          data-checked={String(checked())}
+                          class={sx(palette.check, checked() && palette.checkChecked)}
                           aria-hidden="true"
                         >
                           <Show when={checked()}>
@@ -303,14 +310,14 @@ export function NewThreadPalette(props: {
               </For>
               <Show when={step() === "labels"}>
                 <div
-                  class="palette-row palette-continue"
+                  class={sx(palette.row, palette.continue)}
                   role="option"
                   aria-selected="false"
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={back}
                 >
-                  <span class="palette-row-label">Done</span>
-                  <span class="palette-row-shortcut">esc</span>
+                  <span class={sx(palette.rowLabel)}>Done</span>
+                  <span class={sx(palette.rowShortcut)}>esc</span>
                 </div>
               </Show>
             </div>
@@ -320,3 +327,23 @@ export function NewThreadPalette(props: {
     </div>
   );
 }
+
+const styles = stylex.create({
+  // .palette-side — the labels, beside the assign step's summary.
+  side: {
+    display: "inline-flex",
+    flexShrink: 0,
+    gap: "6px",
+    alignItems: "center",
+    marginLeft: "auto",
+    padding: 0,
+    borderStyle: "none",
+    color: {
+      default: colors.textSecondary,
+      ":hover": colors.textPrimary,
+    },
+    font: "inherit",
+    backgroundColor: "transparent",
+    cursor: "pointer",
+  },
+});
