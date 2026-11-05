@@ -10,7 +10,19 @@ All AI-written code must go on the `prototype` branch. Before writing or editing
 - `apps/desktop`: Electron app. Start it with `vp run desktop#dev`. It waits and retries until the API answers. Its data source is picked in the command palette and remembered: Cloudflare (the shared workspace on the hosted API), Local (the local Worker's `local` workspace) or Sample (the local Worker's demo team). Cloudflare is offered, and is the default, when `apps/desktop/.env.local` sets `VITE_API_URL` and `VITE_API_TOKEN` (gitignored; never commit the token). The top bar shows the current source.
 - **Future plans.** Parked product ideas, with the research already done, are in `docs/future-plans.md` Read the matching entry before building one, and move it into `docs/architecture.md` once it's built.
 - `vp run dev` at the root starts both.
-- `apps/web`: the sign-in page (Google, or a code sent to your email). Start it with `vp run web#dev` on `http://localhost:5173`, with the API running; it proxies the API's sign-in routes. Only invited emails get in: put `INVITES=you@example.com=arjun` (comma-separated `email=personId` pairs) in `apps/api/.dev.vars` (gitignored). Locally, sign-in codes are printed in the API's log. Google sign-in also needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` there, from a Google Cloud OAuth client whose redirect URI is `http://localhost:5173/api/auth/callback/google`. See "Signing in" in `docs/architecture.md`.
+- `apps/web`: the sign-in page (Google, or a code sent to your email). Start it with `vp run web#dev` on `http://localhost:5180`, with the API running; it proxies the API's sign-in routes. Only invited emails get in: put `INVITES=you@example.com=arjun` (comma-separated `email=personId` pairs) in `apps/api/.dev.vars` (gitignored). Locally, sign-in codes are printed in the API's log. Google sign-in also needs `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` there, from a Google Cloud OAuth client whose redirect URI is `http://localhost:5180/api/auth/callback/google`. See "Signing in" in `docs/architecture.md`.
+- `apps/api/.dev.vars` locally: the API warns about every secret that isn't listed, so list them all, blank where unused. A blank value counts as unset; keep `API_TOKEN` blank so the local API stays open (`X-User`), and leave `RESEND_API_KEY` blank so codes print in the API's log:
+
+  ```
+  API_TOKEN=
+  INVITES=you@example.com=arjun,teammate@example.com=anshu
+  BETTER_AUTH_SECRET=
+  BETTER_AUTH_URL=
+  GOOGLE_CLIENT_ID=
+  GOOGLE_CLIENT_SECRET=
+  RESEND_API_KEY=
+  ```
+
 - `packages/model`: the thread model and sample data, shared by both apps.
 - electron-vite only hot-reloads the renderer. After changing `src/main` or `src/preload`, restart the desktop dev task. Sample-data shape changes need a renderer reload (⌘R), and API changes need an API restart.
 - Test the sync engine with `vp test` in `packages/sync`, the API with `vp test` in `apps/api` (Threads' rules over in-memory engines via `createApp`), and the desktop app's sync client, plan and org logic with `vp test` in `apps/desktop`.

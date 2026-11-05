@@ -169,9 +169,9 @@ People sign in on the web sign-in page (`apps/web`) with Google or a one-time co
   Locally it answers `token: null`, since `X-User` says who you are there.
 - **The sign-in page** proxies `/api` and `/auth` to the API in development (`THREADS_API` points it elsewhere), so the
   cookie is same-origin and Google redirects back to it: Google's redirect URI is
-  `<BETTER_AUTH_URL>/api/auth/callback/google` (`http://localhost:5173/api/auth/callback/google` locally).
+  `<BETTER_AUTH_URL>/api/auth/callback/google` (`http://localhost:5180/api/auth/callback/google` locally).
 - **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the sign-in page's
-  origin; `http://localhost:5173` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google sign-in is offered
+  origin; `http://localhost:5180` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google sign-in is offered
   only with both), and `RESEND_API_KEY`. Locally they go in `apps/api/.dev.vars` (gitignored); hosted, they're secrets.
 - **Not yet**: the desktop app still uses the API token and View As. Signing it in means opening the sign-in page in
   the system browser and receiving the token on a `threads://` link (Better Auth's Electron plugin), then using only

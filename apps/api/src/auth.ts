@@ -25,7 +25,7 @@ export type AuthEnv = {
 };
 
 const DEV_SECRET = "threads-local-development-secret-not-for-production";
-const LOCAL_ORIGIN = "http://localhost:5173";
+const LOCAL_ORIGIN = "http://localhost:5180";
 
 // The invite list: each invited email (lower case) and the Person it signs in as.
 export function parseInvites(text: string | undefined): Map<string, string> {
@@ -44,7 +44,7 @@ export const personFor = (env: AuthEnv, email: string): string | undefined =>
 // Sends a sign-in code: by email through Resend when there's a key, else to the Worker's log, which is only allowed
 // locally (no API_TOKEN), so a hosted API never silently drops codes.
 async function sendCode(env: AuthEnv, email: string, otp: string): Promise<void> {
-  if (env.RESEND_API_KEY === undefined || env.RESEND_API_KEY === "") {
+  if (!env.RESEND_API_KEY) {
     if (env.API_TOKEN)
       throw new APIError("INTERNAL_SERVER_ERROR", { message: "Email isn't set up" });
     console.log(`Sign-in code for ${email}: ${otp}`);
@@ -67,14 +67,14 @@ async function sendCode(env: AuthEnv, email: string, otp: string): Promise<void>
 
 // Better Auth's settings for one request (the D1 binding exists only while handling one).
 function authOptions(env: AuthEnv) {
-  const origin = env.BETTER_AUTH_URL ?? LOCAL_ORIGIN;
+  const origin = env.BETTER_AUTH_URL || LOCAL_ORIGIN;
   const google =
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : undefined;
   return {
     database: env.AUTH_DB,
-    secret: env.BETTER_AUTH_SECRET ?? (env.API_TOKEN ? undefined : DEV_SECRET),
+    secret: env.BETTER_AUTH_SECRET || (env.API_TOKEN ? undefined : DEV_SECRET),
     baseURL: origin,
     trustedOrigins: [origin],
     socialProviders: google === undefined ? {} : { google },

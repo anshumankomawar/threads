@@ -8,7 +8,7 @@ const api = process.env.THREADS_API ?? "http://127.0.0.1:3030";
 export default defineConfig({
   plugins: lazyPlugins(() => [react()]),
   server: {
-    port: 5173,
+    port: 5180,
     strictPort: true,
     proxy: { "/api": api, "/auth": api },
   },
