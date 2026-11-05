@@ -2,7 +2,10 @@ import { electronClient } from "@better-auth/electron/client";
 import { storage } from "@better-auth/electron/storage";
 import { createAuthClient } from "better-auth/client";
 import { emailOTPClient } from "better-auth/client/plugins";
-import { ipcMain, webContents } from "electron";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { is } from "@electron-toolkit/utils";
+import { app, ipcMain, webContents } from "electron";
 
 // Signing the app in, with Better Auth's Electron plugin, all from this main process:
 // - An emailed code: the window asks for it and passes it here, and this signs in with the API directly.
@@ -11,9 +14,20 @@ import { ipcMain, webContents } from "electron";
 // The session stays here, encrypted with the OS keychain (`safeStorage`) before it's written to disk; the window only
 // ever gets the Threads token for the person you are (`threads:signed-in`).
 
-// The local API, where Better Auth runs. THREADS_API_URL points elsewhere; it has to be the very origin the API's
-// BETTER_AUTH_URL names, since Google's round trip depends on it.
-const API_URL = process.env.THREADS_API_URL ?? "http://127.0.0.1:3030";
+// The data source, and its API, where Better Auth runs. The client is made once, before the app is ready, so choosing
+// another source restarts the app. Each source keeps its own session.
+const RESTART_DEV = 75;
+const HOSTED_URL = import.meta.env.VITE_API_URL;
+const SOURCE_FILE = join(app.getPath("userData"), "source");
+const source = ((): string => {
+  try {
+    return readFileSync(SOURCE_FILE, "utf8");
+  } catch {
+    return HOSTED_URL ? "cloudflare" : "local";
+  }
+})();
+// The API's BETTER_AUTH_URL must name this very origin, since Google's round trip depends on it.
+const API_URL = source === "cloudflare" && HOSTED_URL ? HOSTED_URL : "http://127.0.0.1:3030";
 
 const auth = createAuthClient({
   baseURL: API_URL,
@@ -24,6 +38,7 @@ const auth = createAuthClient({
       signInURL: `${API_URL}/`,
       protocol: { scheme: "com.threads.arc" },
       storage: storage(),
+      storagePrefix: `better-auth:${source}`,
       // Threads shows its own avatars.
       userImageProxy: { enabled: false },
     }),
@@ -59,6 +74,14 @@ const announce = (): void => {
 export function setupSignIn(): void {
   auth.setupMain({ scheme: true, bridges: true });
   ipcMain.handle("threads:signed-in", signedIn);
+  ipcMain.handle("threads:source", () => source);
+  ipcMain.handle("threads:use-source", (_event, next: string) => {
+    writeFileSync(SOURCE_FILE, next);
+    // In development the dev server stops with the app, so `dev` in package.json starts both again on this code.
+    if (is.dev) return app.exit(RESTART_DEV);
+    app.relaunch();
+    app.exit(0);
+  });
   // Emails a sign-in code. An uninvited email gets nothing, and is told nothing different.
   ipcMain.handle("threads:send-code", async (_event, email: string): Promise<Outcome> => {
     const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });

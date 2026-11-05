@@ -9,7 +9,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "vp run typecheck:node && vp run typecheck:web",
     "start": "electron-vite preview",
-    "dev": "electron-vite dev",
+    "dev": "while :; do electron-vite dev; [ $? -eq 75 ] || break; done",
     "build": "vp run typecheck && electron-vite build",
     "postinstall": "install-electron && electron-builder install-app-deps && node scripts/name-electron.mjs",
     "build:unpack": "vp run build && electron-builder --dir",

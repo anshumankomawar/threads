@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  // Where the API runs; defaults to the local Worker. Set it (and the token) to use the hosted API.
+  // The hosted API; with it set, the app offers the Cloudflare source, which you sign in to.
   readonly VITE_API_URL?: string;
-  readonly VITE_API_TOKEN?: string;
 }

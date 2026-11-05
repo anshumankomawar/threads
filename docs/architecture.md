@@ -92,9 +92,12 @@ The desktop app signs in with Google or a one-time code sent to your email, thro
 Auth](https://www.better-auth.com) in the Worker (`apps/api/src/auth.ts`) and its Electron plugin in the app's main
 process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: the API is all there is.
 
-- **An emailed code** (⌘K, Sign in, your email, then the code) never leaves the app: the main process asks the API for
+- **The sign-in screen**: signed out of Local or Cloudflare, the whole window is the sign-in screen, as in Linear
+  (`components/SignIn.tsx`; `main.tsx` loads it instead of the app, so no store is made). Sample has none: it's viewed as
+  anyone (⌘U).
+- **An emailed code** (Continue with email, your email, then the code) never leaves the app: the main process asks the API for
   the code and signs in with it directly (`window.threads.sendCode` / `verifyCode`).
-- **Google** (⌘K, Sign in, Continue with Google) opens the browser straight at Google (`/api/auth/electron/
+- **Google** (Continue with Google) opens the browser straight at Google (`/api/auth/electron/
   init-oauth-proxy`, with the app's PKCE request), which returns to the API (`<BETTER_AUTH_URL>/api/auth/callback/google`),
   which lands the browser on the API's own page at `/` (`SIGNED_IN_PAGE`). That page opens the app on
   `com.threads.arc:/auth/callback#token=…` with a one-time code, and shows the code to paste into the app in case the link
@@ -115,10 +118,13 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
 - **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the API's own origin,
   `http://127.0.0.1:3030` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google is offered only with both;
   its redirect URI is `<BETTER_AUTH_URL>/api/auth/callback/google`), and `RESEND_API_KEY`. Locally they go in
-  `apps/api/.dev.vars`; hosted, they're secrets. The app finds the API with `THREADS_API_URL` (the local one by default).
+  `apps/api/.dev.vars`; hosted, they're secrets.
 - **The plugin's content security policy is left off**, since it would keep the window from reaching the API.
-- **Not yet**: signing in to the Cloudflare source. It needs the hosted API's settings (its `BETTER_AUTH_URL` and Google
-  redirect URI) and the app pointed at it; then the app stops holding the API token, and ⌘U is for development only.
+- **Per data source**: the main process keeps the chosen source in a `source` file in the app's data folder
+  (`window.threads.source` / `useSource`), and signs in against that source's API with its own saved session. Choosing
+  another source restarts the app, since Better Auth's client is made once, before the app is ready; in development
+  the app exits with code 75 and `dev` in `package.json` starts it and its dev server again. The app never holds the
+  API token.
 
 ## Running and testing
 
@@ -127,8 +133,7 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
   `apps/api/.cloudflare/state`. A local workspace whose data was written under other models starts over by itself
   (the `Workspace` object keeps the schema hash in a `schema` table), so changing the models needs no reset by hand;
   hosted data is never thrown away. Deleting `v3/do` (API stopped) still starts over on demand.
-- `vp run desktop#dev` starts the app. Cloudflare is offered when `apps/desktop/.env.local` sets `VITE_API_URL` and
-  `VITE_API_TOKEN` (never commit the token). Closing its window only hides it: the app keeps running, synced, until
+- `vp run desktop#dev` starts the app. Cloudflare is offered when `apps/desktop/.env.local` sets `VITE_API_URL`. Closing its window only hides it: the app keeps running, synced, until
   you quit it (⌘Q), and the Dock icon, opening it again or a sign-in link brings the window back. Use the cf CLI, never Wrangler; deploy with `vp run api#deploy`.
 - `vp test` in `packages/sync` (unit tests), `packages/testing` (the deterministic simulation), `packages/server`,
   `packages/models` (the rules) and `apps/api`. `vp check` at the root.

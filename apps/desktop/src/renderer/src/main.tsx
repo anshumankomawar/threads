@@ -1,6 +1,8 @@
 import "@fontsource-variable/inter/opsz.css";
 import "./assets/global.css";
 import { render } from "@solidjs/web";
-import App from "./App";
+import { needsSignIn } from "./startup";
 
-render(() => <App />, document.getElementById("root")!);
+// Signed out, only the sign-in screen loads: the app and its store come once you're someone.
+const { default: Root } = needsSignIn ? await import("./components/SignIn") : await import("./App");
+render(() => <Root />, document.getElementById("root")!);

@@ -13,64 +13,26 @@ import {
   type ComposeRequest,
   type WorkspaceMember,
 } from "models";
-import * as stylex from "@stylexjs/stylex";
-import { lightTheme } from "./styles/tokens.stylex";
 
-export type Source = "cloudflare" | "local" | "sample";
-const HOSTED = { url: import.meta.env.VITE_API_URL, token: import.meta.env.VITE_API_TOKEN };
-export const SOURCES: Partial<Record<Source, string>> = {
-  ...(HOSTED.url && HOSTED.token ? { cloudflare: "Cloudflare" } : {}),
-  local: "Local",
-  sample: "Sample",
-};
+import { account, save, saved, server, source, useSource, type Source } from "./startup";
 
-export function saved<T>(key: string, initial: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw === null ? initial : (JSON.parse(raw) as T);
-  } catch {
-    return initial;
-  }
-}
-export function save(key: string, value: unknown): void {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
-}
+export {
+  account,
+  applyTheme,
+  save,
+  saved,
+  server,
+  signOut,
+  source,
+  SOURCES,
+  theme,
+  type Source,
+} from "./startup";
 
-export const source: Source = saved<Source>(
-  "source",
-  "cloudflare" in SOURCES ? "cloudflare" : "local",
-);
 const viewerKey = `viewer:${source}`;
-// Signed in (through the browser, src/main/signIn.ts), you're that person. The sign-in page talks to the local API for
-// now, so signing in is the Local source's; elsewhere, and while you're not signed in, View As (⌘U) picks who you are.
-export const account = source === "local" ? ((await window.threads?.signedIn()) ?? null) : null;
+// Signed in, you're that person; on Sample, whoever you view it as (⌘U), the admin until you pick.
 const viewerId = account?.personId ?? saved<string | null>(viewerKey, null);
-export const server =
-  source === "cloudflare"
-    ? { url: HOSTED.url!, workspace: "local" }
-    : { url: "http://127.0.0.1:3030", workspace: source };
-
-// Locally the token is who you are (none: the admin). Hosted, the API token is the admin, which mints a person's.
-async function tokenFor(userId: string | null): Promise<string> {
-  if (source !== "cloudflare") return userId ?? "";
-  if (userId === null) return HOSTED.token!;
-  const response = await fetch(`${server.url}/auth/session`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${HOSTED.token}` },
-    body: JSON.stringify({ workspace: server.workspace, personId: userId }),
-  });
-  return ((await response.json()) as { token: string }).token;
-}
-const token = account?.token ?? (await tokenFor(viewerId));
-
-// Signing in or out reloads, like switching person.
-window.onAuthenticated?.(() => location.reload());
-export async function signOut(): Promise<void> {
-  await window.signOut();
-  location.reload();
-}
+const token = account?.token ?? viewerId ?? "";
 
 export const store = createStore({
   transport: httpTransport({ ...server, token }),
@@ -80,9 +42,8 @@ export const store = createStore({
 });
 
 export function switchTo(next: { source?: Source; viewer?: string | null }): void {
-  if (next.source !== undefined) save("source", next.source);
-  if (next.viewer !== undefined)
-    save(next.source ? `viewer:${next.source}` : viewerKey, next.viewer);
+  if (next.source !== undefined) return void useSource(next.source);
+  save(viewerKey, next.viewer ?? null);
   location.reload();
 }
 
@@ -118,7 +79,7 @@ export const draftWith = async (
 export type View = { thread: string | null } | { label: string } | { person: string };
 export type MenuItem = { label: string; run: () => void; icon?: JSX.Element } | "separator";
 export type Dialog =
-  | { kind: "search" | "viewAs" | "signIn" }
+  | { kind: "search" | "viewAs" }
   | { kind: "newThread"; labelId?: string; to?: User }
   | { kind: "newLabel"; thread?: Thread }
   | { kind: "compose"; draftId?: string }
@@ -133,17 +94,6 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
 export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
-
-type Theme = "dark" | "light";
-export const [theme, setThemeSignal] = createSignal<Theme>(saved("theme", "dark"));
-const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
-export function applyTheme(next: Theme): void {
-  setThemeSignal(next);
-  save("theme", next);
-  document.documentElement.dataset.theme = next;
-  for (const name of LIGHT) document.documentElement.classList.toggle(name, next === "light");
-  window.electron?.ipcRenderer.send("set-theme", next);
-}
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));
 function applyZoom(next: number): void {
@@ -310,5 +260,4 @@ window.addEventListener("keydown", (event) => {
   action();
 });
 
-applyTheme(theme());
 applyZoom(zoom());

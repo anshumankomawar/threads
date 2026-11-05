@@ -4,7 +4,8 @@ import stylex from "@stylexjs/unplugin/vite";
 import solid from "@solidjs/vite-plugin";
 
 export default defineConfig({
-  main: {},
+  // The main process signs in against the hosted API too, so it reads the same VITE_API_URL.
+  main: { envPrefix: ["VITE_"] },
   preload: {},
   renderer: {
     resolve: {
