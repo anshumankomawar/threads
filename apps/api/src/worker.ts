@@ -58,9 +58,9 @@ export class Workspace extends DurableObject<Env> {
   // Sorts inboxes with Workers AI after each change. Without AI (`THREADS_LOCAL_AI=off`) items stay unsorted.
   #triager: Triager | undefined;
 
-  // The object is named by its workspace (`getByName`).
+  // The object is named `v1:<workspace>`: the old engine's objects keep their data, untouched.
   get #workspace(): string {
-    return this.ctx.id.name!;
+    return this.ctx.id.name!.slice("v1:".length);
   }
 
   // Loaded from storage on first use; a new workspace is seeded.
@@ -213,7 +213,7 @@ app.on(["GET", "POST"], ["/sync/*", "/actions/*"], async (c) => {
     forwarded.headers.set(SESSION_HEADER, JSON.stringify(session));
   }
   const { exports } = c.executionCtx as ExecutionContext;
-  return exports.Workspace.getByName(workspace).fetch(forwarded);
+  return exports.Workspace.getByName(`v1:${workspace}`).fetch(forwarded);
 });
 
 export default app;
