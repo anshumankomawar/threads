@@ -5,7 +5,7 @@ import { emailOTPClient } from "better-auth/client/plugins";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
-import { app, ipcMain, webContents } from "electron";
+import { app, ipcMain } from "electron";
 
 // Signing the app in, with Better Auth's Electron plugin, all from this main process:
 // - An emailed code: the window asks for it and passes it here, and this signs in with the API directly.
@@ -45,29 +45,21 @@ const auth = createAuthClient({
   ],
 });
 
-// Who you're signed in as, for the window: the person and the token the sync API takes, or null when you're not signed
-// in (or the API can't be reached).
-export type SignedIn = { personId: string; email: string; token: string; workspace: string };
-
-// An answer for the window: done, or why not.
-type Outcome = { error?: string };
-
-async function signedIn(): Promise<SignedIn | null> {
+// Who you're signed in as, for the window, or null when you're not (or the API can't be reached).
+async function signedIn(): Promise<unknown> {
   const cookie = auth.getCookie();
   if (!cookie) return null;
   try {
     const response = await fetch(`${API_URL}/auth/token`, { method: "POST", headers: { cookie } });
-    return response.ok ? ((await response.json()) as SignedIn) : null;
+    return response.ok ? await response.json() : null;
   } catch {
     return null;
   }
 }
 
-// Tells every window you're signed in, as the plugin does after Google, so it reloads as you.
-const announce = (): void => {
-  for (const contents of webContents.getAllWebContents())
-    contents.send("better-auth:authenticated", null);
-};
+// An answer for the window: done, or why not.
+const outcome = ({ error }: { error: { message?: string } | null }): { error?: string } =>
+  error ? { error: error.message ?? "That didn't work" } : {};
 
 // Must run before the app is ready: it registers the `com.threads.arc://` link and the window's sign-in bridges. Not the
 // plugin's content security policy, which would keep the window from reaching the API.
@@ -82,18 +74,11 @@ export function setupSignIn(): void {
     app.relaunch();
     app.exit(0);
   });
-  // Emails a sign-in code. An uninvited email gets nothing, and is told nothing different.
-  ipcMain.handle("threads:send-code", async (_event, email: string): Promise<Outcome> => {
-    const { error } = await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" });
-    return error ? { error: error.message ?? "Couldn't send a code" } : {};
-  });
-  ipcMain.handle(
-    "threads:verify-code",
-    async (_event, email: string, code: string): Promise<Outcome> => {
-      const { error } = await auth.signIn.emailOtp({ email, otp: code });
-      if (error) return { error: error.message ?? "That code didn't work" };
-      announce();
-      return {};
-    },
+  // An uninvited email gets no code, and is told nothing different.
+  ipcMain.handle("threads:send-code", async (_event, email: string) =>
+    outcome(await auth.emailOtp.sendVerificationOtp({ email, type: "sign-in" })),
+  );
+  ipcMain.handle("threads:verify-code", async (_event, email: string, code: string) =>
+    outcome(await auth.signIn.emailOtp({ email, otp: code })),
   );
 }

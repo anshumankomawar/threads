@@ -10,47 +10,24 @@ import { electron } from "@better-auth/electron";
 // The desktop app signs in from its main process (Better Auth's Electron plugin): email codes directly, and Google in
 // the browser, which comes back to this API and then to the app on a `com.threads.arc://` link (`SIGNED_IN_PAGE`).
 
-// What signing in needs from the Worker's environment. Secrets locally come from apps/api/.dev.vars.
-export type AuthEnv = {
-  AUTH_DB: D1Database;
-  // Signs Better Auth's cookies. Locally there's a fixed one, so it works without setup; the hosted API needs its own.
-  BETTER_AUTH_SECRET?: string;
-  // This API's own origin, which Google redirects back to (`/api/auth/callback/google`).
-  BETTER_AUTH_URL?: string;
-  GOOGLE_CLIENT_ID?: string;
-  GOOGLE_CLIENT_SECRET?: string;
-  // Sends sign-in codes. Without it, codes are only logged, which is enough locally.
-  RESEND_API_KEY?: string;
-  // Who may sign in, and as whom: `email=personId` pairs, separated by commas.
-  INVITES?: string;
-  // Set on the hosted API only.
-  API_TOKEN?: string;
-};
-
 const DEV_SECRET = "threads-local-development-secret-not-for-production";
 // The local API. The browser must use exactly this origin all the way through Google and back (its cookies are this
 // host's), so it's 127.0.0.1, as the API serves, never localhost.
 const LOCAL_ORIGIN = "http://127.0.0.1:3030";
 // The desktop app's link scheme, which signing in with Google sends you back to it on.
-export const APP_SCHEME = "com.threads.arc";
+const APP_SCHEME = "com.threads.arc";
 
-// The invite list: each invited email (lower case) and the Person it signs in as.
-export function parseInvites(text: string | undefined): Map<string, string> {
-  const invites = new Map<string, string>();
-  for (const pair of (text ?? "").split(",")) {
-    const [email, personId] = pair.split("=").map((part) => part.trim());
-    if (email && personId) invites.set(email.toLowerCase(), personId);
+// The Person an email signs in as, if `INVITES` (`email=personId` pairs, separated by commas) invites it.
+export function personFor(invites: string, email: string): string | undefined {
+  for (const pair of invites.split(",")) {
+    const [invited, personId] = pair.split("=").map((part) => part.trim());
+    if (invited?.toLowerCase() === email.trim().toLowerCase()) return personId || undefined;
   }
-  return invites;
 }
-
-// The Person an email signs in as, if it's invited.
-export const personFor = (env: AuthEnv, email: string): string | undefined =>
-  parseInvites(env.INVITES).get(email.trim().toLowerCase());
 
 // Sends a sign-in code: by email through Resend when there's a key, else to the Worker's log, which is only allowed
 // locally (no API_TOKEN), so a hosted API never silently drops codes.
-async function sendCode(env: AuthEnv, email: string, otp: string): Promise<void> {
+async function sendCode(env: Env, email: string, otp: string): Promise<void> {
   if (!env.RESEND_API_KEY) {
     if (env.API_TOKEN)
       throw new APIError("INTERNAL_SERVER_ERROR", { message: "Email isn't set up" });
@@ -73,7 +50,7 @@ async function sendCode(env: AuthEnv, email: string, otp: string): Promise<void>
 }
 
 // Better Auth's settings for one request (the D1 binding exists only while handling one).
-function authOptions(env: AuthEnv) {
+function authOptions(env: Env) {
   const origin = env.BETTER_AUTH_URL || LOCAL_ORIGIN;
   const google =
     env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET
@@ -91,7 +68,7 @@ function authOptions(env: AuthEnv) {
       emailOTP({
         // Uninvited emails are told nothing, so the form can't be used to find out who's invited.
         async sendVerificationOTP({ email, otp, type }) {
-          if (type !== "sign-in" || personFor(env, email) === undefined) return;
+          if (type !== "sign-in" || personFor(env.INVITES, email) === undefined) return;
           await sendCode(env, email, otp);
         },
       }),
@@ -101,7 +78,7 @@ function authOptions(env: AuthEnv) {
         create: {
           // The invite list decides who gets an account, however they sign in.
           before: async (user) => {
-            if (personFor(env, user.email) === undefined)
+            if (personFor(env.INVITES, user.email) === undefined)
               throw new APIError("FORBIDDEN", { message: "This email isn't invited to Threads" });
           },
         },
@@ -110,23 +87,16 @@ function authOptions(env: AuthEnv) {
   } satisfies BetterAuthOptions;
 }
 
-// Better Auth's tables, made in D1 the first time this isolate signs anyone in. Adding a plugin adds its tables.
+// Better Auth's tables are made in D1 the first time this isolate signs anyone in, so it never starts without them.
 let migrated: Promise<void> | undefined;
 
-function ensureTables(options: BetterAuthOptions): Promise<void> {
-  migrated ??= getMigrations(options)
-    .then(({ runMigrations }) => runMigrations())
-    .catch((error: unknown) => {
-      migrated = undefined;
-      throw error;
-    });
-  return migrated;
-}
-
-// Better Auth for one request, once its tables exist (made first, so it never starts on a database without them).
-export async function createAuth(env: AuthEnv) {
+export async function createAuth(env: Env) {
   const options = authOptions(env);
-  await ensureTables(options);
+  migrated ??= getMigrations(options).then(({ runMigrations }) => runMigrations());
+  await migrated.catch((error: unknown) => {
+    migrated = undefined;
+    throw error;
+  });
   return betterAuth(options);
 }
 

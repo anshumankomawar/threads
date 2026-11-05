@@ -38,7 +38,7 @@ async function same(a: string, b: string): Promise<boolean> {
 }
 
 // Who a token is; undefined when it's no one. Hosted (API_TOKEN set), the API token is the admin and a session token
-// (POST /auth/session) is its person. Locally the API is open: the token is a user id, and no token is the admin.
+// (POST /auth/token) is its person. Locally the API is open: the token is a user id, and no token is the admin.
 async function authenticate(
   env: Env,
   token: string,
@@ -182,24 +182,6 @@ const app = new Hono<{ Bindings: Env }>();
 // The desktop renderer runs on its own origin, so it needs CORS to reach the API.
 app.use(cors());
 
-// A person's session token, which only the admin hands out. Until there's a sign-in, the app mints its own with the
-// API token for whoever it's viewing as. Locally the token is the person's id.
-app.post("/auth/session", async (c) => {
-  const { workspace, personId } = await c.req.json<{ workspace: string; personId: string }>();
-  const session = await authenticate(c.env, tokenOf(c), workspace);
-  if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
-  if (!("admin" in session)) return c.json({ error: "Only an admin hands out sessions" }, 403);
-  const expiresAtMs = Date.now() + SESSION_MS;
-  const token = c.env.API_TOKEN
-    ? await signSession(sessionSecret(c.env.API_TOKEN), {
-        userId: personId,
-        workspace,
-        expiresAtMs,
-      })
-    : personId;
-  return c.json({ token, expiresAtMs });
-});
-
 // Signing in (src/auth.ts): Better Auth's own routes, which the desktop app's main process calls, and where Google
 // sends the browser back.
 app.on(["GET", "POST"], "/api/auth/*", async (c) => (await createAuth(c.env)).handler(c.req.raw));
@@ -208,23 +190,22 @@ app.on(["GET", "POST"], "/api/auth/*", async (c) => (await createAuth(c.env)).ha
 app.get("/", (c) => c.html(SIGNED_IN_PAGE));
 
 // Trades a signed-in Better Auth session (its cookie) for the token the sync API takes, as the Person the email is
-// invited as: hosted, their signed session token, as POST /auth/session mints; locally, their id.
+// invited as: hosted, a signed session token; locally, their id.
 app.post("/auth/token", async (c) => {
   const auth = await createAuth(c.env);
   const signedIn = await auth.api.getSession({ headers: c.req.raw.headers });
   if (signedIn === null) return c.json({ error: "Not signed in" }, 401);
-  const personId = personFor(c.env, signedIn.user.email);
+  const { email } = signedIn.user;
+  const personId = personFor(c.env.INVITES, email);
   if (personId === undefined) return c.json({ error: "This email isn't invited to Threads" }, 403);
-  const workspace = "local";
-  const expiresAtMs = Date.now() + SESSION_MS;
   const token = c.env.API_TOKEN
     ? await signSession(sessionSecret(c.env.API_TOKEN), {
         userId: personId,
-        workspace,
-        expiresAtMs,
+        workspace: "local",
+        expiresAtMs: Date.now() + SESSION_MS,
       })
     : personId;
-  return c.json({ personId, email: signedIn.user.email, workspace, token, expiresAtMs });
+  return c.json({ personId, email, token });
 });
 
 // Drafting a new thread from what you typed (src/compose.ts). It reads and writes nothing, so it runs here,

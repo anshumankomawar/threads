@@ -82,9 +82,8 @@ writes the answers as ordinary transactions (`apps/api/src/triage.ts`); a failur
 
 Every request carries `X-Workspace` (`local`, or `sample` when `SAMPLE_WORKSPACE` is on) and a bearer token; the socket
 sends the token in its `Hello`. Hosted, the `API_TOKEN` is the admin (sees everything, acts as anyone) and
-`POST /auth/session { workspace, personId }` mints a person's signed session token. Locally there's no secret: the
-token is the person's id, and an empty token is the admin. The desktop app loads once as the admin to find who's
-there, then reloads as the first person; switching source or person (⌘U, ⌘K) reloads with the new session.
+a person's token is a signed session from `POST /auth/token` (below). Locally there's no secret: the token is the
+person's id, and an empty token is the admin. Switching source or person (⌘U, ⌘K) reloads with the new session.
 
 ### Signing in
 
@@ -106,7 +105,7 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
   exactly `BETTER_AUTH_URL`: `http://127.0.0.1:3030` locally, never `localhost`.
 - **The session** stays in the main process, encrypted with the OS keychain (`safeStorage`) before it's written to disk.
   The window only ever gets the Threads token, from `POST /auth/token` (`window.threads.signedIn()`): hosted, a signed
-  session token, as `POST /auth/session` mints; locally, the person's id. Signed in, you're that person and ⌘U is off;
+  session token; locally, the person's id. Signed in, you're that person and ⌘U is off;
   signing out returns to View As. Calls from the main process carry `origin: com.threads.arc:/`, which the API trusts.
 - **Only invited emails get in.** `INVITES` (a secret: `email=personId` pairs, separated by commas) is the invite list
   and says which Person each email is. An uninvited email can't get an account by either route (a `user.create` hook

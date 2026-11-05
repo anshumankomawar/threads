@@ -77,12 +77,6 @@ const styles = stylex.create({
   },
 });
 
-type Step =
-  | { kind: "start" }
-  | { kind: "email" }
-  | { kind: "code"; email: string }
-  | { kind: "google" };
-
 const GoogleLogo = (): JSX.Element => (
   <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
     <path
@@ -107,34 +101,26 @@ const GoogleLogo = (): JSX.Element => (
 // Signed out, the whole window is this, as in Linear: Google (in the browser, straight to Google, back on a
 // `com.threads.arc://` link) or an emailed code, entered here. Signing in reloads the window as you.
 export default function SignIn(): JSX.Element {
-  const [step, setStep] = createSignal<Step>({ kind: "start" });
+  const [step, setStep] = createSignal<"start" | "email" | "code" | "google">("start");
+  const [email, setEmail] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
-  const go = (next: Step): void => {
+  const go = (next: ReturnType<typeof step>): void => {
     setError(null);
     setStep(next);
   };
-  const attempt = async (work: () => Promise<{ error?: string }>, then?: () => void) => {
+  const attempt = async (work: () => Promise<{ error?: string }>, then: () => void) => {
     setBusy(true);
     setError(null);
     const { error } = await work();
     setBusy(false);
     if (error) setError(error);
-    else then?.();
+    else then();
   };
-  // A link from the browser fails in the main process, with nothing waiting on it.
-  window.onAuthError(() => {
-    if (step().kind === "google") setError("Signing in didn't work. Try again.");
-  });
   const google = (): void => {
     void window.requestAuth({ provider: "google" });
-    go({ kind: "google" });
+    go("google");
   };
-  const back = (
-    <button class={sx(styles.link)} onClick={() => go({ kind: "start" })}>
-      Back to login
-    </button>
-  );
   const submit = (event: SubmitEvent, run: (value: string) => void): void => {
     event.preventDefault();
     const value = new FormData(event.currentTarget as HTMLFormElement).get("value");
@@ -148,28 +134,29 @@ export default function SignIn(): JSX.Element {
         <div class={sx(styles.column)}>
           <img class={sx(styles.logo)} src={theme() === "dark" ? logoDark : logo} alt="" />
           <h1 class={sx(styles.title)}>
-            {step().kind === "code" ? "Check your email" : "Log in to Arc"}
+            {step() === "code" ? "Check your email" : "Log in to Arc"}
           </h1>
           <Switch>
-            <Match when={step().kind === "start"}>
+            <Match when={step() === "start"}>
               <button class={sx(styles.button, styles.primary)} onClick={google}>
                 <GoogleLogo />
                 Continue with Google
               </button>
-              <button class={sx(styles.button)} onClick={() => go({ kind: "email" })}>
+              <button class={sx(styles.button)} onClick={() => go("email")}>
                 Continue with email
               </button>
             </Match>
-            <Match when={step().kind === "email"}>
+            <Match when={step() === "email"}>
               <form
                 class={sx(styles.form)}
                 onSubmit={(event) =>
-                  submit(event, (email) =>
-                    attempt(
-                      () => window.threads.sendCode(email),
-                      () => go({ kind: "code", email }),
-                    ),
-                  )
+                  submit(event, (value) => {
+                    setEmail(value);
+                    void attempt(
+                      () => window.threads.sendCode(value),
+                      () => go("code"),
+                    );
+                  })
                 }
               >
                 <input
@@ -184,51 +171,45 @@ export default function SignIn(): JSX.Element {
                   Continue with email
                 </button>
               </form>
-              {back}
             </Match>
-            <Match when={step().kind === "code" && step()} keyed>
-              {(shown) => (
-                <form
-                  class={sx(styles.form)}
-                  onSubmit={(event) =>
-                    submit(event, (code) =>
-                      attempt(() =>
-                        window.threads.verifyCode((shown as { email: string }).email, code),
-                      ),
-                    )
-                  }
-                >
-                  <p class={sx(styles.note)}>
-                    We sent a code to {(shown as { email: string }).email}
-                  </p>
-                  <input
-                    class={sx(styles.input)}
-                    name="value"
-                    inputmode="numeric"
-                    autocomplete="one-time-code"
-                    placeholder="Enter code"
-                    autofocus
-                    required
-                  />
-                  <button class={sx(styles.button, styles.primary)} disabled={busy()}>
-                    Continue
-                  </button>
-                </form>
-              )}
+            <Match when={step() === "code"}>
+              <form
+                class={sx(styles.form)}
+                onSubmit={(event) =>
+                  submit(event, (code) => {
+                    void attempt(
+                      () => window.threads.verifyCode(email(), code),
+                      () => location.reload(),
+                    );
+                  })
+                }
+              >
+                <p class={sx(styles.note)}>We sent a code to {email()}</p>
+                <input
+                  class={sx(styles.input)}
+                  name="value"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  placeholder="Enter code"
+                  autofocus
+                  required
+                />
+                <button class={sx(styles.button, styles.primary)} disabled={busy()}>
+                  Continue
+                </button>
+              </form>
             </Match>
-            <Match when={step().kind === "google"}>
+            <Match when={step() === "google"}>
               <p class={sx(styles.note)}>Finish logging in in your browser.</p>
               <form
                 class={sx(styles.form)}
                 onSubmit={(event) =>
-                  submit(event, (code) =>
-                    attempt(() =>
-                      window.authenticate({ token: code }).then(
-                        () => ({}),
-                        () => ({ error: "That code didn't work. Try again." }),
-                      ),
-                    ),
-                  )
+                  submit(event, (token) => {
+                    // Signing in this way reloads the window (`onAuthenticated`).
+                    window
+                      .authenticate({ token })
+                      .catch(() => setError("That code didn't work. Try again."));
+                  })
                 }
               >
                 <input
@@ -237,10 +218,13 @@ export default function SignIn(): JSX.Element {
                   placeholder="Or paste the code from your browser"
                 />
               </form>
-              {back}
             </Match>
           </Switch>
-          <Show when={step().kind === "code"}>{back}</Show>
+          <Show when={step() !== "start"}>
+            <button class={sx(styles.link)} onClick={() => go("start")}>
+              Back to login
+            </button>
+          </Show>
           <Show when={error()}>
             <p class={sx(styles.note, styles.error)} role="alert">
               {error()}

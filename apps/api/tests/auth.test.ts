@@ -1,21 +1,11 @@
 import { expect, test } from "vite-plus/test";
-import { parseInvites, personFor, type AuthEnv } from "../src/auth.ts";
+import { personFor } from "../src/auth.ts";
 
-const env = (invites: string): AuthEnv => ({ AUTH_DB: {} as D1Database, INVITES: invites });
-
-test("the invite list maps each email to the person it signs in as", () => {
-  const invites = parseInvites(
-    " Arjun@Example.com = arjun , anshu@example.com=anshu,broken, =nobody",
-  );
-  expect([...invites]).toEqual([
-    ["arjun@example.com", "arjun"],
-    ["anshu@example.com", "anshu"],
-  ]);
-});
-
-test("an email signs in as its person whatever its case, and an uninvited one as nobody", () => {
-  const withInvites = env("arjun@example.com=arjun");
-  expect(personFor(withInvites, "ARJUN@example.com ")).toBe("arjun");
-  expect(personFor(withInvites, "mallory@example.com")).toBeUndefined();
-  expect(personFor(env(""), "arjun@example.com")).toBeUndefined();
+test("the invite list says who an email signs in as, whatever its case or spacing", () => {
+  const invites = " Arjun@Example.com = arjun , anshu@example.com=anshu,broken";
+  expect(personFor(invites, "ARJUN@example.com ")).toBe("arjun");
+  expect(personFor(invites, "anshu@example.com")).toBe("anshu");
+  expect(personFor(invites, "mallory@example.com")).toBeUndefined();
+  expect(personFor(invites, "broken")).toBeUndefined();
+  expect(personFor("", "arjun@example.com")).toBeUndefined();
 });
