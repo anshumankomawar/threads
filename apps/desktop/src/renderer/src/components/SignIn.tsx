@@ -3,7 +3,7 @@ import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import logo from "../assets/logo.png";
 import logoDark from "../assets/logo-dark.png";
-import { save, saved, source, SOURCES, theme, useSource, type Source } from "../startup";
+import { source, SOURCES, theme, useSource, type Source } from "../startup";
 import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { Titlebar } from "./DragRegionResync";
@@ -82,7 +82,6 @@ type Step =
   | { kind: "email" }
   | { kind: "code"; email: string }
   | { kind: "google" };
-type Method = "google" | "email";
 
 const GoogleLogo = (): JSX.Element => (
   <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
@@ -111,7 +110,6 @@ export default function SignIn(): JSX.Element {
   const [step, setStep] = createSignal<Step>({ kind: "start" });
   const [error, setError] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
-  const last = saved<Method | null>("sign-in-method", null);
   const go = (next: Step): void => {
     setError(null);
     setStep(next);
@@ -125,17 +123,9 @@ export default function SignIn(): JSX.Element {
     else then?.();
   };
   const google = (): void => {
-    save("sign-in-method", "google");
     void window.requestAuth({ provider: "google" });
     go({ kind: "google" });
   };
-  const hint = (method: Method) => (
-    <Show when={last === method}>
-      <p class={sx(styles.note)}>
-        You used {method === "google" ? "Google" : "email"} to log in last time
-      </p>
-    </Show>
-  );
   const back = (
     <button class={sx(styles.link)} onClick={() => go({ kind: "start" })}>
       Back to login
@@ -162,11 +152,9 @@ export default function SignIn(): JSX.Element {
                 <GoogleLogo />
                 Continue with Google
               </button>
-              {hint("google")}
               <button class={sx(styles.button)} onClick={() => go({ kind: "email" })}>
                 Continue with email
               </button>
-              {hint("email")}
             </Match>
             <Match when={step().kind === "email"}>
               <form
@@ -175,7 +163,7 @@ export default function SignIn(): JSX.Element {
                   submit(event, (email) =>
                     attempt(
                       () => window.threads.sendCode(email),
-                      () => (save("sign-in-method", "email"), go({ kind: "code", email })),
+                      () => go({ kind: "code", email }),
                     ),
                   )
                 }
