@@ -148,8 +148,34 @@ Every request runs as a **session** (`authenticate` in `worker.ts`), which the W
   locally.
 - **Locally** (no `API_TOKEN`) the API is open: `X-User: <personId>` (`?user=` on the socket) is that person's session.
 
-There's no sign-in yet: the app holds the API token and trades it for the session of whoever it views as
-(`POST /auth/session`, in `api.ts`), so it's as if each person signed in. A real sign-in only has to mint the same tokens.
+The desktop app doesn't sign in yet: it holds the API token and trades it for the session of whoever it views as
+(`POST /auth/session`, in `api.ts`), so it's as if each person signed in. Signing in (below) mints the same tokens.
+
+### Signing in
+
+People sign in on the web sign-in page (`apps/web`) with Google or a one-time code sent to their email, through
+[Better Auth](https://www.better-auth.com) running in the Worker (`apps/api/src/auth.ts`):
+
+- **Better Auth keeps its own users and sessions** in a D1 database (`AUTH_DB`), apart from the workspaces. Its tables
+  are made the first time the Worker signs anyone in (`getMigrations`), so there's no migration step to run.
+- **Only invited emails get in.** `INVITES` (a secret: `email=personId` pairs, separated by commas) is the invite list
+  and says which `Person` each email is. An uninvited email can't get an account by either route (a `user.create`
+  hook refuses it), and asking for a code for one looks the same as for an invited one but sends nothing, so the form
+  can't be used to find out who's invited.
+- **Codes** are sent through Resend when `RESEND_API_KEY` is set. Without it they're only written to the Worker's log,
+  which is allowed locally only (no `API_TOKEN`); the hosted API refuses rather than silently dropping them.
+- **From a Better Auth session to a Threads session**: `POST /auth/token`, with the sign-in page's cookie, answers the
+  invited person and, on the hosted API, their signed session token (`signSession`, as `POST /auth/session` mints).
+  Locally it answers `token: null`, since `X-User` says who you are there.
+- **The sign-in page** proxies `/api` and `/auth` to the API in development (`THREADS_API` points it elsewhere), so the
+  cookie is same-origin and Google redirects back to it: Google's redirect URI is
+  `<BETTER_AUTH_URL>/api/auth/callback/google` (`http://localhost:5173/api/auth/callback/google` locally).
+- **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the sign-in page's
+  origin; `http://localhost:5173` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google sign-in is offered
+  only with both), and `RESEND_API_KEY`. Locally they go in `apps/api/.dev.vars` (gitignored); hosted, they're secrets.
+- **Not yet**: the desktop app still uses the API token and View As. Signing it in means opening the sign-in page in
+  the system browser and receiving the token on a `threads://` link (Better Auth's Electron plugin), then using only
+  that token and dropping View As outside development.
 
 ### Sync groups
 
@@ -531,10 +557,9 @@ These are outside the engine. To add one, keep the invariants above and update t
 
 ### Sign-in
 
-Sessions and sync groups are built; nothing signs people in yet. The app holds the API token and mints a session for
-whoever it views as. To add sign-in: put an identity provider (Cloudflare Access, OAuth, magic links) in front of a
-route that maps the verified identity to a `Person` and mints their token with `signSession`; give the app only that
-token, never the API token; and drop View As outside development.
+Signing in on the web is built (see "Signing in"); the desktop app doesn't use it yet. To finish it: open the sign-in
+page in the system browser, receive the token from `POST /auth/token` on a `threads://` link (Better Auth's Electron
+plugin), give the app only that token, never the API token, and drop View As outside development.
 
 ### Using the engine's newer features in the app
 

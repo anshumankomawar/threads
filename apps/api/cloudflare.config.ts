@@ -22,6 +22,18 @@ export default defineConfig(({ mode }) => ({
       // Bearer token the hosted API requires; leave it unset locally to keep the API open.
       API_TOKEN: bindings.secret(),
       SAMPLE_WORKSPACE: bindings.text(mode === "development" ? "on" : "off"),
+      // Signing in (src/auth.ts): Better Auth's users and sessions, and its settings. Locally the secrets come from
+      // apps/api/.dev.vars; only INVITES is needed to sign in there, the others have local defaults or are optional.
+      AUTH_DB: bindings.d1({ name: "threads-auth" }),
+      // Who may sign in, as whom: `email=personId` pairs, separated by commas.
+      INVITES: bindings.secret(),
+      BETTER_AUTH_SECRET: bindings.secret(),
+      // The sign-in page's origin, which Google redirects back to (http://localhost:5173 locally).
+      BETTER_AUTH_URL: bindings.secret(),
+      GOOGLE_CLIENT_ID: bindings.secret(),
+      GOOGLE_CLIENT_SECRET: bindings.secret(),
+      // Sends sign-in codes by email; without it they're only logged, locally.
+      RESEND_API_KEY: bindings.secret(),
       // Workers AI sorts inboxes into buckets. It always runs on Cloudflare, in local dev too, within the account's
       // free daily allocation, so local dev needs a login on the Threads account. Without access, `THREADS_LOCAL_AI=off`
       // leaves it out: everything else works, and threads wait under "Sorting".

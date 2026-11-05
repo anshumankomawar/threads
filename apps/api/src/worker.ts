@@ -15,6 +15,7 @@ import {
 } from "sync/server";
 import { z } from "zod";
 import { composeRequest, openSession, serveWorkspace } from "./app.ts";
+import { createAuth, personFor } from "./auth.ts";
 import { workersAiComposer } from "./compose.ts";
 import {
   ensureOrganization,
@@ -254,6 +255,26 @@ app.post(
     return c.json({ token, expiresAtMs });
   },
 );
+
+// Signing in (src/auth.ts): Better Auth's own routes, which the sign-in page (apps/web) calls.
+app.on(["GET", "POST"], "/api/auth/*", async (c) => (await createAuth(c.env)).handler(c.req.raw));
+
+// Trades a signed-in Better Auth session (the sign-in page's cookie) for the Threads session token the sync API takes,
+// as the Person the email is invited as. Locally there are no tokens (`X-User` says who you are), so it's null there.
+app.post("/auth/token", async (c) => {
+  const auth = await createAuth(c.env);
+  const signedIn = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (signedIn === null) return c.json({ error: "Not signed in" }, 401);
+  const personId = personFor(c.env, signedIn.user.email);
+  if (personId === undefined) return c.json({ error: "This email isn't invited to Threads" }, 403);
+  const workspace = "local";
+  const expiresAtMs = Date.now() + SESSION_MS;
+  const apiToken = c.env.API_TOKEN;
+  const token = apiToken
+    ? await signSession(sessionSecret(apiToken), { userId: personId, workspace, expiresAtMs })
+    : null;
+  return c.json({ personId, email: signedIn.user.email, workspace, token, expiresAtMs });
+});
 
 // Drafting a new thread from what you typed (src/compose.ts). It reads and writes nothing, so it runs here, outside
 // any workspace.
