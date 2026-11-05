@@ -138,7 +138,7 @@ export const SIGNED_IN_PAGE = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Threads</title>
+<title>Arc</title>
 <style>
   :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
   body { display: grid; min-height: 100vh; margin: 0; place-items: center; background: Canvas; color: CanvasText; }
@@ -152,10 +152,10 @@ export const SIGNED_IN_PAGE = `<!doctype html>
 </head>
 <body>
 <main>
-  <h1>Threads</h1>
+  <h1>Arc</h1>
   <p id="status">Nothing to do here. You can close this tab.</p>
   <div id="fallback" hidden>
-    <p class="muted">If Threads didn't open, paste this code into it (⌘K, Sign in):</p>
+    <p class="muted">If Arc didn't open, paste this code into it:</p>
     <code id="code"></code>
   </div>
 </main>
@@ -167,10 +167,10 @@ export const SIGNED_IN_PAGE = `<!doctype html>
   if (error) status.textContent = "Signing in didn't work: " + error.replaceAll("_", " ");
   else if (code) {
     document.cookie = "better-auth.electron=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/";
-    status.textContent = "Signed in. Returning to Threads…";
+    status.textContent = "Signed in. Returning to Arc…";
     document.getElementById("code").textContent = code;
     document.getElementById("fallback").hidden = false;
-    location.replace("${APP_SCHEME}:/auth/callback#token=" + code);
+    location.replace("${APP_SCHEME}://auth/callback#token=" + code);
   }
 </script>
 </body>

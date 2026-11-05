@@ -100,7 +100,7 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
 - **Google** (Continue with Google) opens the browser straight at Google (`/api/auth/electron/
   init-oauth-proxy`, with the app's PKCE request), which returns to the API (`<BETTER_AUTH_URL>/api/auth/callback/google`),
   which lands the browser on the API's own page at `/` (`SIGNED_IN_PAGE`). That page opens the app on
-  `com.threads.arc:/auth/callback#token=…` with a one-time code, and shows the code to paste into the app in case the link
+  `com.threads.arc://auth/callback#token=…` with a one-time code, and shows the code to paste into the app in case the link
   doesn't open it, which can happen in development. The main process trades the code for its session
   (`/electron/token`). The browser has to use one origin for the whole round trip (its cookies are that host's), so it's
   exactly `BETTER_AUTH_URL`: `http://127.0.0.1:3030` locally, never `localhost`.

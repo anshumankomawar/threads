@@ -122,6 +122,10 @@ export default function SignIn(): JSX.Element {
     if (error) setError(error);
     else then?.();
   };
+  // A link from the browser fails in the main process, with nothing waiting on it.
+  window.onAuthError(() => {
+    if (step().kind === "google") setError("Signing in didn't work. Try again.");
+  });
   const google = (): void => {
     void window.requestAuth({ provider: "google" });
     go({ kind: "google" });
@@ -217,7 +221,14 @@ export default function SignIn(): JSX.Element {
               <form
                 class={sx(styles.form)}
                 onSubmit={(event) =>
-                  submit(event, (code) => void window.authenticate({ token: code }))
+                  submit(event, (code) =>
+                    attempt(() =>
+                      window.authenticate({ token: code }).then(
+                        () => ({}),
+                        () => ({ error: "That code didn't work. Try again." }),
+                      ),
+                    ),
+                  )
                 }
               >
                 <input
