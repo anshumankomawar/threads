@@ -197,8 +197,9 @@ function moveOn(thread: Thread): void {
   open({ thread: next?.id ?? null });
 }
 
-function markDone(item: InboxItem): void {
-  moveOn(item.thread);
+// ⌘E, or the inbox row's done button. Done with the open thread, the next one opens.
+export function markDone(item: InboxItem): void {
+  if (active() === item.thread) moveOn(item.thread);
   item.doneAt = new Date();
   item.save();
   offerUndo("Done", () => {

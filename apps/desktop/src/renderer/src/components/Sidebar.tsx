@@ -6,6 +6,7 @@ import { Bucket, Draft, InboxItem, Label, Thread } from "models";
 import {
   active,
   inbox,
+  markDone,
   me,
   open,
   sent,
@@ -173,6 +174,25 @@ const s = stylex.create({
   top: { ...center, gap: 4, minWidth: 0 },
   title: { lineHeight: "18px" },
   bold: { fontWeight: 600 },
+  done: {
+    flexShrink: 0,
+    display: "grid",
+    placeItems: "center",
+    width: 22,
+    height: 22,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: 6,
+    color: dim,
+    backgroundColor: hoverBg,
+    cursor: "pointer",
+    opacity: {
+      default: 0,
+      [stylex.when.ancestor(":hover")]: 1,
+      ":focus-visible": 1,
+    },
+  },
+  doneShown: { opacity: 1 },
 });
 
 const BUCKET_ROWS = 5;
@@ -289,6 +309,8 @@ function InboxRow(props: { item: InboxItem }): JSX.Element {
           s.pointer,
           on() && s.active,
           c().state === "blocked" && !on() && s.faded,
+          // Its done button shows while the row is hovered.
+          stylex.defaultMarker(),
         )}
         title={props.item.manual ? "Placed here by you" : props.item.reason}
         onContextMenu={(e) => menuFor(c())(e)}
@@ -306,6 +328,17 @@ function InboxRow(props: { item: InboxItem }): JSX.Element {
           </span>
           <span class={sx(s.ellipsis, s.faint, s.small)}>{lineOf(props.item)}</span>
         </span>
+        <button
+          class={sx(s.done, on() && s.doneShown)}
+          title="Done (⌘E)"
+          aria-label="Mark done"
+          onClick={(event) => {
+            event.stopPropagation();
+            markDone(props.item);
+          }}
+        >
+          <Icon icon={i.Tick02Icon} size={14} />
+        </button>
       </div>
     </li>
   );
