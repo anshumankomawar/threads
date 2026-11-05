@@ -1,4 +1,3 @@
-import { makeObservable, observable, runInAction, type ObservableMap } from "mobx";
 import type { ClientMutations } from "../mutations";
 import {
   ALL_GROUPS,
@@ -30,6 +29,7 @@ import {
 import { loadKey, type StoredMeta, type StoredModel, type SyncDatabase } from "./database";
 import { ObjectPool } from "./pool";
 import { jittered, Transaction, TransactionQueue } from "./transactions";
+import { ReactiveMap, reactiveFields } from "./reactive";
 import { UndoQueue } from "./undo";
 
 // How a client reaches its server: HTTP for bootstrapping, catching up, loading and transactions, and a socket for delta
@@ -99,10 +99,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
   syncGroups: string[] = [];
   epoch = "";
   // Ephemeral values by `modelName:modelId:key`, then by who set them.
-  readonly ephemeral: ObservableMap<string, ReadonlyMap<string, EphemeralValue>> = observable.map(
-    undefined,
-    { deep: false },
-  );
+  readonly ephemeral = new ReactiveMap<string, ReadonlyMap<string, EphemeralValue>>();
 
   readonly schema: SyncSchema<M>;
   readonly schemaHash: string;
@@ -144,7 +141,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       schemaHash: this.schemaHash,
       retry: options.retry,
       onRejected: (error, transactions) => {
-        runInAction(() => (this.error = error.message));
+        this.error = error.message;
         this.#event({
           type: "rejected",
           message: error.message,
@@ -153,7 +150,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         void this.#locked(() => this.#confirm(transactions));
       },
       onStuck: (message) => {
-        runInAction(() => (this.stuck = message));
+        this.stuck = message;
         if (message !== null) this.#event({ type: "stuck", message });
       },
       onOutdated: () => this.#outdated(),
@@ -161,15 +158,15 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       lastSyncId: () => this.lastSyncId,
     });
     this.undoQueue = new UndoQueue(this.queue);
-    makeObservable(this, {
-      status: observable,
-      connected: observable,
-      lastSyncId: observable,
-      readyAtMs: observable,
-      error: observable,
-      stuck: observable,
-      syncGroups: observable,
-    });
+    reactiveFields(this, [
+      "status",
+      "connected",
+      "lastSyncId",
+      "readyAtMs",
+      "error",
+      "stuck",
+      "syncGroups",
+    ]);
   }
 
   #db(): SyncDatabase<M, T | BuiltInTransaction<M>> {
@@ -199,12 +196,12 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     const run = ++this.#run;
     this.#stopped = false;
     this.queue.resume();
-    runInAction(() => {
+    {
       this.pool.clear();
       this.queue.clear();
       this.undoQueue.clear();
       this.status = "bootstrapping";
-    });
+    }
     this.#loaded.clear();
     const database = await this.#options.openDatabase();
     if (run !== this.#run) return database.close();
@@ -216,7 +213,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       const [models, loaded] = await Promise.all([database.models(), database.loaded()]);
       if (run !== this.#run) return;
       for (const held of loaded) this.#loaded.add(held);
-      runInAction(() => {
+      {
         this.lastSyncId = meta.lastSyncId;
         this.epoch = meta.epoch;
         this.syncGroups = meta.syncGroups;
@@ -224,7 +221,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
           if (this.#covered(model.modelName, model.data))
             this.pool.set(model.modelName, model.data);
         this.#markReady();
-      });
+      }
       this.#event({ type: "bootstrapped", kind: "local", models: models.length });
     } else {
       await this.#fullBootstrap(run);
@@ -232,11 +229,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     if (run !== this.#run) return;
     const stored = await database.transactions();
     if (run !== this.#run) return;
-    runInAction(() =>
-      this.queue.restore(
-        stored.map((saved) => Transaction.restore(saved, this.#options.mutations)),
-      ),
-    );
+    this.queue.restore(stored.map((saved) => Transaction.restore(saved, this.#options.mutations)));
     this.#connect();
   }
 
@@ -257,31 +250,31 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         if (run !== this.#run) return;
         if (response.schemaHash !== this.schemaHash) return this.#outdated();
         const models = this.#modelsOf(response.models);
-        runInAction(() => {
+        {
           this.lastSyncId = response.lastSyncId;
           this.epoch = response.epoch;
           this.syncGroups = response.syncGroups;
-        });
+        }
         this.#fresher.clear();
         this.#loaded.clear();
         await this.#db().reset(models, this.#meta());
         // Changes the server has already confirmed are in what it sent; only the rest go back on top.
         this.queue.progressQueue(this.lastSyncId);
-        runInAction(() => {
+        {
           this.pool.clear();
           for (const model of models) this.pool.set(model.modelName, model.data);
           this.queue.reapply();
           this.#markReady();
           this.error = null;
-        });
+        }
         this.#event({ type: "bootstrapped", kind: "full", models: models.length });
         if (reload.length > 0) await this.#fetch(reload.map(requestOf));
         return;
       } catch (error) {
-        runInAction(() => {
+        {
           if (this.status !== "ready") this.status = "waiting";
           this.error = String(error);
-        });
+        }
         // Waiting longer each time, and not in step with every other client waiting on the same server.
         await sleep(jittered(waitMs));
         waitMs = Math.min(waitMs * 2, 30_000);
@@ -321,7 +314,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       onOpen: () => {
         if (this.#socket !== socket) return;
         this.#reconnectMs = (this.#options.reconnect ?? RECONNECT).minMs;
-        runInAction(() => (this.connected = true));
+        this.connected = true;
         this.queue.online = true;
         this.queue.dequeue();
       },
@@ -348,11 +341,11 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
   #lost(socket: ReturnType<Transport<M, T>["connect"]>): void {
     if (this.#socket !== socket) return;
     this.#socket = undefined;
-    runInAction(() => {
+    {
       this.connected = false;
       // Ephemeral values are only good while connected.
       this.ephemeral.clear();
-    });
+    }
     this.queue.online = false;
     if (this.#stopped) return;
     clearTimeout(this.#reconnect);
@@ -441,7 +434,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         if (!visibleIn(syncGroupsOf(this.schema, modelName, data, lookup), next))
           dropped.push({ id: 0, modelName, modelId: data.id, action: "D", data: null });
     }
-    runInAction(() => (this.syncGroups = next));
+    this.syncGroups = next;
     await this.#db().applyActions(
       [
         ...loaded.map((model): SyncAction<M> => ({
@@ -455,13 +448,13 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       ],
       this.#meta(),
     );
-    runInAction(() => {
+    {
       for (const model of loaded) {
         this.#fresher.set(key(model.modelName, model.id), loadedAt);
         this.#put(model.modelName, model.id, model.data, loadedAt);
       }
       for (const action of dropped) this.pool.delete(action.modelName, action.modelId);
-    });
+    }
     // The slices already held may have more in them now that more is visible.
     if (added.length > 0 && this.#loaded.size > 0)
       await this.#fetch([...this.#loaded].map(requestOf), true);
@@ -501,13 +494,13 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
       return loadedAt === undefined || action.id > loadedAt;
     });
     await this.#db().applyActions(fresh, this.#meta(lastSyncId));
-    runInAction(() => {
+    {
       for (const action of fresh) {
         if (action.action === "I") void this.queue.modelUpserted(action.modelName, action.modelId);
         this.#put(action.modelName, action.modelId, action.data, action.id);
       }
       this.lastSyncId = lastSyncId;
-    });
+    }
     for (const [model, loadedAt] of this.#fresher)
       if (loadedAt <= lastSyncId) this.#fresher.delete(model);
     this.queue.progressQueue(lastSyncId);
@@ -527,7 +520,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         stored: await this.#db().model(modelName, id),
       })),
     );
-    runInAction(() => {
+    {
       for (const { modelName, id, stored } of confirmed) {
         let record = stored?.data;
         for (const transaction of this.queue.pendingFor(modelName, id, this.lastSyncId))
@@ -536,7 +529,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         else if (stored !== undefined || this.pool.get(modelName, id) !== undefined)
           this.pool.set(modelName, record);
       }
-    });
+    }
   }
 
   // The server runs another schema than this client was built with: sending or applying anything more could misread
@@ -548,11 +541,11 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     const socket = this.#socket;
     this.#socket = undefined;
     socket?.close();
-    runInAction(() => {
+    {
       this.status = "outdated";
       this.connected = false;
       this.error = OUTDATED;
-    });
+    }
     this.#event({ type: "outdated" });
   }
 
@@ -567,7 +560,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
   }
 
   dismissError(): void {
-    runInAction(() => (this.error = null));
+    this.error = null;
   }
 
   // --- Loading lazy and partial models ---
@@ -618,13 +611,13 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
     const keys = wanted.map((request) => loadKey(request.modelName, request.key, request.value));
     await this.#db().putLoaded(models, keys);
     for (const held of keys) this.#loaded.add(held);
-    runInAction(() => {
+    {
       for (const model of models) {
         if (response.lastSyncId > this.lastSyncId)
           this.#fresher.set(key(model.modelName, model.id), response.lastSyncId);
         this.#put(model.modelName, model.id, model.data, response.lastSyncId);
       }
-    });
+    }
     this.#event({ type: "loaded", keys, models: models.length });
   }
 
@@ -648,7 +641,7 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
 
   #receiveEphemeral(message: Extract<SyncMessage<M>, { type: "ephemeral" }>): void {
     const slot = `${message.modelName}:${message.modelId}:${message.key}`;
-    runInAction(() => {
+    {
       const values = new Map(this.ephemeral.get(slot));
       values.set(message.userId ?? "", {
         userId: message.userId,
@@ -656,17 +649,17 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
         receivedAtMs: Date.now(),
       });
       this.ephemeral.set(slot, values);
-    });
+    }
   }
 
   // --- Changes ---
 
   // Makes a change: applied to the pool at once, sent with whatever else is made this tick.
   transact(input: T | BuiltInTransaction<M>, actorId: string): void {
-    runInAction(() => {
+    {
       this.error = null;
       this.queue.enqueue(new Transaction<M, T>(input, actorId, this.#options.mutations));
-    });
+    }
   }
 
   delete(modelName: ModelName<M>, modelId: string, actorId: string): void {
@@ -683,10 +676,10 @@ export class SyncClient<M extends Models, T extends TransactionEnvelope = Transa
 
   // Throws away everything unsent and loads afresh, such as after the server's data was wiped on purpose.
   async discardAndReload(): Promise<void> {
-    runInAction(() => {
+    {
       this.queue.clear();
       this.undoQueue.clear();
-    });
+    }
     await this.#db().deleteTransactions(
       (await this.#db().transactions()).map((stored) => stored.id),
     );

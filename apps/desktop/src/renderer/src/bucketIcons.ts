@@ -23,7 +23,7 @@ import {
   UserGroupIcon,
   Wrench01Icon,
 } from "@hugeicons/core-free-icons";
-import type { IconSvgElement } from "@hugeicons/react";
+import type { IconSvgElement } from "./components/Icon";
 import type { Bucket } from "model";
 
 // What a bucket's name or description is about, and its icon: the first match wins.

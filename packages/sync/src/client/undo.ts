@@ -1,5 +1,5 @@
-import { action, computed, makeObservable, observableRef } from "mobx";
 import type { Models, TransactionEnvelope } from "../protocol";
+import { reactiveFields } from "./reactive";
 import type { Transaction, TransactionQueue } from "./transactions";
 
 // One undoable step: what the UI called it, and the transactions it made.
@@ -21,16 +21,7 @@ export class UndoQueue<M extends Models, T extends TransactionEnvelope> {
   constructor(queue: TransactionQueue<M, T>, limit = 100) {
     this.#queue = queue;
     this.#limit = limit;
-    makeObservable(this, {
-      undoStack: observableRef,
-      redoStack: observableRef,
-      canUndo: computed,
-      canRedo: computed,
-      addOperation: action,
-      undo: action,
-      redo: action,
-      clear: action,
-    });
+    reactiveFields(this, ["undoStack", "redoStack"]);
   }
 
   get canUndo(): boolean {

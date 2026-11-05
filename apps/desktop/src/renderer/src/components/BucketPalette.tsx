@@ -1,45 +1,47 @@
-import { useEffect, useRef, useState } from "react";
 import type { Bucket } from "model";
+import { createEffect, createSignal, untrack } from "solid-js";
+import type { JSX } from "@solidjs/web";
 
 type Step = "name" | "describe";
 
 // Making or editing an inbox bucket in two steps, like a new thread: its name, then in plain words what goes in it,
 // which is what the model reads to sort threads into it. Backspace on an empty description goes back to the name.
-export function BucketPalette({
-  bucket,
-  onSave,
-  onClose,
-}: {
+export function BucketPalette(props: {
   // The bucket being edited, or null for a new one.
   bucket: Bucket | null;
   onSave: (name: string, description: string) => void;
   onClose: () => void;
-}): React.JSX.Element {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState<Step>("name");
-  const [name, setName] = useState(bucket?.name ?? "");
-  const [description, setDescription] = useState(bucket?.description ?? "");
-  useEffect(() => inputRef.current?.focus(), [step]);
+}): JSX.Element {
+  let input!: HTMLInputElement;
+  const [step, setStep] = createSignal<Step>("name");
+  const [name, setName] = createSignal(untrack(() => props.bucket?.name ?? ""));
+  const [description, setDescription] = createSignal(
+    untrack(() => props.bucket?.description ?? ""),
+  );
+  createEffect(
+    () => step(),
+    () => input.focus(),
+  );
 
-  const title = name.trim();
+  const title = (): string => name().trim();
   const forward = (): void => {
-    if (title === "") return inputRef.current?.focus();
-    if (step === "name") setStep("describe");
-    else onSave(title.slice(0, 40), description.trim().slice(0, 500));
+    if (title() === "") return input.focus();
+    if (step() === "name") setStep("describe");
+    else props.onSave(title().slice(0, 40), description().trim().slice(0, 500));
   };
 
-  const onKeyDown = (event: React.KeyboardEvent): void => {
+  const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (step === "name") onClose();
+      if (step() === "name") props.onClose();
       else setStep("name");
     } else if (event.key === "Enter") {
       event.preventDefault();
       forward();
     } else if (
-      step === "describe" &&
+      step() === "describe" &&
       event.key === "Backspace" &&
-      description === "" &&
+      description() === "" &&
       !event.repeat
     ) {
       event.preventDefault();
@@ -47,69 +49,71 @@ export function BucketPalette({
     }
   };
 
-  const label =
-    title === ""
+  const label = (): string =>
+    title() === ""
       ? "Name the bucket to continue"
-      : step === "name"
+      : step() === "name"
         ? "Continue to describe"
-        : bucket === null
+        : props.bucket === null
           ? "Create bucket"
           : "Save bucket";
 
   return (
-    <div className="palette-overlay" onMouseDown={onClose}>
+    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
       <div
-        className="palette"
+        class="palette"
         role="dialog"
-        aria-label={bucket === null ? "New bucket" : "Edit bucket"}
+        aria-label={props.bucket === null ? "New bucket" : "Edit bucket"}
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="palette-input-row">
+        <div class="palette-input-row">
           <input
-            ref={inputRef}
-            className="palette-input"
+            ref={input}
+            class="palette-input"
             placeholder={
-              step === "name"
+              step() === "name"
                 ? "Name the bucket… (Follow-ups)"
                 : "What goes in it? (anything a customer asked for or reported)"
             }
-            spellCheck={false}
-            maxLength={step === "name" ? 40 : 500}
-            value={step === "name" ? name : description}
-            onChange={(event) =>
-              step === "name" ? setName(event.target.value) : setDescription(event.target.value)
+            spellcheck="false"
+            maxlength={step() === "name" ? 40 : 500}
+            value={step() === "name" ? name() : description()}
+            onInput={(event) =>
+              step() === "name"
+                ? setName(event.currentTarget.value)
+                : setDescription(event.currentTarget.value)
             }
           />
-          <span className="palette-step">Step {step === "name" ? 1 : 2} of 2</span>
+          <span class="palette-step">Step {step() === "name" ? 1 : 2} of 2</span>
         </div>
-        <div className="palette-results">
-          <div className="palette-section">
-            <div className="palette-section-label palette-summary">
-              {step === "name" ? (
-                bucket === null ? (
+        <div class="palette-results">
+          <div class="palette-section">
+            <div class="palette-section-label palette-summary">
+              {step() === "name" ? (
+                props.bucket === null ? (
                   "New bucket"
                 ) : (
                   "Rename"
                 )
               ) : (
                 <>
-                  Describe <span className="palette-summary-title">“{title}”</span> so threads are
+                  Describe <span class="palette-summary-title">“{title()}”</span> so threads are
                   sorted into it
                 </>
               )}
             </div>
             <div
-              className="palette-row"
-              data-selected={title !== ""}
-              data-disabled={title === ""}
+              class="palette-row"
+              data-selected={String(title() !== "")}
+              data-disabled={String(title() === "")}
               role="option"
-              aria-selected={title !== ""}
+              aria-selected={title() !== "" ? "true" : "false"}
               onMouseDown={(event) => event.preventDefault()}
               onClick={forward}
             >
-              <span className="palette-row-label">{label}</span>
-              <span className="palette-row-shortcut">↵</span>
+              <span class="palette-row-label">{label()}</span>
+              <span class="palette-row-shortcut">↵</span>
             </div>
           </div>
         </div>

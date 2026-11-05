@@ -1,72 +1,74 @@
-import { useEffect, useRef, useState } from "react";
+import { createSignal, onSettled } from "solid-js";
+import type { JSX } from "@solidjs/web";
 
 // Naming the organization: the first time anyone opens a workspace, when it can't be skipped, or renaming it later.
-export function OrganizationPrompt({
-  current,
-  onSave,
-  onClose,
-}: {
+export function OrganizationPrompt(props: {
   current: string;
   onSave: (name: string) => void;
   onClose: () => void;
-}): React.JSX.Element {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState(current);
-  const renaming = current !== "";
-  const trimmed = name.trim();
+}): JSX.Element {
+  let input!: HTMLInputElement;
+  const [name, setName] = createSignal(props.current);
+  const renaming = (): boolean => props.current !== "";
+  const trimmed = (): string => name().trim();
 
-  useEffect(() => inputRef.current?.select(), []);
+  onSettled(() => input.select());
 
   const save = (): void => {
-    if (trimmed !== "") onSave(trimmed);
+    if (trimmed() !== "") props.onSave(trimmed());
   };
 
   return (
-    <div className="palette-overlay" onMouseDown={renaming ? onClose : undefined}>
+    <div
+      class="palette-overlay"
+      onMouseDown={() => {
+        if (renaming()) props.onClose();
+      }}
+    >
       <div
-        className="palette"
+        class="palette"
         role="dialog"
-        aria-label={renaming ? "Rename the organization" : "Name your organization"}
+        aria-label={renaming() ? "Rename the organization" : "Name your organization"}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="palette-input-row">
+        <div class="palette-input-row">
           <input
-            ref={inputRef}
-            className="palette-input"
+            ref={input}
+            class="palette-input"
             placeholder="Your organization's name"
-            spellCheck={false}
-            maxLength={100}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
+            spellcheck={false}
+            maxlength={100}
+            value={name()}
+            onInput={(event) => setName(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
                 event.preventDefault();
                 save();
-              } else if (event.key === "Escape" && renaming) {
+              } else if (event.key === "Escape" && renaming()) {
                 event.preventDefault();
-                onClose();
+                props.onClose();
               }
             }}
           />
         </div>
-        <div className="palette-results">
-          <div className="palette-section">
-            <div className="palette-section-label">
-              {renaming ? "Rename the organization" : "Welcome. What's your organization called?"}
+        <div class="palette-results">
+          <div class="palette-section">
+            <div class="palette-section-label">
+              {renaming() ? "Rename the organization" : "Welcome. What's your organization called?"}
             </div>
             <div
-              className="palette-row"
-              data-selected={trimmed !== ""}
-              data-disabled={trimmed === ""}
+              class="palette-row"
+              data-selected={String(trimmed() !== "")}
+              data-disabled={String(trimmed() === "")}
               role="option"
-              aria-selected={trimmed !== ""}
+              aria-selected={trimmed() !== "" ? "true" : "false"}
               onMouseDown={(event) => event.preventDefault()}
               onClick={save}
             >
-              <span className="palette-row-label">
-                {trimmed === "" ? "Type a name to continue" : renaming ? "Save" : "Get started"}
+              <span class="palette-row-label">
+                {trimmed() === "" ? "Type a name to continue" : renaming() ? "Save" : "Get started"}
               </span>
-              <span className="palette-row-shortcut">↵</span>
+              <span class="palette-row-shortcut">↵</span>
             </div>
           </div>
         </div>

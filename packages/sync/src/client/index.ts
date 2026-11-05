@@ -3,5 +3,6 @@
 export * from "./client";
 export * from "./database";
 export * from "./pool";
+export * from "./reactive";
 export * from "./transactions";
 export * from "./undo";

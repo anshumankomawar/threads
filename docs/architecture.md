@@ -28,7 +28,7 @@ show their own edits immediately (optimistically) and reconcile when the server'
 ```
 Desktop app                                              Cloudflare
 ───────────                                              ──────────
-React UI ──reads──▶ ObjectPool (MobX)                    Worker (Hono): who's asking (session), route by workspace
+Solid UI ──reads──▶ ObjectPool (signals)                 Worker (Hono): who's asking (session), route by workspace
    │ edits              ▲                                          │
    ▼                    │ applies deltas                           ▼
 TransactionQueue ───────┼───── POST /sync/transactions ──▶ Durable Object "Workspace"
@@ -47,7 +47,11 @@ guarantees and what a product must respect. It has three parts:
   (`sqliteStorage` for the Durable Object, `memoryStorage` for tests), `broadcast` and `receive` for sockets, the HTTP
   routes (`handleSyncRequest`) and session tokens.
 - `sync/client`: `SyncClient` (bootstrap, socket, applying deltas, following groups, gaps, loading, ephemeral values),
-  the `TransactionQueue`, the `UndoQueue`, the `ObjectPool` and the local database.
+  the `TransactionQueue`, the `UndoQueue`, the `ObjectPool` and the local database. It knows no UI framework: what
+  it keeps is in plain objects and maps, and `reactive.ts` tells a UI when they change. The app installs its
+  framework's atoms once with `setReactivity` (`solidReactivity` in `apps/desktop/src/renderer/src/sync`, where an
+  atom is a Solid signal); tests and the server use the plain ones, which do nothing. A record is replaced whole, so the
+  pool's maps (`ReactiveMap`) are all that's reactive: one atom per key for `get`, one per map for iterating.
 
 Threads plugs into it in three places, and product work happens only there:
 

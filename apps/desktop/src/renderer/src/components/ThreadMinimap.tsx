@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { formatRelativeTime } from "../format";
 import { plainThreadLinks, type Entry, type Person } from "model";
 import { useThreadLinks } from "../threadLinks";
@@ -60,64 +61,63 @@ function elementFor(id: string): HTMLElement | null {
 // A strip of ticks along the thread's right edge, one per entry, for seeing its shape and jumping around.
 // The entry you're reading is raised and bright. Hovering a tick previews the entry; clicking scrolls to it, and
 // ⌥ + scroll steps from marker to marker.
-export function ThreadMinimap({
-  entries,
-  scrollRef,
-  nowMs,
-}: {
+export function ThreadMinimap(props: {
   entries: Entry[];
-  scrollRef: React.RefObject<HTMLDivElement | null>;
+  // The thread's scrolling element, once it's there.
+  scrollRef: () => HTMLDivElement | undefined;
   nowMs: number;
-}): React.JSX.Element | null {
-  const { titleOf, nameOf } = useThreadLinks();
-  const markers = entries.map((entry) => toMarker(entry, titleOf, nameOf));
-  const [visible, setVisible] = useState<Set<string>>(() => new Set());
-  const [hovered, setHovered] = useState<number | null>(null);
-  const visibleRef = useRef(visible);
-  const markersRef = useRef(markers);
-  useEffect(() => {
-    visibleRef.current = visible;
-    markersRef.current = markers;
-  });
+}): JSX.Element {
+  const links = useThreadLinks();
+  const markers = createMemo(() =>
+    props.entries.map((entry) => toMarker(entry, links.titleOf, links.nameOf)),
+  );
+  const [visible, setVisible] = createSignal<Set<string>>(new Set());
+  const [hovered, setHovered] = createSignal<number | null>(null);
 
-  const ids = markers.map((marker) => marker.id).join(",");
+  const ids = createMemo(() =>
+    markers()
+      .map((marker) => marker.id)
+      .join(","),
+  );
 
   // Track which entries are on screen.
-  useEffect(() => {
-    const root = scrollRef.current;
-    if (root === null) return;
-    const observer = new IntersectionObserver(
-      (records) =>
-        setVisible((current) => {
-          const next = new Set(current);
-          for (const record of records) {
-            const id = record.target.id.replace(/^entry-/, "");
-            if (record.isIntersecting) next.add(id);
-            else next.delete(id);
-          }
-          return next;
-        }),
-      { root },
-    );
-    for (const id of ids.split(",")) {
-      const element = elementFor(id);
-      if (element !== null) observer.observe(element);
-    }
-    return () => observer.disconnect();
-  }, [ids, scrollRef]);
+  createEffect(
+    () => ({ ids: ids(), root: props.scrollRef() }),
+    ({ ids: shown, root }) => {
+      if (root === undefined) return;
+      const observer = new IntersectionObserver(
+        (records) =>
+          setVisible((current) => {
+            const next = new Set(current);
+            for (const record of records) {
+              const id = record.target.id.replace(/^entry-/, "");
+              if (record.isIntersecting) next.add(id);
+              else next.delete(id);
+            }
+            return next;
+          }),
+        { root },
+      );
+      for (const id of shown.split(",")) {
+        const element = elementFor(id);
+        if (element !== null) observer.observe(element);
+      }
+      return () => observer.disconnect();
+    },
+  );
 
   // ⌥ + scroll jumps to the next or previous marker instead of scrolling freely.
-  useEffect(() => {
-    const root = scrollRef.current;
-    if (root === null) return;
+  onSettled(() => {
+    const root = props.scrollRef();
+    if (root === undefined) return;
     let lastJump = 0;
     const onWheel = (event: WheelEvent): void => {
       if (!event.altKey || event.deltaY === 0) return;
       event.preventDefault();
       if (event.timeStamp - lastJump < JUMP_THROTTLE_MS) return;
       lastJump = event.timeStamp;
-      const all = markersRef.current;
-      const current = all.findIndex((marker) => visibleRef.current.has(marker.id));
+      const all = markers();
+      const current = all.findIndex((marker) => visible().has(marker.id));
       const index = Math.min(
         all.length - 1,
         Math.max(0, (current === -1 ? 0 : current) + Math.sign(event.deltaY)),
@@ -126,54 +126,68 @@ export function ThreadMinimap({
     };
     root.addEventListener("wheel", onWheel, { passive: false });
     return () => root.removeEventListener("wheel", onWheel);
-  }, [scrollRef]);
+  });
 
-  if (markers.length < 2) return null;
-  const card = hovered === null ? undefined : markers[hovered];
-  const active = markers.findIndex((marker) => visible.has(marker.id));
-  const focus = hovered;
-  const lengthAt = (index: number): number =>
-    focus === null
+  const card = (): Marker | undefined => {
+    const index = hovered();
+    return index === null ? undefined : markers()[index];
+  };
+  const active = createMemo(() => markers().findIndex((marker) => visible().has(marker.id)));
+  const lengthAt = (index: number): number => {
+    const focus = hovered();
+    return focus === null
       ? RESTING_LENGTH
       : Math.max(RESTING_LENGTH, PEAK_LENGTH - TAPER_PER_TICK * Math.abs(index - focus));
+  };
 
   return (
-    <nav className="minimap" aria-label="Thread outline" onMouseLeave={() => setHovered(null)}>
-      {markers.map((marker, index) => (
-        <button
-          key={marker.id}
-          type="button"
-          className="minimap-tick"
-          aria-label={`${marker.label}: ${marker.text}`}
-          data-active={index === active}
-          data-hovered={hovered === index}
-          style={{ "--tick-length": `${lengthAt(index)}px` } as React.CSSProperties}
-          onMouseEnter={() => setHovered(index)}
-          onClick={() =>
-            elementFor(marker.id)?.scrollIntoView({ block: "start", behavior: "smooth" })
-          }
-        />
-      ))}
-      {card !== undefined && hovered !== null && (
-        <div className="minimap-card" style={{ top: hovered * TICK_SPACING }} role="tooltip">
-          <div className="minimap-card-text">{card.text}</div>
-          <div className="minimap-card-meta">
-            {card.person !== null && (
-              <span className="minimap-card-person">
-                <Identicon seed={card.person.id} size={16} />
-                {card.person.name}
-              </span>
-            )}
-            <span className="minimap-card-time">
-              {card.label === card.person?.name ? "" : `${card.label} · `}
-              {formatRelativeTime(card.atMs, nowMs)}
-            </span>
-          </div>
-          <div className="minimap-card-hints">
-            <span>⌥ + scroll by marker</span>
-          </div>
-        </div>
-      )}
-    </nav>
+    <Show when={markers().length >= 2}>
+      <nav class="minimap" aria-label="Thread outline" onMouseLeave={() => setHovered(null)}>
+        <For each={markers()} keyed={(marker) => marker.id}>
+          {(marker, index) => (
+            <button
+              type="button"
+              class="minimap-tick"
+              aria-label={`${marker().label}: ${marker().text}`}
+              data-active={String(index() === active())}
+              data-hovered={String(hovered() === index())}
+              style={{ "--tick-length": `${lengthAt(index())}px` }}
+              onMouseEnter={() => setHovered(index())}
+              onClick={() =>
+                elementFor(marker().id)?.scrollIntoView({ block: "start", behavior: "smooth" })
+              }
+            />
+          )}
+        </For>
+        <Show when={card()}>
+          {(shown) => (
+            <div
+              class="minimap-card"
+              style={{ top: `${(hovered() ?? 0) * TICK_SPACING}px` }}
+              role="tooltip"
+            >
+              <div class="minimap-card-text">{shown().text}</div>
+              <div class="minimap-card-meta">
+                <Show when={shown().person}>
+                  {(person) => (
+                    <span class="minimap-card-person">
+                      <Identicon seed={person().id} size={16} />
+                      {person().name}
+                    </span>
+                  )}
+                </Show>
+                <span class="minimap-card-time">
+                  {shown().label === shown().person?.name ? "" : `${shown().label} · `}
+                  {formatRelativeTime(shown().atMs, props.nowMs)}
+                </span>
+              </div>
+              <div class="minimap-card-hints">
+                <span>⌥ + scroll by marker</span>
+              </div>
+            </div>
+          )}
+        </Show>
+      </nav>
+    </Show>
   );
 }

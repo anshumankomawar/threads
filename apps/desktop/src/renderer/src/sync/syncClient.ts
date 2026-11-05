@@ -1,4 +1,3 @@
-import { computed, makeObservable } from "mobx";
 import {
   labelSlug,
   ORGANIZATION_ID,
@@ -20,7 +19,13 @@ import {
   type ThreadChanges,
   type TransactionInput,
 } from "model";
-import { SyncClient, type ClientEvent, type SyncDatabase, type Transport } from "sync/client";
+import {
+  derivedGetters,
+  SyncClient,
+  type ClientEvent,
+  type SyncDatabase,
+  type Transport,
+} from "sync/client";
 
 // How the app reaches its server: the sync engine's transport, plus wiping the workspace (a development tool).
 export type ThreadsTransport = Transport<ModelRecords, TransactionInput> & {
@@ -57,14 +62,7 @@ export class ThreadsClient extends SyncClient<ModelRecords, TransactionInput> {
   ) {
     super({ schema: threadsSchema, mutations: threadsMutations, transport, openDatabase, onEvent });
     this.#transport = transport;
-    makeObservable(this, {
-      threads: computed,
-      people: computed,
-      organization: computed,
-      labels: computed,
-      groups: computed,
-      sprints: computed,
-    });
+    derivedGetters(this, ["threads", "people", "organization", "labels", "groups", "sprints"]);
   }
 
   // The pool's threads with their references resolved, as the app renders them.

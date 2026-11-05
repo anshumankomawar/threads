@@ -1,4 +1,4 @@
-import { Extension } from "@tiptap/react";
+import { Extension } from "@tiptap/core";
 import { PluginKey } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 import { exitSuggestion, Suggestion, type SuggestionProps } from "@tiptap/suggestion";

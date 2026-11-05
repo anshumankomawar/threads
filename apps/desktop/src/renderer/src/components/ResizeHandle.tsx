@@ -1,3 +1,5 @@
+import type { JSX } from "@solidjs/web";
+
 export type PanelSize = {
   storageKey: string;
   defaultWidth: number;
@@ -8,28 +10,24 @@ export type PanelSize = {
 };
 
 // The 4px drag area on the panel's inner edge: right edge for a left panel, left edge for a right one.
-export function ResizeHandle({
-  panelRef,
-  width,
-  size,
-  clamp,
-  onCommit,
-}: {
-  panelRef: React.RefObject<HTMLElement | null>;
+// `panel` is a getter for the panel element, read when a drag starts.
+export function ResizeHandle(props: {
+  panel: () => HTMLElement | undefined;
   width: number;
   size: PanelSize;
   clamp: (value: number) => number;
   onCommit: (value: number) => void;
-}): React.JSX.Element {
-  const onPointerDown = (event: React.PointerEvent<HTMLHRElement>): void => {
-    const panel = panelRef.current;
-    if (panel === null) return;
+}): JSX.Element {
+  const onPointerDown = (event: PointerEvent & { currentTarget: HTMLHRElement }): void => {
+    const panel = props.panel();
+    if (panel === undefined) return;
     event.preventDefault();
     const handle = event.currentTarget;
     const startX = event.clientX;
     const startWidth = panel.getBoundingClientRect().width;
     // A right-hand panel grows as you drag left.
-    const direction = size.edge === "left" ? -1 : 1;
+    const direction = props.size.edge === "left" ? -1 : 1;
+    const clamp = props.clamp;
     const widthAt = (clientX: number): number => clamp(startWidth + direction * (clientX - startX));
     handle.setPointerCapture(event.pointerId);
     handle.dataset.resizing = "true";
@@ -45,7 +43,7 @@ export function ResizeHandle({
       handle.removeEventListener("pointerup", onEnd);
       handle.removeEventListener("pointercancel", onEnd);
       delete handle.dataset.resizing;
-      onCommit(widthAt(endEvent.clientX));
+      props.onCommit(widthAt(endEvent.clientX));
     };
     handle.addEventListener("pointermove", onMove);
     handle.addEventListener("pointerup", onEnd);
@@ -54,14 +52,14 @@ export function ResizeHandle({
 
   return (
     <hr
-      className="resize-handle"
-      data-edge={size.edge}
+      class="resize-handle"
+      data-edge={props.size.edge}
       aria-label="Resize panel"
       aria-orientation="vertical"
-      aria-valuemax={size.maxWidth}
-      aria-valuemin={size.minWidth}
-      aria-valuenow={width}
-      onDoubleClick={() => onCommit(size.defaultWidth)}
+      aria-valuemax={props.size.maxWidth}
+      aria-valuemin={props.size.minWidth}
+      aria-valuenow={props.width}
+      onDblClick={() => props.onCommit(props.size.defaultWidth)}
       onPointerDown={onPointerDown}
     />
   );

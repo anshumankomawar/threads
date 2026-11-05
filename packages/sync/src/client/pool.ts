@@ -1,18 +1,17 @@
-import { action, makeObservable, observable, type ObservableMap } from "mobx";
 import type { AnyRecord, ModelName, Models } from "../protocol";
 import { modelNames, type SyncSchema } from "../schema";
+import { ReactiveMap } from "./reactive";
 
-// Every loaded model by id, observable so views update when a model changes, as in LSE's object pool. It holds what
+// Every loaded model by id, reactive so views update when a model changes, as in LSE's object pool. It holds what
 // the user sees: the server's data with this client's pending transactions on top. Records are replaced whole rather
-// than mutated, so only the maps are observable.
+// than mutated, so only the maps are reactive.
 export class ObjectPool<M extends Models> {
-  readonly maps: { [Name in ModelName<M>]: ObservableMap<string, M[Name]> };
+  readonly maps: { [Name in ModelName<M>]: ReactiveMap<string, M[Name]> };
 
   constructor(schema: SyncSchema<M>) {
     this.maps = Object.fromEntries(
-      modelNames(schema).map((name) => [name, observable.map(undefined, { deep: false })]),
+      modelNames(schema).map((name) => [name, new ReactiveMap()]),
     ) as unknown as ObjectPool<M>["maps"];
-    makeObservable(this, { set: action, delete: action, clear: action });
   }
 
   get<Name extends ModelName<M>>(modelName: Name, id: string): M[Name] | undefined {
@@ -20,10 +19,7 @@ export class ObjectPool<M extends Models> {
   }
 
   set(modelName: ModelName<M>, record: AnyRecord<M>): void {
-    (this.maps[modelName] as ObservableMap<string, AnyRecord<M>> | undefined)?.set(
-      record.id,
-      record,
-    );
+    (this.maps[modelName] as ReactiveMap<string, AnyRecord<M>> | undefined)?.set(record.id, record);
   }
 
   delete(modelName: ModelName<M>, id: string): void {
@@ -31,6 +27,6 @@ export class ObjectPool<M extends Models> {
   }
 
   clear(): void {
-    for (const map of Object.values(this.maps) as ObservableMap[]) map.clear();
+    for (const map of Object.values(this.maps) as ReactiveMap<string, unknown>[]) map.clear();
   }
 }

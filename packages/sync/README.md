@@ -23,7 +23,7 @@ Everything else is the engine's.
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sync`        | The wire protocol (`SyncAction`, `SyncMessage`, …), `defineSchema`, `ClientMutations`, the bootstrap stream                                   |
 | `sync/server` | `SyncServer`, `Batch`, storage (`memoryStorage`, `sqliteStorage`), `broadcast` and `receive` for sockets, `handleSyncRequest`, session tokens |
-| `sync/client` | `SyncClient`, `ObjectPool`, `TransactionQueue`, `UndoQueue`, the local database (`openIndexedDb`, `memoryDatabase`)                           |
+| `sync/client` | `SyncClient`, `ObjectPool`, `TransactionQueue`, `UndoQueue`, the local database (`openIndexedDb`, `memoryDatabase`), `setReactivity`          |
 
 ## What it guarantees
 

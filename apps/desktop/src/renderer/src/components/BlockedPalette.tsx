@@ -1,5 +1,6 @@
 import type { Person } from "model";
-import { useEffect, useRef, useState } from "react";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { Identicon } from "./Identicon";
 
 type Step = "who" | "what" | "why";
@@ -7,13 +8,7 @@ type Step = "who" | "what" | "why";
 // `/blocked` in a reply, in three steps: who you're blocked on (you, for something you'll sort out yourself), what
 // you need from them (the new thread's title), and why it's blocking (its description; optional). It becomes a new
 // thread asking them, and the thread you're in waits until it's closed. Backspace on an empty field goes back a step.
-export function BlockedPalette({
-  people,
-  me,
-  blockedTitle,
-  onCreate,
-  onClose,
-}: {
+export function BlockedPalette(props: {
   people: Person[];
   me: Person;
   // The thread that's blocked, for the prompt.
@@ -21,26 +16,30 @@ export function BlockedPalette({
   // The new thread's title, and the reason as its description (empty for none).
   onCreate: (person: Person, title: string, description: string) => void;
   onClose: () => void;
-}): React.JSX.Element {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState<Step>("who");
-  const [person, setPerson] = useState<Person | null>(null);
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
-  const [selected, setSelected] = useState(0);
-  useEffect(() => inputRef.current?.focus(), [step]);
+}): JSX.Element {
+  let input!: HTMLInputElement;
+  const [step, setStep] = createSignal<Step>("who");
+  const [person, setPerson] = createSignal<Person | null>(null);
+  const [title, setTitle] = createSignal("");
+  const [text, setText] = createSignal("");
+  const [selected, setSelected] = createSignal(0);
+  createEffect(
+    () => step(),
+    () => input.focus(),
+  );
 
-  const query = text.trim().toLowerCase();
   // Everyone else, then you.
-  const options =
-    step === "who"
-      ? [...people.filter((candidate) => candidate.id !== me.id), me].filter((candidate) =>
-          candidate.name.toLowerCase().includes(query),
+  const options = createMemo(() => {
+    const query = text().trim().toLowerCase();
+    return step() === "who"
+      ? [...props.people.filter((candidate) => candidate.id !== props.me.id), props.me].filter(
+          (candidate) => candidate.name.toLowerCase().includes(query),
         )
       : [];
-  const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));
-  const isMe = person?.id === me.id;
-  const firstName = person?.name.split(" ")[0];
+  });
+  const selectedIndex = (): number => Math.min(selected(), Math.max(0, options().length - 1));
+  const isMe = (): boolean => person()?.id === props.me.id;
+  const firstName = (): string | undefined => person()?.name.split(" ")[0];
 
   const goTo = (next: Step, value = ""): void => {
     setStep(next);
@@ -49,123 +48,129 @@ export function BlockedPalette({
   };
   const pick = (chosen: Person): void => {
     setPerson(chosen);
-    goTo("what", title);
+    goTo("what", title());
   };
   const next = (): void => {
-    if (step === "what" && text.trim().length > 0) {
-      setTitle(text.trim());
+    const chosen = person();
+    if (step() === "what" && text().trim().length > 0) {
+      setTitle(text().trim());
       goTo("why");
-    } else if (step === "why" && person !== null) {
-      onCreate(person, title, text.trim());
+    } else if (step() === "why" && chosen !== null) {
+      props.onCreate(chosen, title(), text().trim());
     }
   };
 
-  const onKeyDown = (event: React.KeyboardEvent): void => {
+  const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Escape") {
       event.preventDefault();
-      onClose();
-    } else if (step === "who" && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+      props.onClose();
+    } else if (step() === "who" && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
-      if (options.length === 0) return;
+      const count = options().length;
+      if (count === 0) return;
       const delta = event.key === "ArrowDown" ? 1 : -1;
-      setSelected((selectedIndex + delta + options.length) % options.length);
+      setSelected((selectedIndex() + delta + count) % count);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (step === "who") {
-        if (options[selectedIndex] !== undefined) pick(options[selectedIndex]);
+      if (step() === "who") {
+        const chosen = options()[selectedIndex()];
+        if (chosen !== undefined) pick(chosen);
       } else next();
-    } else if (event.key === "Backspace" && step !== "who" && text === "" && !event.repeat) {
+    } else if (event.key === "Backspace" && step() !== "who" && text() === "" && !event.repeat) {
       event.preventDefault();
-      if (step === "why") goTo("what", title);
+      if (step() === "why") goTo("what", title());
       else goTo("who");
     }
   };
 
-  const placeholder =
-    step === "who"
+  const placeholder = (): string =>
+    step() === "who"
       ? "Blocked on who?"
-      : step === "what"
-        ? isMe
+      : step() === "what"
+        ? isMe()
           ? "What do you need to sort out?"
-          : `What do you need from ${firstName}?`
+          : `What do you need from ${firstName()}?`
         : "Why is it blocking? (optional)";
-  const action =
-    step === "what"
+  const action = (): string =>
+    step() === "what"
       ? "Next: why it's blocking"
-      : isMe
+      : isMe()
         ? "Start a thread for it"
-        : `Ask ${firstName} in a new thread`;
-  const ready = step === "why" || text.trim().length > 0;
+        : `Ask ${firstName()} in a new thread`;
+  const ready = (): boolean => step() === "why" || text().trim().length > 0;
 
   return (
-    <div className="palette-overlay" onMouseDown={onClose}>
+    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
       <div
-        className="palette"
+        class="palette"
         role="dialog"
         aria-label="Blocked on someone"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="palette-input-row">
-          {person !== null && step !== "who" && (
-            <span className="palette-chip">
-              <Identicon seed={person.id} size={14} />
-              {isMe ? "Me" : person.name}
-            </span>
-          )}
+        <div class="palette-input-row">
+          <Show when={step() !== "who" ? person() : null}>
+            {(chosen) => (
+              <span class="palette-chip">
+                <Identicon seed={chosen().id} size={14} />
+                {isMe() ? "Me" : chosen().name}
+              </span>
+            )}
+          </Show>
           <input
-            ref={inputRef}
-            className="palette-input"
-            placeholder={placeholder}
-            spellCheck={false}
-            value={text}
-            onChange={(event) => {
-              setText(event.target.value);
+            ref={input}
+            class="palette-input"
+            placeholder={placeholder()}
+            spellcheck="false"
+            value={text()}
+            onInput={(event) => {
+              setText(event.currentTarget.value);
               setSelected(0);
             }}
           />
         </div>
-        <div className="palette-results">
-          <div className="palette-section">
-            <div className="palette-section-label palette-summary">
-              {step === "why" ? (
+        <div class="palette-results">
+          <div class="palette-section">
+            <div class="palette-section-label palette-summary">
+              {step() === "why" ? (
                 <>
-                  Asking for <span className="palette-summary-title">“{title}”</span>
+                  Asking for <span class="palette-summary-title">“{title()}”</span>
                 </>
               ) : (
                 <>
-                  Blocking <span className="palette-summary-title">“{blockedTitle}”</span>
+                  Blocking <span class="palette-summary-title">“{props.blockedTitle}”</span>
                 </>
               )}
             </div>
-            {step === "who" ? (
-              options.map((candidate, index) => (
-                <div
-                  key={candidate.id}
-                  className="palette-row"
-                  data-selected={index === selectedIndex}
-                  role="option"
-                  aria-selected={index === selectedIndex}
-                  onMouseMove={() => setSelected(index)}
-                  onClick={() => pick(candidate)}
-                >
-                  <Identicon seed={candidate.id} size={16} />
-                  <span className="palette-row-label">
-                    {candidate.id === me.id ? "Me" : candidate.name}
-                  </span>
-                </div>
-              ))
+            {step() === "who" ? (
+              <For each={options()}>
+                {(candidate, index) => (
+                  <div
+                    class="palette-row"
+                    data-selected={String(index() === selectedIndex())}
+                    role="option"
+                    aria-selected={index() === selectedIndex() ? "true" : "false"}
+                    onMouseMove={() => setSelected(index())}
+                    onClick={() => pick(candidate)}
+                  >
+                    <Identicon seed={candidate.id} size={16} />
+                    <span class="palette-row-label">
+                      {candidate.id === props.me.id ? "Me" : candidate.name}
+                    </span>
+                  </div>
+                )}
+              </For>
             ) : (
               <div
-                className="palette-row"
-                data-selected={ready}
-                data-disabled={!ready}
+                class="palette-row"
+                data-selected={String(ready())}
+                data-disabled={String(!ready())}
                 role="option"
-                aria-selected={ready}
+                aria-selected={ready() ? "true" : "false"}
                 onClick={next}
               >
-                <span className="palette-row-label">{action}</span>
-                <span className="palette-row-shortcut">↵</span>
+                <span class="palette-row-label">{action()}</span>
+                <span class="palette-row-shortcut">↵</span>
               </div>
             )}
           </div>

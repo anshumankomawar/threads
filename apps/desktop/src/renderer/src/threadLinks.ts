@@ -1,9 +1,10 @@
 import type { Group, Label, Person, Thread } from "model";
-import { createContext, useContext } from "react";
+import { createContext, useContext } from "solid-js";
 
 // How links in a message show: thread links (`[[thread:<id>]]`) by the linked thread's current title, opening into
 // the split view beside the thread you're in; mentions (`[[person:<id>]]`) by the person's name. `search` backs the
 // `#` menu: threads whose title matches, most recently active first. `people` backs the `@` menu.
+// Its lists are getters, so they stay current.
 export type ThreadLinks = {
   titleOf: (threadId: string) => string | undefined;
   nameOf: (personId: string) => string | undefined;
@@ -32,5 +33,6 @@ export const ThreadLinksContext = createContext<ThreadLinks>({
 
 export const useThreadLinks = (): ThreadLinks => useContext(ThreadLinksContext);
 
-// The thread being shown, so a link to it reads as plain text rather than a way to where you already are.
-export const CurrentThreadContext = createContext<string | null>(null);
+// The thread being shown, so a link to it reads as plain text rather than a way to where you already are. An accessor,
+// since the thread on screen changes.
+export const CurrentThreadContext = createContext<() => string | null>(() => null);

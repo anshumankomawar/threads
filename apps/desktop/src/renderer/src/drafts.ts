@@ -1,5 +1,5 @@
 import type { ComposeDraft } from "model";
-import { useState } from "react";
+import { createMemo, createSignal } from "solid-js";
 
 // A thread you've written in the new-message panel (⌘⇧N) but not sent: what you typed, and the draft of the thread as
 // you left it, with any edits. Nothing is sent until you send it, so drafts live on this device only, per data
@@ -31,26 +31,31 @@ function store(source: string, drafts: SavedDraft[]): void {
   }
 }
 
-// Your drafts for a data source, newest first, with saving (adding or replacing by id, as of now) and deleting.
-export function useDrafts(source: string): {
-  drafts: SavedDraft[];
+// Your drafts for a data source (an accessor, since it can change), newest first, with saving (adding or replacing by
+// id, as of now) and deleting.
+export function useDrafts(source: () => string): {
+  drafts: () => SavedDraft[];
   save: (draft: SavedDraft) => void;
   remove: (id: string) => void;
 } {
-  const [state, setState] = useState(() => ({ source, drafts: load(source) }));
-  if (state.source !== source) setState({ source, drafts: load(source) });
+  // Bumped on every save or delete, so the list is read again from storage.
+  const [version, setVersion] = createSignal(0);
+  const drafts = createMemo(() => {
+    version();
+    return load(source());
+  });
   const update = (next: SavedDraft[]): void => {
-    store(source, next);
-    setState({ source, drafts: next });
+    store(source(), next);
+    setVersion((count) => count + 1);
   };
   return {
-    drafts: state.drafts,
+    drafts,
     // Stamped with now, so the newest edit is first.
     save: (draft) =>
       update([
         { ...draft, savedAtMs: Date.now() },
-        ...state.drafts.filter((other) => other.id !== draft.id),
+        ...load(source()).filter((other) => other.id !== draft.id),
       ]),
-    remove: (id) => update(state.drafts.filter((draft) => draft.id !== id)),
+    remove: (id) => update(load(source()).filter((draft) => draft.id !== id)),
   };
 }

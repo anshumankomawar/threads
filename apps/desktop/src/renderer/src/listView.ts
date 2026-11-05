@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { createSignal } from "solid-js";
 
 // Whether lists of threads show as a list or a board: one choice for every page, remembered on this device.
 export type ListView = "list" | "board";
@@ -13,8 +13,8 @@ function saved(): ListView {
   }
 }
 
-export function useListView(): [ListView, (next: ListView) => void] {
-  const [view, setView] = useState<ListView>(saved);
+export function useListView(): [() => ListView, (next: ListView) => void] {
+  const [view, setView] = createSignal<ListView>(saved());
   const choose = (next: ListView): void => {
     setView(next);
     try {

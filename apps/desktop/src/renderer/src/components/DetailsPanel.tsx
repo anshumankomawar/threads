@@ -1,29 +1,25 @@
 import { formatDue, formatRelativeTime } from "../format";
 import { bucketsOf, plainThreadLinks, STATUS_LABELS, type Thread } from "model";
+import { createMemo, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
 import { useResizablePanel } from "./useResizablePanel";
 
-function Row({ label, children }: { label: string; children: React.ReactNode }): React.JSX.Element {
+function Row(props: { label: string; children: JSX.Element }): JSX.Element {
   return (
-    <div className="details-row">
-      <span className="details-label">{label}</span>
-      <span className="details-value">{children}</span>
+    <div class="details-row">
+      <span class="details-label">{props.label}</span>
+      <span class="details-value">{props.children}</span>
     </div>
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}): React.JSX.Element {
+function Section(props: { title: string; children: JSX.Element }): JSX.Element {
   return (
-    <section className="details-section">
-      <div className="details-section-label">{title}</div>
-      {children}
+    <section class="details-section">
+      <div class="details-section-label">{props.title}</div>
+      {props.children}
     </section>
   );
 }
@@ -36,20 +32,15 @@ function reveal(entryId: string): void {
 
 // The task at a glance: when it's happening, how it branched and who was asked what, and what's been decided and
 // what's left to do, all read from the thread so you don't have to scroll through it.
-export function DetailsPanel({
-  thread,
-  nowMs,
-  onOpenThread,
-  onOpenLabel,
-}: {
+export function DetailsPanel(props: {
   thread: Thread | undefined;
   nowMs: number;
   onOpenThread: (id: string) => void;
   onOpenLabel: (id: string) => void;
-}): React.JSX.Element {
-  const { threads, titleOf, people, labels } = useThreadLinks();
+}): JSX.Element {
+  const links = useThreadLinks();
   const me = useMe();
-  const { panelRef, width, handle } = useResizablePanel({
+  const { ref, width, handle } = useResizablePanel({
     storageKey: "details-width",
     defaultWidth: 280,
     minWidth: 240,
@@ -57,82 +48,107 @@ export function DetailsPanel({
     edge: "left",
   });
 
-  if (thread === undefined) {
-    return (
-      <aside ref={panelRef} className="details" style={{ width }}>
-        <div className="topbar details-topbar">Details</div>
-        {handle}
-      </aside>
-    );
-  }
-
-  const due = thread.dueAtMs === null ? null : formatDue(thread.dueAtMs, nowMs);
-  const onLabels = labels.filter((label) => thread.labelIds.includes(label.id));
-  const history = thread.entries.flatMap((entry) => (entry.kind === "event" ? [entry] : []));
   const nameOf = (personId: string): string | undefined =>
-    people.find((person) => person.id === personId)?.name;
-  // Which of your buckets it's in, and why, while it's in your inbox.
-  const triage = thread.triage[me.id] ?? null;
-  const bucket = bucketsOf(me).find((candidate) => candidate.id === triage?.bucketId);
+    links.people.find((person) => person.id === personId)?.name;
 
   return (
-    <aside ref={panelRef} className="details" style={{ width }}>
-      <div className="topbar details-topbar">Details</div>
-      <div className="details-content">
-        {/* Who and what are in the thread's header; this is when and how far along. */}
-        <Section title="Overview">
-          <Row label="Status">
-            <span className="status-dot" data-status={thread.status} aria-hidden />
-            {STATUS_LABELS[thread.status]}
-          </Row>
-          {due !== null && (
-            <Row label="Due">
-              <span data-overdue={due.overdue}>{due.label}</span>
-            </Row>
-          )}
-          {bucket !== undefined && triage !== null && (
-            <Row label="Bucket">
-              <div>{bucket.name}</div>
-              <div className="details-note">
-                {triage.manual ? "Placed by you" : triage.reason || "Sorted by the model"}
-              </div>
-            </Row>
-          )}
-          {onLabels.length > 0 && (
-            <Row label="Labels">
-              {onLabels.map((label) => (
-                <div key={label.id}>
-                  <button
-                    type="button"
-                    className="details-label-link"
-                    onClick={() => onOpenLabel(label.id)}
-                  >
-                    {label.name}
-                  </button>
-                </div>
-              ))}
-            </Row>
-          )}
-        </Section>
+    <aside ref={ref} class="details" style={{ width: `${width()}px` }}>
+      <div class="topbar details-topbar">Details</div>
+      <Show when={props.thread}>
+        {(thread) => {
+          const due = createMemo(() => {
+            const dueAtMs = thread().dueAtMs;
+            return dueAtMs === null ? null : formatDue(dueAtMs, props.nowMs);
+          });
+          const onLabels = createMemo(() =>
+            links.labels.filter((label) => thread().labelIds.includes(label.id)),
+          );
+          const history = createMemo(() =>
+            thread().entries.flatMap((entry) => (entry.kind === "event" ? [entry] : [])),
+          );
+          // Which of your buckets it's in, and why, while it's in your inbox.
+          const triage = createMemo(() => thread().triage[me().id] ?? null);
+          const bucket = createMemo(() =>
+            bucketsOf(me()).find((candidate) => candidate.id === triage()?.bucketId),
+          );
 
-        <ThreadGraph current={thread} threads={threads} onOpenThread={onOpenThread} />
+          return (
+            <div class="details-content">
+              {/* Who and what are in the thread's header; this is when and how far along. */}
+              <Section title="Overview">
+                <Row label="Status">
+                  <span class="status-dot" data-status={thread().status} aria-hidden="true" />
+                  {STATUS_LABELS[thread().status]}
+                </Row>
+                <Show when={due()}>
+                  {(shown) => (
+                    <Row label="Due">
+                      <span data-overdue={String(shown().overdue)}>{shown().label}</span>
+                    </Row>
+                  )}
+                </Show>
+                <Show when={bucket() !== undefined && triage()}>
+                  {(sorted) => (
+                    <Row label="Bucket">
+                      <div>{bucket()?.name}</div>
+                      <div class="details-note">
+                        {sorted().manual
+                          ? "Placed by you"
+                          : sorted().reason || "Sorted by the model"}
+                      </div>
+                    </Row>
+                  )}
+                </Show>
+                <Show when={onLabels().length > 0}>
+                  <Row label="Labels">
+                    <For each={onLabels()}>
+                      {(label) => (
+                        <div>
+                          <button
+                            type="button"
+                            class="details-label-link"
+                            onClick={() => props.onOpenLabel(label.id)}
+                          >
+                            {label.name}
+                          </button>
+                        </div>
+                      )}
+                    </For>
+                  </Row>
+                </Show>
+              </Section>
 
-        {/* The record of what's been done to the thread, including who made it on whose behalf. */}
-        {history.length > 0 && (
-          <Section title="Activity">
-            <ul className="details-list">
-              {history.map((entry) => (
-                <li key={entry.id}>
-                  <button type="button" className="details-item" onClick={() => reveal(entry.id)}>
-                    {entry.actor.name} {plainThreadLinks(entry.text, titleOf, nameOf)} ·{" "}
-                    {formatRelativeTime(entry.createdAtMs, nowMs)}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-      </div>
+              <ThreadGraph
+                current={thread()}
+                threads={links.threads}
+                onOpenThread={props.onOpenThread}
+              />
+
+              {/* The record of what's been done to the thread, including who made it on whose behalf. */}
+              <Show when={history().length > 0}>
+                <Section title="Activity">
+                  <ul class="details-list">
+                    <For each={history()}>
+                      {(entry) => (
+                        <li>
+                          <button
+                            type="button"
+                            class="details-item"
+                            onClick={() => reveal(entry.id)}
+                          >
+                            {entry.actor.name} {plainThreadLinks(entry.text, links.titleOf, nameOf)}{" "}
+                            · {formatRelativeTime(entry.createdAtMs, props.nowMs)}
+                          </button>
+                        </li>
+                      )}
+                    </For>
+                  </ul>
+                </Section>
+              </Show>
+            </div>
+          );
+        }}
+      </Show>
       {handle}
     </aside>
   );
@@ -147,52 +163,50 @@ function branchesOf(thread: Thread, threads: Thread[]): Thread[] {
 
 // The thread's family as a graph, like `git log --graph`: from the thread everything branched from, each branch forks
 // off where it started. Click one to open it. Nothing shows for a thread with no branches.
-function ThreadGraph({
-  current,
-  threads,
-  onOpenThread,
-}: {
+function ThreadGraph(props: {
   current: Thread;
   threads: Thread[];
   onOpenThread: (id: string) => void;
-}): React.JSX.Element | null {
-  let root = current;
-  const seen = new Set([root.id]);
-  for (;;) {
-    const parent = threads.find((other) => other.id === root.branchedFromId);
-    if (parent === undefined || seen.has(parent.id)) break;
-    seen.add(parent.id);
-    root = parent;
-  }
-  if (root === current && branchesOf(current, threads).length === 0) return null;
+}): JSX.Element {
+  const root = createMemo(() => {
+    let root = props.current;
+    const seen = new Set([root.id]);
+    for (;;) {
+      const parent = props.threads.find((other) => other.id === root.branchedFromId);
+      if (parent === undefined || seen.has(parent.id)) break;
+      seen.add(parent.id);
+      root = parent;
+    }
+    return root;
+  });
 
-  const renderThread = (thread: Thread, depth: number): React.JSX.Element => {
-    const branches = depth < 8 ? branchesOf(thread, threads) : [];
+  const renderThread = (thread: Thread, depth: number): JSX.Element => {
+    const branches = (): Thread[] => (depth < 8 ? branchesOf(thread, props.threads) : []);
     return (
       <>
         <button
           type="button"
-          className="graph-thread"
-          data-current={thread.id === current.id}
-          onClick={() => onOpenThread(thread.id)}
+          class="graph-thread"
+          data-current={String(thread.id === props.current.id)}
+          onClick={() => props.onOpenThread(thread.id)}
         >
-          <span className="status-dot" data-status={thread.status} aria-hidden />
-          <span className="graph-title">{thread.title}</span>
+          <span class="status-dot" data-status={thread.status} aria-hidden="true" />
+          <span class="graph-title">{thread.title}</span>
         </button>
-        {branches.length > 0 && (
-          <ul className="graph-children">
-            {branches.map((branch) => (
-              <li key={branch.id}>{renderThread(branch, depth + 1)}</li>
-            ))}
+        <Show when={branches().length > 0}>
+          <ul class="graph-children">
+            <For each={branches()}>{(branch) => <li>{renderThread(branch, depth + 1)}</li>}</For>
           </ul>
-        )}
+        </Show>
       </>
     );
   };
 
   return (
-    <Section title="Branches">
-      <div className="graph">{renderThread(root, 0)}</div>
-    </Section>
+    <Show when={root() !== props.current || branchesOf(props.current, props.threads).length > 0}>
+      <Section title="Branches">
+        <div class="graph">{renderThread(root(), 0)}</div>
+      </Section>
+    </Show>
   );
 }

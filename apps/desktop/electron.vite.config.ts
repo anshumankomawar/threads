@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { defineConfig } from "electron-vite";
-import react from "@vitejs/plugin-react";
+import stylex from "@stylexjs/unplugin/vite";
+import solid from "@solidjs/vite-plugin";
 
 export default defineConfig({
   main: {},
@@ -11,6 +12,7 @@ export default defineConfig({
         "@renderer": resolve("src/renderer/src"),
       },
     },
-    plugins: [react()],
+    // StyleX compiles `stylex.create` calls into atomic classes before Solid compiles the JSX.
+    plugins: [stylex({ useCSSLayers: true }), solid()],
   },
 });

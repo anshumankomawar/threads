@@ -1,175 +1,188 @@
-import { HugeiconsIcon } from "@hugeicons/react";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { labelSlug, type Label, type Person } from "model";
-import { useEffect, useRef, useState } from "react";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 
 // Making a group: name it, then pick anyone in the organization to include. You're in it either way, and more people
 // can join later.
-export function NewGroupPalette({
-  people,
-  me,
-  labels,
-  onCreate,
-  onClose,
-}: {
+export function NewGroupPalette(props: {
   people: Person[];
   me: Person;
   labels: Label[];
   onCreate: (name: string, members: Person[]) => void;
   onClose: () => void;
-}): React.JSX.Element {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [step, setStep] = useState<"name" | "members">("name");
-  const [name, setName] = useState("");
-  const [filter, setFilter] = useState("");
-  const [selected, setSelected] = useState(0);
-  const [members, setMembers] = useState<Person[]>([]);
+}): JSX.Element {
+  let input!: HTMLInputElement;
+  const [step, setStep] = createSignal<"name" | "members">("name");
+  const [name, setName] = createSignal("");
+  const [filter, setFilter] = createSignal("");
+  const [selected, setSelected] = createSignal(0);
+  const [members, setMembers] = createSignal<Person[]>([]);
 
-  useEffect(() => inputRef.current?.focus(), []);
+  onSettled(() => input.focus());
 
-  const title = name.trim();
-  const slug = labelSlug(title);
-  const taken = labels.some((label) => label.id === slug || labelSlug(label.name) === slug);
-  const canContinue = slug !== "" && !taken;
-  const query = filter.trim().toLowerCase();
-  const options = people.filter(
-    (person) => person.id !== me.id && person.name.toLowerCase().includes(query),
+  const title = (): string => name().trim();
+  const slug = (): string => labelSlug(title());
+  const taken = createMemo(() =>
+    props.labels.some((label) => label.id === slug() || labelSlug(label.name) === slug()),
   );
-  const selectedIndex = Math.min(selected, Math.max(0, options.length - 1));
-  const isIn = (person: Person): boolean => members.some((member) => member.id === person.id);
+  const canContinue = (): boolean => slug() !== "" && !taken();
+  const options = createMemo(() => {
+    const query = filter().trim().toLowerCase();
+    return props.people.filter(
+      (person) => person.id !== props.me.id && person.name.toLowerCase().includes(query),
+    );
+  });
+  const selectedIndex = (): number => Math.min(selected(), Math.max(0, options().length - 1));
+  const isIn = (person: Person): boolean => members().some((member) => member.id === person.id);
   const toggle = (person: Person): void =>
-    setMembers((current) =>
-      isIn(person) ? current.filter((member) => member.id !== person.id) : [...current, person],
+    void setMembers((current) =>
+      current.some((member) => member.id === person.id)
+        ? current.filter((member) => member.id !== person.id)
+        : [...current, person],
     );
   const toMembers = (): void => {
-    if (!canContinue) return;
+    if (!canContinue()) return;
     setStep("members");
     setFilter("");
     setSelected(0);
-    inputRef.current?.focus();
+    input.focus();
   };
 
-  const onKeyDown = (event: React.KeyboardEvent): void => {
+  const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Escape") {
       event.preventDefault();
-      if (step === "name") onClose();
+      if (step() === "name") props.onClose();
       else setStep("name");
       return;
     }
-    if (step === "name") {
+    if (step() === "name") {
       if (event.key === "Enter") {
         event.preventDefault();
         toMembers();
       }
       return;
     }
+    const count = options().length;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      if (options.length === 0) return;
+      if (count === 0) return;
       const delta = event.key === "ArrowDown" ? 1 : -1;
-      setSelected((selectedIndex + delta + options.length) % options.length);
+      setSelected((selectedIndex() + delta + count) % count);
     } else if (event.key === " ") {
       event.preventDefault();
-      const person = options[selectedIndex];
+      const person = options()[selectedIndex()];
       if (person !== undefined) toggle(person);
     } else if (event.key === "Enter") {
       event.preventDefault();
-      onCreate(title, members);
-    } else if (event.key === "Backspace" && filter === "" && !event.repeat) {
+      props.onCreate(title(), members());
+    } else if (event.key === "Backspace" && filter() === "" && !event.repeat) {
       event.preventDefault();
       setStep("name");
     }
   };
 
   return (
-    <div className="palette-overlay" onMouseDown={onClose}>
+    <div class="palette-overlay" onMouseDown={() => props.onClose()}>
       <div
-        className="palette"
+        class="palette"
         role="dialog"
         aria-label="New group"
         onKeyDown={onKeyDown}
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="palette-input-row">
+        <div class="palette-input-row">
           <input
-            ref={inputRef}
-            className="palette-input"
+            ref={input}
+            class="palette-input"
             placeholder={
-              step === "name" ? "Name the group: a project, program or team" : "Add people…"
+              step() === "name" ? "Name the group: a project, program or team" : "Add people…"
             }
-            spellCheck={false}
-            maxLength={80}
-            value={step === "name" ? name : filter}
-            onChange={(event) => {
-              if (step === "name") setName(event.target.value);
+            spellcheck="false"
+            maxlength={80}
+            value={step() === "name" ? name() : filter()}
+            onInput={(event) => {
+              if (step() === "name") setName(event.currentTarget.value);
               else {
-                setFilter(event.target.value);
+                setFilter(event.currentTarget.value);
                 setSelected(0);
               }
             }}
           />
-          <span className="palette-step">Step {step === "name" ? 1 : 2} of 2</span>
+          <span class="palette-step">Step {step() === "name" ? 1 : 2} of 2</span>
         </div>
-        <div className="palette-results">
-          {step === "name" ? (
-            <div className="palette-section">
-              <div className="palette-section-label">Next</div>
+        <div class="palette-results">
+          {step() === "name" ? (
+            <div class="palette-section">
+              <div class="palette-section-label">Next</div>
               <div
-                className="palette-row"
-                data-selected={canContinue}
-                data-disabled={!canContinue}
+                class="palette-row"
+                data-selected={String(canContinue())}
+                data-disabled={String(!canContinue())}
                 role="option"
-                aria-selected={canContinue}
+                aria-selected={canContinue() ? "true" : "false"}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={toMembers}
               >
-                <span className="palette-row-label">
-                  {taken
-                    ? `“${title}” is taken in your organization`
-                    : slug === ""
+                <span class="palette-row-label">
+                  {taken()
+                    ? `“${title()}” is taken in your organization`
+                    : slug() === ""
                       ? "Type a name to continue"
                       : "Continue to add people"}
                 </span>
-                {canContinue && <span className="palette-row-shortcut">↵</span>}
+                <Show when={canContinue()}>
+                  <span class="palette-row-shortcut">↵</span>
+                </Show>
               </div>
             </div>
           ) : (
-            <div className="palette-section">
-              <div className="palette-section-label palette-summary">
-                Add people to <span className="palette-summary-title">“{title}”</span>
-                <span className="palette-summary-count">
-                  {members.length === 0 ? "Just you so far" : `You + ${members.length}`}
+            <div class="palette-section">
+              <div class="palette-section-label palette-summary">
+                Add people to <span class="palette-summary-title">“{title()}”</span>
+                <span class="palette-summary-count">
+                  {members().length === 0 ? "Just you so far" : `You + ${members().length}`}
                 </span>
               </div>
-              {options.length === 0 && <div className="palette-empty">No matches</div>}
-              {options.map((person, index) => (
-                <div
-                  key={person.id}
-                  className="palette-row"
-                  data-selected={index === selectedIndex}
-                  role="option"
-                  aria-selected={isIn(person)}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseMove={() => setSelected(index)}
-                  onClick={() => toggle(person)}
-                >
-                  <Identicon seed={person.id} size={16} />
-                  <span className="palette-row-label">{person.name}</span>
-                  <span className="palette-check" data-checked={isIn(person)} aria-hidden>
-                    {isIn(person) && <HugeiconsIcon icon={Tick02Icon} size={12} />}
-                  </span>
-                </div>
-              ))}
+              <Show when={options().length === 0}>
+                <div class="palette-empty">No matches</div>
+              </Show>
+              <For each={options()}>
+                {(person, index) => (
+                  <div
+                    class="palette-row"
+                    data-selected={String(index() === selectedIndex())}
+                    role="option"
+                    aria-selected={isIn(person) ? "true" : "false"}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseMove={() => setSelected(index())}
+                    onClick={() => toggle(person)}
+                  >
+                    <Identicon seed={person.id} size={16} />
+                    <span class="palette-row-label">{person.name}</span>
+                    <span
+                      class="palette-check"
+                      data-checked={String(isIn(person))}
+                      aria-hidden="true"
+                    >
+                      <Show when={isIn(person)}>
+                        <Icon icon={Tick02Icon} size={12} />
+                      </Show>
+                    </span>
+                  </div>
+                )}
+              </For>
               <div
-                className="palette-row palette-continue"
+                class="palette-row palette-continue"
                 role="option"
-                aria-selected={false}
+                aria-selected="false"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => onCreate(title, members)}
+                onClick={() => props.onCreate(title(), members())}
               >
-                <span className="palette-row-label">Create the group</span>
-                <span className="palette-row-shortcut">↵</span>
+                <span class="palette-row-label">Create the group</span>
+                <span class="palette-row-shortcut">↵</span>
               </div>
             </div>
           )}

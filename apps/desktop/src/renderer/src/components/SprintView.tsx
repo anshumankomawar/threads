@@ -1,4 +1,3 @@
-import { HugeiconsIcon } from "@hugeicons/react";
 import { UserGroupIcon } from "@hugeicons/core-free-icons";
 import {
   formatEffort,
@@ -10,7 +9,8 @@ import {
   type Status,
   type Thread,
 } from "model";
-import { useState } from "react";
+import { createMemo, createSignal, For, Show, untrack } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { NO_FILTER, threadsWithLabel, type ThreadFilter } from "../groups";
 import { useListView } from "../listView";
 import {
@@ -24,6 +24,7 @@ import {
   summaryLabel,
 } from "../sprints";
 import { Board } from "./Board";
+import { Icon } from "./Icon";
 import { ThreadRows, ViewToggle } from "./ThreadItems";
 import { MenuChip } from "./ThreadView";
 
@@ -41,23 +42,7 @@ const fromDateInput = (value: string): number | null => {
 // A sprint's own page, opened from its group's Sprints menu: its name and dates, how far along it is, what's left for
 // each person, and its threads as a list or a board. The group's members add threads, close it, and carry what's
 // unfinished into the next. Only the group's threads are in it (`sprintThreads`).
-export function SprintView({
-  sprint,
-  group,
-  threads,
-  people,
-  me,
-  nowMs,
-  unreadIds,
-  groupSprints,
-  onUpdate,
-  onStartNext,
-  onOpenGroup,
-  onOpenPerson,
-  onNewThread,
-  onOpenThread,
-  onSetStatus,
-}: {
+export function SprintView(props: {
   sprint: Sprint;
   group: Group;
   threads: Thread[];
@@ -75,199 +60,213 @@ export function SprintView({
   onNewThread: () => void;
   onOpenThread: (id: string) => void;
   onSetStatus: (thread: Thread, status: Status) => void;
-}): React.JSX.Element {
-  const [name, setName] = useState(sprint.name);
-  const [filter, setFilter] = useState<ThreadFilter>(NO_FILTER);
+}): JSX.Element {
+  const [name, setName] = createSignal(untrack(() => props.sprint.name));
+  const [filter, setFilter] = createSignal<ThreadFilter>(NO_FILTER);
   const [view, setView] = useListView();
-  const canEdit = group.memberIds.includes(me.id);
-  const inSprint = sprintThreads(sprint, threads, group.labelId);
-  const everything = threadsWithLabel(inSprint, null, { ...filter, includeDone: true });
+  const canEdit = (): boolean => props.group.memberIds.includes(props.me.id);
+  const inSprint = createMemo(() =>
+    sprintThreads(props.sprint, props.threads, props.group.labelId),
+  );
+  const everything = createMemo(() =>
+    threadsWithLabel(inSprint(), null, { ...filter(), includeDone: true }),
+  );
   // The board has a column for closed threads, so it always has them.
-  const shown = view === "board" ? everything : threadsWithLabel(inSprint, null, filter);
-  const closedCount = everything.filter((thread) => isDone(thread.status)).length;
-  const loads = loadByPerson(inSprint);
-  const unfinished = inSprint.filter((thread) => !isDone(thread.status));
+  const shown = createMemo(() =>
+    view() === "board" ? everything() : threadsWithLabel(inSprint(), null, filter()),
+  );
+  const closedCount = (): number => everything().filter((thread) => isDone(thread.status)).length;
+  const loads = createMemo(() => loadByPerson(inSprint()));
+  const unfinished = (): Thread[] => inSprint().filter((thread) => !isDone(thread.status));
   // Only what isn't already in another open sprint of the group can go in the next.
-  const carried = unfinished.filter(
-    (thread) => openSprintWith(groupSprints, thread.id) === undefined,
+  const carried = createMemo(() =>
+    unfinished().filter((thread) => openSprintWith(props.groupSprints, thread.id) === undefined),
   );
-  const addable = addableThreads(sprint, threads, group.labelId, groupSprints);
-  const personOptions = people.filter((person) =>
-    inSprint.some(
-      (thread) =>
-        thread.owner.id === person.id || thread.assignees.some((other) => other.id === person.id),
-    ),
+  const addable = createMemo(() =>
+    addableThreads(props.sprint, props.threads, props.group.labelId, props.groupSprints),
   );
+  const personOptions = (): Person[] =>
+    props.people.filter((person) =>
+      inSprint().some(
+        (thread) =>
+          thread.owner.id === person.id || thread.assignees.some((other) => other.id === person.id),
+      ),
+    );
   const nameOf = (personId: string): string =>
-    people.find((person) => person.id === personId)?.name ?? personId;
+    props.people.find((person) => person.id === personId)?.name ?? personId;
 
   const saveName = (): void => {
-    const trimmed = name.trim();
-    if (trimmed === "" || trimmed === sprint.name) setName(sprint.name);
-    else onUpdate({ name: trimmed });
+    const trimmed = name().trim();
+    if (trimmed === "" || trimmed === props.sprint.name) setName(props.sprint.name);
+    else props.onUpdate({ name: trimmed });
   };
 
   return (
-    <div className="list-page group-page sprint-page">
-      {canEdit ? (
+    <div class="list-page group-page sprint-page">
+      <Show when={canEdit()} fallback={<h1 class="list-page-title">{props.sprint.name}</h1>}>
         <input
-          className="sprint-title-input"
+          class="sprint-title-input"
           aria-label="Sprint name"
-          maxLength={80}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
+          maxlength={80}
+          value={name()}
+          onInput={(event) => setName(event.currentTarget.value)}
           onBlur={saveName}
           onKeyDown={(event) => {
             if (event.key === "Enter") event.currentTarget.blur();
             if (event.key === "Escape") {
-              setName(sprint.name);
+              setName(props.sprint.name);
               event.currentTarget.blur();
             }
           }}
         />
-      ) : (
-        <h1 className="list-page-title">{sprint.name}</h1>
-      )}
-      <p className="list-page-summary">
-        <HugeiconsIcon icon={UserGroupIcon} size={11} aria-hidden />{" "}
-        <button type="button" className="person-link" onClick={onOpenGroup}>
-          {group.name}
+      </Show>
+      <p class="list-page-summary">
+        <Icon icon={UserGroupIcon} size={11} aria-hidden="true" />{" "}
+        <button type="button" class="person-link" onClick={() => props.onOpenGroup()}>
+          {props.group.name}
         </button>
-        {` · ${sprintDates(sprint)} · ${summaryLabel(summarize(inSprint))}${sprint.closed ? " · Closed" : ""}`}
+        {` · ${sprintDates(props.sprint)} · ${summaryLabel(summarize(inSprint()))}${props.sprint.closed ? " · Closed" : ""}`}
       </p>
 
-      <dl className="profile-facts">
+      <dl class="profile-facts">
         <dt>Dates</dt>
-        <dd className="sprint-dates">
+        <dd class="sprint-dates">
           <input
             type="date"
             aria-label="First day"
-            disabled={!canEdit}
-            value={toDateInput(sprint.startMs)}
+            disabled={!canEdit()}
+            value={toDateInput(props.sprint.startMs)}
             onChange={(event) => {
-              const startMs = fromDateInput(event.target.value);
-              if (startMs !== null && startMs < sprint.endMs) onUpdate({ startMs });
+              const startMs = fromDateInput(event.currentTarget.value);
+              if (startMs !== null && startMs < props.sprint.endMs) props.onUpdate({ startMs });
             }}
           />
-          <span aria-hidden>–</span>
+          <span aria-hidden="true">–</span>
           <input
             type="date"
             aria-label="Last day"
-            disabled={!canEdit}
-            value={toDateInput(daysLater(sprint.endMs, -1))}
+            disabled={!canEdit()}
+            value={toDateInput(daysLater(props.sprint.endMs, -1))}
             onChange={(event) => {
-              const day = fromDateInput(event.target.value);
-              if (day !== null && day >= sprint.startMs) onUpdate({ endMs: daysLater(day, 1) });
+              const day = fromDateInput(event.currentTarget.value);
+              if (day !== null && day >= props.sprint.startMs)
+                props.onUpdate({ endMs: daysLater(day, 1) });
             }}
           />
         </dd>
         <dt>Load</dt>
         <dd>
-          {loads.length === 0 ? (
-            "Nothing left"
-          ) : (
-            <ul className="sprint-load" aria-label="Load">
-              {loads.map((load) => (
-                <li key={load.person.id}>
-                  <button
-                    type="button"
-                    className="person-link"
-                    onClick={() => onOpenPerson(load.person.id)}
-                  >
-                    {load.person.name}
-                  </button>
-                  <span className="sprint-load-detail">
-                    {[
-                      load.hours > 0 ? formatEffort(load.hours) : null,
-                      `${load.threads} ${load.threads === 1 ? "thread" : "threads"}`,
-                      load.unestimated > 0 ? `${load.unestimated} not estimated` : null,
-                    ]
-                      .filter((part) => part !== null)
-                      .join(" · ")}
-                  </span>
-                </li>
-              ))}
+          <Show when={loads().length > 0} fallback="Nothing left">
+            <ul class="sprint-load" aria-label="Load">
+              <For each={loads()}>
+                {(load) => (
+                  <li>
+                    <button
+                      type="button"
+                      class="person-link"
+                      onClick={() => props.onOpenPerson(load.person.id)}
+                    >
+                      {load.person.name}
+                    </button>
+                    <span class="sprint-load-detail">
+                      {[
+                        load.hours > 0 ? formatEffort(load.hours) : null,
+                        `${load.threads} ${load.threads === 1 ? "thread" : "threads"}`,
+                        load.unestimated > 0 ? `${load.unestimated} not estimated` : null,
+                      ]
+                        .filter((part) => part !== null)
+                        .join(" · ")}
+                    </span>
+                  </li>
+                )}
+              </For>
             </ul>
-          )}
+          </Show>
         </dd>
       </dl>
 
-      {canEdit && (
-        <div className="group-actions">
+      <Show when={canEdit()}>
+        <div class="group-actions">
           <button
             type="button"
-            className="group-action"
-            onClick={() => onUpdate({ closed: !sprint.closed })}
+            class="group-action"
+            onClick={() => props.onUpdate({ closed: !props.sprint.closed })}
           >
-            {sprint.closed ? "Reopen sprint" : "Close sprint"}
+            {props.sprint.closed ? "Reopen sprint" : "Close sprint"}
           </button>
-          {sprint.closed && carried.length > 0 && !group.archived && (
+          <Show when={props.sprint.closed && carried().length > 0 && !props.group.archived}>
             <button
               type="button"
-              className="group-action"
-              onClick={() => onStartNext(carried.map((thread) => thread.id))}
+              class="group-action"
+              onClick={() => props.onStartNext(carried().map((thread) => thread.id))}
             >
-              Start the next sprint with {carried.length} unfinished
+              Start the next sprint with {carried().length} unfinished
             </button>
-          )}
+          </Show>
         </div>
-      )}
+      </Show>
 
-      <div className="group-toolbar">
-        {canEdit && !sprint.closed && !group.archived && (
-          <button type="button" className="group-new" onClick={onNewThread}>
+      <div class="group-toolbar">
+        <Show when={canEdit() && !props.sprint.closed && !props.group.archived}>
+          <button type="button" class="group-new" onClick={() => props.onNewThread()}>
             New thread
           </button>
-        )}
-        <ViewToggle view={view} onChange={setView} />
-        {canEdit && !sprint.closed && addable.length > 0 && (
+        </Show>
+        <ViewToggle view={view()} onChange={setView} />
+        <Show when={canEdit() && !props.sprint.closed && addable().length > 0}>
           <MenuChip
             label="Add threads"
             tone="muted"
-            options={addable.map((thread) => ({ label: thread.title, value: thread.id }))}
-            onSelect={(threadId) => onUpdate({ threadIds: [...sprint.threadIds, threadId] })}
+            options={addable().map((thread) => ({ label: thread.title, value: thread.id }))}
+            onSelect={(threadId) =>
+              props.onUpdate({ threadIds: [...props.sprint.threadIds, threadId] })
+            }
           />
-        )}
-        <span className="group-filters">
+        </Show>
+        <span class="group-filters">
           <MenuChip
-            label={filter.personId === null ? "Anyone" : nameOf(filter.personId)}
-            tone={filter.personId === null ? "muted" : undefined}
+            label={filter().personId === null ? "Anyone" : nameOf(filter().personId ?? "")}
+            tone={filter().personId === null ? "muted" : undefined}
             options={[
               { label: "Anyone", value: null as string | null },
-              ...personOptions.map((person) => ({ label: person.name, value: person.id })),
+              ...personOptions().map((person) => ({ label: person.name, value: person.id })),
             ]}
             onSelect={(personId) => setFilter((current) => ({ ...current, personId }))}
           />
-          {closedCount > 0 && view === "list" && (
+          <Show when={closedCount() > 0 && view() === "list"}>
             <button
               type="button"
-              className="chip"
-              data-tone={filter.includeDone ? undefined : "muted"}
-              aria-pressed={filter.includeDone}
+              class="chip"
+              data-tone={filter().includeDone ? undefined : "muted"}
+              aria-pressed={filter().includeDone ? "true" : "false"}
               onClick={() =>
                 setFilter((current) => ({ ...current, includeDone: !current.includeDone }))
               }
             >
-              {filter.includeDone ? "Showing closed" : `${closedCount} closed`}
+              {filter().includeDone ? "Showing closed" : `${closedCount()} closed`}
             </button>
-          )}
+          </Show>
         </span>
       </div>
 
-      {view === "board" ? (
+      {view() === "board" ? (
         <Board
-          threads={shown}
-          nowMs={nowMs}
-          unreadIds={unreadIds}
-          onOpenThread={onOpenThread}
-          onSetStatus={onSetStatus}
+          threads={shown()}
+          nowMs={props.nowMs}
+          unreadIds={props.unreadIds}
+          onOpenThread={props.onOpenThread}
+          onSetStatus={props.onSetStatus}
         />
-      ) : shown.length === 0 ? (
-        <p className="group-empty">
-          {inSprint.length === 0 ? "Nothing in this sprint yet." : "Nothing open in this sprint."}
+      ) : shown().length === 0 ? (
+        <p class="group-empty">
+          {inSprint().length === 0 ? "Nothing in this sprint yet." : "Nothing open in this sprint."}
         </p>
       ) : (
-        <ThreadRows threads={shown} unreadIds={unreadIds} onOpenThread={onOpenThread} />
+        <ThreadRows
+          threads={shown()}
+          unreadIds={props.unreadIds}
+          onOpenThread={props.onOpenThread}
+        />
       )}
     </div>
   );

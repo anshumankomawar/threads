@@ -1,152 +1,168 @@
-import { useState } from "react";
 import type { Person } from "model";
+import { createSignal, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 
 // Settings, laid out like the profile page. A preview: every control works on screen but nothing is saved or sent
 // anywhere yet; each one gets wired up when its feature exists.
-export function SettingsView({ me, people }: { me: Person; people: Person[] }): React.JSX.Element {
-  const [theme, setTheme] = useState<"dark" | "light" | "system">("dark");
-  const [accent, setAccent] = useState("#78aee7");
-  const [toggles, setToggles] = useState({
+export function SettingsView(props: { me: Person; people: Person[] }): JSX.Element {
+  const [theme, setTheme] = createSignal<"dark" | "light" | "system">("dark");
+  const [accent, setAccent] = createSignal("#78aee7");
+  const [toggles, setToggles] = createSignal({
     compactSidebar: false,
     questionToasts: true,
     sounds: false,
     dailySummary: true,
   });
-  const [connected, setConnected] = useState<Record<string, boolean>>({});
-  const flip = (key: keyof typeof toggles): void =>
+  const [connected, setConnected] = createSignal<Record<string, boolean>>({});
+  const flip = (key: keyof ReturnType<typeof toggles>): void => {
     setToggles((current) => ({ ...current, [key]: !current[key] }));
+  };
 
-  const toggle = (key: keyof typeof toggles, label: string, note: string): React.JSX.Element => (
-    <div className="profile-setting">
-      <span className="profile-setting-label">{label}</span>
-      <span className="profile-setting-control">
+  const toggle = (
+    key: keyof ReturnType<typeof toggles>,
+    label: string,
+    note: string,
+  ): JSX.Element => (
+    <div class="profile-setting">
+      <span class="profile-setting-label">{label}</span>
+      <span class="profile-setting-control">
         <button
           type="button"
           role="switch"
-          className="settings-switch"
-          aria-checked={toggles[key]}
+          class="settings-switch"
+          aria-checked={`${toggles()[key]}`}
           aria-label={label}
           onClick={() => flip(key)}
         />
-        <span className="settings-note">{note}</span>
+        <span class="settings-note">{note}</span>
       </span>
     </div>
   );
 
   return (
-    <div className="org settings">
-      <h1 className="org-title">Settings</h1>
-      <p className="org-summary">A preview: changes here aren't saved yet.</p>
+    <div class="org settings">
+      <h1 class="org-title">Settings</h1>
+      <p class="org-summary">A preview: changes here aren't saved yet.</p>
 
-      <h2 className="profile-heading">Account</h2>
-      <div className="profile-setting">
-        <span className="profile-setting-label">Name</span>
-        <span className="profile-setting-control">
-          <input className="settings-input" defaultValue={me.name} aria-label="Name" />
+      <h2 class="profile-heading">Account</h2>
+      <div class="profile-setting">
+        <span class="profile-setting-label">Name</span>
+        <span class="profile-setting-control">
+          <input class="settings-input" defaultValue={props.me.name} aria-label="Name" />
         </span>
       </div>
-      <div className="profile-setting">
-        <span className="profile-setting-label">Email</span>
-        <span className="profile-setting-control">
-          <input className="settings-input" placeholder="you@company.com" aria-label="Email" />
+      <div class="profile-setting">
+        <span class="profile-setting-label">Email</span>
+        <span class="profile-setting-control">
+          <input class="settings-input" placeholder="you@company.com" aria-label="Email" />
         </span>
       </div>
-      <div className="profile-setting">
-        <span className="profile-setting-label">Password</span>
-        <span className="profile-setting-control">
-          <button type="button" className="settings-button">
+      <div class="profile-setting">
+        <span class="profile-setting-label">Password</span>
+        <span class="profile-setting-control">
+          <button type="button" class="settings-button">
             Change password
           </button>
         </span>
       </div>
 
-      <h2 className="profile-heading">Appearance</h2>
-      <div className="profile-setting">
-        <span className="profile-setting-label">Theme</span>
-        <span className="profile-setting-control">
-          <span className="settings-segmented" role="radiogroup" aria-label="Theme">
-            {(["dark", "light", "system"] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                role="radio"
-                aria-checked={theme === option}
-                onClick={() => setTheme(option)}
-              >
-                {option[0].toUpperCase() + option.slice(1)}
-              </button>
-            ))}
+      <h2 class="profile-heading">Appearance</h2>
+      <div class="profile-setting">
+        <span class="profile-setting-label">Theme</span>
+        <span class="profile-setting-control">
+          <span class="settings-segmented" role="radiogroup" aria-label="Theme">
+            <For each={["dark", "light", "system"] as const}>
+              {(option) => (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={`${theme() === option}`}
+                  onClick={() => setTheme(option)}
+                >
+                  {option[0].toUpperCase() + option.slice(1)}
+                </button>
+              )}
+            </For>
           </span>
         </span>
       </div>
-      <div className="profile-setting">
-        <span className="profile-setting-label">Accent</span>
-        <span className="profile-setting-control">
-          {["#78aee7", "#9d8cf2", "#5fc79a", "#e8a25c", "#e5737f"].map((color) => (
-            <button
-              key={color}
-              type="button"
-              className="settings-swatch"
-              aria-label={`Accent ${color}`}
-              aria-pressed={accent === color}
-              style={{ backgroundColor: color }}
-              onClick={() => setAccent(color)}
-            />
-          ))}
+      <div class="profile-setting">
+        <span class="profile-setting-label">Accent</span>
+        <span class="profile-setting-control">
+          <For each={["#78aee7", "#9d8cf2", "#5fc79a", "#e8a25c", "#e5737f"]}>
+            {(color) => (
+              <button
+                type="button"
+                class="settings-swatch"
+                aria-label={`Accent ${color}`}
+                aria-pressed={`${accent() === color}`}
+                style={{ "background-color": color }}
+                onClick={() => setAccent(color)}
+              />
+            )}
+          </For>
         </span>
       </div>
       {toggle("compactSidebar", "Compact sidebar", "Tighter rows in the inbox and lists")}
 
-      <h2 className="profile-heading">Notifications</h2>
+      <h2 class="profile-heading">Notifications</h2>
       {toggle("questionToasts", "Mention toasts", "A toast when someone mentions you")}
       {toggle("sounds", "Sounds", "A soft chime when a question reaches you")}
       {toggle("dailySummary", "Daily summary", "An email each morning with your inbox")}
 
-      <h2 className="profile-heading">Integrations</h2>
-      {["Google Calendar", "Slack", "GitHub"].map((name) => (
-        <div key={name} className="profile-setting">
-          <span className="profile-setting-label">{name}</span>
-          <span className="profile-setting-control">
-            <button
-              type="button"
-              className="settings-button"
-              onClick={() => setConnected((current) => ({ ...current, [name]: !current[name] }))}
-            >
-              {connected[name] ? "Disconnect" : "Connect"}
-            </button>
-            {connected[name] && <span className="settings-note">Connected</span>}
-          </span>
-        </div>
-      ))}
+      <h2 class="profile-heading">Integrations</h2>
+      <For each={["Google Calendar", "Slack", "GitHub"]}>
+        {(name) => (
+          <div class="profile-setting">
+            <span class="profile-setting-label">{name}</span>
+            <span class="profile-setting-control">
+              <button
+                type="button"
+                class="settings-button"
+                onClick={() => setConnected((current) => ({ ...current, [name]: !current[name] }))}
+              >
+                {connected()[name] ? "Disconnect" : "Connect"}
+              </button>
+              <Show when={connected()[name]}>
+                <span class="settings-note">Connected</span>
+              </Show>
+            </span>
+          </div>
+        )}
+      </For>
 
-      <h2 className="profile-heading">Workspace</h2>
-      <div className="profile-setting">
-        <span className="profile-setting-label">Members</span>
-        <span className="profile-setting-control">
-          {people.length} people
-          <button type="button" className="settings-button">
+      <h2 class="profile-heading">Workspace</h2>
+      <div class="profile-setting">
+        <span class="profile-setting-label">Members</span>
+        <span class="profile-setting-control">
+          {props.people.length} people
+          <button type="button" class="settings-button">
             Invite people
           </button>
         </span>
       </div>
 
-      <h2 className="profile-heading">Keyboard shortcuts</h2>
-      {[
-        ["Search and commands", "⌘K or ⌘⇧F"],
-        ["New thread", "⌘N"],
-        ["View as someone else", "⌘U"],
-        ["Text size", "⌘+  ⌘-  ⌘0"],
-      ].map(([label, keys]) => (
-        <div key={label} className="profile-setting">
-          <span className="profile-setting-label">{label}</span>
-          <span className="profile-setting-control">
-            <kbd className="settings-kbd">{keys}</kbd>
-          </span>
-        </div>
-      ))}
+      <h2 class="profile-heading">Keyboard shortcuts</h2>
+      <For
+        each={[
+          ["Search and commands", "⌘K or ⌘⇧F"],
+          ["New thread", "⌘N"],
+          ["View as someone else", "⌘U"],
+          ["Text size", "⌘+  ⌘-  ⌘0"],
+        ]}
+      >
+        {([label, keys]) => (
+          <div class="profile-setting">
+            <span class="profile-setting-label">{label}</span>
+            <span class="profile-setting-control">
+              <kbd class="settings-kbd">{keys}</kbd>
+            </span>
+          </div>
+        )}
+      </For>
 
-      <div className="settings-footer">
-        <button type="button" className="settings-button">
+      <div class="settings-footer">
+        <button type="button" class="settings-button">
           Sign out
         </button>
       </div>

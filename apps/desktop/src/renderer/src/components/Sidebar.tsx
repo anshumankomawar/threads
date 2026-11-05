@@ -1,4 +1,3 @@
-import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Add01Icon,
   ArrowRight01Icon,
@@ -12,11 +11,13 @@ import {
   UserGroupIcon,
 } from "@hugeicons/core-free-icons";
 import { useResizablePanel } from "./useResizablePanel";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createEffect, createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import type { BucketGroup, Inbox, InboxItem } from "../inbox";
 import { useMe } from "../me";
 import { useThreadLinks } from "../threadLinks";
 import { useThreadMenu } from "../threadMenu";
+import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import {
   lastSentTo,
@@ -35,56 +36,73 @@ import type { SavedDraft } from "../drafts";
 import { formatRelativeTime } from "../format";
 import { NotificationsButton } from "./Notifications";
 
-// Marks the element with data-overflowing when its text is clipped, which turns on the fade mask.
-function useOverflowFade<T extends HTMLElement>(): React.RefObject<T | null> {
-  const ref = useRef<T>(null);
-  useEffect(() => {
-    const element = ref.current;
-    if (element === null) return;
+// Marks the element with data-overflowing when its text is clipped, which turns on the fade mask. Call it in a
+// component body and put what it returns on the element as its ref.
+function overflowFade<T extends HTMLElement>(): (element: T) => void {
+  let element: T | undefined;
+  onSettled(() => {
+    const target = element;
+    if (target === undefined) return;
     const observer = new ResizeObserver(() => {
-      element.toggleAttribute("data-overflowing", element.scrollWidth > element.clientWidth);
+      target.toggleAttribute("data-overflowing", target.scrollWidth > target.clientWidth);
     });
-    observer.observe(element);
+    observer.observe(target);
     return () => observer.disconnect();
-  }, []);
-  return ref;
+  });
+  return (next) => {
+    element = next;
+  };
 }
 
 // How many of a bucket's threads show at once; the rest scroll inside it.
 const BUCKET_ROWS = 5;
 
 // Caps a list at `rows` rows, scrolling the rest, and marks the ends with more past them (data-more-above,
-// data-more-below), which fade out to say so.
-function useRowCap(rows: number): React.RefObject<HTMLUListElement | null> {
-  const ref = useRef<HTMLUListElement>(null);
-  useLayoutEffect(() => {
-    const list = ref.current;
-    if (list === null) return;
-    const update = (): void => {
-      const first = list.children[0] as HTMLElement | undefined;
-      const cut = list.children[rows] as HTMLElement | undefined;
-      list.style.maxHeight =
-        first === undefined || cut === undefined ? "" : `${cut.offsetTop - first.offsetTop}px`;
-      list.toggleAttribute("data-more-above", list.scrollTop > 0);
-      list.toggleAttribute(
-        "data-more-below",
-        list.scrollTop + list.clientHeight < list.scrollHeight - 1,
-      );
-    };
-    update();
-    list.addEventListener("scroll", update, { passive: true });
+// data-more-below), which fade out to say so. Call it in the body of the component that renders the list, and put
+// what it returns on the list as its ref. It measures again when `rows` or `contents` change, on scroll, and on resize.
+function rowCap(rows: () => number, contents: () => unknown): (list: HTMLUListElement) => void {
+  let list: HTMLUListElement | undefined;
+  // The cap as last read; reading a prop outside a compute isn't allowed in Solid 2.
+  let cap = 0;
+  const update = (): void => {
+    if (list === undefined) return;
+    const first = list.children[0] as HTMLElement | undefined;
+    const cut = list.children[cap] as HTMLElement | undefined;
+    list.style.maxHeight =
+      first === undefined || cut === undefined ? "" : `${cut.offsetTop - first.offsetTop}px`;
+    list.toggleAttribute("data-more-above", list.scrollTop > 0);
+    list.toggleAttribute(
+      "data-more-below",
+      list.scrollTop + list.clientHeight < list.scrollHeight - 1,
+    );
+  };
+  onSettled(() => {
+    const target = list;
+    if (target === undefined) return;
+    target.addEventListener("scroll", update, { passive: true });
     const observer = new ResizeObserver(update);
-    observer.observe(list);
+    observer.observe(target);
     return () => {
-      list.removeEventListener("scroll", update);
+      target.removeEventListener("scroll", update);
       observer.disconnect();
     };
   });
-  return ref;
+  // The rows have rendered by the time an effect applies, so this measures what's on screen. `rows` and `contents`
+  // are read in the compute: Solid 2 sets a prop's read up there, never in the apply or `onSettled`.
+  createEffect(
+    () => [rows(), contents()] as const,
+    ([next]) => {
+      cap = next;
+      update();
+    },
+  );
+  return (next) => {
+    list = next;
+  };
 }
 
 // Delta's icons are 14px with roughly 1px strokes (1.7 on Lucide's 24px grid).
-const ICON_PROPS = { size: 14, "aria-hidden": true } as const;
+const ICON_PROPS = { size: 14, "aria-hidden": "true" } as const;
 
 // Hugeicons' panel icons with their side pane filled, for a panel that's open (the free set has no filled ones). The
 // fill follows the outline's rounded corner and stops at the divider.
@@ -100,56 +118,49 @@ const PANEL_LEFT_OPEN = filled(PanelLeftIcon, LEFT_PANE);
 const PANEL_RIGHT_OPEN = filled(PanelRightIcon, RIGHT_PANE);
 
 // As in Delta: the sidebar's icon has its pane filled while the sidebar is open, and is an outline while it's closed.
-export function SidebarToggle({
-  open,
-  onToggle,
-}: {
-  open: boolean;
-  onToggle: () => void;
-}): React.JSX.Element {
+export function SidebarToggle(props: { open: boolean; onToggle: () => void }): JSX.Element {
   return (
     <button
       type="button"
-      className="topbar-button"
-      aria-label={open ? "Hide sidebar" : "Show sidebar"}
-      aria-pressed={open}
-      onClick={onToggle}
+      class="topbar-button"
+      aria-label={props.open ? "Hide sidebar" : "Show sidebar"}
+      aria-pressed={props.open ? "true" : "false"}
+      onClick={() => props.onToggle()}
     >
-      <HugeiconsIcon icon={open ? PANEL_LEFT_OPEN : PanelLeftIcon} {...ICON_PROPS} />
+      <Icon icon={props.open ? PANEL_LEFT_OPEN : PanelLeftIcon} {...ICON_PROPS} />
     </button>
   );
 }
 
 // The same for the details panel on the right.
-export function DetailsToggle({
-  open,
-  onToggle,
-}: {
-  open: boolean;
-  onToggle: () => void;
-}): React.JSX.Element {
+export function DetailsToggle(props: { open: boolean; onToggle: () => void }): JSX.Element {
   return (
     <button
       type="button"
-      className="topbar-button"
-      aria-label={open ? "Hide details" : "Show details"}
-      aria-pressed={open}
-      onClick={onToggle}
+      class="topbar-button"
+      aria-label={props.open ? "Hide details" : "Show details"}
+      aria-pressed={props.open ? "true" : "false"}
+      onClick={() => props.onToggle()}
     >
-      <HugeiconsIcon icon={open ? PANEL_RIGHT_OPEN : PanelRightIcon} {...ICON_PROPS} />
+      <Icon icon={props.open ? PANEL_RIGHT_OPEN : PanelRightIcon} {...ICON_PROPS} />
     </button>
   );
 }
 
-export function SearchButton({ onSearch }: { onSearch: () => void }): React.JSX.Element {
+export function SearchButton(props: { onSearch: () => void }): JSX.Element {
   return (
-    <button type="button" className="topbar-button" aria-label="Search" onClick={onSearch}>
-      <HugeiconsIcon icon={Search01Icon} {...ICON_PROPS} />
+    <button
+      type="button"
+      class="topbar-button"
+      aria-label="Search"
+      onClick={() => props.onSearch()}
+    >
+      <Icon icon={Search01Icon} {...ICON_PROPS} />
     </button>
   );
 }
 
-function activateOnKey(event: React.KeyboardEvent, activate: () => void): void {
+function activateOnKey(event: KeyboardEvent, activate: () => void): void {
   if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
   event.preventDefault();
   activate();
@@ -173,64 +184,66 @@ const DRAG_TYPE = "application/x-thread-id";
 // One thread in the inbox: who it's from, its title and when it's due, and under them, as in email, what they last sent
 // you, or for your own work why it matters (who asked, how soon, how urgent). Hovering shows why it's in its bucket,
 // in the model's words. Drag it to another bucket to move it.
-function InboxRow({
-  item,
-  active,
-  unread,
-  onOpen,
-}: {
+function InboxRow(props: {
   item: InboxItem;
   active: boolean;
   unread: boolean;
   onOpen: () => void;
-}): React.JSX.Element {
+}): JSX.Element {
   const openMenu = useThreadMenu();
   const me = useMe();
-  const { titleOf, nameOf } = useThreadLinks();
-  const { thread } = item;
-  const titleRef = useOverflowFade<HTMLSpanElement>();
+  const links = useThreadLinks();
+  const thread = (): Thread => props.item.thread;
+  const titleRef = overflowFade<HTMLSpanElement>();
   // The open thread stays in view in its bucket, as J and K move past the rows showing.
-  const rowRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (active) rowRef.current?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-  const sorted = thread.triage[me.id];
-  const why = sorted?.manual ? "Placed here by you" : (sorted?.reason ?? "");
-  const person = item.from;
-  const latest = item.why === "sent" ? lastSentTo(thread, me.id) : undefined;
-  const line =
-    latest === undefined
-      ? item.reason
-      : `${latest.author.name.split(" ")[0]}: ${plainThreadLinks(latest.text, titleOf, nameOf)}`;
+  let row!: HTMLDivElement;
+  createEffect(
+    () => props.active,
+    (active) => {
+      if (active) row.scrollIntoView({ block: "nearest" });
+    },
+  );
+  const why = (): string => {
+    const sorted = thread().triage[me().id];
+    return sorted?.manual ? "Placed here by you" : (sorted?.reason ?? "");
+  };
+  const line = (): string => {
+    const latest = props.item.why === "sent" ? lastSentTo(thread(), me().id) : undefined;
+    return latest === undefined
+      ? props.item.reason
+      : `${latest.author.name.split(" ")[0]}: ${plainThreadLinks(latest.text, links.titleOf, links.nameOf)}`;
+  };
   return (
-    <li className="thread-item">
+    <li class="thread-item">
       <div
-        ref={rowRef}
-        className="inbox-row"
-        draggable
+        ref={row}
+        class="inbox-row"
+        draggable="true"
         onDragStart={(event) => {
-          event.dataTransfer.setData(DRAG_TYPE, thread.id);
-          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer?.setData(DRAG_TYPE, thread().id);
+          if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = "move";
         }}
-        onContextMenu={(event) => openMenu(event, thread)}
-        data-active={active}
-        data-unread={unread}
-        data-blocked={thread.status === "blocked"}
-        title={why}
+        onContextMenu={(event) => openMenu(event, thread())}
+        data-active={String(props.active)}
+        data-unread={String(props.unread)}
+        data-blocked={String(thread().status === "blocked")}
+        title={why()}
         role="button"
-        tabIndex={0}
-        onClick={onOpen}
-        onKeyDown={(event) => activateOnKey(event, onOpen)}
+        tabindex={0}
+        onClick={() => props.onOpen()}
+        onKeyDown={(event) => activateOnKey(event, props.onOpen)}
       >
-        <Identicon seed={person.id} size={16} />
-        <span className="inbox-row-body">
-          <span className="inbox-row-top">
-            <span ref={titleRef} className="inbox-row-title">
-              {thread.title}
+        <Identicon seed={props.item.from.id} size={16} />
+        <span class="inbox-row-body">
+          <span class="inbox-row-top">
+            <span ref={titleRef} class="inbox-row-title">
+              {thread().title}
             </span>
-            {item.dueLabel !== null && <span className="inbox-row-due">{item.dueLabel}</span>}
+            <Show when={props.item.dueLabel !== null}>
+              <span class="inbox-row-due">{props.item.dueLabel}</span>
+            </Show>
           </span>
-          <span className="inbox-row-why">{line}</span>
+          <span class="inbox-row-why">{line()}</span>
         </span>
       </div>
     </li>
@@ -247,20 +260,37 @@ export type BucketActions = {
   onPlace: (threadId: string, bucketId: string) => void;
 };
 
+// A bucket's threads, capped at `rows` rows (`rowCap`).
+function BucketThreads(props: {
+  label: string;
+  items: InboxItem[];
+  rows: number;
+  activeThreadId: string | null;
+  unreadIds: Set<string>;
+  onOpenThread: (id: string) => void;
+}): JSX.Element {
+  const listRef = rowCap(
+    () => props.rows,
+    () => props.items,
+  );
+  return (
+    <ul ref={listRef} class="thread-list bucket-threads" aria-label={props.label}>
+      <For each={props.items} keyed={(item) => item.thread.id}>
+        {(item) => (
+          <InboxRow
+            item={item()}
+            active={item().thread.id === props.activeThreadId}
+            unread={props.unreadIds.has(item().thread.id)}
+            onOpen={() => props.onOpenThread(item().thread.id)}
+          />
+        )}
+      </For>
+    </ul>
+  );
+}
+
 // One bucket: its name and count, which folds it, and its threads. Threads dragged onto it move into it.
-function BucketSection({
-  group,
-  icon,
-  collapsed,
-  canDelete,
-  first,
-  last,
-  activeThreadId,
-  unreadIds,
-  actions,
-  onToggle,
-  onOpenThread,
-}: {
+function BucketSection(props: {
   group: BucketGroup;
   icon: IconSvgElement | undefined;
   collapsed: boolean;
@@ -272,36 +302,43 @@ function BucketSection({
   actions: BucketActions;
   onToggle: () => void;
   onOpenThread: (id: string) => void;
-}): React.JSX.Element {
-  const { bucket, items } = group;
+}): JSX.Element {
+  const bucket = (): Bucket => props.group.bucket;
+  const items = (): InboxItem[] => props.group.items;
   // A bucket shows its first few threads until you ask for the rest ("6 more").
-  const [expanded, setExpanded] = useState(false);
-  const listRef = useRowCap(expanded ? items.length : BUCKET_ROWS);
-  const hidden = items.length - BUCKET_ROWS;
-  const [dropping, setDropping] = useState(false);
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
-  const menuItems: ContextMenuItem[] = [
-    { label: "Edit bucket…", run: () => actions.onEdit(bucket) },
-    { label: "New bucket…", run: actions.onNew },
+  const [expanded, setExpanded] = createSignal(false);
+  const hidden = (): number => items().length - BUCKET_ROWS;
+  const [dropping, setDropping] = createSignal(false);
+  const [menu, setMenu] = createSignal<{ x: number; y: number } | null>(null);
+  const menuItems = (): ContextMenuItem[] => [
+    { label: "Edit bucket…", run: () => props.actions.onEdit(bucket()) },
+    { label: "New bucket…", run: props.actions.onNew },
     "separator",
-    ...(first ? [] : [{ label: "Move up", run: () => actions.onMove(bucket.id, -1) }]),
-    ...(last ? [] : [{ label: "Move down", run: () => actions.onMove(bucket.id, 1) }]),
-    ...(canDelete
-      ? (["separator", { label: "Delete bucket", run: () => actions.onDelete(bucket.id) }] as const)
+    ...(props.first
+      ? []
+      : [{ label: "Move up", run: () => props.actions.onMove(bucket().id, -1) }]),
+    ...(props.last
+      ? []
+      : [{ label: "Move down", run: () => props.actions.onMove(bucket().id, 1) }]),
+    ...(props.canDelete
+      ? ([
+          "separator",
+          { label: "Delete bucket", run: () => props.actions.onDelete(bucket().id) },
+        ] as const)
       : []),
   ];
-  const openMenu = (event: React.MouseEvent): void => {
+  const openMenu = (event: MouseEvent): void => {
     event.preventDefault();
     event.stopPropagation();
     setMenu({ x: event.clientX, y: event.clientY });
   };
   return (
     <section
-      className="bucket"
-      data-dropping={dropping}
-      data-empty={items.length === 0}
+      class="bucket"
+      data-dropping={String(dropping())}
+      data-empty={String(items().length === 0)}
       onDragOver={(event) => {
-        if (!event.dataTransfer.types.includes(DRAG_TYPE)) return;
+        if (event.dataTransfer === null || !event.dataTransfer.types.includes(DRAG_TYPE)) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "move";
         setDropping(true);
@@ -311,124 +348,128 @@ function BucketSection({
       }}
       onDrop={(event) => {
         setDropping(false);
-        const threadId = event.dataTransfer.getData(DRAG_TYPE);
+        const threadId = event.dataTransfer?.getData(DRAG_TYPE) ?? "";
         if (threadId === "") return;
         event.preventDefault();
-        if (!items.some((item) => item.thread.id === threadId))
-          actions.onPlace(threadId, bucket.id);
+        if (!items().some((item) => item.thread.id === threadId))
+          props.actions.onPlace(threadId, bucket().id);
       }}
     >
-      <div className="bucket-header" onContextMenu={openMenu}>
+      <div class="bucket-header" onContextMenu={openMenu}>
         <button
           type="button"
-          className="bucket-toggle"
-          aria-expanded={!collapsed}
-          title={bucket.description}
-          onClick={onToggle}
+          class="bucket-toggle"
+          aria-expanded={!props.collapsed ? "true" : "false"}
+          title={bucket().description}
+          onClick={() => props.onToggle()}
         >
-          <HugeiconsIcon icon={icon ?? InboxIcon} size={14} className="bucket-icon" aria-hidden />
-          <span className="bucket-name">{bucket.name}</span>
-          {items.length > 0 && <span className="bucket-count">{items.length}</span>}
-          <HugeiconsIcon icon={ArrowRight01Icon} size={10} className="bucket-chevron" aria-hidden />
+          <Icon icon={props.icon ?? InboxIcon} size={14} class="bucket-icon" aria-hidden="true" />
+          <span class="bucket-name">{bucket().name}</span>
+          <Show when={items().length > 0}>
+            <span class="bucket-count">{items().length}</span>
+          </Show>
+          <Icon icon={ArrowRight01Icon} size={10} class="bucket-chevron" aria-hidden="true" />
         </button>
       </div>
-      {!collapsed && items.length > 0 && (
-        <ul ref={listRef} className="thread-list bucket-threads" aria-label={bucket.name}>
-          {items.map((item) => (
-            <InboxRow
-              key={item.thread.id}
-              item={item}
-              active={item.thread.id === activeThreadId}
-              unread={unreadIds.has(item.thread.id)}
-              onOpen={() => onOpenThread(item.thread.id)}
-            />
-          ))}
-        </ul>
-      )}
-      {!collapsed && hidden > 0 && (
-        <button type="button" className="bucket-more-rows" onClick={() => setExpanded(!expanded)}>
-          {expanded ? "Show less" : `${hidden} more`}
+      <Show when={!props.collapsed && items().length > 0}>
+        <BucketThreads
+          label={bucket().name}
+          items={items()}
+          rows={expanded() ? items().length : BUCKET_ROWS}
+          activeThreadId={props.activeThreadId}
+          unreadIds={props.unreadIds}
+          onOpenThread={props.onOpenThread}
+        />
+      </Show>
+      <Show when={!props.collapsed && hidden() > 0}>
+        <button type="button" class="bucket-more-rows" onClick={() => setExpanded(!expanded())}>
+          {expanded() ? "Show less" : `${hidden()} more`}
         </button>
-      )}
-      {menu !== null && (
-        <ContextMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />
-      )}
+      </Show>
+      <Show when={menu()}>
+        {(shown) => (
+          <ContextMenu
+            x={shown().x}
+            y={shown().y}
+            items={menuItems()}
+            onClose={() => setMenu(null)}
+          />
+        )}
+      </Show>
     </section>
   );
 }
 
 // Your inbox: every thread assigned or sent to you, in your buckets, each sorted most important first. Threads the model
 // hasn't got to yet wait at the top under "Sorting".
-function InboxView({
-  inbox,
-  activeThreadId,
-  unreadIds,
-  actions,
-  onOpenThread,
-}: {
+function InboxView(props: {
   inbox: Inbox;
   activeThreadId: string | null;
   unreadIds: Set<string>;
   actions: BucketActions;
   onOpenThread: (id: string) => void;
-}): React.JSX.Element {
-  const [collapsed, setCollapsed] = useState(savedCollapsed);
-  const toggle = (bucketId: string): void =>
-    setCollapsed((current) => {
-      const next = current.includes(bucketId)
-        ? current.filter((id) => id !== bucketId)
-        : [...current, bucketId];
-      try {
-        localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
-      } catch {
-        // Not remembered; it still folds.
-      }
-      return next;
-    });
-  const nothing = inbox.order.length === 0;
-  const icons = bucketIcons(inbox.buckets.map((group) => group.bucket));
+}): JSX.Element {
+  const [collapsed, setCollapsed] = createSignal(savedCollapsed());
+  const toggle = (bucketId: string): void => {
+    const current = collapsed();
+    const next = current.includes(bucketId)
+      ? current.filter((id) => id !== bucketId)
+      : [...current, bucketId];
+    setCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+    } catch {
+      // Not remembered; it still folds.
+    }
+  };
+  const nothing = (): boolean => props.inbox.order.length === 0;
+  const icons = createMemo(() => bucketIcons(props.inbox.buckets.map((group) => group.bucket)));
   return (
-    <div className="inbox">
-      {inbox.unsorted.length > 0 && (
-        <section className="bucket">
-          <div className="bucket-header">
-            <span className="bucket-toggle bucket-sorting">
-              <span className="bucket-name">Sorting</span>
-              <span className="bucket-count">{inbox.unsorted.length}</span>
+    <div class="inbox">
+      <Show when={props.inbox.unsorted.length > 0}>
+        <section class="bucket">
+          <div class="bucket-header">
+            <span class="bucket-toggle bucket-sorting">
+              <span class="bucket-name">Sorting</span>
+              <span class="bucket-count">{props.inbox.unsorted.length}</span>
             </span>
           </div>
-          <ul className="thread-list" aria-label="Sorting">
-            {inbox.unsorted.map((item) => (
-              <InboxRow
-                key={item.thread.id}
-                item={item}
-                active={item.thread.id === activeThreadId}
-                unread={unreadIds.has(item.thread.id)}
-                onOpen={() => onOpenThread(item.thread.id)}
-              />
-            ))}
+          <ul class="thread-list" aria-label="Sorting">
+            <For each={props.inbox.unsorted} keyed={(item) => item.thread.id}>
+              {(item) => (
+                <InboxRow
+                  item={item()}
+                  active={item().thread.id === props.activeThreadId}
+                  unread={props.unreadIds.has(item().thread.id)}
+                  onOpen={() => props.onOpenThread(item().thread.id)}
+                />
+              )}
+            </For>
           </ul>
         </section>
-      )}
-      {nothing && <p className="conversation-empty">Nothing for you</p>}
-      {inbox.buckets.map((group, index) => (
-        <BucketSection
-          key={group.bucket.id}
-          group={group}
-          icon={icons.get(group.bucket.id)}
-          collapsed={collapsed.includes(group.bucket.id)}
-          canDelete={inbox.buckets.length > 1}
-          first={index === 0}
-          last={index === inbox.buckets.length - 1}
-          activeThreadId={activeThreadId}
-          unreadIds={unreadIds}
-          actions={actions}
-          onToggle={() => toggle(group.bucket.id)}
-          onOpenThread={onOpenThread}
-        />
-      ))}
-      <button type="button" className="bucket-new" onClick={actions.onNew}>
-        <HugeiconsIcon icon={Add01Icon} size={12} aria-hidden />
+      </Show>
+      <Show when={nothing()}>
+        <p class="conversation-empty">Nothing for you</p>
+      </Show>
+      <For each={props.inbox.buckets} keyed={(group) => group.bucket.id}>
+        {(group, index) => (
+          <BucketSection
+            group={group()}
+            icon={icons().get(group().bucket.id)}
+            collapsed={collapsed().includes(group().bucket.id)}
+            canDelete={props.inbox.buckets.length > 1}
+            first={index() === 0}
+            last={index() === props.inbox.buckets.length - 1}
+            activeThreadId={props.activeThreadId}
+            unreadIds={props.unreadIds}
+            actions={props.actions}
+            onToggle={() => toggle(group().bucket.id)}
+            onOpenThread={props.onOpenThread}
+          />
+        )}
+      </For>
+      <button type="button" class="bucket-new" onClick={() => props.actions.onNew()}>
+        <Icon icon={Add01Icon} size={12} aria-hidden="true" />
         New bucket
       </button>
     </div>
@@ -437,61 +478,57 @@ function InboxView({
 
 // Sent, your outbox: every open thread you own that anyone else is on, with who's on it and when it's due. Each
 // leaves when it's closed.
-function Sent({
-  items,
-  activeThreadId,
-  unreadIds,
-  onOpenThread,
-}: {
+function Sent(props: {
   items: InboxItem[];
   activeThreadId: string | null;
   unreadIds: Set<string>;
   onOpenThread: (id: string) => void;
-}): React.JSX.Element {
+}): JSX.Element {
   const openMenu = useThreadMenu();
   return (
-    <ul className="thread-list" aria-label="Sent">
-      {items.length === 0 && <li className="conversation-empty">Nothing out with anyone</li>}
-      {items.map((item) => {
-        const label = [item.who, item.dueLabel].filter((part) => part != null).join(" · ");
-        const open = (): void => onOpenThread(item.thread.id);
-        return (
-          <li key={item.thread.id} className="thread-item">
-            <div
-              className="sidebar-row"
-              onContextMenu={(event) => openMenu(event, item.thread)}
-              data-active={item.thread.id === activeThreadId}
-              title={item.reason}
-              role="button"
-              tabIndex={0}
-              onClick={open}
-              onKeyDown={(event) => activateOnKey(event, open)}
-            >
-              <span className="sidebar-row-icon" aria-hidden>
-                <HugeiconsIcon icon={THREAD_ICON} size={12} />
-              </span>
-              <span className="sidebar-row-label">{item.thread.title}</span>
-              {unreadIds.has(item.thread.id) && <span className="unread-dot" aria-label="Unread" />}
-              {label !== "" && <span className="sidebar-row-meta">{label}</span>}
-            </div>
-          </li>
-        );
-      })}
+    <ul class="thread-list" aria-label="Sent">
+      <Show when={props.items.length === 0}>
+        <li class="conversation-empty">Nothing out with anyone</li>
+      </Show>
+      <For each={props.items} keyed={(item) => item.thread.id}>
+        {(item) => {
+          const label = (): string =>
+            [item().who, item().dueLabel].filter((part) => part != null).join(" · ");
+          const open = (): void => props.onOpenThread(item().thread.id);
+          return (
+            <li class="thread-item">
+              <div
+                class="sidebar-row"
+                onContextMenu={(event) => openMenu(event, item().thread)}
+                data-active={String(item().thread.id === props.activeThreadId)}
+                title={item().reason}
+                role="button"
+                tabindex={0}
+                onClick={open}
+                onKeyDown={(event) => activateOnKey(event, open)}
+              >
+                <span class="sidebar-row-icon" aria-hidden="true">
+                  <Icon icon={THREAD_ICON} size={12} />
+                </span>
+                <span class="sidebar-row-label">{item().thread.title}</span>
+                <Show when={props.unreadIds.has(item().thread.id)}>
+                  <span class="unread-dot" aria-label="Unread" />
+                </Show>
+                <Show when={label() !== ""}>
+                  <span class="sidebar-row-meta">{label()}</span>
+                </Show>
+              </div>
+            </li>
+          );
+        }}
+      </For>
     </ul>
   );
 }
 
 // Your groups, everyone else's, and the labels people file things under, each with how many open threads it has. Any
 // of them opens its threads in the main area.
-function GroupList({
-  groups,
-  labels,
-  threads,
-  page,
-  onOpenLabel,
-  onOpenAll,
-  onNewGroup,
-}: {
+function GroupList(props: {
   groups: GroupLists;
   labels: Label[];
   threads: Thread[];
@@ -499,26 +536,31 @@ function GroupList({
   onOpenLabel: (id: string) => void;
   onOpenAll: () => void;
   onNewGroup: () => void;
-}): React.JSX.Element {
-  const count = (labelId: string | null): number => threadsWithLabel(threads, labelId).length;
-  const allCount = count(null);
-  const activeLabel =
-    page !== null && typeof page === "object" && "label" in page ? page.label : undefined;
-  const row = (id: string, labelId: string, name: string): React.JSX.Element => {
-    const open = (): void => onOpenLabel(labelId);
-    const openThreads = count(labelId);
+}): JSX.Element {
+  const count = (labelId: string | null): number => threadsWithLabel(props.threads, labelId).length;
+  const allCount = (): number => count(null);
+  const activeLabel = (): string | undefined => {
+    const page = props.page;
+    return page !== null && typeof page === "object" && "label" in page ? page.label : undefined;
+  };
+  // `name` is an accessor, so a renamed group updates in place; its label never changes.
+  const row = (labelId: string, name: () => string): JSX.Element => {
+    const open = (): void => props.onOpenLabel(labelId);
+    const openThreads = (): number => count(labelId);
     return (
-      <li key={id} className="thread-item">
+      <li class="thread-item">
         <div
-          className="sidebar-row"
-          data-active={activeLabel === labelId}
+          class="sidebar-row"
+          data-active={String(activeLabel() === labelId)}
           role="button"
-          tabIndex={0}
+          tabindex={0}
           onClick={open}
           onKeyDown={(event) => activateOnKey(event, open)}
         >
-          <span className="sidebar-row-label">{name}</span>
-          {openThreads > 0 && <span className="sidebar-row-meta">{openThreads}</span>}
+          <span class="sidebar-row-label">{name()}</span>
+          <Show when={openThreads() > 0}>
+            <span class="sidebar-row-meta">{openThreads()}</span>
+          </Show>
         </div>
       </li>
     );
@@ -527,111 +569,120 @@ function GroupList({
   // they are.
   const section = (
     title: string,
-    items: { id: string; labelId: string; name: string }[],
-  ): React.JSX.Element | null =>
-    items.length === 0 ? null : (
-      <section className="conversation-group">
-        <h2 className="conversation-group-label">{title}</h2>
-        <ul className="thread-list" aria-label={title}>
-          {items.map((item) => row(item.id, item.labelId, item.name))}
+    items: () => { id: string; labelId: string; name: string }[],
+  ): JSX.Element => (
+    <Show when={items().length > 0}>
+      <section class="conversation-group">
+        <h2 class="conversation-group-label">{title}</h2>
+        <ul class="thread-list" aria-label={title}>
+          <For each={items()} keyed={(item) => item.id}>
+            {(item) =>
+              row(
+                untrack(() => item().labelId),
+                () => item().name,
+              )
+            }
+          </For>
         </ul>
       </section>
-    );
+    </Show>
+  );
   const asItems = (list: Group[]): { id: string; labelId: string; name: string }[] =>
     list.map((group) => ({ id: group.id, labelId: group.labelId, name: group.name }));
   return (
     <>
-      <button type="button" className="sidebar-new-group" onClick={onNewGroup}>
+      <button type="button" class="sidebar-new-group" onClick={() => props.onNewGroup()}>
         New group
       </button>
       {/* Every thread in the organization; a group or label is this list, filtered. */}
-      <ul className="thread-list" aria-label="All threads">
-        <li className="thread-item">
+      <ul class="thread-list" aria-label="All threads">
+        <li class="thread-item">
           <div
-            className="sidebar-row"
-            data-active={page === "all"}
+            class="sidebar-row"
+            data-active={String(props.page === "all")}
             role="button"
-            tabIndex={0}
-            onClick={onOpenAll}
-            onKeyDown={(event) => activateOnKey(event, onOpenAll)}
+            tabindex={0}
+            onClick={() => props.onOpenAll()}
+            onKeyDown={(event) => activateOnKey(event, props.onOpenAll)}
           >
-            <span className="sidebar-row-label">All threads</span>
-            {allCount > 0 && <span className="sidebar-row-meta">{allCount}</span>}
+            <span class="sidebar-row-label">All threads</span>
+            <Show when={allCount() > 0}>
+              <span class="sidebar-row-meta">{allCount()}</span>
+            </Show>
           </div>
         </li>
       </ul>
-      {section("Your groups", asItems(groups.mine))}
-      {section("Other groups", asItems(groups.others))}
-      {section(
-        "Labels",
-        filterLabels(labels).map((label) => ({
+      {section("Your groups", () => asItems(props.groups.mine))}
+      {section("Other groups", () => asItems(props.groups.others))}
+      {section("Labels", () =>
+        filterLabels(props.labels).map((label) => ({
           id: label.id,
           labelId: label.id,
           name: label.name,
         })),
       )}
-      {section("Archived groups", asItems(groups.archived))}
+      {section("Archived groups", () => asItems(props.groups.archived))}
     </>
   );
 }
 
 // Threads written in the new-message panel and kept for later, newest first. Opening one shows it in the main area,
 // like a thread, to edit and send; right-click deletes it.
-function Drafts({
-  drafts,
-  activeDraftId,
-  nowMs,
-  onOpen,
-  onDelete,
-}: {
+function Drafts(props: {
   drafts: SavedDraft[];
   activeDraftId: string | null;
   nowMs: number;
   onOpen: (draft: SavedDraft) => void;
   onDelete: (id: string) => void;
-}): React.JSX.Element {
-  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+}): JSX.Element {
+  const [menu, setMenu] = createSignal<{ x: number; y: number; id: string } | null>(null);
   return (
-    <ul className="thread-list" aria-label="Drafts">
-      {drafts.length === 0 && (
-        <li className="conversation-empty">No drafts. ⌘⇧N, then ⌘S, keeps one for later</li>
-      )}
-      {drafts.map((draft) => {
-        const title =
-          draft.draft?.title.trim() || draft.text.trim().split("\n")[0] || "Untitled draft";
-        const open = (): void => onOpen(draft);
-        return (
-          <li key={draft.id} className="thread-item">
-            <div
-              className="sidebar-row"
-              data-active={draft.id === activeDraftId}
-              role="button"
-              tabIndex={0}
-              title={draft.text}
-              onClick={open}
-              onKeyDown={(event) => activateOnKey(event, open)}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                setMenu({ x: event.clientX, y: event.clientY, id: draft.id });
-              }}
-            >
-              <span className="sidebar-row-icon" aria-hidden>
-                <HugeiconsIcon icon={NoteEditIcon} size={12} />
-              </span>
-              <span className="sidebar-row-label">{title}</span>
-              <span className="sidebar-row-meta">{formatRelativeTime(draft.savedAtMs, nowMs)}</span>
-            </div>
-          </li>
-        );
-      })}
-      {menu !== null && (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          items={[{ label: "Delete draft", run: () => onDelete(menu.id) }]}
-          onClose={() => setMenu(null)}
-        />
-      )}
+    <ul class="thread-list" aria-label="Drafts">
+      <Show when={props.drafts.length === 0}>
+        <li class="conversation-empty">No drafts. ⌘⇧N, then ⌘S, keeps one for later</li>
+      </Show>
+      <For each={props.drafts} keyed={(draft) => draft.id}>
+        {(draft) => {
+          const title = (): string =>
+            draft().draft?.title.trim() || draft().text.trim().split("\n")[0] || "Untitled draft";
+          const open = (): void => props.onOpen(draft());
+          return (
+            <li class="thread-item">
+              <div
+                class="sidebar-row"
+                data-active={String(draft().id === props.activeDraftId)}
+                role="button"
+                tabindex={0}
+                title={draft().text}
+                onClick={open}
+                onKeyDown={(event) => activateOnKey(event, open)}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setMenu({ x: event.clientX, y: event.clientY, id: draft().id });
+                }}
+              >
+                <span class="sidebar-row-icon" aria-hidden="true">
+                  <Icon icon={NoteEditIcon} size={12} />
+                </span>
+                <span class="sidebar-row-label">{title()}</span>
+                <span class="sidebar-row-meta">
+                  {formatRelativeTime(draft().savedAtMs, props.nowMs)}
+                </span>
+              </div>
+            </li>
+          );
+        }}
+      </For>
+      <Show when={menu()}>
+        {(shown) => (
+          <ContextMenu
+            x={shown().x}
+            y={shown().y}
+            items={[{ label: "Delete draft", run: () => props.onDelete(shown().id) }]}
+            onClose={() => setMenu(null)}
+          />
+        )}
+      </Show>
     </ul>
   );
 }
@@ -660,15 +711,7 @@ function savedTab(): SidebarTab {
 // The tab strip, as in Notion: the chosen tab opens out to show its name, the others fold back to their icon, with a
 // count beside the Inbox, Sent and Drafts while they have anything. Your avatar at the far end opens your profile and
 // the org (in the main area, like a thread).
-function SidebarTabs({
-  tab,
-  inboxCount,
-  sentCount,
-  draftCount,
-  profileOpen,
-  onTab,
-  onToggleProfile,
-}: {
+function SidebarTabs(props: {
   tab: SidebarTab;
   inboxCount: number;
   sentCount: number;
@@ -676,53 +719,59 @@ function SidebarTabs({
   profileOpen: boolean;
   onTab: (tab: SidebarTab) => void;
   onToggleProfile: () => void;
-}): React.JSX.Element {
+}): JSX.Element {
   const me = useMe();
-  const counts: Record<SidebarTab, number> = {
-    inbox: inboxCount,
-    sent: sentCount,
-    drafts: draftCount,
+  const counts = (): Record<SidebarTab, number> => ({
+    inbox: props.inboxCount,
+    sent: props.sentCount,
+    drafts: props.draftCount,
     groups: 0,
-  };
+  });
   // Each name's own width, so the chosen tab grows to exactly fit it (animating to a guessed maximum finishes early
   // and looks rushed).
-  const groupRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    for (const label of groupRef.current?.querySelectorAll<HTMLElement>(".sidebar-tab-label") ?? [])
-      label.style.setProperty("--label-width", `${label.scrollWidth}px`);
-  });
+  let group!: HTMLDivElement;
+  createEffect(
+    () => props.tab,
+    () => {
+      for (const label of group.querySelectorAll<HTMLElement>(".sidebar-tab-label"))
+        label.style.setProperty("--label-width", `${label.scrollWidth}px`);
+    },
+  );
 
   return (
-    <div className="sidebar-tabs">
-      <div ref={groupRef} className="sidebar-tab-group" role="tablist" aria-label="Sidebar">
-        {TABS.map(({ tab: value, label, icon }) => (
-          <button
-            key={value}
-            type="button"
-            role="tab"
-            className="sidebar-tab"
-            aria-selected={tab === value}
-            aria-label={label}
-            title={label}
-            onClick={() => onTab(value)}
-          >
-            <HugeiconsIcon icon={icon} {...ICON_PROPS} />
-            <span className="sidebar-tab-label" aria-hidden>
-              {label}
-            </span>
-            {counts[value] > 0 && <span className="sidebar-tab-count">{counts[value]}</span>}
-          </button>
-        ))}
+    <div class="sidebar-tabs">
+      <div ref={group} class="sidebar-tab-group" role="tablist" aria-label="Sidebar">
+        <For each={TABS}>
+          {({ tab: value, label, icon }) => (
+            <button
+              type="button"
+              role="tab"
+              class="sidebar-tab"
+              aria-selected={props.tab === value ? "true" : "false"}
+              aria-label={label}
+              title={label}
+              onClick={() => props.onTab(value)}
+            >
+              <Icon icon={icon} {...ICON_PROPS} />
+              <span class="sidebar-tab-label" aria-hidden="true">
+                {label}
+              </span>
+              <Show when={counts()[value] > 0}>
+                <span class="sidebar-tab-count">{counts()[value]}</span>
+              </Show>
+            </button>
+          )}
+        </For>
       </div>
       <button
         type="button"
-        className="sidebar-tab sidebar-tab-end"
-        aria-pressed={profileOpen}
+        class="sidebar-tab sidebar-tab-end"
+        aria-pressed={props.profileOpen ? "true" : "false"}
         aria-label="Your profile and organization"
         title="Your profile and organization"
-        onClick={onToggleProfile}
+        onClick={() => props.onToggleProfile()}
       >
-        <Identicon seed={me.id} size={14} />
+        <Identicon seed={me().id} size={14} />
       </button>
     </div>
   );
@@ -737,33 +786,7 @@ export type SidebarPage =
   | { person: string }
   | { sprint: string };
 
-export function Sidebar({
-  inbox,
-  drafts,
-  activeDraftId,
-  onOpenDraft,
-  onDeleteDraft,
-  bucketActions,
-  activity,
-  groupNotices,
-  groups,
-  labels,
-  threads,
-  onNewGroup,
-  onOpenLabel,
-  onMarkAllRead,
-  nowMs,
-  unreadIds,
-  activeThreadId,
-  profileOpen,
-  page,
-  onNewThread,
-  onOpenThread,
-  onToggleProfile,
-  onOpenPage,
-  onToggle,
-  onSearch,
-}: {
+export function Sidebar(props: {
   inbox: Inbox;
   // Threads written but not sent (`drafts.ts`).
   drafts: SavedDraft[];
@@ -793,16 +816,16 @@ export function Sidebar({
   onOpenPage: (page: SidebarPage) => void;
   onToggle: () => void;
   onSearch: () => void;
-}): React.JSX.Element {
+}): JSX.Element {
   const me = useMe();
-  const { panelRef, width, handle } = useResizablePanel({
+  const panel = useResizablePanel({
     storageKey: "sidebar-width",
     defaultWidth: 268,
     minWidth: 210,
     maxWidth: 400,
     edge: "right",
   });
-  const [tab, setTab] = useState<SidebarTab>(savedTab);
+  const [tab, setTab] = createSignal<SidebarTab>(savedTab());
   const chooseTab = (next: SidebarTab): void => {
     setTab(next);
     try {
@@ -813,94 +836,96 @@ export function Sidebar({
   };
 
   return (
-    <aside ref={panelRef} className="sidebar" style={{ width }}>
-      <div className="topbar sidebar-topbar">
-        <SidebarToggle open onToggle={onToggle} />
-        <SearchButton onSearch={onSearch} />
-        <span className="topbar-end">
+    <aside ref={panel.ref} class="sidebar" style={{ width: `${panel.width()}px` }}>
+      <div class="topbar sidebar-topbar">
+        <SidebarToggle open onToggle={props.onToggle} />
+        <SearchButton onSearch={props.onSearch} />
+        <span class="topbar-end">
           <NotificationsButton
-            items={activity}
-            groupNotices={groupNotices}
+            items={props.activity}
+            groupNotices={props.groupNotices}
             onOpenGroup={(id) => {
-              const group = [...groups.mine, ...groups.others, ...groups.archived].find(
-                (candidate) => candidate.id === id,
-              );
-              if (group !== undefined) onOpenLabel(group.labelId);
+              const group = [
+                ...props.groups.mine,
+                ...props.groups.others,
+                ...props.groups.archived,
+              ].find((candidate) => candidate.id === id);
+              if (group !== undefined) props.onOpenLabel(group.labelId);
             }}
-            nowMs={nowMs}
-            activeThreadId={activeThreadId}
-            onOpenThread={onOpenThread}
-            onMarkAllRead={onMarkAllRead}
+            nowMs={props.nowMs}
+            activeThreadId={props.activeThreadId}
+            onOpenThread={props.onOpenThread}
+            onMarkAllRead={props.onMarkAllRead}
           />
           <button
             type="button"
-            className="topbar-button"
+            class="topbar-button"
             aria-label="New thread"
-            onClick={onNewThread}
+            onClick={() => props.onNewThread()}
           >
-            <HugeiconsIcon icon={PencilEdit02Icon} {...ICON_PROPS} />
+            <Icon icon={PencilEdit02Icon} {...ICON_PROPS} />
           </button>
         </span>
       </div>
       <SidebarTabs
-        tab={tab}
-        inboxCount={inbox.order.length}
-        sentCount={inbox.sent.length}
-        draftCount={drafts.length}
-        profileOpen={profileOpen}
+        tab={tab()}
+        inboxCount={props.inbox.order.length}
+        sentCount={props.inbox.sent.length}
+        draftCount={props.drafts.length}
+        profileOpen={props.profileOpen}
         onTab={chooseTab}
-        onToggleProfile={onToggleProfile}
+        onToggleProfile={props.onToggleProfile}
       />
-      <div className="sidebar-content">
-        {tab === "inbox" && (
+      <div class="sidebar-content">
+        <Show when={tab() === "inbox"}>
           <InboxView
-            inbox={inbox}
-            activeThreadId={activeThreadId}
-            unreadIds={unreadIds}
-            actions={bucketActions}
-            onOpenThread={onOpenThread}
+            inbox={props.inbox}
+            activeThreadId={props.activeThreadId}
+            unreadIds={props.unreadIds}
+            actions={props.bucketActions}
+            onOpenThread={props.onOpenThread}
           />
-        )}
-        {tab === "groups" && (
+        </Show>
+        <Show when={tab() === "groups"}>
           <GroupList
-            groups={groups}
-            labels={labels}
-            threads={threads}
-            page={page}
-            onOpenLabel={onOpenLabel}
-            onOpenAll={() => onOpenPage("all")}
-            onNewGroup={onNewGroup}
+            groups={props.groups}
+            labels={props.labels}
+            threads={props.threads}
+            page={props.page}
+            onOpenLabel={props.onOpenLabel}
+            onOpenAll={() => props.onOpenPage("all")}
+            onNewGroup={props.onNewGroup}
           />
-        )}
-        {tab === "drafts" && (
+        </Show>
+        <Show when={tab() === "drafts"}>
           <Drafts
-            drafts={drafts}
-            activeDraftId={activeDraftId}
-            nowMs={nowMs}
-            onOpen={onOpenDraft}
-            onDelete={onDeleteDraft}
+            drafts={props.drafts}
+            activeDraftId={props.activeDraftId}
+            nowMs={props.nowMs}
+            onOpen={props.onOpenDraft}
+            onDelete={props.onDeleteDraft}
           />
-        )}
-        {tab === "sent" && (
+        </Show>
+        <Show when={tab() === "sent"}>
           <Sent
-            items={inbox.sent}
-            activeThreadId={activeThreadId}
-            unreadIds={unreadIds}
-            onOpenThread={onOpenThread}
+            items={props.inbox.sent}
+            activeThreadId={props.activeThreadId}
+            unreadIds={props.unreadIds}
+            onOpenThread={props.onOpenThread}
           />
-        )}
+        </Show>
       </div>
       {/* As in Delta: you, at the bottom. It opens settings. */}
       <button
         type="button"
-        className="sidebar-footer"
-        aria-current={page === "settings" ? "page" : undefined}
-        onClick={() => onOpenPage("settings")}
+        class="sidebar-footer"
+        aria-current={props.page === "settings" ? "page" : undefined}
+        onClick={() => props.onOpenPage("settings")}
       >
-        <Identicon seed={me.id} size={16} />
-        <span className="sidebar-footer-name">{me.name}</span>
+        <Identicon seed={me().id} size={16} />
+        <span class="sidebar-footer-name">{me().name}</span>
       </button>
-      {handle}
+      {panel.handle}
     </aside>
   );
 }

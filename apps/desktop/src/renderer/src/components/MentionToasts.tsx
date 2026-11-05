@@ -1,5 +1,6 @@
 import { plainThreadLinks, withoutLeadingMentions, type Person, type Thread } from "model";
-import { useEffect, useRef, useState } from "react";
+import { createMemo, createSignal, onSettled, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import { useThreadLinks } from "../threadLinks";
 import { Identicon } from "./Identicon";
 
@@ -11,87 +12,100 @@ type Sent = { id: string; thread: Thread; author: Person; text: string; atMs: nu
 // Something sent to you, as a short toast in the top right: who, in which thread, and what they said. Clicking it
 // opens the thread; it goes away on its own after a few seconds. Messages arriving together share one toast. Only
 // ones that arrive while the app is open show, never ones from before it loaded; notes never do.
-export function MentionToasts({
-  threads,
-  me,
-  sinceMs,
-  onOpen,
-}: {
+export function MentionToasts(props: {
   threads: Thread[];
   me: Person;
   // When the app finished loading; anything older isn't news.
   sinceMs: number;
   onOpen: (threadId: string) => void;
-}): React.JSX.Element | null {
-  const { titleOf, nameOf } = useThreadLinks();
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+}): JSX.Element {
+  const links = useThreadLinks();
+  const [nowMs, setNowMs] = createSignal(Date.now());
+  const [dismissed, setDismissed] = createSignal<Set<string>>(new Set());
 
-  const toasts: Sent[] = threads
-    .flatMap((thread) =>
-      thread.entries.flatMap((entry) =>
-        entry.kind === "message" &&
-        entry.author.id !== me.id &&
-        entry.createdAtMs >= sinceMs &&
-        entry.createdAtMs <= nowMs &&
-        nowMs - entry.createdAtMs < SHOW_MS &&
-        !dismissed.has(entry.id) &&
-        entry.sentTo.some((person) => person.id === me.id)
-          ? [
-              {
-                id: entry.id,
-                thread,
-                author: entry.author,
-                text: entry.text,
-                atMs: entry.createdAtMs,
-              },
-            ]
-          : [],
-      ),
-    )
-    .sort((a, b) => b.atMs - a.atMs);
+  const toasts = createMemo((): Sent[] =>
+    props.threads
+      .flatMap((thread) =>
+        thread.entries.flatMap((entry) =>
+          entry.kind === "message" &&
+          entry.author.id !== props.me.id &&
+          entry.createdAtMs >= props.sinceMs &&
+          entry.createdAtMs <= nowMs() &&
+          nowMs() - entry.createdAtMs < SHOW_MS &&
+          !dismissed().has(entry.id) &&
+          entry.sentTo.some((person) => person.id === props.me.id)
+            ? [
+                {
+                  id: entry.id,
+                  thread,
+                  author: entry.author,
+                  text: entry.text,
+                  atMs: entry.createdAtMs,
+                },
+              ]
+            : [],
+        ),
+      )
+      .sort((a, b) => b.atMs - a.atMs),
+  );
 
   // A steady clock, so toasts come and go on time, including ones held until a block ends.
-  useEffect(() => {
+  onSettled(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  });
 
-  if (toasts.length === 0) return null;
   // Several at once (most often, the ones held through a meeting) become one toast, so a break starts with a single
   // summary rather than a stack. It opens the newest.
-  const [latest] = toasts;
-  const authors = [...new Map(toasts.map((toast) => [toast.author.id, toast.author])).values()];
-  const dismissAll = (): void =>
-    setDismissed((current) => new Set([...current, ...toasts.map((toast) => toast.id)]));
+  const latest = (): Sent => toasts()[0];
+  // A new newest message starts a fresh toast.
+  const latestId = createMemo(() => toasts()[0]?.id);
+  const authors = (): Person[] => [
+    ...new Map(toasts().map((toast) => [toast.author.id, toast.author])).values(),
+  ];
+  const dismissAll = (): void => {
+    const ids = toasts().map((toast) => toast.id);
+    setDismissed((current) => new Set([...current, ...ids]));
+  };
   const open = (): void => {
+    const threadId = latest().thread.id;
     dismissAll();
-    onOpen(latest.thread.id);
+    props.onOpen(threadId);
   };
   return (
-    <div className="toasts" role="status" aria-live="polite">
-      <SwipeToast key={latest.id} onOpen={open} onDismiss={dismissAll}>
-        <Identicon seed={latest.author.id} size={18} />
-        <div className="toast-body">
-          <div className="toast-title">
-            {toasts.length === 1 ? (
-              <>
-                <span className="toast-author">{latest.author.name}</span> sent you{" "}
-                <span className="toast-thread">{latest.thread.title}</span>
-              </>
-            ) : (
-              <>
-                <span className="toast-author">{toasts.length} messages</span> from{" "}
-                <span className="toast-author">{namesList(authors)}</span>
-              </>
-            )}
-          </div>
-          <div className="toast-text">
-            {plainThreadLinks(withoutLeadingMentions(latest.text), titleOf, nameOf)}
-          </div>
-        </div>
-      </SwipeToast>
-    </div>
+    <Show when={toasts().length > 0}>
+      <div class="toasts" role="status" aria-live="polite">
+        <Show when={latestId()} keyed>
+          {(_newestId) => (
+            <SwipeToast onOpen={open} onDismiss={dismissAll}>
+              <Identicon seed={latest().author.id} size={18} />
+              <div class="toast-body">
+                <div class="toast-title">
+                  {toasts().length === 1 ? (
+                    <>
+                      <span class="toast-author">{latest().author.name}</span> sent you{" "}
+                      <span class="toast-thread">{latest().thread.title}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span class="toast-author">{toasts().length} messages</span> from{" "}
+                      <span class="toast-author">{namesList(authors())}</span>
+                    </>
+                  )}
+                </div>
+                <div class="toast-text">
+                  {plainThreadLinks(
+                    withoutLeadingMentions(latest().text),
+                    links.titleOf,
+                    links.nameOf,
+                  )}
+                </div>
+              </div>
+            </SwipeToast>
+          )}
+        </Show>
+      </div>
+    </Show>
   );
 }
 
@@ -101,22 +115,18 @@ const LEAVE_MS = 180;
 
 // A toast you slide off to the right to dismiss, by dragging it or with a two-finger swipe, like macOS notifications.
 // Short of the threshold it springs back. A click that isn't the end of a drag opens it.
-function SwipeToast({
-  onOpen,
-  onDismiss,
-  children,
-}: {
+function SwipeToast(props: {
   onOpen: () => void;
   onDismiss: () => void;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  const [offset, setOffset] = useState(0);
-  const [moving, setMoving] = useState(false);
-  const drag = useRef<{ startX: number; moved: boolean } | null>(null);
-  const settle = useRef<number | undefined>(undefined);
+  children: JSX.Element;
+}): JSX.Element {
+  const [offset, setOffset] = createSignal(0);
+  const [moving, setMoving] = createSignal(false);
+  let drag: { startX: number; moved: boolean } | null = null;
+  let settle: number | undefined;
   // The swipe so far, since trackpad events can arrive faster than renders.
-  const swiped = useRef(0);
-  const dragged = useRef(false);
+  let swiped = 0;
+  let dragged = false;
 
   const release = (distance: number): void => {
     setMoving(false);
@@ -125,56 +135,59 @@ function SwipeToast({
       return;
     }
     setOffset(window.innerWidth);
-    window.setTimeout(onDismiss, LEAVE_MS);
+    window.setTimeout(() => props.onDismiss(), LEAVE_MS);
   };
-  useEffect(() => () => window.clearTimeout(settle.current), []);
+  onSettled(() => () => window.clearTimeout(settle));
 
   return (
     <div
-      className="toast"
+      class="toast"
       role="button"
-      tabIndex={0}
-      data-moving={moving}
-      style={{ transform: `translateX(${offset}px)`, opacity: Math.max(0, 1 - offset / 320) }}
+      tabindex={0}
+      data-moving={String(moving())}
+      style={{
+        transform: `translateX(${offset()}px)`,
+        opacity: String(Math.max(0, 1 - offset() / 320)),
+      }}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { startX: event.clientX, moved: false };
-        dragged.current = false;
+        drag = { startX: event.clientX, moved: false };
+        dragged = false;
       }}
       onPointerMove={(event) => {
-        if (drag.current === null) return;
-        const distance = Math.max(0, event.clientX - drag.current.startX);
-        if (distance > 4) drag.current.moved = true;
+        if (drag === null) return;
+        const distance = Math.max(0, event.clientX - drag.startX);
+        if (distance > 4) drag.moved = true;
         setMoving(true);
         setOffset(distance);
       }}
       onPointerUp={(event) => {
-        if (drag.current === null) return;
-        dragged.current = drag.current.moved;
-        release(Math.max(0, event.clientX - drag.current.startX));
-        drag.current = null;
+        if (drag === null) return;
+        dragged = drag.moved;
+        release(Math.max(0, event.clientX - drag.startX));
+        drag = null;
       }}
       onWheel={(event) => {
         // A sideways two-finger swipe; it lets go once the swipe has been still for a moment.
         if (Math.abs(event.deltaX) <= Math.abs(event.deltaY)) return;
         setMoving(true);
-        swiped.current = Math.max(0, swiped.current - event.deltaX);
-        setOffset(swiped.current);
-        window.clearTimeout(settle.current);
-        settle.current = window.setTimeout(() => {
-          release(swiped.current);
-          swiped.current = 0;
+        swiped = Math.max(0, swiped - event.deltaX);
+        setOffset(swiped);
+        window.clearTimeout(settle);
+        settle = window.setTimeout(() => {
+          release(swiped);
+          swiped = 0;
         }, 120);
       }}
       onClick={() => {
-        if (!dragged.current) onOpen();
+        if (!dragged) props.onOpen();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Enter") onOpen();
-        if (event.key === "Escape") onDismiss();
+        if (event.key === "Enter") props.onOpen();
+        if (event.key === "Escape") props.onDismiss();
       }}
     >
-      {children}
+      {props.children}
     </div>
   );
 }

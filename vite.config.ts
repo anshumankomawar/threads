@@ -18,7 +18,19 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ["**/*.tsx"],
+        // Solid, not React: a ref is a plain `let el!: T` the compiler assigns, a component body runs once, and the React
+        // Compiler's rules (refs, purity, immutability) don't apply.
+        files: ["apps/desktop/**/*.tsx"],
+        rules: {
+          "no-unassigned-vars": "off",
+          "react/refs": "off",
+          "react/purity": "off",
+          "react/immutability": "off",
+        },
+      },
+      {
+        // The desktop app is Solid, where these React rules don't apply.
+        files: ["apps/web/**/*.tsx", "packages/ui/**/*.tsx"],
         rules: {
           "react/rules-of-hooks": "error",
           "react/exhaustive-deps": "warn",
