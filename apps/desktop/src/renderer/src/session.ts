@@ -5,6 +5,7 @@ import type { JSX } from "@solidjs/web";
 import { createStore, httpTransport, indexedLocalDB, type Filter } from "sync";
 import {
   Bucket,
+  type Subspace,
   InboxItem,
   Thread,
   User,
@@ -91,6 +92,7 @@ export type Dialog =
   | { kind: "filter"; add: (condition: Filter) => void }
   | { kind: "newView"; filter: Filter }
   | { kind: "newSubspace" }
+  | { kind: "addMember"; subspace: Subspace }
   | { kind: "newLabel"; thread?: Thread }
   | { kind: "compose"; draftId?: string }
   | { kind: "bucket"; bucket?: Bucket }
@@ -103,6 +105,8 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
   null,
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
+// Where a page puts its own actions: the top bar, beside its name.
+export const [pageActions, setPageActions] = createSignal<HTMLElement>();
 export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));

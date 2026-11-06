@@ -24,6 +24,7 @@ import {
   setUndo,
   view,
   type Source,
+  setPageActions,
 } from "./session";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
@@ -39,6 +40,14 @@ import { AllThreadsView, LabelView, PersonView, SavedView, SubspaceView } from "
 import { Sidebar, sidebarIcon, TopButton } from "./components/Sidebar";
 
 const styles = stylex.create({
+  // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
+  pageActions: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    marginRight: 10,
+    WebkitAppRegion: "no-drag",
+  },
   saveError: {
     display: "flex",
     flexShrink: 0,
@@ -191,6 +200,7 @@ export default function App(): JSX.Element {
                 store.findById(User, shown("person") ?? "")?.name}
             </span>
             <span class={sx(topbar.end)}>
+              <span ref={setPageActions} class={sx(styles.pageActions)} />
               <button
                 class={sx(styles.viewAs)}
                 disabled={account !== null}

@@ -70,6 +70,8 @@ export class Label extends Model {
 export class Subspace extends Model {
   @Reference(() => Workspace, "subspaces") workspace!: Workspace;
   @Property() name!: string;
+  // What it's for, under its name on its page.
+  @Property({ nullable: true }) description?: string;
   @Property({ enum: VISIBILITIES }) visibility!: Visibility;
   @OneToMany(() => SubspaceMember, "subspace") members!: Collection<SubspaceMember>;
   declare workspaceId: string;

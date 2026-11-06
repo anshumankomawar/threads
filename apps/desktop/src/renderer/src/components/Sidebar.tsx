@@ -8,6 +8,7 @@ import {
   inbox,
   markDone,
   me,
+  workspace,
   open,
   sent,
   setDialog,
@@ -21,6 +22,7 @@ import {
   saved,
 } from "../session";
 import { bucketIcons } from "../bucketIcons";
+import { makeSubspace } from "./Palettes";
 import { topbar } from "../styles/controls";
 import { tabLabel } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
@@ -133,7 +135,20 @@ const s = stylex.create({
   ellipsis: { ...clip, textOverflow: "ellipsis" },
   caption: { margin: 0, fontSize: 11, fontWeight: 500 },
   empty: { margin: 0, padding: `4px ${INSET} 6px` },
-  newLabel: { ...quiet, display: "block", padding: `6px ${INSET}`, color: dim, textAlign: "left" },
+  section: { ...column, paddingBottom: 10 },
+  // The + lines up with the rows' counts: its 12px glyph sits 5px inside its 22px button.
+  sectionHeader: { ...center, height: 26, padding: `0 calc(${GUTTER} + ${PILL} - 5px) 0 ${INSET}` },
+  inlineInput: {
+    flex: 1,
+    minWidth: 0,
+    padding: 0,
+    borderWidth: 0,
+    color: colors.textPrimary,
+    font: "inherit",
+    backgroundColor: "transparent",
+    outline: "none",
+    "::placeholder": { color: colors.textTertiary },
+  },
   inbox: { ...column, gap: 6, paddingBottom: 12 },
   bucket: { margin: `0 ${GUTTER}`, borderRadius: RADIUS },
   bucketAfter: { marginTop: 12 },
@@ -193,6 +208,8 @@ const s = stylex.create({
     },
   },
   doneShown: { opacity: 1 },
+  // A section's +: no background of its own, only a brighter glyph on hover.
+  add: { color: dim, backgroundColor: "transparent" },
 });
 
 const BUCKET_ROWS = 5;
@@ -562,7 +579,69 @@ function DraftsTab(): JSX.Element {
   );
 }
 
-// Where threads live and how you look at them: all of them, the subspaces, your views and the labels.
+// A titled part of a list, as in Notion's sidebar. With `onAdd`, a + on the title (shown on hover) makes a new one in
+// place: type its name, Enter makes it, Escape or clicking away doesn't.
+function Section(props: {
+  title: string;
+  onAdd?: (name: string) => void;
+  placeholder?: string;
+  children: JSX.Element;
+}): JSX.Element {
+  const [adding, setAdding] = createSignal(false);
+  // Once: Enter takes the input away, which blurs it too.
+  let done = false;
+  const start = (): void => {
+    done = false;
+    setAdding(true);
+  };
+  const finish = (input: HTMLInputElement, make: boolean): void => {
+    if (done) return;
+    done = true;
+    setAdding(false);
+    if (make && input.value.trim()) props.onAdd!(input.value.trim());
+  };
+  return (
+    <section class={sx(s.section)}>
+      <div class={sx(s.sectionHeader, stylex.defaultMarker())}>
+        <span class={sx(s.caption, s.faint)}>{props.title}</span>
+        <Show when={props.onAdd}>
+          <button
+            class={sx(s.done, s.add, s.end, adding() && s.doneShown)}
+            aria-label={`New ${props.title.toLowerCase().replace(/s$/, "")}`}
+            title={`New ${props.title.toLowerCase().replace(/s$/, "")}`}
+            onClick={start}
+          >
+            <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
+          </button>
+        </Show>
+      </div>
+      <ul class={sx(s.list)} aria-label={props.title}>
+        <Show when={adding()}>
+          <li class={sx(s.item)}>
+            <div class={sx(s.row, s.rowPad, s.active)}>
+              <input
+                ref={(input) => queueMicrotask(() => input.focus())}
+                class={sx(s.inlineInput)}
+                placeholder={props.placeholder}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") finish(event.currentTarget, true);
+                  else if (event.key === "Escape") finish(event.currentTarget, false);
+                  else return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onBlur={(event) => finish(event.currentTarget, true)}
+              />
+            </div>
+          </li>
+        </Show>
+        {props.children}
+      </ul>
+    </section>
+  );
+}
+
+// Where threads live and how you look at them: all of them and your views, the subspaces, and the labels.
 function SpacesTab(): JSX.Element {
   const shown = (key: string): string | null | undefined => (view() as Record<string, string>)[key];
   const openIn = (field: "labelIds" | "subspaceIds", id: string): string =>
@@ -571,7 +650,7 @@ function SpacesTab(): JSX.Element {
     list.sort((a, b) => a.name.localeCompare(b.name));
   return (
     <>
-      <List label="Views">
+      <Section title="Views">
         <Row
           icon={i.Layers01Icon}
           label="All threads"
@@ -588,11 +667,12 @@ function SpacesTab(): JSX.Element {
             />
           )}
         </For>
-      </List>
-      <button class={sx(s.newLabel, s.pointer)} onClick={() => setDialog({ kind: "newSubspace" })}>
-        New subspace
-      </button>
-      <List label="Subspaces">
+      </Section>
+      <Section
+        title="Subspaces"
+        placeholder="Subspace name"
+        onAdd={(name) => open({ subspace: makeSubspace(name).id })}
+      >
         <For each={byName(store.all(Subspace))}>
           {(sub) => (
             <Row
@@ -604,11 +684,12 @@ function SpacesTab(): JSX.Element {
             />
           )}
         </For>
-      </List>
-      <button class={sx(s.newLabel, s.pointer)} onClick={() => setDialog({ kind: "newLabel" })}>
-        New label
-      </button>
-      <List label="Labels">
+      </Section>
+      <Section
+        title="Labels"
+        placeholder="Label name"
+        onAdd={(name) => store.create(Label, { name, workspace: workspace() })}
+      >
         <For each={byName(store.all(Label))}>
           {(label) => (
             <Row
@@ -620,7 +701,7 @@ function SpacesTab(): JSX.Element {
             />
           )}
         </For>
-      </List>
+      </Section>
     </>
   );
 }

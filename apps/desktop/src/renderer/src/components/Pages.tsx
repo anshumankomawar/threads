@@ -1,6 +1,6 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, Show, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
+import { Portal, type JSX } from "@solidjs/web";
 import {
   Label,
   PRIORITIES,
@@ -17,6 +17,7 @@ import {
   me,
   memberOf,
   open,
+  pageActions,
   setDialog,
   showMenu,
   store,
@@ -33,6 +34,11 @@ import { MenuChip } from "./Menus";
 import { ago, LABELS } from "./ThreadView";
 
 const icon = (svg: typeof i.Tick02Icon) => <Icon icon={svg} size={12} aria-hidden="true" />;
+
+// A page's own actions, in the top bar beside its name rather than under its title.
+const Actions = (props: { children: JSX.Element }): JSX.Element => (
+  <Show when={pageActions()}>{(bar) => <Portal mount={bar()}>{props.children}</Portal>}</Show>
+);
 const people = (): [string, string][] => [
   ["$me", "Me"],
   ...store.all(User).map((u): [string, string] => [u.id, u.name]),
@@ -195,7 +201,7 @@ export function SavedView(props: { view: View }): JSX.Element {
   return (
     <div class={sx(page.page)}>
       <h1 class={sx(page.title)}>{v().name}</h1>
-      <div class={sx(page.row, page.narrow)}>
+      <Actions>
         <MenuChip
           label={v().shared ? "Shared with the workspace" : "Only you"}
           icon={icon(v().shared ? i.UserMultipleIcon : i.LockIcon)}
@@ -212,7 +218,7 @@ export function SavedView(props: { view: View }): JSX.Element {
               : []
           }
         />
-      </div>
+      </Actions>
       <Threads base={[]} view={v()} newThread={{ kind: "newThread" }} empty="Nothing matches." />
     </div>
   );
@@ -247,32 +253,35 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
     if (existing) void existing.delete();
     else store.create(SubspaceMember, { subspace: s(), user });
   };
-  const members = (): string => {
-    const count = s().members.length;
-    return `${count} member${count === 1 ? "" : "s"}`;
-  };
+  const members = (): SubspaceMember[] =>
+    s()
+      .members.sorted("createdAt")
+      .filter((m) => m.user);
   return (
     <div class={sx(page.page)}>
       <h1 class={sx(page.title)}>{s().name}</h1>
-      <div class={sx(page.row, page.narrow)}>
-        <MenuChip
-          label={members()}
-          icon={icon(i.UserMultipleIcon)}
-          items={
-            isMember()
-              ? store
-                  .all(User)
-                  .sort((a, b) => a.name.localeCompare(b.name))
-                  .map((user) => ({
-                    label: user.name,
-                    icon: membership(user.id) ? icon(i.Tick02Icon) : undefined,
-                    run: () => toggle(user),
-                  }))
-              : s()
-                  .members.sorted("createdAt")
-                  .map((m) => ({ label: m.user.name, run: () => open({ person: m.userId }) }))
-          }
+      <Show
+        when={isMember()}
+        fallback={
+          <Show when={s().description}>
+            <p class={sx(page.description)}>{s().description}</p>
+          </Show>
+        }
+      >
+        <textarea
+          class={sx(page.description, page.descriptionField)}
+          aria-label="Description"
+          placeholder="Add a description…"
+          rows={1}
+          value={s().description ?? ""}
+          onKeyDown={(event) => event.key === "Escape" && event.currentTarget.blur()}
+          onBlur={(event) => {
+            s().description = event.currentTarget.value.trim() || undefined;
+            s().save();
+          }}
         />
+      </Show>
+      <Actions>
         <MenuChip
           label={s().visibility === "private" ? "Private" : "Open"}
           icon={icon(s().visibility === "private" ? i.LockIcon : i.ViewIcon)}
@@ -299,7 +308,41 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         <button class={sx(chip.chip)} onClick={() => toggle(me())}>
           {isMember() ? "Leave" : "Join"}
         </button>
-      </div>
+      </Actions>
+      <h2 class={sx(page.subheading, page.body)}>Members · {members().length}</h2>
+      <ul class={sx(page.list, page.narrow)}>
+        <For each={members()}>
+          {(m) => (
+            <li class={sx(page.member)}>
+              <button
+                class={sx(page.bare, page.person, page.hover, page.pointer)}
+                onClick={() => open({ person: m.userId })}
+              >
+                <Identicon seed={m.userId} size={16} />
+                <span class={sx(page.personName)}>{m.user.name}</span>
+              </button>
+              <Show when={isMember()}>
+                <button
+                  class={sx(page.bare, page.small, page.pointer, page.noShrink)}
+                  onClick={() => void m.delete()}
+                >
+                  {m.userId === me().id ? "Leave" : "Remove"}
+                </button>
+              </Show>
+            </li>
+          )}
+        </For>
+        <Show when={isMember()}>
+          <li>
+            <button
+              class={sx(page.bare, page.person, page.hover, page.pointer, page.small)}
+              onClick={() => setDialog({ kind: "addMember", subspace: s() })}
+            >
+              {icon(i.Add01Icon)} Add member…
+            </button>
+          </li>
+        </Show>
+      </ul>
       <Threads
         base={[{ subspaceIds: { contains: s().id } }]}
         newThread={{ kind: "newThread", subspaceId: s().id }}

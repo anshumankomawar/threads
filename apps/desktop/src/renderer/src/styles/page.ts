@@ -24,6 +24,27 @@ export const page = stylex.create({
     fontFeatureSettings: '"calt"',
   },
   summary: { margin: "2px 0 0", color: muted },
+  // A subspace's description, under its name: plain text, which members edit in place.
+  description: {
+    maxWidth: 640,
+    margin: "8px 0 0",
+    color: colors.textSecondary,
+    fontSize: size.body,
+    lineHeight: "20px",
+    whiteSpace: "pre-wrap",
+  },
+  descriptionField: {
+    display: "block",
+    width: "100%",
+    padding: 0,
+    borderWidth: 0,
+    font: "inherit",
+    backgroundColor: "transparent",
+    outline: "none",
+    resize: "none",
+    fieldSizing: "content",
+    "::placeholder": { color: muted },
+  },
   summaryIcon: { verticalAlign: "-1px" },
   subheading: { margin: "28px 0 8px", color: colors.textSecondary, fontWeight: 500 },
   body: { fontSize: size.body },
@@ -73,5 +94,7 @@ export const page = stylex.create({
     color: colors.textPrimary,
     textAlign: "left",
   },
+  // A person in a list, with something to do to them on the right.
+  member: { display: "flex", gap: 8, alignItems: "center" },
   personName: { flex: 1, minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
 });

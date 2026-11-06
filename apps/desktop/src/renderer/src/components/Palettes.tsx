@@ -592,34 +592,42 @@ function NewView(props: { filter: Filter }): JSX.Element {
   );
 }
 
-// A new subspace, open or private, with you in it.
+// A new subspace with you in it. It starts open; its page makes it private.
+export function makeSubspace(name: string): Subspace {
+  const made = store.create(Subspace, { name, visibility: "open", workspace: workspace() });
+  store.create(SubspaceMember, { subspace: made, user: me() });
+  return made;
+}
+
 function NewSubspace(): JSX.Element {
-  const [name, setName] = createSignal<string | null>(null);
-  const make = (visibility: "open" | "private") => {
-    const made = store.create(Subspace, { name: name()!, visibility, workspace: workspace() });
-    store.create(SubspaceMember, { subspace: made, user: me() });
-    open({ subspace: made.id });
-  };
   return (
-    <Show
-      when={name()}
-      fallback={
-        <Picker
-          placeholder="Name the subspace"
-          rows={(query) =>
-            query === "" ? [] : [{ label: `Next “${query}”`, hint: "↵", run: () => setName(query) }]
-          }
-        />
+    <Picker
+      placeholder="Name the subspace"
+      rows={(query) =>
+        entry(query, "Make subspace", (name) => open({ subspace: makeSubspace(name).id }))
       }
-    >
-      <Picker
-        placeholder="Who can see it?"
-        rows={() => [
-          { label: "Open: everyone in the workspace", run: done(() => make("open")) },
-          { label: "Private: only its members", run: done(() => make("private")) },
-        ]}
-      />
-    </Show>
+    />
+  );
+}
+
+// Someone to add to a subspace.
+function AddMember(props: { subspace: Subspace }): JSX.Element {
+  const isIn = (user: User): boolean =>
+    props.subspace.members.filter((m) => m.userId === user.id).length > 0;
+  return (
+    <Picker
+      placeholder={`Add to ${props.subspace.name}…`}
+      rows={(query) =>
+        store
+          .all(User)
+          .filter((u) => !isIn(u) && matches(u.name, query))
+          .map((u) => ({
+            label: u.name,
+            seed: u.id,
+            run: done(() => store.create(SubspaceMember, { subspace: props.subspace, user: u })),
+          }))
+      }
+    />
   );
 }
 
@@ -628,6 +636,7 @@ const PALETTES = {
   filter: FilterPicker,
   newView: NewView,
   newSubspace: NewSubspace,
+  addMember: AddMember,
   newThread: NewThread,
   newLabel: NewLabel,
   blocked: Blocked,

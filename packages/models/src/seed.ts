@@ -70,16 +70,26 @@ type Sample = {
 };
 
 // An open subspace, and a private one only its members see.
-const SAMPLE_SUBSPACES: { id: string; name: string; visibility: string; members: string[] }[] = [
+const SAMPLE_SUBSPACES: {
+  id: string;
+  name: string;
+  description: string;
+  visibility: string;
+  members: string[];
+}[] = [
   {
     id: "engineering",
     name: "Engineering",
+    description:
+      "Where we build and run the product: incidents, customer-reported bugs, code reviews and infrastructure changes. Anyone can bring something here; whoever picks it up owns it until it ships or is resolved.",
     visibility: "open",
     members: ["you", "sam", "maya", "daniel"],
   },
   {
     id: "leadership",
     name: "Leadership",
+    description:
+      "Decisions that need the leadership team before they go wider: hiring plans, budgets, pricing and anything sensitive about people. Kept private, so only its members see these threads.",
     visibility: "private",
     members: ["you", "priya", "elena"],
   },
@@ -227,9 +237,9 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
     ),
   ];
   if (!sample) return writes;
-  for (const { id, name, visibility, members } of SAMPLE_SUBSPACES)
+  for (const { id, name, description, visibility, members } of SAMPLE_SUBSPACES)
     writes.push(
-      create("Subspace", id, { name, visibility, workspaceId: workspace }),
+      create("Subspace", id, { name, description, visibility, workspaceId: workspace }),
       ...members.map((userId) =>
         create("SubspaceMember", `${id}-${userId}`, { subspaceId: id, userId }),
       ),
