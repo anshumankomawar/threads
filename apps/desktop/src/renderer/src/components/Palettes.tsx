@@ -1,7 +1,8 @@
 import { createEffect, createMemo, createSignal, For, Show, untrack, type Signal } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Label, Message, Thread, User } from "models";
+import { Bucket, Label, Message, Subspace, SubspaceMember, Thread, User, View } from "models";
+import type { Filter } from "sync";
 import {
   account,
   applyTheme,
@@ -24,6 +25,7 @@ import { paletteSectionMarker } from "../styles/markers.stylex";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
+import { FIELDS } from "./Pages";
 import { Identicon } from "./Identicon";
 
 // A modal palette: a click outside or Escape closes it.
@@ -143,10 +145,11 @@ export function createThread(fields: {
   description?: string;
   assignees?: User[];
   labelIds?: string[];
+  subspaceIds?: string[];
   blocks?: Thread;
   branchedFrom?: Thread;
 }): Thread {
-  const { assignees = [], labelIds = [], ...rest } = fields;
+  const { assignees = [], labelIds = [], subspaceIds = [], ...rest } = fields;
   return store.create(Thread, {
     ...rest,
     state: "open",
@@ -154,6 +157,7 @@ export function createThread(fields: {
     workspace: workspace(),
     owner: me(),
     labelIds,
+    subspaceIds,
     assigneeIds: assignees.map((u) => u.id),
   });
 }
@@ -164,6 +168,7 @@ export function send(thread: Thread, body: string): void {
     author: me(),
     body,
     workspaceId: thread.workspaceId,
+    subspaceIds: thread.subspaceIds,
   });
 }
 
@@ -176,6 +181,12 @@ function Search(): JSX.Element {
       run: () => setDialog({ kind: "newThread" }),
     },
     { label: "New label", section: "Quick actions", run: () => setDialog({ kind: "newLabel" }) },
+    {
+      label: "New subspace",
+      section: "Quick actions",
+      run: () => setDialog({ kind: "newSubspace" }),
+    },
+    { label: "All threads", section: "Views", run: done(() => open({ view: null })) },
     {
       label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
       section: "Views",
@@ -221,6 +232,16 @@ function Search(): JSX.Element {
             seed: u.id,
             run: done(() => open({ person: u.id })),
           })),
+          ...store.all(Subspace).map((sub) => ({
+            label: sub.name,
+            section: "Subspaces",
+            run: done(() => open({ subspace: sub.id })),
+          })),
+          ...store.all(View).map((v) => ({
+            label: v.name,
+            section: "Views",
+            run: done(() => open({ view: v.id })),
+          })),
           ...store.all(Label).map((l) => ({
             label: l.name,
             section: "Labels",
@@ -239,9 +260,10 @@ function Search(): JSX.Element {
 
 type Step = "write" | "describe" | "pick" | "labels";
 
-// Starting a thread: its title, an optional description, then who it's assigned to; there Tab picks labels. Started
-// from a label's or a person's page, that label is already on it and that person is first in the list.
-function NewThread(props: { labelId?: string; to?: User }): JSX.Element {
+// Starting a thread: its title, an optional description, then who it's assigned to (a person, or everyone in a
+// subspace, which it then goes in); there Tab picks labels. Started from a label's, a subspace's or a person's page, it's
+// in that label or subspace, or that person is first in the list.
+function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }): JSX.Element {
   const [step, setStep] = createSignal<Step>("write");
   const query = createSignal("");
   const setTyped = query[1];
@@ -264,19 +286,30 @@ function NewThread(props: { labelId?: string; to?: User }): JSX.Element {
     else if (step() === "labels") go("pick");
     else setDialog(null);
   };
-  const create = (assignees: User[], group?: Label): void => {
+  const create = (assignees: User[], subspace?: Subspace): void => {
     const labels = store.all(Label);
-    const labelIds = [...new Set([...names(), ...(group ? [group.name] : [])])].map(
+    const labelIds = names().map(
       (name) =>
         (
           labels.find((l) => l.name === name) ??
-          store.create(Label, { name, memberIds: [], workspace: workspace() })
+          store.create(Label, { name, workspace: workspace() })
         ).id,
     );
+    const subspaceIds = [
+      ...new Set([
+        ...(props.subspaceId ? [props.subspaceId] : []),
+        ...(subspace ? [subspace.id] : []),
+      ]),
+    ];
     setDialog(null);
-    open({
-      thread: createThread({ title: title(), description: description(), assignees, labelIds }).id,
+    const made = createThread({
+      title: title(),
+      description: description(),
+      assignees,
+      labelIds,
+      subspaceIds,
     });
+    open({ thread: made.id });
   };
   const toggle = (name: string): void => {
     setNames((all) => (all.includes(name) ? all.filter((n) => n !== name) : [...all, name]));
@@ -331,15 +364,15 @@ function NewThread(props: { labelId?: string; to?: User }): JSX.Element {
               ...people(text, (u) => create([u])),
               { label: "Me", seed: me().id, run: () => create([me()]) },
               ...store
-                .all(Label)
-                .filter((group) => group.memberIds.length > 0)
-                .map((group) => ({
-                  label: group.name,
-                  hint: `Group · ${group.memberIds.length}`,
+                .all(Subspace)
+                .filter((sub) => sub.members.length > 0)
+                .map((sub) => ({
+                  label: sub.name,
+                  hint: `Subspace · ${sub.members.length}`,
                   run: () =>
                     create(
-                      group.memberIds.flatMap((id) => store.findById(User, id) ?? []),
-                      group,
+                      sub.members.filter((m) => m.userId !== me().id).map((m) => m.user),
+                      sub,
                     ),
                 })),
             ] as Row[]
@@ -398,7 +431,7 @@ function NewLabel(props: { thread?: Thread }): JSX.Element {
       placeholder="Name the label"
       rows={(query) =>
         entry(query, "Make label", (name) => {
-          const label = store.create(Label, { name, memberIds: [], workspace: workspace() });
+          const label = store.create(Label, { name, workspace: workspace() });
           if (!props.thread) return open({ label: label.id });
           props.thread.labelIds = [...props.thread.labelIds, label.id];
           props.thread.save();
@@ -511,8 +544,90 @@ function ViewAs(): JSX.Element {
 
 // Signing in happens in the browser, which sends you back here on a `com.threads.arc://` link. When the link doesn't open the
 // app, the sign-in page shows a code to paste here instead.
+// A condition for a view's filter: a field, then one of its values.
+function FilterPicker(props: { add: (condition: Filter) => void }): JSX.Element {
+  const [field, setField] = createSignal<string | null>(null);
+  const query = createSignal("");
+  return (
+    <Picker
+      placeholder={field() ? `${FIELDS[field()!].label} is…` : "Filter by…"}
+      query={query}
+      onBack={() => (field() ? (setField(null), query[1]("")) : setDialog(null))}
+      rows={(text) => {
+        const chosen = field();
+        if (!chosen)
+          return Object.entries(FIELDS)
+            .filter(([, f]) => matches(f.label, text))
+            .map(([key, f]) => ({ label: f.label, run: () => (setField(key), query[1]("")) }));
+        const { compare, values } = FIELDS[chosen];
+        return values()
+          .filter(([, name]) => matches(name, text))
+          .map(([value, name]) => ({
+            label: name,
+            run: done(() => props.add({ [chosen]: { [compare]: value } })),
+          }));
+      }}
+    />
+  );
+}
+
+// Saving a filter as a view of your own.
+function NewView(props: { filter: Filter }): JSX.Element {
+  return (
+    <Picker
+      placeholder="Name the view"
+      rows={(query) =>
+        entry(query, "Save view", (name) => {
+          const made = store.create(View, {
+            name,
+            filter: props.filter,
+            shared: false,
+            owner: me(),
+            workspace: workspace(),
+          });
+          open({ view: made.id });
+        })
+      }
+    />
+  );
+}
+
+// A new subspace, open or private, with you in it.
+function NewSubspace(): JSX.Element {
+  const [name, setName] = createSignal<string | null>(null);
+  const make = (visibility: "open" | "private") => {
+    const made = store.create(Subspace, { name: name()!, visibility, workspace: workspace() });
+    store.create(SubspaceMember, { subspace: made, user: me() });
+    open({ subspace: made.id });
+  };
+  return (
+    <Show
+      when={name()}
+      fallback={
+        <Picker
+          placeholder="Name the subspace"
+          rows={(query) =>
+            query === "" ? [] : [{ label: `Next “${query}”`, hint: "↵", run: () => setName(query) }]
+          }
+        />
+      }
+    >
+      <Picker
+        placeholder="Who can see it?"
+        rows={() => [
+          { label: "Open: everyone in the workspace", run: done(() => make("open")) },
+          { label: "Private: only its members", run: done(() => make("private")) },
+        ]}
+      />
+    </Show>
+  );
+}
+
 const PALETTES = {
   search: Search,
+  filter: FilterPicker,
+  newView: NewView,
+  newSubspace: NewSubspace,
   newThread: NewThread,
   newLabel: NewLabel,
   blocked: Blocked,

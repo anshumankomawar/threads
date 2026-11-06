@@ -1,12 +1,10 @@
 import type { Row, TxRecord } from "protocol";
-import type { LocalDB } from "sync";
-
-type Meta = { lastSyncId: number; schemaHash: string };
+import type { LocalDB, Meta } from "sync";
 
 // For tests and the simulation. It copies what it stores, as IndexedDB does, so nothing outside can change it.
 export function memoryLocalDB(): LocalDB {
   let schemaHash = "";
-  let meta: Meta | undefined;
+  let meta: (Meta & { schemaHash: string }) | undefined;
   const tables = new Map<string, Map<string, Row>>();
   const outbox = new Map<string, TxRecord>();
   const table = (model: string) => tables.get(model) ?? tables.set(model, new Map()).get(model)!;
@@ -26,8 +24,8 @@ export function memoryLocalDB(): LocalDB {
         else table(model).delete(modelId);
     },
     meta: {
-      get: async () => ({ lastSyncId: meta?.lastSyncId ?? 0 }),
-      set: async ({ lastSyncId }) => void (meta = { lastSyncId, schemaHash }),
+      get: async () => structuredClone(meta) ?? { lastSyncId: 0, groups: [], subscribed: [] },
+      set: async (next) => void (meta = { ...structuredClone(next), schemaHash }),
     },
     outbox: {
       put: async (txs) => txs.forEach((tx) => outbox.set(tx.id, structuredClone(tx))),

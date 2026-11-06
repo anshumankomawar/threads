@@ -113,10 +113,10 @@ test("a transaction is done only once lastSyncId reaches its sync id", async () 
   await tick();
   expect(tx.status).toBe("awaitingSync");
   expect(store.pendingCount()).toBe(1);
-  transport.send({ type: "delta", actions: [], lastSyncId: 1 });
+  transport.send({ type: "delta", groups: [], actions: [], lastSyncId: 1 });
   await tick();
   expect(tx.status).toBe("awaitingSync");
-  transport.send({ type: "delta", actions: [], lastSyncId: 2 });
+  transport.send({ type: "delta", groups: [], actions: [], lastSyncId: 2 });
   await tx.result();
   expect(tx.status).toBe("done");
   expect(store.pendingCount()).toBe(0);
@@ -149,7 +149,7 @@ test("a confirmed change the socket doesn't bring back makes it reconnect, and c
   await tick();
   expect(transport.socket).not.toBe(dead);
   // The new socket's Hello is answered with what it missed.
-  transport.send({ type: "delta", actions: transport.log, lastSyncId: 1 });
+  transport.send({ type: "delta", groups: [], actions: transport.log, lastSyncId: 1 });
   await tick();
   expect(c.state).toBe("blocked");
   expect(store.pendingCount()).toBe(0);

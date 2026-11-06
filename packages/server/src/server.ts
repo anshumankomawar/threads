@@ -3,7 +3,6 @@ import type {
   BootstrapEnd,
   BootstrapLine,
   DeltasResponse,
-  GroupsChanged,
   ModelMeta,
   MutateRequest,
   MutateResponse,
@@ -13,11 +12,12 @@ import type {
   TxKind,
   TxRecord,
 } from "protocol";
-import { registry } from "sync";
+import { ALL, registry, sees } from "sync";
 import type { Logged, Storage } from "./storage";
 
-// Who's asking. A user sees their sync groups and writes as themselves; the admin sees everything and acts as anyone.
-export type Session = { userId: string } | { admin: true };
+// Who's asking. A user sees their sync groups (and any they subscribed to that they may read) and writes as themselves;
+// the admin sees everything and acts as anyone.
+export type Session = { userId: string; subscribed?: string[] } | { admin: true };
 
 export type Write = Pick<TxRecord, "kind" | "model" | "modelId" | "changes">;
 // A write as permission hooks and effects see it: the row before and after (undefined for a create / a delete), and
@@ -33,18 +33,21 @@ export interface Writer extends Reader {
   write(write: Write): void;
 }
 
-// A connected client. It receives commits once `hello` has set its `groups`; the Durable Object keeps `groups` in the
-// socket's attachment so they survive hibernation, and `send` must not throw.
+// A connected client. It receives commits once it said hello; the Durable Object keeps `greeted` in the socket's
+// attachment so it survives hibernation, and `send` must not throw.
 export interface Socket {
   readonly session: Session;
-  groups?: string[];
+  greeted?: boolean;
   send(message: ServerMessage): void;
 }
 
 export type ServerOptions = {
   storage: Storage;
   sockets: () => Iterable<Socket>;
+  // The groups a user is in: what they load at bootstrap and follow.
   groupsOf: (userId: string, db: Reader) => string[];
+  // A group a user may subscribe to without being in it.
+  mayRead?: (userId: string, group: string, db: Reader) => boolean;
   // Per model: may this user make this change? Not run for the admin or for effects.
   rules?: Record<string, (change: Change, userId: string, db: Reader) => boolean>;
   // Per model: further writes in the same commit, each its own sync action under the same tx id.
@@ -71,14 +74,6 @@ const LETTER = {
   unarchive: "R",
   delete: "D",
 } as const satisfies Record<TxKind, SyncAction["action"]>;
-const ALL = "*"; // the admin's only group: it sees everything
-function diff(before: string[], after: string[]): GroupsChanged | undefined {
-  const added = after.filter((group) => !before.includes(group));
-  const removed = before.filter((group) => !after.includes(group));
-  return added.length + removed.length > 0 ? { type: "groups", added, removed } : undefined;
-}
-const sees = (mine: string[], theirs: string[]): boolean =>
-  mine[0] === ALL || theirs.some((group) => mine.includes(group));
 
 // One workspace's server: every row and the whole log in memory, written through to `storage`.
 export class SyncServer {
@@ -108,38 +103,39 @@ export class SyncServer {
     return this.#log.at(-1)?.action.id ?? 0;
   }
 
-  bootstrap(session: Session): { rows: BootstrapLine[]; end: BootstrapEnd } {
+  // Every row the session sees; or, for a client that `holds` some groups already, the rows of the others and every
+  // action after `after` it sees.
+  bootstrap(
+    session: Session,
+    partial?: { holds: string[]; after: number },
+  ): { rows: BootstrapLine[]; end: BootstrapEnd } {
     const groups = this.#groupsOf(session);
+    const only = partial ? groups.filter((group) => !partial.holds.includes(group)) : groups;
     const rows = [...this.#models.values()].flatMap((meta) =>
       [...this.#table(meta.name).values()]
-        .filter((row) => sees(groups, this.#syncGroups(meta.name, row)))
+        .filter((row) => sees(only, this.#syncGroups(meta.name, row)))
         .map((row) => ({ model: meta.name, row })),
     );
+    const actions = partial ? this.#visible(this.#log, groups, partial.after) : [];
     return {
       rows,
-      end: { lastSyncId: this.#lastSyncId, schemaHash: registry.schemaHash },
+      end: { lastSyncId: this.#lastSyncId, schemaHash: registry.schemaHash, groups, actions },
     };
   }
 
-  // Nothing past a change to the session's groups: the client loads everything first (its socket tells it to).
   deltas(session: Session, after: number): DeltasResponse {
-    if (this.#groupsChange(session, after)) return { actions: [], lastSyncId: after };
+    const groups = this.#groupsOf(session);
     return {
-      actions: this.#visible(this.#log, this.#groupsOf(session), after),
+      actions: this.#visible(this.#log, groups, after),
       lastSyncId: this.#lastSyncId,
+      groups,
     };
   }
 
-  // Sends the socket what it missed after `lastSyncId` (or GroupsChanged, if its groups changed since), then every
-  // commit.
+  // Sends the socket what it missed after `lastSyncId`, then every commit.
   hello(socket: Socket, lastSyncId: number): void {
-    socket.groups = this.#groupsOf(socket.session);
-    socket.send(
-      this.#groupsChange(socket.session, lastSyncId) ?? {
-        type: "delta",
-        ...this.deltas(socket.session, lastSyncId),
-      },
-    );
+    socket.greeted = true;
+    socket.send({ type: "delta", ...this.deltas(socket.session, lastSyncId) });
   }
 
   mutate(session: Session, { transactions }: MutateRequest): MutateResponse {
@@ -193,37 +189,15 @@ export class SyncServer {
     this.#log.push(...logged);
     for (const { action } of logged) this.#txs.set(action.txId, action.id);
     for (const socket of this.#options.sockets()) {
-      if (socket.groups === undefined) continue;
+      if (!socket.greeted) continue;
       const groups = this.#groupsOf(socket.session);
-      // Before the delta, so a client never gets past the change without loading everything again.
-      const change = diff(socket.groups, groups);
-      if (change) socket.send(change);
-      socket.groups = groups;
       socket.send({
         type: "delta",
         actions: this.#visible(logged, groups, 0),
+        groups,
         lastSyncId: this.#lastSyncId,
       });
     }
-  }
-
-  // How the session's groups changed since `syncId`, from the rows as the log had them then.
-  #groupsChange(session: Session, syncId: number): GroupsChanged | undefined {
-    // At 0 the session held nothing, so everything since is in its deltas.
-    if ("admin" in session || syncId === 0) return undefined;
-    const then = new Map<string, Map<string, Row>>(
-      [...this.#models.keys()].map((name) => [name, new Map()]),
-    );
-    for (const { action } of this.#log) {
-      if (action.id > syncId) break;
-      if (action.data) then.get(action.model)!.set(action.modelId, action.data);
-      else then.get(action.model)!.delete(action.modelId);
-    }
-    const reader: Reader = {
-      get: (model, id) => then.get(model)!.get(id),
-      all: (model) => [...then.get(model)!.values()],
-    };
-    return diff(this.#options.groupsOf(session.userId, reader), this.#groupsOf(session));
   }
 
   // Validates, checks permission (when `userId` is given), applies and logs one write, then runs its effects.
@@ -348,7 +322,11 @@ export class SyncServer {
   }
 
   #groupsOf(session: Session): string[] {
-    return "admin" in session ? [ALL] : this.#options.groupsOf(session.userId, this.#reader);
+    if ("admin" in session) return [ALL];
+    const { userId, subscribed = [] } = session;
+    const own = this.#options.groupsOf(userId, this.#reader);
+    const mayRead = (group: string) => this.#options.mayRead?.(userId, group, this.#reader);
+    return [...own, ...subscribed.filter((group) => !own.includes(group) && mayRead(group))];
   }
 
   #visible(logged: Logged[], groups: string[], after: number): SyncAction[] {

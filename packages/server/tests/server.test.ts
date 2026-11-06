@@ -152,18 +152,20 @@ test("bootstrap, deltas and sockets carry only what shares a group; every commit
   expect(server.bootstrap(ann).rows.map((line) => line.row.id)).toEqual(["t", "n"]);
   expect(server.deltas(bob, 0).actions.map((a) => a.modelId)).toEqual(["t"]);
   expect(server.deltas(ann, 0).actions.map((a) => a.modelId)).toEqual(["t", "n"]);
+  const annGroups = ["workspace:w", "user:ann", "team:t"];
+  const bobGroups = ["workspace:w", "user:bob"];
   expect(ofAnn.received).toEqual([
-    { type: "delta", actions: [], lastSyncId: 1 },
-    { type: "delta", actions: server.deltas(ann, 1).actions, lastSyncId: 2 },
+    { type: "delta", actions: [], lastSyncId: 1, groups: annGroups },
+    { type: "delta", actions: server.deltas(ann, 1).actions, lastSyncId: 2, groups: annGroups },
   ]);
   expect(ofBob.received).toEqual([
-    { type: "delta", actions: server.deltas(bob, 0).actions, lastSyncId: 1 },
-    { type: "delta", actions: [], lastSyncId: 2 },
+    { type: "delta", actions: server.deltas(bob, 0).actions, lastSyncId: 1, groups: bobGroups },
+    { type: "delta", actions: [], lastSyncId: 2, groups: bobGroups },
   ]);
   expect(silent.received).toEqual([]);
 });
 
-test("a commit that changes a session's groups sends GroupsChanged before its packet", () => {
+test("a commit that changes a session's groups says so in its packet", () => {
   const server = createServer();
   const ofBob = socket(bob);
   server.sockets.push(ofBob);
@@ -180,9 +182,32 @@ test("a commit that changes a session's groups sends GroupsChanged before its pa
       },
     ],
   });
-  expect(ofBob.received.slice(1).map((message) => message.type)).toEqual(["groups", "delta"]);
-  expect(ofBob.received[1]).toEqual({ type: "groups", added: ["team:t"], removed: [] });
-  expect(ofBob.groups).toContain("team:t");
+  expect(ofBob.received[1]).toMatchObject({
+    lastSyncId: 2,
+    groups: ["workspace:w", "user:bob", "team:t"],
+  });
+});
+
+test("a partial bootstrap is the rows of groups the client lacks and every action since, as of one sync id", () => {
+  const server = createServer();
+  server.mutate(ann, { transactions: [note("n")] });
+  const { rows, end } = server.bootstrap(ann, { holds: ["workspace:w", "user:ann"], after: 1 });
+  expect(rows.map((line) => line.row.id)).toEqual(["n"]);
+  expect(end.actions.map((action) => action.modelId)).toEqual(["n"]);
+  expect(end).toMatchObject({ lastSyncId: 2, groups: ["workspace:w", "user:ann", "team:t"] });
+  // Only the session's own groups load.
+  expect(server.bootstrap(bob, { holds: ["workspace:w", "user:bob"], after: 0 }).rows).toEqual([]);
+});
+
+test("a session follows a group it subscribed to only if it may read it", () => {
+  const open = createServer({ mayRead: (_user, group) => group === "team:t" });
+  const closed = createServer();
+  const subscribed = { userId: "bob", subscribed: ["team:t"] };
+  open.mutate(ann, { transactions: [note("n")] });
+  closed.mutate(ann, { transactions: [note("n")] });
+  expect(open.bootstrap(subscribed).end.groups).toContain("team:t");
+  expect(open.bootstrap(subscribed).rows.map((line) => line.row.id)).toEqual(["t", "n"]);
+  expect(closed.bootstrap(subscribed).rows.map((line) => line.row.id)).toEqual(["t"]);
 });
 
 test("an action writes through the same path and returns its highest sync id", () => {
@@ -241,7 +266,12 @@ test("HTTP: bootstrap streams NDJSON ending with BootstrapEnd; refusals map to s
     .trimEnd()
     .split("\n")
     .map((line) => JSON.parse(line));
-  expect(lines.at(-1)).toEqual({ lastSyncId: 1, schemaHash: registry.schemaHash });
+  expect(lines.at(-1)).toEqual({
+    lastSyncId: 1,
+    schemaHash: registry.schemaHash,
+    groups: ["workspace:w", "user:ann", "team:t"],
+    actions: [],
+  });
   expect(lines).toHaveLength(2);
   const action = await handleRequest(
     server,

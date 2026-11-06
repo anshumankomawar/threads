@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Label, Thread, User } from "models";
+import { Label, Subspace, Thread, User, View } from "models";
 import {
   active,
   itemFor,
@@ -35,7 +35,7 @@ import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
-import { LabelView, PersonView } from "./components/Pages";
+import { AllThreadsView, LabelView, PersonView, SavedView, SubspaceView } from "./components/Pages";
 import { Sidebar, sidebarIcon, TopButton } from "./components/Sidebar";
 
 const styles = stylex.create({
@@ -140,8 +140,9 @@ function Waiting(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
-  const shown = (key: "label" | "person"): string | undefined =>
-    (view() as Record<string, string | undefined>)[key];
+  const shown = (key: "label" | "person" | "subspace" | "view"): string | undefined =>
+    (view() as Record<string, string | undefined>)[key] ?? undefined;
+  const allThreads = (): boolean => "view" in view() && shown("view") === undefined;
   return (
     <>
       <Titlebar />
@@ -184,6 +185,9 @@ export default function App(): JSX.Element {
             <span class={sx(topbar.title)}>
               {active()?.title ??
                 store.findById(Label, shown("label") ?? "")?.name ??
+                store.findById(Subspace, shown("subspace") ?? "")?.name ??
+                store.findById(View, shown("view") ?? "")?.name ??
+                (allThreads() ? "All threads" : undefined) ??
                 store.findById(User, shown("person") ?? "")?.name}
             </span>
             <span class={sx(topbar.end)}>
@@ -205,6 +209,15 @@ export default function App(): JSX.Element {
           <Switch>
             <Match when={store.findById(Label, shown("label") ?? "")} keyed>
               {(label) => <LabelView label={label} />}
+            </Match>
+            <Match when={store.findById(Subspace, shown("subspace") ?? "")} keyed>
+              {(subspace) => <SubspaceView subspace={subspace} />}
+            </Match>
+            <Match when={store.findById(View, shown("view") ?? "")} keyed>
+              {(saved) => <SavedView view={saved} />}
+            </Match>
+            <Match when={allThreads()}>
+              <AllThreadsView />
             </Match>
             <Match when={store.findById(User, shown("person") ?? "")} keyed>
               {(user) => <PersonView user={user} />}

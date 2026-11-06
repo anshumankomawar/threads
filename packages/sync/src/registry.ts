@@ -46,3 +46,10 @@ export class ModelRegistry {
 }
 
 export const registry = new ModelRegistry();
+
+// The admin's only group: it sees everything.
+export const ALL = "*";
+
+// Whether holding `mine` you see a row in `theirs`.
+export const sees = (mine: string[], theirs: string[]): boolean =>
+  mine.includes(ALL) || theirs.some((group) => mine.includes(group));

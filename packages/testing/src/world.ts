@@ -32,7 +32,8 @@ export type Client = {
   promises: { settled: boolean }[]; // this life's result() and action() promises
 };
 
-// What a client applied to its local database: every row written, and the sync ids since each full load.
+// What a client applied to its local database: every row written, and the sync ids since each full load or change of
+// the groups it holds.
 type Recorded = LocalDB & {
   written: SyncAction[];
   loads: { base?: number; ids: number[] }[];
@@ -45,6 +46,7 @@ export const drain = (): Promise<void> => new Promise((resolve) => setImmediate(
 
 function recorded(db: LocalDB): Recorded {
   const loads: Recorded["loads"] = [{ ids: [] }];
+  let groups: string | undefined;
   const written: SyncAction[] = [];
   return {
     ...db,
@@ -62,6 +64,9 @@ function recorded(db: LocalDB): Recorded {
     meta: {
       get: () => db.meta.get(),
       set(meta) {
+        if (groups !== undefined && groups !== JSON.stringify(meta.groups))
+          loads.push({ base: meta.lastSyncId, ids: [] });
+        groups = JSON.stringify(meta.groups);
         loads.at(-1)!.base ??= meta.lastSyncId;
         return db.meta.set(meta);
       },
@@ -113,24 +118,33 @@ class Http implements Flight {
 class Conn implements Flight {
   socket?: Socket;
   inbox: ServerMessage[] = [];
+  // Hellos the client sent again, on their way to the server.
+  outbox = 0;
   constructor(
     readonly world: World,
     readonly client: Client,
     readonly handlers: Handlers,
   ) {}
 
-  ready = () => this.socket === undefined || this.inbox.length > 0;
+  ready = () => this.socket === undefined || this.outbox > 0 || this.inbox.length > 0;
 
-  // The first delivery opens the socket and says hello; later ones deliver the next message, in order.
+  // The first delivery opens the socket and says hello; later ones bring a Hello sent again to the server, or the next
+  // message to the client, in order.
   deliver(): void {
-    if (this.socket !== undefined) return this.handlers.onMessage(this.inbox.shift()!);
-    this.socket = { session: { userId: this.client.user }, send: (m) => this.inbox.push(wire(m)) };
-    this.world.server.hello(this.socket, this.handlers.hello().lastSyncId);
+    if (this.socket !== undefined && this.outbox === 0)
+      return this.handlers.onMessage(this.inbox.shift()!);
+    if (this.socket !== undefined) this.outbox--;
+    const hello = wire(this.handlers.hello());
+    const session = { userId: this.client.user, subscribed: hello.subscribed };
+    this.socket = { session, send: (m) => this.inbox.push(wire(m)) };
+    this.world.server.hello(this.socket, hello.lastSyncId);
   }
 
+  // A Hello arrives twice; a message to the client is delivered twice.
   duplicate(): void {
-    if (this.socket === undefined) this.deliver();
-    else this.handlers.onMessage(wire(this.inbox[0]));
+    if (this.socket !== undefined && this.outbox > 0) this.outbox++;
+    if (this.socket === undefined || this.outbox > 0) return this.deliver();
+    this.handlers.onMessage(wire(this.inbox[0]));
   }
 
   drop(): void {
@@ -182,7 +196,7 @@ export class World {
     if (client.conn) this.close(client.conn, false);
     const life = ++client.life;
     const alive = () => client.life === life;
-    const session = { userId: client.user };
+    const user = client.user;
     const http = <T>(call: () => T) =>
       new Promise<T>((resolve, reject) => {
         if (client.offline) return reject(new Error("offline"));
@@ -197,15 +211,16 @@ export class World {
       });
     const { server } = this;
     const transport: Transport = {
-      bootstrap: () => http(() => server.bootstrap(session)),
-      deltas: (after) => http(() => server.deltas(session, after)),
-      mutate: (request) => http(() => server.mutate(session, wire(request))),
-      action: (name, args) => http(() => server.action(session, name, wire(args))),
+      bootstrap: (subscribed, partial) =>
+        http(() => server.bootstrap({ userId: user, subscribed }, partial && wire(partial))),
+      deltas: (after, subscribed) => http(() => server.deltas({ userId: user, subscribed }, after)),
+      mutate: (request) => http(() => server.mutate({ userId: user }, wire(request))),
+      action: (name, args) => http(() => server.action({ userId: user }, name, wire(args))),
       connect: (handlers) => {
         const conn = new Conn(this, client, handlers);
         if (client.offline) queueMicrotask(handlers.onClose);
         else this.network.push((client.conn = conn));
-        return { close: () => this.close(conn, true) };
+        return { close: () => this.close(conn, true), hello: () => void conn.outbox++ };
       },
     };
     client.promises = [];

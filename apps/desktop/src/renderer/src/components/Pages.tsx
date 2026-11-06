@@ -1,27 +1,109 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Label, Thread, User, WorkspaceMember, type Message } from "models";
-import { me, memberOf, open, setDialog, store, workspace, showMenu, threadMenu } from "../session";
-import { MenuChip } from "./Menus";
+import {
+  Label,
+  PRIORITIES,
+  STATES,
+  Subspace,
+  SubspaceMember,
+  Thread,
+  User,
+  View,
+  WorkspaceMember,
+} from "models";
+import { matches, type Filter } from "sync";
+import {
+  me,
+  memberOf,
+  open,
+  setDialog,
+  showMenu,
+  store,
+  threadMenu,
+  workspace,
+  type Dialog,
+} from "../session";
 import { chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
-import { ago } from "./ThreadView";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
+import { MenuChip } from "./Menus";
+import { ago, LABELS } from "./ThreadView";
 
-// Threads as rows, newest first, under a button for a new one; resolved ones behind a toggle.
+const icon = (svg: typeof i.Tick02Icon) => <Icon icon={svg} size={12} aria-hidden="true" />;
+const people = (): [string, string][] => [
+  ["$me", "Me"],
+  ...store.all(User).map((u): [string, string] => [u.id, u.name]),
+];
+
+// The thread fields a filter can test, how, and the values it offers.
+export const FIELDS: Record<
+  string,
+  { label: string; compare: "eq" | "contains"; values: () => [string, string][] }
+> = {
+  state: { label: "Status", compare: "eq", values: () => STATES.map((s) => [s, LABELS[s]]) },
+  priority: {
+    label: "Priority",
+    compare: "eq",
+    values: () => PRIORITIES.map((p) => [p, LABELS[p]]),
+  },
+  subspaceIds: {
+    label: "Subspace",
+    compare: "contains",
+    values: () => store.all(Subspace).map((s) => [s.id, s.name]),
+  },
+  labelIds: {
+    label: "Label",
+    compare: "contains",
+    values: () => store.all(Label).map((l) => [l.id, l.name]),
+  },
+  assigneeIds: { label: "Assignee", compare: "contains", values: people },
+  ownerId: { label: "Owner", compare: "eq", values: people },
+};
+
+// One field's test, as the filter bar shows it: "Status: Open".
+function describe(condition: Filter): string {
+  const [[field, comparison]] = Object.entries(condition);
+  const { label, values } = FIELDS[field];
+  const value = Object.values(comparison as object)[0];
+  return `${label}: ${values().find(([id]) => id === value)?.[1] ?? "?"}`;
+}
+
+// Threads that pass `base` and the conditions you add, newest first, resolved ones behind a toggle. Conditions on a
+// subspace follow it, so its threads load even if you're not in it. Unsaved, the conditions can become a saved view;
+// on a saved view's page they're its filter.
 function Threads(props: {
-  threads: Thread[];
-  newText: string;
-  onNew: () => void;
+  base: Filter[];
+  view?: View;
+  newThread: Extract<Dialog, { kind: "newThread" }>;
   empty: string;
 }): JSX.Element {
+  const [conditions, setConditions] = createSignal<Filter[]>(
+    untrack(() => props.view?.filter.and ?? []),
+  );
   const [all, setAll] = createSignal(false);
-  const resolved = (): number => props.threads.filter((t) => !t.isOpen).length;
+  const filter = (): Filter => ({ and: [...props.base, ...conditions()] });
+  createEffect(
+    () =>
+      filter().and!.flatMap((condition) => {
+        const contains = (condition.subspaceIds as { contains?: string } | undefined)?.contains;
+        return contains ? [contains] : [];
+      }),
+    (ids) => ids.forEach((id) => store.subscribe(`subspace:${id}`)),
+  );
+  const change = (next: Filter[]): void => {
+    setConditions(next);
+    if (!props.view) return;
+    props.view.filter = { and: next };
+    props.view.save();
+  };
+  const threads = (): Thread[] =>
+    store.all(Thread).filter((t) => matches(t, filter(), { me: me().id }));
+  const resolved = (): number => threads().filter((t) => !t.isOpen).length;
   const shown = (): Thread[] =>
-    props.threads
+    threads()
       .filter((t) => all() || t.isOpen)
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   return (
@@ -29,11 +111,38 @@ function Threads(props: {
       <div class={sx(page.row, page.toolbar, page.narrow)}>
         <button
           class={sx(page.bare, page.border, page.newButton, page.pointer)}
-          onClick={() => props.onNew()}
+          onClick={() => setDialog(props.newThread)}
         >
-          {props.newText}
+          New thread
+        </button>
+        <For each={conditions()}>
+          {(condition) => (
+            <button
+              class={sx(chip.chip)}
+              title="Remove"
+              onClick={() => change(conditions().filter((c) => c !== condition))}
+            >
+              {describe(condition)} ×
+            </button>
+          )}
+        </For>
+        <button
+          class={sx(chip.chip, chipTone.muted)}
+          onClick={() =>
+            setDialog({ kind: "filter", add: (condition) => change([...conditions(), condition]) })
+          }
+        >
+          {icon(i.FilterIcon)} Filter
         </button>
         <span class={sx(page.row, page.filters)}>
+          <Show when={!props.view && conditions().length > 0}>
+            <button
+              class={sx(chip.chip)}
+              onClick={() => setDialog({ kind: "newView", filter: filter() })}
+            >
+              Save view
+            </button>
+          </Show>
           <Show when={resolved() > 0}>
             <button class={sx(chip.chip, !all() && chipTone.muted)} onClick={() => setAll(!all())}>
               {all() ? "Showing resolved" : `${resolved()} resolved`}
@@ -71,51 +180,130 @@ function Threads(props: {
   );
 }
 
+// Every thread you can see, to filter and save as a view.
+export function AllThreadsView(): JSX.Element {
+  return (
+    <div class={sx(page.page)}>
+      <h1 class={sx(page.title)}>All threads</h1>
+      <Threads base={[]} newThread={{ kind: "newThread" }} empty="No threads yet." />
+    </div>
+  );
+}
+
+export function SavedView(props: { view: View }): JSX.Element {
+  const v = (): View => props.view;
+  return (
+    <div class={sx(page.page)}>
+      <h1 class={sx(page.title)}>{v().name}</h1>
+      <div class={sx(page.row, page.narrow)}>
+        <MenuChip
+          label={v().shared ? "Shared with the workspace" : "Only you"}
+          icon={icon(v().shared ? i.UserMultipleIcon : i.LockIcon)}
+          items={
+            v().ownerId === me().id
+              ? [
+                  {
+                    label: v().shared ? "Make it yours only" : "Share it",
+                    run: () => toggleShared(v()),
+                  },
+                  "separator",
+                  { label: "Delete view", run: () => (open({ thread: null }), void v().delete()) },
+                ]
+              : []
+          }
+        />
+      </div>
+      <Threads base={[]} view={v()} newThread={{ kind: "newThread" }} empty="Nothing matches." />
+    </div>
+  );
+}
+
+function toggleShared(view: View): void {
+  view.shared = !view.shared;
+  view.save();
+}
+
 export function LabelView(props: { label: Label }): JSX.Element {
-  const threads = (): Thread[] =>
-    store.all(Thread).filter((t) => t.labelIds.includes(props.label.id));
-  const openCount = (): number => threads().filter((t) => t.isOpen).length;
-  const membersText = (): string => {
-    const count = props.label.memberIds.length;
-    return count === 0 ? "No members" : `${count} member${count === 1 ? "" : "s"}`;
-  };
-  const toggleMember = (user: User): void => {
-    const ids = props.label.memberIds;
-    props.label.memberIds = ids.includes(user.id)
-      ? ids.filter((id) => id !== user.id)
-      : [...ids, user.id];
-    props.label.save();
-  };
   return (
     <div class={sx(page.page)}>
       <h1 class={sx(page.title)}>{props.label.name}</h1>
-      <p class={sx(page.summary)}>
-        <Icon icon={i.Tag01Icon} size={11} class={sx(page.summaryIcon)} aria-hidden="true" />{" "}
-        {openCount()} open thread{openCount() === 1 ? "" : "s"}
-      </p>
+      <Threads
+        base={[{ labelIds: { contains: props.label.id } }]}
+        newThread={{ kind: "newThread", labelId: props.label.id }}
+        empty="Nothing here yet."
+      />
+    </div>
+  );
+}
+
+// A subspace: who's in it, whether it's private, and its threads. Members add or remove people; anyone joins an open one.
+export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
+  const s = (): Subspace => props.subspace;
+  const membership = (userId: string): SubspaceMember | undefined =>
+    s().members.filter((m) => m.userId === userId)[0];
+  const isMember = (): boolean => membership(me().id) !== undefined;
+  const toggle = (user: User): void => {
+    const existing = membership(user.id);
+    if (existing) void existing.delete();
+    else store.create(SubspaceMember, { subspace: s(), user });
+  };
+  const members = (): string => {
+    const count = s().members.length;
+    return `${count} member${count === 1 ? "" : "s"}`;
+  };
+  return (
+    <div class={sx(page.page)}>
+      <h1 class={sx(page.title)}>{s().name}</h1>
       <div class={sx(page.row, page.narrow)}>
         <MenuChip
-          label={membersText()}
-          icon={<Icon icon={i.UserMultipleIcon} size={12} aria-hidden="true" />}
-          tone={props.label.memberIds.length === 0 ? "muted" : undefined}
-          title="Who's in this group: @mentioning it assigns them all"
-          items={store
-            .all(User)
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((user) => ({
-              label: user.name,
-              icon: props.label.memberIds.includes(user.id) ? (
-                <Icon icon={i.Tick02Icon} size={12} aria-hidden="true" />
-              ) : undefined,
-              run: () => toggleMember(user),
-            }))}
+          label={members()}
+          icon={icon(i.UserMultipleIcon)}
+          items={
+            isMember()
+              ? store
+                  .all(User)
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((user) => ({
+                    label: user.name,
+                    icon: membership(user.id) ? icon(i.Tick02Icon) : undefined,
+                    run: () => toggle(user),
+                  }))
+              : s()
+                  .members.sorted("createdAt")
+                  .map((m) => ({ label: m.user.name, run: () => open({ person: m.userId }) }))
+          }
         />
+        <MenuChip
+          label={s().visibility === "private" ? "Private" : "Open"}
+          icon={icon(s().visibility === "private" ? i.LockIcon : i.ViewIcon)}
+          items={
+            isMember()
+              ? [
+                  {
+                    label: s().visibility === "private" ? "Open it to everyone" : "Make it private",
+                    run: () => {
+                      s().visibility = s().visibility === "private" ? "open" : "private";
+                      s().save();
+                    },
+                  },
+                  "separator",
+                  // Its threads stay, outside it.
+                  {
+                    label: "Delete subspace",
+                    run: () => (open({ thread: null }), void s().delete()),
+                  },
+                ]
+              : []
+          }
+        />
+        <button class={sx(chip.chip)} onClick={() => toggle(me())}>
+          {isMember() ? "Leave" : "Join"}
+        </button>
       </div>
       <Threads
-        threads={threads()}
-        newText="New thread"
-        onNew={() => setDialog({ kind: "newThread", labelId: props.label.id })}
-        empty="Nothing here yet."
+        base={[{ subspaceIds: { contains: s().id } }]}
+        newThread={{ kind: "newThread", subspaceId: s().id }}
+        empty="No threads here yet."
       />
     </div>
   );
@@ -123,14 +311,9 @@ export function LabelView(props: { label: Label }): JSX.Element {
 
 const ROLE = { admin: "Admin", member: "Member" };
 
-// Someone and their role here, and the threads you're both in. Your own also lists the workspace's members.
+// Someone and their role here, and the threads they own or are assigned. Your own also lists the workspace's members.
 export function PersonView(props: { user: User }): JSX.Element {
   const u = (): User => props.user;
-  const first = (): string => u().name.split(" ")[0];
-  const inIt = (t: Thread, id: string): boolean =>
-    t.ownerId === id ||
-    t.assigneeIds.includes(id) ||
-    t.messages.filter((m: Message) => m.authorId === id).length > 0;
   const summary = (user: User): string =>
     [user.email, ROLE[memberOf(user)?.role ?? "member"]].filter(Boolean).join(" · ");
   return (
@@ -167,10 +350,9 @@ export function PersonView(props: { user: User }): JSX.Element {
         }
       >
         <Threads
-          threads={store.all(Thread).filter((t) => inIt(t, me().id) && inIt(t, u().id))}
-          newText={`New thread with ${first()}`}
-          onNew={() => setDialog({ kind: "newThread", to: u() })}
-          empty={`No threads with ${first()} yet.`}
+          base={[{ or: [{ ownerId: { eq: u().id } }, { assigneeIds: { contains: u().id } }] }]}
+          newThread={{ kind: "newThread", to: u() }}
+          empty={`No threads with ${u().name.split(" ")[0]} yet.`}
         />
       </Show>
     </div>

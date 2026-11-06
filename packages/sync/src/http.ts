@@ -9,18 +9,23 @@ import type {
   ServerMessage,
 } from "protocol";
 
-// How a client reaches its server: `httpTransport` here, a fake network in the tests.
+// How a client reaches its server: `httpTransport` here, a fake network in the tests. Every read says which groups the
+// client follows without being in them (`subscribed`).
 export interface Transport {
-  bootstrap(): Promise<{ rows: BootstrapLine[]; end: BootstrapEnd }>;
-  deltas(after: number): Promise<DeltasResponse>;
+  // Everything, or with `partial` only the rows of groups the client doesn't hold, plus every action after `after`.
+  bootstrap(
+    subscribed: string[],
+    partial?: { holds: string[]; after: number },
+  ): Promise<{ rows: BootstrapLine[]; end: BootstrapEnd }>;
+  deltas(after: number, subscribed: string[]): Promise<DeltasResponse>;
   mutate(request: MutateRequest): Promise<MutateResponse>;
   action(name: string, args: unknown): Promise<ActionResponse>;
-  // Opens the socket and sends `hello()` once it's open; `onClose` fires once when it ends, for any reason.
+  // Opens the socket and sends `hello()` once it's open, and again on `hello()`; `onClose` fires once when it ends.
   connect(handlers: {
     hello: () => Hello;
     onMessage: (message: ServerMessage) => void;
     onClose: () => void;
-  }): { close(): void };
+  }): { close(): void; hello(): void };
 }
 
 // A request the server refused (4xx): its transaction rolls back. Anything else thrown is a network error: retried.
@@ -54,15 +59,21 @@ export function httpTransport({
     (await request(path, body)).json() as Promise<T>;
 
   return {
-    async bootstrap() {
-      const lines = (await (await request("/sync/bootstrap")).text())
+    async bootstrap(subscribed, partial) {
+      const query = new URLSearchParams({ subscribed: subscribed.join(",") });
+      if (partial) query.set("holds", partial.holds.join(","));
+      if (partial) query.set("after", String(partial.after));
+      const lines = (await (await request(`/sync/bootstrap?${query}`)).text())
         .split("\n")
         .filter(Boolean)
         .map((line) => JSON.parse(line));
       const end: BootstrapEnd = lines.pop();
       return { rows: lines as BootstrapLine[], end };
     },
-    deltas: (after) => json(`/sync/deltas?after=${after}`),
+    deltas: (after, subscribed) =>
+      json(
+        `/sync/deltas?${new URLSearchParams({ after: String(after), subscribed: subscribed.join(",") })}`,
+      ),
     mutate: (body) => json("/sync/mutate", body),
     action: (name, args) => json(`/actions/${name}`, args),
     connect({ hello, onMessage, onClose }) {
@@ -72,7 +83,10 @@ export function httpTransport({
       socket.addEventListener("open", () => socket.send(JSON.stringify(hello())));
       socket.addEventListener("message", (event) => onMessage(JSON.parse(event.data)));
       socket.addEventListener("close", onClose);
-      return { close: () => socket.close() };
+      return {
+        close: () => socket.close(),
+        hello: () => socket.readyState === WebSocket.OPEN && socket.send(JSON.stringify(hello())),
+      };
     },
   };
 }

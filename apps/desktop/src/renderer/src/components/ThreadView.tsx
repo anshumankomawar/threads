@@ -8,6 +8,7 @@ import * as stylex from "@stylexjs/stylex";
 import {
   Bucket,
   Label,
+  Subspace,
   Thread,
   type Activity,
   plainText,
@@ -94,7 +95,7 @@ export function ago(date: Date): string {
 const titleOf = (id: string): string | undefined => store.findById(Thread, id)?.title;
 const nameOf = (id: string): string | undefined => store.findById(User, id)?.name;
 export const plain = (text: string): string =>
-  plainText(text, titleOf, nameOf, (id) => store.findById(Label, id)?.name);
+  plainText(text, titleOf, nameOf, (id) => store.findById(Subspace, id)?.name);
 
 // Text with its thread links and mentions live: a link opens beside, a mention opens the profile.
 function LinkedText(props: { text: string; current: string; byline?: boolean }): JSX.Element {
@@ -116,9 +117,12 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
           </Show>
         ) : "date" in part ? (
           new Date(part.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-        ) : "label" in part ? (
-          <button class={sx(link.person, link.mention)} onClick={() => open({ label: part.label })}>
-            @{store.findById(Label, part.label)?.name ?? "group"}
+        ) : "subspace" in part ? (
+          <button
+            class={sx(link.person, link.mention)}
+            onClick={() => open({ subspace: part.subspace })}
+          >
+            @{store.findById(Subspace, part.subspace)?.name ?? "subspace"}
           </button>
         ) : "person" in part ? (
           <button
@@ -158,7 +162,7 @@ function Meta(props: {
 // Due-date shortcuts, at 5pm.
 const dueAt = (days: number): Date =>
   new Date(new Date(Date.now() + days * 86_400_000).setHours(17, 0, 0, 0));
-const LABELS = {
+export const LABELS = {
   open: "Open",
   resolved: "Resolved",
   blocked: "Blocked",
@@ -193,6 +197,17 @@ function Header(props: { thread: Thread }): JSX.Element {
     c().assigneeIds = ids.includes(user.id)
       ? ids.filter((id) => id !== user.id)
       : [...ids, user.id];
+    c().save();
+  };
+  const spacesText = (): string => {
+    const [first, ...rest] = c().subspaceIds.map(
+      (id) => store.findById(Subspace, id)?.name ?? "Subspace",
+    );
+    return !first ? "Everyone" : rest.length ? `${first} +${rest.length}` : first;
+  };
+  const toggleSubspace = (sub: Subspace): void => {
+    const ids = c().subspaceIds;
+    c().subspaceIds = ids.includes(sub.id) ? ids.filter((id) => id !== sub.id) : [...ids, sub.id];
     c().save();
   };
   const toggleLabel = (label: Label): void => {
@@ -284,6 +299,20 @@ function Header(props: { thread: Thread }): JSX.Element {
                 })),
               { label: "New label…", run: () => setDialog({ kind: "newLabel", thread: c() }) },
             ]}
+          />
+          <MenuChip
+            label={spacesText()}
+            icon={icon(i.Layers01Icon)}
+            tone={c().subspaceIds.length === 0 ? "muted" : undefined}
+            title="Where it lives: its subspaces' members see it, and only they when one is private"
+            items={store
+              .all(Subspace)
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((sub) => ({
+                label: sub.name,
+                icon: c().subspaceIds.includes(sub.id) ? icon(i.Tick02Icon) : undefined,
+                run: () => toggleSubspace(sub),
+              }))}
           />
           <MenuChip
             label={assigneesText()}
@@ -426,13 +455,13 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
             pick: () => menu.pick({ id: u.id, name: u.name }),
           })),
         ...store
-          .all(Label)
-          .filter((l) => l.memberIds.length > 0 && l.name.toLowerCase().includes(query))
-          .map((l) => ({
-            label: l.name,
+          .all(Subspace)
+          .filter((sub) => sub.members.length > 0 && sub.name.toLowerCase().includes(query))
+          .map((sub) => ({
+            label: sub.name,
             icon: i.UserMultipleIcon,
-            hint: `Group · ${l.memberIds.length}`,
-            pick: () => menu.pick({ id: `label:${l.id}`, name: l.name }),
+            hint: `assigns its ${sub.members.length}`,
+            pick: () => menu.pick({ id: `subspace:${sub.id}`, name: sub.name }),
           })),
       ];
     const found = store
@@ -451,6 +480,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       const made = createThread({
         title,
         labelIds: [...c().labelIds],
+        subspaceIds: [...c().subspaceIds],
         assignees: [...new Set(others)].flatMap((id) => store.findById(User, id) ?? []),
         branchedFrom: c(),
       });

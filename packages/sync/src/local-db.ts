@@ -2,12 +2,15 @@ import { openDB, type IDBPDatabase } from "idb";
 import type { Row, SyncAction, TxRecord } from "protocol";
 import { registry } from "./registry";
 
+// Where the local data is up to: its sync id, the sync groups it holds, and those it follows without being in them.
+export type Meta = { lastSyncId: number; groups: string[]; subscribed: string[] };
+
 // IndexedDB in the app; the tests' in-memory one is `memoryLocalDB` in "testing".
 export interface LocalDB {
   open(workspaceId: string, schemaHash: string): Promise<"fresh" | "existing">;
   load(model: string): Promise<Row[]>;
   write(actions: SyncAction[]): Promise<void>; // server-approved data only
-  meta: { get(): Promise<{ lastSyncId: number }>; set(m: { lastSyncId: number }): Promise<void> };
+  meta: { get(): Promise<Meta>; set(meta: Meta): Promise<void> };
   outbox: {
     put(txs: TxRecord[]): Promise<void>;
     remove(id: string): Promise<void>;
@@ -62,8 +65,9 @@ export function indexedLocalDB(): LocalDB {
       await tx.done;
     },
     meta: {
-      get: async () => ({ lastSyncId: (await db.get(META, "meta"))?.lastSyncId ?? 0 }),
-      set: async ({ lastSyncId }) => void (await db.put(META, { lastSyncId, schemaHash }, "meta")),
+      get: async () =>
+        (await db.get(META, "meta")) ?? { lastSyncId: 0, groups: [], subscribed: [] },
+      set: async (meta) => void (await db.put(META, { ...meta, schemaHash }, "meta")),
     },
     outbox: {
       async put(txs) {

@@ -10,7 +10,7 @@ import {
   type Writer,
 } from "server";
 import "./models";
-import { dateToken, groupMentionsIn, mentionsIn, threadLink } from "./text";
+import { dateToken, mentionsIn, subspaceMentionsIn, threadLink } from "./text";
 import { DEFAULT_BUCKETS, seed } from "./seed";
 
 const memberOf = (db: Reader, userId: string, workspaceId: unknown): Row | undefined =>
@@ -24,13 +24,40 @@ const own = (change: Change, userId: string): boolean =>
 const inWorkspace = (change: Change, userId: string, db: Reader): boolean =>
   rowsOf(change).every((row) => memberOf(db, userId, row.workspaceId) !== undefined);
 
+const inSubspace = (db: Reader, userId: string, subspaceId: unknown): boolean =>
+  db.all("SubspaceMember").some((m) => m.subspaceId === subspaceId && m.userId === userId);
+// A subspace the user may see: one they're in, or an open one in a workspace of theirs.
+const canSee = (db: Reader, userId: string, subspaceId: unknown): boolean => {
+  const subspace = db.get("Subspace", subspaceId as string);
+  return (
+    subspace !== undefined &&
+    (inSubspace(db, userId, subspace.id) ||
+      (subspace.visibility === "open" && memberOf(db, userId, subspace.workspaceId) !== undefined))
+  );
+};
+// Threads and what's in them: in the workspace, and in subspaces the user may see.
+const inSpaces = (change: Change, userId: string, db: Reader): boolean =>
+  inWorkspace(change, userId, db) &&
+  rowsOf(change).every((row) =>
+    (row.subspaceIds as string[]).every((id) => canSee(db, userId, id)),
+  );
+
+// What loads for a user: their workspaces, their own rows, and the subspaces they're in. Open subspaces they aren't in
+// load when they open them (`mayRead`).
 export const groupsOf = (userId: string, db: Reader): string[] => [
   ...db
     .all("Workspace")
     .filter((workspace) => memberOf(db, userId, workspace.id) !== undefined)
     .map((workspace) => `workspace:${workspace.id}`),
   `user:${userId}`,
+  ...db
+    .all("SubspaceMember")
+    .filter((m) => m.userId === userId)
+    .map((m) => `subspace:${String(m.subspaceId)}`),
 ];
+
+export const mayRead = (userId: string, group: string, db: Reader): boolean =>
+  group.startsWith("subspace:") && canSee(db, userId, group.slice("subspace:".length));
 
 const rules: ServerOptions["rules"] = {
   Workspace: ({ modelId }, userId, db) => memberOf(db, userId, modelId) !== undefined,
@@ -41,15 +68,31 @@ const rules: ServerOptions["rules"] = {
   WorkspaceMember: (change, userId, db) =>
     rowsOf(change).every((row) => memberOf(db, userId, row.workspaceId)?.role === "admin"),
   Label: inWorkspace,
+  // A subspace is made by anyone in the workspace, and changed by its members.
+  Subspace: (change, userId, db) =>
+    inWorkspace(change, userId, db) &&
+    (change.kind === "create" || inSubspace(db, userId, change.modelId)),
+  // Members add and remove anyone; you join an open subspace, or one nobody is in yet (its maker), and leave any.
+  SubspaceMember: (change, userId, db) =>
+    rowsOf(change).every((row) => {
+      const subspace = db.get("Subspace", row.subspaceId as string);
+      if (subspace === undefined || memberOf(db, userId, subspace.workspaceId) === undefined)
+        return false;
+      if (inSubspace(db, userId, subspace.id)) return true;
+      const empty = !db.all("SubspaceMember").some((m) => m.subspaceId === subspace.id);
+      return row.userId === userId && (subspace.visibility === "open" || empty);
+    }),
+  View: (change, userId, db) =>
+    inWorkspace(change, userId, db) && rowsOf(change).every((row) => row.ownerId === userId),
   // Only the server writes these.
   Activity: () => false,
-  Thread: inWorkspace,
-  Message: ({ kind, before, after }, userId, db) =>
-    kind === "delete"
-      ? before!.authorId === userId
-      : kind === "create" &&
-        after!.authorId === userId &&
-        memberOf(db, userId, after!.workspaceId) !== undefined,
+  Thread: inSpaces,
+  Message: (change, userId, db) =>
+    change.kind === "delete"
+      ? change.before!.authorId === userId
+      : change.kind === "create" &&
+        change.after!.authorId === userId &&
+        inSpaces(change, userId, db),
   Bucket: own,
   Draft: own,
   InboxItem: own,
@@ -79,7 +122,13 @@ function logActivity(db: Writer, thread: Row, actorId: unknown, text: string): v
     kind: "create",
     model: "Activity",
     modelId: crypto.randomUUID(),
-    changes: { threadId: thread.id, actorId, text, workspaceId: thread.workspaceId },
+    changes: {
+      threadId: thread.id,
+      actorId,
+      text,
+      workspaceId: thread.workspaceId,
+      subspaceIds: thread.subspaceIds,
+    },
   });
 }
 
@@ -141,6 +190,15 @@ const effects: ServerOptions["effects"] = {
     });
   },
   Thread: ({ kind, before, after, userId }, db) => {
+    // What's in a thread is seen where the thread is.
+    if (
+      kind === "update" &&
+      JSON.stringify(after!.subspaceIds) !== JSON.stringify(before!.subspaceIds)
+    )
+      for (const model of ["Message", "Activity"])
+        for (const row of db.all(model))
+          if (row.threadId === after!.id)
+            update(db, model, row.id, { subspaceIds: after!.subspaceIds });
     if (kind === "update" && userId !== undefined)
       for (const line of describeChanges(before!, after!, db))
         logActivity(db, after!, userId, line);
@@ -183,6 +241,18 @@ const effects: ServerOptions["effects"] = {
       );
     }
   },
+  // A deleted subspace's threads stay, outside it, and its memberships go.
+  Subspace: ({ kind, modelId }, db) => {
+    if (kind !== "delete") return;
+    for (const thread of db.all("Thread"))
+      if ((thread.subspaceIds as string[]).includes(modelId))
+        update(db, "Thread", thread.id, {
+          subspaceIds: (thread.subspaceIds as string[]).filter((id) => id !== modelId),
+        });
+    for (const member of db.all("SubspaceMember"))
+      if (member.subspaceId === modelId)
+        db.write({ kind: "delete", model: "SubspaceMember", modelId: member.id });
+  },
   // What was in a deleted bucket is sorted again.
   Bucket: ({ kind, modelId }, db) => {
     if (kind !== "delete") return;
@@ -198,27 +268,29 @@ const effects: ServerOptions["effects"] = {
       body: string;
     };
     const thread = db.get("Thread", threadId);
-    if (thread === undefined || thread.workspaceId !== workspaceId)
-      throw new Refusal("invalid", "A message's workspaceId is its thread's");
-    // An @mention involves someone, and a group's is everyone in it now; a message that mentions nobody tells nobody.
-    const assignees = thread.assigneeIds as string[];
-    const labelIds = thread.labelIds as string[];
-    const groups = groupMentionsIn(body)
-      .map((id) => db.get("Label", id))
-      .filter((label) => label?.workspaceId === workspaceId) as Row[];
-    const mentioned = [
-      ...new Set([...mentionsIn(body), ...groups.flatMap((g) => g.memberIds as string[])]),
-    ].filter((id) => id !== authorId && db.get("User", id) !== undefined);
-    if (mentioned.length === 0 && groups.length === 0) return;
-    for (const id of mentioned) deliver(db, id, threadId);
     if (
-      mentioned.some((id) => !assignees.includes(id)) ||
-      groups.some((g) => !labelIds.includes(g.id))
+      thread === undefined ||
+      thread.workspaceId !== workspaceId ||
+      JSON.stringify(thread.subspaceIds) !== JSON.stringify(after!.subspaceIds)
     )
-      update(db, "Thread", threadId, {
-        assigneeIds: [...new Set([...assignees, ...mentioned])],
-        labelIds: [...new Set([...labelIds, ...groups.map((g) => g.id)])],
-      });
+      throw new Refusal("invalid", "A message's workspaceId and subspaceIds are its thread's");
+    // An @mention assigns someone, and a subspace's assigns everyone in it now; a message that mentions nobody tells
+    // nobody.
+    const assignees = thread.assigneeIds as string[];
+    const members = subspaceMentionsIn(body)
+      .filter((id) => canSee(db, authorId, id))
+      .flatMap((id) =>
+        db
+          .all("SubspaceMember")
+          .filter((m) => m.subspaceId === id)
+          .map((m) => m.userId as string),
+      );
+    const mentioned = [...new Set([...mentionsIn(body), ...members])].filter(
+      (id) => id !== authorId && db.get("User", id) !== undefined,
+    );
+    for (const id of mentioned) deliver(db, id, threadId);
+    if (mentioned.some((id) => !assignees.includes(id)))
+      update(db, "Thread", threadId, { assigneeIds: [...new Set([...assignees, ...mentioned])] });
     if (mentioned.length === 0) return;
     // An owner who hands their thread to someone has it in Sent, until someone @mentions them there.
     const item = itemOf(db, authorId, threadId);
@@ -236,4 +308,4 @@ const actions: ServerOptions["actions"] = {
 };
 
 export const threadsServer = (storage: Storage, sockets: () => Iterable<Socket>): SyncServer =>
-  new SyncServer({ storage, sockets, groupsOf, rules, effects, actions });
+  new SyncServer({ storage, sockets, groupsOf, mayRead, rules, effects, actions });

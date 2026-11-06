@@ -3,17 +3,29 @@ import { Refusal, type Session, type SyncServer } from "./server";
 const STATUS = { forbidden: 403, invalid: 400, conflict: 409, not_found: 404 } as const;
 const encoder = new TextEncoder();
 
-// The spec's endpoints for one session. The WebSocket (/sync/socket) is the Durable Object's.
+const list = (value: string | null): string[] => (value ? value.split(",") : []);
+
+// The spec's endpoints for one session. The WebSocket (/sync/socket) is the Durable Object's. `?subscribed=` names the
+// groups the client follows without being in them; `?holds=` and `?after=` make a bootstrap partial.
 export async function handleRequest(
   server: SyncServer,
   request: Request,
-  session: Session,
+  resolved: Session,
 ): Promise<Response> {
   const { pathname, searchParams } = new URL(request.url);
   const route = `${request.method} ${pathname}`;
+  const session: Session =
+    "userId" in resolved
+      ? { ...resolved, subscribed: list(searchParams.get("subscribed")) }
+      : resolved;
   try {
     if (route === "GET /sync/bootstrap") {
-      const { rows, end } = server.bootstrap(session);
+      const after = searchParams.get("after");
+      const partial =
+        after === null
+          ? undefined
+          : { holds: list(searchParams.get("holds")), after: Number(after) };
+      const { rows, end } = server.bootstrap(session, partial);
       const lines = [...rows, end].values();
       const body = new ReadableStream({
         pull(controller) {

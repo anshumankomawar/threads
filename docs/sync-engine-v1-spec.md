@@ -13,7 +13,8 @@ We are building our own Linear-style sync engine, so product builders write plai
 
 ## Not in v1
 
-- Lazy and partial loading (each workspace loads fully at startup).
+- Lazy loading of single models by index (Linear's `partial` load strategy, e.g. one issue's comments). A session loads
+  its sync groups at startup; v2 below adds loading groups as they change and groups it follows.
 - Long offline sessions (the outbox covers reloads and short drops only).
 - Schema migrations on the client (a schema change clears local data and reloads).
 - Undo/redo, search, attachments, native mobile.
@@ -192,7 +193,8 @@ The registry is shared code: the server reads the same metadata to validate muta
 
 Transactions and queue rules, taken from Linear's queue: save to the outbox before sending; send in order; never run two transactions for the same model (or a model and one it references) at once; at most 40 in flight per request; on a network error put the batch back at the front; on a rejection roll back and reject result(); a transaction is done only when lastSyncId reaches its sync id.
 
-applyDelta order: check the first sync id equals lastSyncId + 1 (otherwise fetch the gap); write each action to the local database; update the object pool; call queue.onDelta to rebase pending edits on top; advance lastSyncId; resolve waiters.
+applyDelta order: drop a packet older than lastSyncId; if its groups differ from the ones the local data holds, change
+groups (v2) instead; check the first sync id equals lastSyncId + 1 (otherwise fetch the gap); write each action to the local database; update the object pool; call queue.onDelta to rebase pending edits on top; advance lastSyncId; resolve waiters.
 
 LocalDB: IndexedDB via a thin wrapper (Dexie or idb): one database per workspace, one table per model, plus _meta and _outbox. The test suite swaps in an in-memory version.
 
@@ -223,13 +225,13 @@ Each model also has a normal table. A mutation writes the model row and its sync
 
 Endpoints:
 
-| Method | Path                    | Purpose                                                                                          |
-| ------ | ----------------------- | ------------------------------------------------------------------------------------------------ |
-| GET    | /sync/bootstrap         | All rows in the user's sync groups + lastSyncId + schemaHash; streamed as newline-delimited JSON |
-| GET    | /sync/deltas?after=<id> | Sync actions after id in the user's groups; for reconnects and gaps                              |
-| POST   | /sync/mutate            | A batch of transactions; returns one sync id per transaction                                     |
-| POST   | /actions/<name>         | Named server action; returns the highest sync id it produced                                     |
-| WS     | /sync/socket            | Live delta packets                                                                               |
+| Method | Path                    | Purpose                                                                                        |
+| ------ | ----------------------- | ---------------------------------------------------------------------------------------------- |
+| GET    | /sync/bootstrap         | All rows in the user's sync groups + lastSyncId + schemaHash (partial: v2); streamed as NDJSON |
+| GET    | /sync/deltas?after=<id> | Sync actions after id in the user's groups; for reconnects and gaps                            |
+| POST   | /sync/mutate            | A batch of transactions; returns one sync id per transaction                                   |
+| POST   | /actions/<name>         | Named server action; returns the highest sync id it produced                                   |
+| WS     | /sync/socket            | Live delta packets                                                                             |
 
 Server mutation rules
 
@@ -239,6 +241,30 @@ Server mutation rules
 4. A rejected transaction does not stop later independent ones; the client rolls back only the rejected one.
 
 Sync groups: A sync group is a string tag on every row, computed by the model's syncGroup function. A client receives a delta only if it shares at least one group with it. v1 uses two kinds: user:<id> (personal rows: inbox state, drafts, preferences) and workspace:<id> (everything a workspace's members share: people, conversations, messages, settings). Permission hooks check writes; sync groups control reads. Both come from the same model definition.
+
+## v2: changing sync groups, and following groups
+
+Groups change all the time once they follow membership (joining or leaving a subspace, a subspace turning private), so
+a change no longer means loading everything again. This follows Linear's client, which partially bootstraps the groups
+it gained and deletes the rows of the groups it lost.
+
+- **Every packet says the session's groups.** Socket packets and `GET /sync/deltas` carry `groups`: the session's sync
+  groups as of `lastSyncId`. There's no separate groups-changed message, so a packet can't be read against the wrong
+  groups, and the latest one is always right.
+- **Changing groups.** A client whose groups differ from a packet's asks `GET /sync/bootstrap?holds=<its groups>&after=<
+  lastSyncId>` and gets, as of one sync id, the session's groups, the rows of the ones it doesn't hold, and in the
+  `BootstrapEnd` every action after `lastSyncId` it sees. It deletes what those groups no longer cover from its local
+  database (not just the pool, so rolling back a pending delete can't bring a row back), applies the actions, then the
+  rows, and holds exactly the groups the server sent. A full bootstrap happens only for a fresh database, a new schema,
+  or a server behind the client.
+- **Following groups.** `store.subscribe(group)` follows a group the session may read without being in it (`mayRead` on
+  the server, e.g. an open subspace you aren't a member of). The client keeps its subscriptions in `_meta`, sends them
+  in every request (`?subscribed=`) and in its Hello, and says hello again on the same socket when they change; the
+  server adds them to the session's groups, so they arrive as a groups change like any other. Subscriptions are kept, so
+  a followed group stays loaded.
+- **`_meta`** holds `{ lastSyncId, groups, subscribed }`.
+- **Simulation.** Clients also subscribe to teams (one of them private, which they may not read), and the ordering check
+  starts over at every change of groups.
 
 ## Example data model
 

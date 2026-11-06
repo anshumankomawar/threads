@@ -1,4 +1,4 @@
-import { groupMentionsIn, Label, mentionsIn, Message, type User } from "models";
+import { mentionsIn, Message, SubspaceMember, subspaceMentionsIn, type User } from "models";
 import { createMemo, createSignal, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -30,8 +30,9 @@ function namesList(people: User[]): string {
 
 const mentionsMe = (message: Message): boolean =>
   mentionsIn(message.body).includes(me().id) ||
-  groupMentionsIn(message.body).some((id) =>
-    store.findById(Label, id)?.memberIds.includes(me().id),
+  subspaceMentionsIn(message.body).some(
+    (id) =>
+      store.where(SubspaceMember, "subspaceId", id).filter((m) => m.userId === me().id).length > 0,
   );
 
 // Messages that @mention you while the app is open, as one toast at the top right that opens the newest and goes away

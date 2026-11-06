@@ -51,8 +51,8 @@ async function authenticate(
   return claims && { userId: claims.userId };
 }
 
-// A socket's attachment, which survives hibernation: who said Hello, and the groups the server last sent it.
-type Attachment = { session: Session; groups?: string[] };
+// A socket's attachment, which survives hibernation: who said Hello. A socket has one once it said hello.
+type Attachment = { session: Session };
 
 // One workspace: its `SyncServer` over this object's SQLite storage, and the WebSockets of every client connected to it.
 export class Workspace extends DurableObject<Env> {
@@ -112,13 +112,7 @@ export class Workspace extends DurableObject<Env> {
   #socket(ws: WebSocket, attachment: Attachment): Socket {
     return {
       session: attachment.session,
-      get groups() {
-        return attachment.groups;
-      },
-      set groups(groups) {
-        attachment.groups = groups;
-        ws.serializeAttachment(attachment);
-      },
+      greeted: true,
       send(message) {
         // A socket that's closing throws; it reconnects with a Hello.
         try {
@@ -154,12 +148,13 @@ export class Workspace extends DurableObject<Env> {
     return response;
   }
 
-  // The only message a client sends is its Hello; the server then sends what it missed and every commit after.
+  // The only message a client sends is its Hello, again whenever what it follows changes; the server then sends how its
+  // groups changed or what it missed, and every commit after.
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-    if (ws.deserializeAttachment() !== null) return;
     const hello = JSON.parse(message as string) as Hello;
-    const session = await authenticate(this.env, hello.token, this.#workspace);
-    if (session === undefined) return ws.close(4401, "Unauthorized");
+    const resolved = await authenticate(this.env, hello.token, this.#workspace);
+    if (resolved === undefined) return ws.close(4401, "Unauthorized");
+    const session = "userId" in resolved ? { ...resolved, subscribed: hello.subscribed } : resolved;
     const attachment: Attachment = { session };
     ws.serializeAttachment(attachment);
     this.#load().hello(this.#socket(ws, attachment), hello.lastSyncId);

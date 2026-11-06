@@ -52,7 +52,7 @@ test("a view over findById updates when the model arrives, goes and comes back",
     [2, "D", undefined],
     [3, "I", "a"],
   ] as const) {
-    transport.send({ type: "delta", actions: [delta(id, action)], lastSyncId: id });
+    transport.send({ type: "delta", groups: [], actions: [delta(id, action)], lastSyncId: id });
     await tick();
     flush();
     expect(seen.seen).toBe(title);

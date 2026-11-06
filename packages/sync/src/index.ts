@@ -9,9 +9,10 @@ export {
   type Collection,
   type Serializer,
 } from "./decorators";
+export { matches, type Comparison, type Filter } from "./filter";
 export { httpTransport, RejectedError, type Transport } from "./http";
-export { indexedLocalDB, type LocalDB } from "./local-db";
+export { indexedLocalDB, type LocalDB, type Meta } from "./local-db";
 export { Model } from "./model";
-export { registry, type ModelClass } from "./registry";
+export { ALL, registry, sees, type ModelClass } from "./registry";
 export { createStore, type ServerActions, type Store, type UndoQueue } from "./store";
 export type { Transaction } from "./transactions";

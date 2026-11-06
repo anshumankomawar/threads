@@ -32,12 +32,16 @@ export function fakeTransport() {
       fake.bootstraps++;
       return {
         rows: structuredClone(fake.rows),
-        end: { lastSyncId: fake.lastSyncId, schemaHash: "" },
+        end: { lastSyncId: fake.lastSyncId, schemaHash: "", groups: [], actions: [] },
       };
     },
     async deltas(after) {
       fake.deltaCalls.push(after);
-      return { actions: fake.log.filter((a) => a.id > after), lastSyncId: fake.lastSyncId };
+      return {
+        actions: fake.log.filter((a) => a.id > after),
+        lastSyncId: fake.lastSyncId,
+        groups: [],
+      };
     },
     mutate: (request) =>
       new Promise((resolve, reject) => fake.requests.push({ request, resolve, reject })),
@@ -45,7 +49,7 @@ export function fakeTransport() {
     connect(handlers) {
       fake.socket = handlers;
       queueMicrotask(() => handlers.hello());
-      return { close: () => handlers.onClose() };
+      return { close: () => handlers.onClose(), hello: () => handlers.hello() };
     },
   };
   return Object.assign(fake, transport);

@@ -57,6 +57,8 @@ function createServer(world: World): SyncServer {
     storage: memoryStorage(),
     sockets: () => world.sockets(),
     groupsOf: (userId, db) => groupsOf(userId, db.all("Team")),
+    // Anyone may follow a team but the last, which is private.
+    mayRead: (_userId, group) => group !== `team:${TEAMS.at(-1)}`,
     rules: {
       // Anyone may rename a team or join or leave it; nobody makes or deletes one.
       Team: (c, me) =>
@@ -113,6 +115,7 @@ const WEIGHTS = {
   archive: 1,
   delete: 1,
   action: 1,
+  subscribe: 1,
   deliver: 14,
   delay: 1,
   duplicate: 1,
@@ -179,6 +182,9 @@ async function run(world: World, [what, a, b, c]: Step): Promise<void> {
     case "action":
       track(store.action("toggle", { teamId: team }));
       break;
+    case "subscribe":
+      store.subscribe(`team:${team}`);
+      break;
     case "deliver":
     case "duplicate":
     case "drop":
@@ -210,13 +216,9 @@ async function check(world: World): Promise<void> {
   const { server } = world;
   const log = server.deltas(ADMIN, 0).actions;
   const approved = new Set(log.map((action) => JSON.stringify(action.data)));
-  const teams = server
-    .bootstrap(ADMIN)
-    .rows.filter((line) => line.model === "Team")
-    .map((line) => line.row);
   for (const client of world.clients) {
-    const session = { userId: client.user };
     const { db, store } = client;
+    const session = { userId: client.user, subscribed: (await db.meta.get()).subscribed };
     const expected = server.bootstrap(session).rows.sort(byId);
     const pool = rows(client).map((m) => ({ model: m.__meta.name, row: m.__data }));
     const local = (
@@ -237,7 +239,7 @@ async function check(world: World): Promise<void> {
     // Local database purity.
     for (const { data } of db.written) if (data) expect(approved).toContain(JSON.stringify(data));
     // Permissions.
-    const mine = groupsOf(client.user, teams);
+    const mine = server.bootstrap(session).end.groups;
     for (const { model, row } of [...pool, ...local])
       expect(registry.get(model).syncGroup!(row).some((g) => mine.includes(g))).toBe(true);
     // Completion.
@@ -285,6 +287,23 @@ test("clients converge under random faults", { timeout: 600_000 }, async () => {
 
 // Shrunk failures the simulation found, by the seed that found them; each step is "what a b c".
 const REGRESSIONS: [string, number, string][] = [
+  [
+    "DEBUG",
+    2,
+    "deliver 0 0 0; action 71 0 0; deliver 0 0 0; deliver 15 0 0; deliver 0 0 0; edit 3 31 1; reload 3 0 0; deliver 0 0 0; action 31 0 1; deliver 0 0 0; deliver 13 0 0; action 7 0 1; deliver 19 0 0; deliver 3 0 0; deliver 39 0 0; deliver 47 0 0",
+  ],
+  // A group gained and lost again before it loaded counted as held, so following it later loaded nothing.
+  [
+    "-1688719607",
+    2,
+    "deliver 0 0 0; deliver 0 0 0; duplicate 0 0 0; deliver 0 0 0; deliver 0 0 0; deliver 0 0 0; action 0 0 1; subscribe 0 0 0; duplicate 80 0 0; deliver 0 0 0; deliver 0 0 0; deliver 62 0 0; tick 0 0 0; subscribe 0 0 1",
+  ],
+  // A Hello sent while a groups change was on its way lost the group the change was about.
+  [
+    "-1688719606",
+    2,
+    "action 0 0 0; deliver 0 0 0; deliver 15 0 0; action 0 0 0; deliver 58 0 0; subscribe 0 0 0",
+  ],
   // Groups that changed between a client's bootstrap and its hello were never reloaded.
   ["2075244279", 2, "action 0 0 0"],
   // A first bootstrap that failed was never retried.

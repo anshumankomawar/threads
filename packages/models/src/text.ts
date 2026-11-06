@@ -1,17 +1,17 @@
-// Links in a message's text: `[[thread:<id>]]` links a thread, `[[person:<id>]]` mentions someone, `[[label:<id>]]`
-// mentions a group (a label with members). An activity line's `[[date:<ms>]]` is a date, in the reader's time zone.
-const TOKEN = /\[\[(thread|person|label|date):([^\]\s]+)\]\]/g;
+// Links in a message's text: `[[thread:<id>]]` links a thread, `[[person:<id>]]` mentions someone, `[[subspace:<id>]]`
+// mentions everyone in a subspace. An activity line's `[[date:<ms>]]` is a date, in the reader's time zone.
+const TOKEN = /\[\[(thread|person|subspace|date):([^\]\s]+)\]\]/g;
 
 export const threadLink = (id: string): string => `[[thread:${id}]]`;
 export const mention = (id: string): string => `[[person:${id}]]`;
-export const groupMention = (id: string): string => `[[label:${id}]]`;
+export const subspaceMention = (id: string): string => `[[subspace:${id}]]`;
 export const dateToken = (ms: number): string => `[[date:${ms}]]`;
 
 type TextPart =
   | { text: string }
   | { thread: string }
   | { person: string }
-  | { label: string }
+  | { subspace: string }
   | { date: number };
 
 export function splitText(text: string): TextPart[] {
@@ -25,8 +25,8 @@ export function splitText(text: string): TextPart[] {
         ? { thread: id }
         : kind === "person"
           ? { person: id }
-          : kind === "label"
-            ? { label: id }
+          : kind === "subspace"
+            ? { subspace: id }
             : { date: Number(id) },
     );
     at = match.index + match[0].length;
@@ -38,21 +38,21 @@ export function splitText(text: string): TextPart[] {
 const tokens = (text: string, kind: string): string[] =>
   [...text.matchAll(TOKEN)].filter((m) => m[1] === kind).map((m) => m[2]);
 export const mentionsIn = (text: string): string[] => tokens(text, "person");
-export const groupMentionsIn = (text: string): string[] => tokens(text, "label");
+export const subspaceMentionsIn = (text: string): string[] => tokens(text, "subspace");
 
 // The text with links as `#title` and mentions as `@name`.
 export const plainText = (
   text: string,
   titleOf: (id: string) => string | undefined,
   nameOf: (id: string) => string | undefined,
-  labelOf: (id: string) => string | undefined = () => undefined,
+  subspaceOf: (id: string) => string | undefined = () => undefined,
 ): string =>
   text.replace(TOKEN, (_, kind: string, id: string) =>
     kind === "thread"
       ? `#${titleOf(id) ?? "thread"}`
       : kind === "person"
         ? `@${nameOf(id) ?? "someone"}`
-        : kind === "label"
-          ? `@${labelOf(id) ?? "group"}`
+        : kind === "subspace"
+          ? `@${subspaceOf(id) ?? "subspace"}`
           : new Date(Number(id)).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
   );

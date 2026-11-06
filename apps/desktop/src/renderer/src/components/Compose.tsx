@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Draft, Label, mention, User, type ComposeDraft } from "models";
+import { Draft, mention, Subspace, User, type ComposeDraft } from "models";
 import { draftWith, me, open, setDialog, store } from "../session";
 import { button, menu } from "../styles/controls";
 import { compose, palette } from "../styles/palette";
@@ -15,20 +15,20 @@ const firstName = (u: User): string => u.name.split(" ")[0];
 const others = (): User[] => store.all(User).filter((u) => u.id !== me().id);
 
 const compact = (name: string): string => name.replaceAll(/\s+/g, "");
-const groups = (): Label[] => store.all(Label).filter((l) => l.memberIds.length > 0);
+const subspaces = (): Subspace[] => store.all(Subspace).filter((sub) => sub.members.length > 0);
 const namesIn = (text: string): string[] =>
   [...text.matchAll(MENTION)].map(([, name]) => name.toLowerCase());
-const mentionedGroups = (text: string): Label[] =>
-  groups().filter((l) => namesIn(text).includes(compact(l.name).toLowerCase()));
+const mentionedSubspaces = (text: string): Subspace[] =>
+  subspaces().filter((sub) => namesIn(text).includes(compact(sub.name).toLowerCase()));
 
-// Everyone @mentioned, by first name or full name without spaces, and everyone in a group that is, in order.
+// Everyone @mentioned, by first name or full name without spaces, and everyone in a subspace that is, in order.
 const mentioned = (text: string): User[] => {
   const found = namesIn(text).flatMap((name) =>
     others().filter((u) =>
       [firstName(u), compact(u.name)].some((key) => key.toLowerCase() === name),
     ),
   );
-  const members = mentionedGroups(text).flatMap((l) => l.memberIds);
+  const members = mentionedSubspaces(text).flatMap((sub) => [...sub.members].map((m) => m.userId));
   return [...new Set([...found, ...others().filter((u) => members.includes(u.id))])];
 };
 
@@ -110,14 +110,14 @@ export function Compose(props: { draftId?: string }): JSX.Element {
     const match = /(^|\s)@([\p{L}\p{N}_-]*)$/u.exec(text().slice(0, caret()));
     return match ? { start: caret() - match[2].length - 1, query: match[2].toLowerCase() } : null;
   });
-  const matches = createMemo((): (User | Label)[] => {
+  const matches = createMemo((): (User | Subspace)[] => {
     const query = typing()?.query;
     if (query === undefined || menuHidden()) return [];
-    return [...others(), ...groups()]
+    return [...others(), ...subspaces()]
       .filter((target) => target.name.toLowerCase().startsWith(query))
       .slice(0, 6);
   });
-  const pick = (target: User | Label): void => {
+  const pick = (target: User | Subspace): void => {
     const start = typing()?.start;
     if (start === undefined) return;
     const inserted = `@${target instanceof User ? firstName(target) : compact(target.name)} `;
@@ -137,8 +137,7 @@ export function Compose(props: { draftId?: string }): JSX.Element {
       saved?.delete();
       setDialog(null);
       const title = made.title.trim() || plainDraft(trimmed()).title || "New thread";
-      const labelIds = mentionedGroups(trimmed()).map((l) => l.id);
-      const thread = createThread({ title, description: made.context, labelIds });
+      const thread = createThread({ title, description: made.context });
       for (const { personIds, text: body } of made.asks)
         send(thread, [...personIds.map(mention), body].join(" "));
       open({ thread: thread.id });
@@ -222,9 +221,9 @@ export function Compose(props: { draftId?: string }): JSX.Element {
                 >
                   <Identicon seed={u.id} size={16} />
                   <span class={sx(palette.rowLabel)}>{u.name}</span>
-                  <Show when={u instanceof Label}>
+                  <Show when={u instanceof Subspace}>
                     <span class={sx(palette.shortcut)}>
-                      Group · {(u as Label).memberIds.length}
+                      Subspace · {(u as Subspace).members.length}
                     </span>
                   </Show>
                 </button>

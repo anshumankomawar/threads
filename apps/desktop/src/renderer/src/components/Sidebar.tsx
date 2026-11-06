@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Draft, InboxItem, Label, Thread } from "models";
+import { Bucket, Draft, InboxItem, Label, Subspace, Thread, View } from "models";
 import {
   active,
   inbox,
@@ -562,23 +562,60 @@ function DraftsTab(): JSX.Element {
   );
 }
 
-function LabelsTab(): JSX.Element {
-  const shownLabel = (): string | undefined => (view() as { label?: string }).label;
-  const openIn = (label: Label): number =>
-    store.all(Thread).filter((t) => t.isOpen && t.labelIds.includes(label.id)).length;
+// Where threads live and how you look at them: all of them, the subspaces, your views and the labels.
+function SpacesTab(): JSX.Element {
+  const shown = (key: string): string | null | undefined => (view() as Record<string, string>)[key];
+  const openIn = (field: "labelIds" | "subspaceIds", id: string): string =>
+    String(store.all(Thread).filter((t) => t.isOpen && t[field].includes(id)).length);
+  const byName = <T extends { name: string }>(list: T[]): T[] =>
+    list.sort((a, b) => a.name.localeCompare(b.name));
   return (
     <>
+      <List label="Views">
+        <Row
+          icon={i.Layers01Icon}
+          label="All threads"
+          active={"view" in view() && shown("view") === null}
+          onClick={() => open({ view: null })}
+        />
+        <For each={byName(store.all(View))}>
+          {(v) => (
+            <Row
+              icon={i.FilterIcon}
+              label={v.name}
+              active={shown("view") === v.id}
+              onClick={() => open({ view: v.id })}
+            />
+          )}
+        </For>
+      </List>
+      <button class={sx(s.newLabel, s.pointer)} onClick={() => setDialog({ kind: "newSubspace" })}>
+        New subspace
+      </button>
+      <List label="Subspaces">
+        <For each={byName(store.all(Subspace))}>
+          {(sub) => (
+            <Row
+              icon={sub.visibility === "private" ? i.LockIcon : i.UserMultipleIcon}
+              label={sub.name}
+              meta={openIn("subspaceIds", sub.id)}
+              active={shown("subspace") === sub.id}
+              onClick={() => open({ subspace: sub.id })}
+            />
+          )}
+        </For>
+      </List>
       <button class={sx(s.newLabel, s.pointer)} onClick={() => setDialog({ kind: "newLabel" })}>
         New label
       </button>
       <List label="Labels">
-        <For each={store.all(Label).sort((a, b) => a.name.localeCompare(b.name))}>
+        <For each={byName(store.all(Label))}>
           {(label) => (
             <Row
               icon={i.Tag01Icon}
               label={label.name}
-              meta={String(openIn(label))}
-              active={shownLabel() === label.id}
+              meta={openIn("labelIds", label.id)}
+              active={shown("label") === label.id}
               onClick={() => open({ label: label.id })}
             />
           )}
@@ -597,7 +634,7 @@ const TABS = [
     count: () => store.where(Draft, "userId", me().id).length,
     tab: DraftsTab,
   },
-  { label: "Labels", icon: i.Tag01Icon, count: () => 0, tab: LabelsTab },
+  { label: "Spaces", icon: i.Layers01Icon, count: () => 0, tab: SpacesTab },
 ];
 
 export const TopButton = (props: {

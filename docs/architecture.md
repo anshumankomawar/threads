@@ -32,28 +32,34 @@ A field's signal carries no value: its value lives in `model.__data`, where the 
 
 ## Threads' models
 
-In the spec's style, in `packages/models/src/models.ts`. There are two kinds of sync group: `workspace:<id>` for
-everything a workspace's members share, and `user:<id>` for a person's own rows. A session's groups are
-`workspace:<id>` when it's a member of the workspace, and `user:<me>`.
+In the spec's style, in `packages/models/src/models.ts`. There are three kinds of sync group: `workspace:<id>` for
+what a workspace's members share, `subspace:<id>` for what's in a subspace, and `user:<id>` for a person's own rows. A
+session's groups are `workspace:<id>` when it's a member of the workspace, `subspace:<id>` for each subspace it's in,
+and `user:<me>`. It also follows any open subspace it opens (spec v2: `Store.subscribe`), so a subspace you aren't in
+loads only when you look at it.
 
-| Model           | Key fields                                                                                                                                  | Sync group                        |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
-| Workspace       | name                                                                                                                                        | its own `workspace:<id>`          |
-| User            | name, email, avatarUrl, workspaceIds                                                                                                        | `workspace:<id>` per workspaceIds |
-| WorkspaceMember | workspace, user, role (admin, member)                                                                                                       | `workspace:<id>`                  |
-| Label           | workspace, name, memberIds                                                                                                                  | `workspace:<id>`                  |
-| Thread          | title, description, state (open, resolved, blocked), owner, assigneeIds, workspace, dueAt, priority, labelIds, branchedFrom, blocks, isOpen | `workspace:<id>`                  |
-| Message         | thread, author, body, workspaceId                                                                                                           | `workspace:<id>`                  |
-| Activity        | thread, actor, text, workspaceId                                                                                                            | `workspace:<id>`                  |
-| InboxItem       | user, thread, bucket, doneAt, snoozedUntil, seenAt, reason, manual                                                                          | `user:<id>`                       |
-| Bucket, Draft   | user, name, description, position / text, draft                                                                                             | `user:<id>`                       |
+| Model           | Key fields                                                                                                                                               | Sync group                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Workspace       | name                                                                                                                                                     | its own `workspace:<id>`                                     |
+| User            | name, email, avatarUrl, workspaceIds                                                                                                                     | `workspace:<id>` per workspaceIds                            |
+| WorkspaceMember | workspace, user, role (admin, member)                                                                                                                    | `workspace:<id>`                                             |
+| Label           | workspace, name                                                                                                                                          | `workspace:<id>`                                             |
+| Subspace        | workspace, name, visibility (open, private), members                                                                                                     | `workspace:<id>`, private: its own `subspace:<id>`           |
+| SubspaceMember  | subspace, user                                                                                                                                           | `subspace:<id>` and `user:<id>`                              |
+| View            | owner, workspace, name, filter, shared                                                                                                                   | `user:<owner>`, shared: `workspace:<id>`                     |
+| Thread          | title, description, state (open, resolved, blocked), owner, assigneeIds, workspace, dueAt, priority, labelIds, subspaceIds, branchedFrom, blocks, isOpen | `subspace:<id>` per subspaceIds, or `workspace:<id>` in none |
+| Message         | thread, author, body, workspaceId, subspaceIds                                                                                                           | as its thread                                                |
+| Activity        | thread, actor, text, workspaceId, subspaceIds                                                                                                            | as its thread                                                |
+| InboxItem       | user, thread, bucket, doneAt, snoozedUntil, seenAt, reason, manual                                                                                       | `user:<id>`                                                  |
+| Bucket, Draft   | user, name, description, position / text, draft                                                                                                          | `user:<id>`                                                  |
 
 - **User** is the person, across workspaces. The server keeps `workspaceIds` (an effect of WorkspaceMember create and
   delete), so members of any workspace they share see them.
 - **WorkspaceMember** is their place in one workspace and their role there (everyone is an admin for now). A person's
   page shows their role; your own lists the workspace's members.
-- **Thread** is the only unit of work, and every member of the workspace sees every thread. `labelIds` lists its
-  Labels; a label's page is its threads. `branchedFrom` is a branch, linked from a message by `[[thread:<id>]]`;
+- **Thread** is the only unit of work. In no subspace, every member of the workspace sees it; in subspaces
+  (`subspaceIds`, the chip in its header), their members and their followers do, and when one is private only its
+  members. `labelIds` lists its Labels. `branchedFrom` is a branch, linked from a message by `[[thread:<id>]]`;
   `blocks` (made with `/blocked`) keeps that thread blocked until this one is resolved.
 - **Making a thread**: `createThread` (`components/Palettes.tsx`) is the only way, from ⌘N (title, description, assignee,
   and labels on Tab), ⌘⇧N (written as one message; the model drafts it and you can edit the draft), `/blocked` and a `#`
@@ -61,10 +67,14 @@ everything a workspace's members share, and `user:<id>` for a person's own rows.
 - **Assignees**: a thread has one owner and any number of assignees. `@mention`ing someone in a message assigns them
   (the server reads the mentions), and the thread stays in their inbox until they mark it done or it's resolved. A
   message that mentions nobody tells nobody. Mentioning them again brings it back.
-- **Message** has its thread's `workspaceId`, because a row computes its own group. Messages are created once; their
-  author may delete them.
-- **Label** is also a group: `memberIds` is who's in it (set on its page). `@mention`ing it assigns everyone in it now, and
-  puts the label on the thread.
+- **Message** and **Activity** carry their thread's `workspaceId` and `subspaceIds`, because a row computes its own
+  group; moving a thread moves them with it. Messages are created once; their author may delete them.
+- **Subspace** is a space of the workspace with its own members, like a team: open (anyone joins, and anyone may follow
+  it) or private (only its members see it, its threads or who's in it). `@mention`ing one assigns everyone in it now.
+  **SubspaceMember** is one person in one; your own always load, so the app knows which subspaces you're in.
+- **View** is a saved filter over threads, in Linear's shape (`{ and: [{ field: { eq | contains | … : value } }] }`,
+  evaluated on the client by `matches` in `sync`; `$me` is you). Yours, or shared with the workspace. A label's, a
+  subspace's and a person's pages are the same view page with a fixed filter, and any of them can be saved as a view.
 - **Activity** is a line in a thread saying what someone changed (status, priority, due date, labels, title, or being
   blocked and unblocked). Only the server writes these, from the changes themselves (`rules.ts`), so no client can forget
   one or forge one.
@@ -73,17 +83,21 @@ everything a workspace's members share, and `user:<id>` for a person's own rows.
 - **Bucket** is a person's inbox bucket: a name and a description the model sorts by. **Draft** is an unsent ⌘⇧N
   message.
 
-The local workspace seeds 22 people and the sample workspace 7, each a member and an admin; the sample also has labels
-and threads.
+The local workspace seeds 22 people and the sample workspace 7, each a member and an admin; the sample also has an open
+subspace (Engineering), a private one (Leadership), labels and threads.
 
 ## Server rules (`packages/models/src/rules.ts`)
 
 Permission hooks: you edit only your own User row, and never its `workspaceIds`; members write the workspace, its
 labels, threads and messages; only admins change memberships and roles; a message's author is you, and only the author
-deletes it; you write only your own Bucket, Draft and InboxItem rows. Effects, in the same commit: a membership adds
+deletes it; you write only your own Bucket, Draft, InboxItem and View rows; a thread or message in a subspace is
+written only by someone who may see it; anyone in the workspace makes a subspace and its members change it; members add
+and remove anyone, and you join an open subspace (or one nobody's in yet: its maker) and leave any; only the server
+writes Activity. Effects, in the same commit: a membership adds
 its workspace to the person's `workspaceIds` (its removal takes it out); a new thread gives its owner an InboxItem; a
-message's `@mentions` become assignees and each gets an InboxItem (or clears `doneAt`/`snoozedUntil`), and its
-`workspaceId` must be its thread's; assigning from the thread does the same and unassigning marks their item done; an
+message's `@mentions` (and everyone in an `@mentioned` subspace) become assignees and each gets an InboxItem (or clears `doneAt`/`snoozedUntil`), and its
+`workspaceId` and `subspaceIds` must be its thread's; a thread moved between subspaces moves its messages and activity;
+a deleted subspace's threads leave it and its memberships go; assigning from the thread does the same and unassigning marks their item done; an
 owner who hasn't been mentioned has their own item marked done when they mention someone else, so it's in their Sent; a
 deleted bucket's items are sorted again; a thread made with `blocks` blocks that one, and
 resolving the last open blocker reopens it; a new user gets the default buckets.

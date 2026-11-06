@@ -24,6 +24,7 @@ test("a delta is rebased under pending and unsaved edits", async () => {
   c.state = "resolved";
   transport.send({
     type: "delta",
+    groups: [],
     actions: [update(1, { title: "Theirs", state: "open", teamId: "t2" })],
     lastSyncId: 1,
   });
@@ -44,26 +45,36 @@ test("applyDelta writes the local database, fetches a gap, and skips what it has
   const { store, transport, localDB } = await setup(seed);
   transport.log = [update(1, { title: "A" }), update(2, { title: "B" })];
   transport.lastSyncId = 2;
-  transport.send({ type: "delta", actions: [update(2, { title: "B" })], lastSyncId: 2 });
+  transport.send({
+    type: "delta",
+    groups: [],
+    actions: [update(2, { title: "B" })],
+    lastSyncId: 2,
+  });
   await tick();
   expect(transport.deltaCalls).toEqual([0]);
   expect(store.findById(Conversation, "c1")!.title).toBe("B");
   expect(await localDB.load("Conversation")).toMatchObject([{ title: "B" }]);
-  expect(await localDB.meta.get()).toEqual({ lastSyncId: 2 });
+  expect(await localDB.meta.get()).toMatchObject({ lastSyncId: 2 });
 
-  transport.send({ type: "delta", actions: [update(2, { title: "Old" })], lastSyncId: 2 });
+  transport.send({
+    type: "delta",
+    groups: [],
+    actions: [update(2, { title: "Old" })],
+    lastSyncId: 2,
+  });
   await tick();
   expect(store.findById(Conversation, "c1")!.title).toBe("B");
 });
 
-test("GroupsChanged loads everything again and keeps pending edits", async () => {
+test("a packet with other groups drops what they don't cover, loads what they gain, and keeps pending edits", async () => {
   const { store, transport } = await setup(seed);
   const mine = store.create(Conversation, { title: "Mine", state: "open", teamId: "t1" });
   await tick();
   transport.rows = [
     { model: "Conversation", row: row("c9", { title: "Nine", state: "open", teamId: "t3" }) },
   ];
-  transport.send({ type: "groups", added: ["team:t3"], removed: ["team:t1"] });
+  transport.send({ type: "delta", groups: ["team:t3"], actions: [], lastSyncId: 0 });
   await tick();
   expect(transport.bootstraps).toBe(2);
   expect(
@@ -105,7 +116,12 @@ test("a reload replays the outbox over the local database and resends it", async
 test("a server that started over replaces what the local database kept", async () => {
   const localDB = memoryLocalDB();
   const first = await setup(seed, localDB);
-  first.transport.send({ type: "delta", actions: [update(1, { title: "Old" })], lastSyncId: 1 });
+  first.transport.send({
+    type: "delta",
+    groups: [],
+    actions: [update(1, { title: "Old" })],
+    lastSyncId: 1,
+  });
   await tick();
 
   const transport = fakeTransport();

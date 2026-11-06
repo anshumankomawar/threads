@@ -26,6 +26,8 @@ export interface Store {
   where<T extends Model>(type: ModelClass<T>, index: keyof T, value: unknown): T[];
   view<R>(fn: () => R): () => R;
   action<A extends keyof ServerActions>(name: A, args: ServerActions[A]): Promise<void>;
+  // Loads and follows a sync group the session may read without being in it; its rows arrive like any others.
+  subscribe(group: string): void;
   undo: UndoQueue;
   readonly connection: () => "connecting" | "live" | "offline";
   readonly pendingCount: () => number;
@@ -114,6 +116,7 @@ export function createStore({
       const { lastSyncId } = await transport.action(name, args);
       await sync.waitForSyncId(lastSyncId);
     },
+    subscribe: (group) => sync.subscribe(group),
     undo: { group: (_label, fn) => fn(), undo() {}, redo() {} },
     connection: sync.connection,
     pendingCount: queue.pendingCount,

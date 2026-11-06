@@ -1,7 +1,7 @@
 import type { Row, TxRecord } from "protocol";
 import { memoryStorage, type Session } from "server";
 import { expect, test } from "vite-plus/test";
-import { groupsOf, threadsServer } from "../src/rules";
+import { groupsOf, mayRead, threadsServer } from "../src/rules";
 
 const admin: Session = { admin: true };
 const anshu: Session = { userId: "anshu" };
@@ -25,6 +25,7 @@ const thread = (id: string, changes: Record<string, unknown> = {}) =>
     ownerId: "anshu",
     workspaceId: "local",
     labelIds: [],
+    subspaceIds: [],
     assigneeIds: [],
     ...changes,
   });
@@ -34,6 +35,7 @@ const message = (id: string, changes: Record<string, unknown> = {}) =>
     authorId: "anshu",
     body: "Hi",
     workspaceId: "local",
+    subspaceIds: [],
     ...changes,
   });
 
@@ -105,8 +107,7 @@ test("you write only your own User (not its workspaces), Bucket, Draft and Inbox
 
 test("members write threads, labels and messages in their workspace; others can't", () => {
   const server = setup();
-  const label = (id: string) =>
-    tx("create", "Label", id, { name: id, memberIds: [], workspaceId: "local" });
+  const label = (id: string) => tx("create", "Label", id, { name: id, workspaceId: "local" });
   expect(
     run(
       server,
@@ -236,23 +237,85 @@ test("a thread assigned to someone from the start is in their inbox, not its own
   expect(threadsIn("anshu")).toContain("mine");
 });
 
-test("@mentioning a group assigns everyone in it and labels the thread", () => {
+const subspace = (id: string, visibility = "open") =>
+  tx("create", "Subspace", id, { name: id, visibility, workspaceId: "local" });
+const join = (id: string, userId: string) =>
+  tx("create", "SubspaceMember", `${id}-${userId}`, { subspaceId: id, userId });
+
+test("a subspace's members load it; anyone may follow an open one, nobody else a private one", () => {
   const server = setup();
   run(
     server,
     anshu,
-    tx("create", "Label", "design", {
-      name: "Design",
-      memberIds: ["kk", "arjun", "anshu"],
-      workspaceId: "local",
-    }),
-    message("m1", { body: "[[label:design]] have a look" }),
+    subspace("eng"),
+    join("eng", "anshu"),
+    subspace("exec", "private"),
+    join("exec", "anshu"),
   );
+  const db = reader(server);
+  expect(groupsOf("anshu", db)).toEqual(expect.arrayContaining(["subspace:eng", "subspace:exec"]));
+  expect(groupsOf("arjun", db)).not.toContain("subspace:eng");
+  expect(mayRead("arjun", "subspace:eng", db)).toBe(true);
+  expect(mayRead("arjun", "subspace:exec", db)).toBe(false);
+  expect(mayRead("stranger", "subspace:eng", db)).toBe(false);
+});
+
+test("you join an open subspace or one nobody's in; a private one's members add you", () => {
+  const server = setup();
+  run(server, anshu, subspace("eng"), subspace("exec", "private"), join("exec", "anshu"));
+  expect(run(server, arjun, join("eng", "arjun"))).toEqual(["ok"]);
+  expect(run(server, arjun, join("exec", "arjun"))).toEqual(["forbidden"]);
+  expect(run(server, arjun, join("exec", "kk"))).toEqual(["forbidden"]);
+  expect(run(server, anshu, join("exec", "arjun"))).toEqual(["ok"]);
+  // Only members rename it.
+  expect(run(server, kk, tx("update", "Subspace", "exec", { name: "x" }))).toEqual(["forbidden"]);
+});
+
+test("a private subspace's threads and messages are its members' alone, and move with the thread", () => {
+  const server = setup();
+  run(server, anshu, subspace("exec", "private"), join("exec", "anshu"));
+  run(
+    server,
+    anshu,
+    thread("p", { subspaceIds: ["exec"] }),
+    message("m", { threadId: "p", subspaceIds: ["exec"] }),
+  );
+  const ids = (userId: string) => server.bootstrap({ userId }).rows.map((line) => line.row.id);
+  expect(ids("anshu")).toEqual(expect.arrayContaining(["p", "m"]));
+  expect(ids("arjun")).not.toContain("p");
+  expect(ids("arjun")).not.toContain("m");
+  // Someone outside can't write into it, and a message must say where its thread is.
+  expect(run(server, arjun, thread("q", { ownerId: "arjun", subspaceIds: ["exec"] }))).toEqual([
+    "forbidden",
+  ]);
+  expect(run(server, anshu, message("m2", { threadId: "p" }))).toEqual(["invalid"]);
+  // Out of the subspace, the thread and what's in it are everyone's.
+  run(server, anshu, tx("update", "Thread", "p", { subspaceIds: [] }));
+  expect(ids("arjun")).toEqual(expect.arrayContaining(["p", "m"]));
+});
+
+test("@mentioning a subspace assigns everyone in it but the author", () => {
+  const server = setup();
+  run(
+    server,
+    anshu,
+    subspace("eng"),
+    join("eng", "anshu"),
+    join("eng", "kk"),
+    join("eng", "arjun"),
+  );
+  run(server, anshu, message("m1", { body: "[[subspace:eng]] have a look" }));
   expect(assignees(server)).toEqual(["kk", "arjun"]);
-  expect(row(server, "Thread", "t")!.labelIds).toEqual(["design"]);
   expect(inInbox(server, "kk")).toBe(true);
-  expect(inInbox(server, "arjun")).toBe(true);
   expect(inInbox(server, "anshu")).toBe(false);
+});
+
+test("a deleted subspace's threads stay, outside it", () => {
+  const server = setup();
+  run(server, anshu, subspace("eng"), join("eng", "anshu"), thread("e", { subspaceIds: ["eng"] }));
+  run(server, anshu, tx("delete", "Subspace", "eng"));
+  expect(row(server, "Thread", "e")!.subspaceIds).toEqual([]);
+  expect(server.bootstrap(admin).rows.some((line) => line.model === "SubspaceMember")).toBe(false);
 });
 
 const activityOn = (server: ReturnType<typeof setup>, threadId: string) =>
@@ -277,6 +340,7 @@ test("the server writes who changed what on a thread, and nobody else can", () =
         actorId: "anshu",
         text: "forged",
         workspaceId: "local",
+        subspaceIds: [],
       }),
     ],
   }).results;
@@ -330,7 +394,7 @@ test("a new user gets the default buckets", () => {
   ]);
 });
 
-test("the sample seed: admin members, labelled threads in inboxes, a blocked one; only the admin seeds", () => {
+test("the sample seed: admin members, subspaces, labelled threads in inboxes, a blocked one; only the admin seeds", () => {
   const server = threadsServer(memoryStorage(), () => []);
   expect(() => server.action(anshu, "seed", "sample")).toThrow("Only the admin");
   server.action(admin, "seed", "sample");
@@ -338,7 +402,9 @@ test("the sample seed: admin members, labelled threads in inboxes, a blocked one
   expect(row(server, "Thread", "headcount-plan")?.labelIds).toEqual(["q4-planning"]);
   expect(inboxOf(server, "you").length).toBeGreaterThan(3);
   expect(row(server, "Thread", "soc2-evidence")?.state).toBe("blocked");
-  expect(
-    server.bootstrap({ userId: "sam" }).rows.some((line) => line.row.id === "headcount-plan"),
-  ).toBe(true);
+  // Leadership is private: its thread is only its members'.
+  const sees = (userId: string) =>
+    server.bootstrap({ userId }).rows.some((line) => line.row.id === "headcount-plan");
+  expect(sees("priya")).toBe(true);
+  expect(sees("sam")).toBe(false);
 });

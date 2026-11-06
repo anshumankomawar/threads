@@ -68,7 +68,7 @@ test("the schema hash follows the metadata, and a new hash makes the local datab
   expect(registry.schemaHash).toBe(before);
   const db = memoryLocalDB();
   expect(await db.open("w", before)).toBe("fresh");
-  await db.meta.set({ lastSyncId: 1 });
+  await db.meta.set({ lastSyncId: 1, groups: [], subscribed: [] });
   expect(await db.open("w", before)).toBe("existing");
 
   @ClientModel("Extra")

@@ -40,20 +40,28 @@ export type MutateResponse = {
   >;
 };
 
-// WebSocket, server -> client
-export type DeltaPacket = { type: "delta"; actions: SyncAction[]; lastSyncId: number };
-export type GroupsChanged = { type: "groups"; added: string[]; removed: string[] }; // v1: client re-bootstraps
-export type ServerMessage = DeltaPacket | GroupsChanged;
+// WebSocket, server -> client. Every packet says which sync groups the session has as of `lastSyncId`; a client that
+// holds others first drops what it can no longer see and loads the groups it gained.
+export type DeltaPacket = { type: "delta" } & DeltasResponse;
+export type ServerMessage = DeltaPacket;
 
-// WebSocket, client -> server
-export type Hello = { type: "hello"; lastSyncId: number; token: string };
+// WebSocket, client -> server. `subscribed` are groups it follows without being in them (see `Store.subscribe`); sent
+// again when they change.
+export type Hello = { type: "hello"; lastSyncId: number; token: string; subscribed: string[] };
 
-// GET /sync/bootstrap streams one `BootstrapLine` per row, then a `BootstrapEnd`, as newline-delimited JSON.
+// GET /sync/bootstrap streams one `BootstrapLine` per row, then a `BootstrapEnd`, as newline-delimited JSON. With
+// `holds` and `after` it's partial: only the rows of the session's groups the client doesn't hold, and in the end every
+// action after `after` the session sees, all as of one sync id.
 export type BootstrapLine = { model: string; row: Row };
-export type BootstrapEnd = { lastSyncId: number; schemaHash: string };
+export type BootstrapEnd = {
+  lastSyncId: number;
+  schemaHash: string;
+  groups: string[];
+  actions: SyncAction[];
+};
 
 // GET /sync/deltas?after=<id>
-export type DeltasResponse = { actions: SyncAction[]; lastSyncId: number };
+export type DeltasResponse = { actions: SyncAction[]; lastSyncId: number; groups: string[] };
 
 // POST /actions/<name>
 export type ActionResponse = { lastSyncId: number };

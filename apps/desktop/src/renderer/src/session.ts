@@ -2,7 +2,7 @@
 // person reloads with a new session.
 import { createSignal } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { createStore, httpTransport, indexedLocalDB } from "sync";
+import { createStore, httpTransport, indexedLocalDB, type Filter } from "sync";
 import {
   Bucket,
   InboxItem,
@@ -77,11 +77,20 @@ export const draftWith = async (
 };
 
 // ── What's on screen ──
-export type View = { thread: string | null } | { label: string } | { person: string };
+// A thread, or a page of threads: a label's, a person's, a subspace's, a saved view's, or all of them (`view: null`).
+export type View =
+  | { thread: string | null }
+  | { label: string }
+  | { person: string }
+  | { subspace: string }
+  | { view: string | null };
 export type MenuItem = { label: string; run: () => void; icon?: JSX.Element } | "separator";
 export type Dialog =
   | { kind: "search" | "viewAs" }
-  | { kind: "newThread"; labelId?: string; to?: User }
+  | { kind: "newThread"; labelId?: string; subspaceId?: string; to?: User }
+  | { kind: "filter"; add: (condition: Filter) => void }
+  | { kind: "newView"; filter: Filter }
+  | { kind: "newSubspace" }
   | { kind: "newLabel"; thread?: Thread }
   | { kind: "compose"; draftId?: string }
   | { kind: "bucket"; bucket?: Bucket }
@@ -305,6 +314,7 @@ window.addEventListener("keydown", (event) => {
       setDialog({
         kind: "newThread",
         labelId: "label" in shown ? shown.label : undefined,
+        subspaceId: "subspace" in shown ? shown.subspace : undefined,
         to: "person" in shown ? store.findById(User, shown.person) : undefined,
       });
     },

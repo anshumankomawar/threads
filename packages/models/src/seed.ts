@@ -60,6 +60,7 @@ type Sample = {
   title: string;
   owner: string;
   labels?: string[];
+  subspace?: string;
   priority?: string;
   state?: string;
   dueIn?: number;
@@ -67,6 +68,22 @@ type Sample = {
   // [author, body, sent to]
   messages: [string, string, string[]][];
 };
+
+// An open subspace, and a private one only its members see.
+const SAMPLE_SUBSPACES: { id: string; name: string; visibility: string; members: string[] }[] = [
+  {
+    id: "engineering",
+    name: "Engineering",
+    visibility: "open",
+    members: ["you", "sam", "maya", "daniel"],
+  },
+  {
+    id: "leadership",
+    name: "Leadership",
+    visibility: "private",
+    members: ["you", "priya", "elena"],
+  },
+];
 
 const SAMPLE_LABELS = {
   "q4-planning": "Q4 Planning",
@@ -78,6 +95,7 @@ const SAMPLE_LABELS = {
 const SAMPLE_THREADS: Sample[] = [
   {
     id: "headcount-plan",
+    subspace: "leadership",
     title: "Approve Q4 headcount plan",
     owner: "priya",
     labels: ["q4-planning"],
@@ -93,6 +111,7 @@ const SAMPLE_THREADS: Sample[] = [
   },
   {
     id: "northwind-sso",
+    subspace: "engineering",
     title: "Northwind can't sign in with Okta since Tuesday",
     owner: "maya",
     labels: ["customers"],
@@ -113,6 +132,7 @@ const SAMPLE_THREADS: Sample[] = [
   },
   {
     id: "search-pr",
+    subspace: "engineering",
     title: "Review: move search indexing to a queue",
     owner: "sam",
     priority: "medium",
@@ -190,7 +210,7 @@ const create = (model: string, modelId: string, changes: Record<string, unknown>
 });
 
 // A new workspace's rows, in an order where every reference exists: the workspace, its people and their memberships
-// (everyone an admin), and in the sample workspace its labels and threads. People's buckets, their `workspaceIds` and
+// (everyone an admin), and in the sample workspace its subspaces, labels and threads. People's buckets, their `workspaceIds` and
 // inbox items are the rules' effects.
 export function seed(workspace: string, nowMs = Date.now()): Write[] {
   const sample = workspace === "sample";
@@ -207,9 +227,17 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
     ),
   ];
   if (!sample) return writes;
+  for (const { id, name, visibility, members } of SAMPLE_SUBSPACES)
+    writes.push(
+      create("Subspace", id, { name, visibility, workspaceId: workspace }),
+      ...members.map((userId) =>
+        create("SubspaceMember", `${id}-${userId}`, { subspaceId: id, userId }),
+      ),
+    );
   for (const [id, name] of Object.entries(SAMPLE_LABELS))
-    writes.push(create("Label", id, { name, memberIds: [], workspaceId: workspace }));
-  for (const t of SAMPLE_THREADS)
+    writes.push(create("Label", id, { name, workspaceId: workspace }));
+  for (const t of SAMPLE_THREADS) {
+    const subspaceIds = t.subspace ? [t.subspace] : [];
     writes.push(
       create("Thread", t.id, {
         title: t.title,
@@ -218,6 +246,7 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
         ownerId: t.owner,
         workspaceId: workspace,
         labelIds: t.labels ?? [],
+        subspaceIds,
         assigneeIds: [],
         dueAt: t.dueIn === undefined ? null : nowMs + t.dueIn,
         blocksId: t.blocks ?? null,
@@ -228,8 +257,10 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
           authorId,
           body: [...toIds.map(mention), body].join(" "),
           workspaceId: workspace,
+          subspaceIds,
         }),
       ),
     );
+  }
   return writes;
 }
