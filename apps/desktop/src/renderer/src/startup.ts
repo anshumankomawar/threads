@@ -29,6 +29,7 @@ export function save(key: string, value: unknown): void {
 // The main process keeps the source and signs in against its API, so choosing another restarts the app.
 export const useSource = (next: Source): Promise<void> => window.threads.useSource(next);
 export const source = await window.threads.source();
+export const otherSources = (Object.keys(SOURCES) as Source[]).filter((s) => s !== source);
 export const server = {
   url: source === "cloudflare" ? HOSTED_URL! : "http://127.0.0.1:3030",
   workspace: source === "cloudflare" ? "local" : source,
@@ -45,10 +46,11 @@ export async function signOut(): Promise<void> {
 }
 
 type Theme = "dark" | "light";
-export const [theme, setThemeSignal] = createSignal<Theme>(saved("theme", "dark"));
+const [chosen, setChosen] = createSignal<Theme>(saved("theme", "dark"));
+export const theme = chosen;
 const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
 export function applyTheme(next: Theme): void {
-  setThemeSignal(next);
+  setChosen(next);
   save("theme", next);
   document.documentElement.dataset.theme = next;
   for (const name of LIGHT) document.documentElement.classList.toggle(name, next === "light");

@@ -19,26 +19,38 @@ import {
   Message,
 } from "models";
 import {
+  byName,
+  edit,
+  firstName,
   itemFor,
   me,
+  myBuckets,
   open,
+  others,
   placeIn,
   setDialog,
   setSplit,
   setState,
+  shortDate,
   showMenu,
   store,
+  subspacesWithMembers,
+  membersHint,
+  summary,
+  toggled,
+  type MenuItem,
 } from "../session";
 import { bucketIcons } from "../bucketIcons";
+import { base } from "../styles/base";
 import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { thread } from "../styles/thread";
 import { colors, fontSizes, layers } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
-import { Icon, type IconSvgElement } from "./Icon";
+import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { MenuChip } from "./Menus";
+import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
 
 const styles = stylex.create({
@@ -74,10 +86,7 @@ const styles = stylex.create({
   blocked: { borderColor: colors.urgent, backgroundColor: colors.urgent },
 });
 
-const icon = (svg: IconSvgElement, size = 13): JSX.Element => (
-  <Icon icon={svg} size={size} aria-hidden="true" />
-);
-const dot = (state: Thread["state"]): JSX.Element => (
+export const dot = (state: Thread["state"]): JSX.Element => (
   <span class={sx(styles.dot, state !== "open" && styles[state])} aria-hidden="true" />
 );
 
@@ -94,8 +103,8 @@ export function ago(date: Date): string {
 }
 const titleOf = (id: string): string | undefined => store.findById(Thread, id)?.title;
 const nameOf = (id: string): string | undefined => store.findById(User, id)?.name;
-export const plain = (text: string): string =>
-  plainText(text, titleOf, nameOf, (id) => store.findById(Subspace, id)?.name);
+const subspaceOf = (id: string): string | undefined => store.findById(Subspace, id)?.name;
+export const plain = (text: string): string => plainText(text, titleOf, nameOf, subspaceOf);
 
 // Text with its thread links and mentions live: a link opens beside, a mention opens the profile.
 function LinkedText(props: { text: string; current: string; byline?: boolean }): JSX.Element {
@@ -108,7 +117,7 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
             fallback={<span class={sx(styles.linkSelf)}>#{titleOf(part.thread)}</span>}
           >
             <button
-              class={sx(link.thread, props.byline && link.threadInByline)}
+              class={sx(base.bare, link.thread, props.byline && link.threadInByline)}
               onClick={() => setSplit(part.thread)}
             >
               {icon(i.GitBranchIcon, 11)}
@@ -116,17 +125,17 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
             </button>
           </Show>
         ) : "date" in part ? (
-          new Date(part.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+          shortDate(new Date(part.date))
         ) : "subspace" in part ? (
           <button
-            class={sx(link.person, link.mention)}
+            class={sx(base.bare, link.person, link.mention)}
             onClick={() => open({ subspace: part.subspace })}
           >
-            @{store.findById(Subspace, part.subspace)?.name ?? "subspace"}
+            @{subspaceOf(part.subspace) ?? "subspace"}
           </button>
         ) : "person" in part ? (
           <button
-            class={sx(link.person, link.mention)}
+            class={sx(base.bare, link.person, link.mention)}
             onClick={() => open({ person: part.person })}
           >
             @{nameOf(part.person) ?? "someone"}
@@ -148,7 +157,7 @@ function Meta(props: {
   return (
     <div {...stylex.attrs(thread.meta, props.marker && threadLineMarker)}>
       <button
-        class={sx(link.person, thread.author)}
+        class={sx(base.bare, link.person, thread.author)}
         onClick={() => props.user && open({ person: props.user.id })}
       >
         {props.user?.name ?? "Someone"}
@@ -173,52 +182,49 @@ export const LABELS = {
   urgent: "Urgent",
 };
 
+type ListField = "labelIds" | "subspaceIds" | "assigneeIds";
+
+// A chip for one of a thread's lists: what's in it ("Security +1"), and a checklist of what can be.
+function ListChip(props: {
+  thread: Thread;
+  field: ListField;
+  records: { id: string; name: string }[];
+  none: string;
+  icon: IconSvgElement;
+  title?: string;
+  short?: (name: string) => string;
+  more?: MenuItem[];
+}): JSX.Element {
+  const ids = (): string[] => props.thread[props.field];
+  const name = (id: string): string => {
+    const found = props.records.find((r) => r.id === id)?.name ?? "Someone";
+    return props.short ? props.short(found) : found;
+  };
+  return (
+    <MenuChip
+      label={summary(ids().map(name), props.none)}
+      icon={icon(props.icon, 13)}
+      tone={ids().length === 0 ? "muted" : undefined}
+      title={props.title}
+      items={[
+        ...byName(props.records).map((record) => ({
+          label: record.name,
+          icon: ids().includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
+          run: () => edit(props.thread, { [props.field]: toggled(ids(), record.id) }),
+        })),
+        ...(props.more ?? []),
+      ]}
+    />
+  );
+}
+
 function Header(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   const item = (): ReturnType<typeof itemFor> => itemFor(c());
-  const edit = (change: Partial<Thread>) => () => (Object.assign(c(), change), c().save());
+  const change = (fields: Partial<Thread>) => () => edit(c(), fields);
   const place = (bucket: Bucket | undefined) => () => placeIn(item()!, bucket);
-  const buckets = (): Bucket[] =>
-    store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
-  const labels = (): Label[] => c().labelIds.flatMap((id) => store.findById(Label, id) ?? []);
-  // "No labels", "Security", or "Security +1".
-  const labelsText = (): string =>
-    labels().length === 0
-      ? "No labels"
-      : labels().length === 1
-        ? labels()[0].name
-        : `${labels()[0].name} +${labels().length - 1}`;
-  const assigneesText = (): string => {
-    const [first, ...rest] = c().assigneeIds.map((id) => nameOf(id)?.split(" ")[0] ?? "Someone");
-    return !first ? "No assignees" : rest.length ? `${first} +${rest.length}` : first;
-  };
-  const toggleAssignee = (user: User): void => {
-    const ids = c().assigneeIds;
-    c().assigneeIds = ids.includes(user.id)
-      ? ids.filter((id) => id !== user.id)
-      : [...ids, user.id];
-    c().save();
-  };
-  const spacesText = (): string => {
-    const [first, ...rest] = c().subspaceIds.map(
-      (id) => store.findById(Subspace, id)?.name ?? "Subspace",
-    );
-    return !first ? "Everyone" : rest.length ? `${first} +${rest.length}` : first;
-  };
-  const toggleSubspace = (sub: Subspace): void => {
-    const ids = c().subspaceIds;
-    c().subspaceIds = ids.includes(sub.id) ? ids.filter((id) => id !== sub.id) : [...ids, sub.id];
-    c().save();
-  };
-  const toggleLabel = (label: Label): void => {
-    const ids = c().labelIds;
-    c().labelIds = ids.includes(label.id)
-      ? ids.filter((id) => id !== label.id)
-      : [...ids, label.id];
-    c().save();
-  };
   const bucketIcon = (bucket?: Bucket): IconSvgElement =>
-    bucketIcons(buckets()).get(bucket?.id ?? "") ?? i.InboxIcon;
+    bucketIcons(myBuckets()).get(bucket?.id ?? "") ?? i.InboxIcon;
   return (
     <header class={sx(thread.block, thread.header)}>
       <span class={sx(thread.avatar)}>
@@ -264,7 +270,7 @@ function Header(props: { thread: Thread }): JSX.Element {
             {(it) => (
               <MenuChip
                 label={it().bucket?.name ?? "Sorting…"}
-                icon={icon(bucketIcon(it().bucket))}
+                icon={icon(bucketIcon(it().bucket), 13)}
                 tone={it().bucket ? undefined : "muted"}
                 title={
                   it().bucket
@@ -274,9 +280,9 @@ function Header(props: { thread: Thread }): JSX.Element {
                     : "Being sorted into one of your buckets"
                 }
                 items={[
-                  ...buckets().map((b) => ({
+                  ...myBuckets().map((b) => ({
                     label: b.name,
-                    icon: icon(b === it().bucket ? i.Tick02Icon : bucketIcon(b)),
+                    icon: icon(b === it().bucket ? i.Tick02Icon : bucketIcon(b), 13),
                     run: place(b),
                   })),
                   ...(it().manual ? [{ label: "Sort it for me", run: place(undefined) }] : []),
@@ -284,48 +290,31 @@ function Header(props: { thread: Thread }): JSX.Element {
               />
             )}
           </Show>
-          <MenuChip
-            label={labelsText()}
-            icon={icon(i.Tag01Icon)}
-            tone={labels().length === 0 ? "muted" : undefined}
-            items={[
-              ...store
-                .all(Label)
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((label) => ({
-                  label: label.name,
-                  icon: c().labelIds.includes(label.id) ? icon(i.Tick02Icon) : undefined,
-                  run: () => toggleLabel(label),
-                })),
+          <ListChip
+            thread={c()}
+            field="labelIds"
+            records={store.all(Label)}
+            none="No labels"
+            icon={i.Tag01Icon}
+            more={[
               { label: "New label…", run: () => setDialog({ kind: "newLabel", thread: c() }) },
             ]}
           />
-          <MenuChip
-            label={spacesText()}
-            icon={icon(i.Layers01Icon)}
-            tone={c().subspaceIds.length === 0 ? "muted" : undefined}
+          <ListChip
+            thread={c()}
+            field="subspaceIds"
+            records={store.all(Subspace)}
+            none="Everyone"
+            icon={i.Layers01Icon}
             title="Where it lives: its subspaces' members see it, and only they when one is private"
-            items={store
-              .all(Subspace)
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((sub) => ({
-                label: sub.name,
-                icon: c().subspaceIds.includes(sub.id) ? icon(i.Tick02Icon) : undefined,
-                run: () => toggleSubspace(sub),
-              }))}
           />
-          <MenuChip
-            label={assigneesText()}
-            icon={icon(i.UserMultipleIcon)}
-            tone={c().assigneeIds.length === 0 ? "muted" : undefined}
-            items={store
-              .all(User)
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((user) => ({
-                label: user.name,
-                icon: c().assigneeIds.includes(user.id) ? icon(i.Tick02Icon) : undefined,
-                run: () => toggleAssignee(user),
-              }))}
+          <ListChip
+            thread={c()}
+            field="assigneeIds"
+            records={store.all(User)}
+            none="No assignees"
+            icon={i.UserMultipleIcon}
+            short={(name) => firstName({ name })}
           />
           <MenuChip
             label={LABELS[c().priority]}
@@ -334,16 +323,12 @@ function Header(props: { thread: Thread }): JSX.Element {
             }
             items={PRIORITIES.map((priority) => ({
               label: LABELS[priority],
-              run: edit({ priority }),
+              run: change({ priority }),
             }))}
           />
           <MenuChip
-            icon={icon(i.Calendar01Icon)}
-            label={
-              c().dueAt
-                ? `Due ${c().dueAt!.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
-                : "No due date"
-            }
+            icon={icon(i.Calendar01Icon, 13)}
+            label={c().dueAt ? `Due ${shortDate(c().dueAt!)}` : "No due date"}
             tone={
               c().dueAt && c().dueAt!.getTime() < Date.now()
                 ? "urgent"
@@ -352,10 +337,10 @@ function Header(props: { thread: Thread }): JSX.Element {
                   : "muted"
             }
             items={[
-              { label: "Today", run: edit({ dueAt: dueAt(0) }) },
-              { label: "Tomorrow", run: edit({ dueAt: dueAt(1) }) },
-              { label: "Next week", run: edit({ dueAt: dueAt(7) }) },
-              { label: "No due date", run: edit({ dueAt: undefined }) },
+              { label: "Today", run: change({ dueAt: dueAt(0) }) },
+              { label: "Tomorrow", run: change({ dueAt: dueAt(1) }) },
+              { label: "Next week", run: change({ dueAt: dueAt(7) }) },
+              { label: "No due date", run: change({ dueAt: undefined }) },
             ]}
           />
         </div>
@@ -405,16 +390,6 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
   );
 }
 
-// An option shows an avatar (`seed`) or an icon.
-type Option = {
-  label: string;
-  hint?: string;
-  seed?: string;
-  icon?: IconSvgElement;
-  isNew?: boolean;
-  pick: () => void;
-};
-
 // The next message, written at the end. Enter posts it; only someone @mentioned hears about it.
 function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   const c = (): Thread => props.thread;
@@ -434,34 +409,32 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           label: "Blocked",
           hint: "Ask someone for what this needs",
           icon: i.UnavailableIcon,
-          pick: () => (menu.pick(), setDialog({ kind: "blocked", thread: c() })),
+          run: () => (menu.pick(), setDialog({ kind: "blocked", thread: c() })),
         },
         {
           label: "Resolve",
           hint: "Resolve it for everyone",
           icon: i.CheckmarkCircle02Icon,
-          pick: () => (menu.pick(), setState(c(), "resolved")),
+          run: () => (menu.pick(), setState(c(), "resolved")),
         },
       ].filter((o) => o.label.toLowerCase().startsWith(query));
     if (open === "mention")
       return [
-        ...store
-          .all(User)
-          .filter((u) => u.id !== me().id && u.name.toLowerCase().includes(query))
+        ...others()
+          .filter((u) => u.name.toLowerCase().includes(query))
           .map((u) => ({
             label: u.name,
             seed: u.id,
             hint: "assigns them",
-            pick: () => menu.pick({ id: u.id, name: u.name }),
+            run: () => menu.pick({ id: u.id, name: u.name }),
           })),
-        ...store
-          .all(Subspace)
-          .filter((sub) => sub.members.length > 0 && sub.name.toLowerCase().includes(query))
+        ...subspacesWithMembers()
+          .filter((sub) => sub.name.toLowerCase().includes(query))
           .map((sub) => ({
             label: sub.name,
             icon: i.UserMultipleIcon,
-            hint: `assigns its ${sub.members.length}`,
-            pick: () => menu.pick({ id: `subspace:${sub.id}`, name: sub.name }),
+            hint: membersHint(sub),
+            run: () => menu.pick({ id: `subspace:${sub.id}`, name: sub.name }),
           })),
       ];
     const found = store
@@ -471,17 +444,17 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       .map((o) => ({
         label: o.title,
         icon: i.GitBranchIcon,
-        pick: () => menu.pick({ id: o.id, title: o.title }),
+        run: () => menu.pick({ id: o.id, title: o.title }),
       }));
     const title = menu.query.trim();
     const branch = (): void => {
       // With the same people, so it reaches them.
-      const others = [...c().assigneeIds, c().ownerId ?? ""].filter((id) => id !== me().id);
+      const people = [...c().assigneeIds, c().ownerId ?? ""].filter((id) => id !== me().id);
       const made = createThread({
         title,
         labelIds: [...c().labelIds],
         subspaceIds: [...c().subspaceIds],
-        assignees: [...new Set(others)].flatMap((id) => store.findById(User, id) ?? []),
+        assignees: [...new Set(people)].flatMap((id) => store.findById(User, id) ?? []),
         branchedFrom: c(),
       });
       menu.pick({ id: made.id, title });
@@ -493,8 +466,8 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
             label: "New thread",
             hint: `“${title}”`,
             icon: i.Add01Icon,
-            isNew: true,
-            pick: branch,
+            accent: true,
+            run: branch,
           },
         ]
       : found;
@@ -506,10 +479,10 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     const count = options().length;
     if (event.key === "Escape") closeCaretMenu(editor.view, open);
     else if (count === 0) return false;
-    else if (event.key === "ArrowDown" || event.key === "ArrowUp")
-      setAt((index() + (event.key === "ArrowDown" ? 1 : -1) + count) % count);
+    else if (moved(event.key, index(), count) !== undefined)
+      setAt(moved(event.key, index(), count)!);
     else if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab")
-      options()[index()].pick();
+      options()[index()].run();
     else return false;
     return true;
   };
@@ -562,31 +535,18 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
         {(rect) => (
           <Portal mount={document.body}>
             <div
-              class={sx(look.menu, styles.caretMenu)}
+              class={sx(base.panel, look.menu, styles.caretMenu)}
               role="listbox"
               style={{ left: `${rect().left}px`, top: `${rect().bottom + 6}px` }}
               onMouseDown={(e) => e.preventDefault()}
             >
               <For each={options()}>
                 {(option, at) => (
-                  <button
-                    class={sx(look.item, at() === index() && look.itemSelected)}
-                    role="option"
-                    aria-selected={at() === index() ? "true" : "false"}
-                    onMouseEnter={() => setAt(at())}
-                    onClick={() => option.pick()}
-                  >
-                    <Show
-                      when={option.seed}
-                      fallback={<span class={sx(look.itemIcon)}>{icon(option.icon!)}</span>}
-                    >
-                      {(seed) => <Identicon seed={seed()} size={14} />}
-                    </Show>
-                    <span class={sx(look.label)}>
-                      {option.label}{" "}
-                      <span class={sx(option.isNew ? look.accent : look.hint)}>{option.hint}</span>
-                    </span>
-                  </button>
+                  <OptionButton
+                    option={option}
+                    selected={at() === index()}
+                    onHover={() => setAt(at())}
+                  />
                 )}
               </For>
             </div>

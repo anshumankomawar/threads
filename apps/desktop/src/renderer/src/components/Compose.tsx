@@ -1,25 +1,34 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Draft, mention, Subspace, User, type ComposeDraft } from "models";
-import { draftWith, me, open, setDialog, store } from "../session";
-import { button, menu } from "../styles/controls";
+import {
+  draftWith,
+  firstName,
+  me,
+  membersHint,
+  open,
+  others,
+  setDialog,
+  store,
+  subspacesWithMembers,
+} from "../session";
+import { base } from "../styles/base";
+import { button } from "../styles/controls";
 import { compose, palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { Identicon } from "./Identicon";
+import { moved, OptionButton } from "./Menus";
 import { createThread, Modal, send } from "./Palettes";
 
 type Ask = ComposeDraft["asks"][number];
 
 const MENTION = /@([\p{L}\p{N}_-]+)/gu;
-const firstName = (u: User): string => u.name.split(" ")[0];
-const others = (): User[] => store.all(User).filter((u) => u.id !== me().id);
 
 const compact = (name: string): string => name.replaceAll(/\s+/g, "");
-const subspaces = (): Subspace[] => store.all(Subspace).filter((sub) => sub.members.length > 0);
 const namesIn = (text: string): string[] =>
   [...text.matchAll(MENTION)].map(([, name]) => name.toLowerCase());
 const mentionedSubspaces = (text: string): Subspace[] =>
-  subspaces().filter((sub) => namesIn(text).includes(compact(sub.name).toLowerCase()));
+  subspacesWithMembers().filter((sub) => namesIn(text).includes(compact(sub.name).toLowerCase()));
 
 // Everyone @mentioned, by first name or full name without spaces, and everyone in a subspace that is, in order.
 const mentioned = (text: string): User[] => {
@@ -113,7 +122,7 @@ export function Compose(props: { draftId?: string }): JSX.Element {
   const matches = createMemo((): (User | Subspace)[] => {
     const query = typing()?.query;
     if (query === undefined || menuHidden()) return [];
-    return [...others(), ...subspaces()]
+    return [...others(), ...subspacesWithMembers()]
       .filter((target) => target.name.toLowerCase().startsWith(query))
       .slice(0, 6);
   });
@@ -164,8 +173,8 @@ export function Compose(props: { draftId?: string }): JSX.Element {
     const { key } = event;
     const inInput = event.target === input;
     const person = inInput ? matches()[Math.min(at(), matches().length - 1)] : undefined;
-    if (person && (key === "ArrowDown" || key === "ArrowUp"))
-      setAt((at() + (key === "ArrowDown" ? 1 : -1) + matches().length) % matches().length);
+    if (person && moved(key, at(), matches().length) !== undefined)
+      setAt(moved(key, at(), matches().length)!);
     else if (person && (key === "Tab" || key === "Enter")) pick(person);
     else if (person && key === "Escape") setMenuHidden(true);
     else if (event.metaKey && key.toLowerCase() === "s") setDialog(null);
@@ -196,7 +205,7 @@ export function Compose(props: { draftId?: string }): JSX.Element {
         <textarea
           ref={input}
           autofocus
-          class={sx(compose.input)}
+          class={sx(base.bare, compose.input)}
           placeholder="Write it as you'd say it… @mention who it's for"
           spellcheck={false}
           value={text()}
@@ -212,21 +221,16 @@ export function Compose(props: { draftId?: string }): JSX.Element {
           <div class={sx(compose.mentions)} role="listbox" aria-label="Mention someone">
             <For each={matches()}>
               {(u, index) => (
-                <button
-                  class={sx(menu.item, index() === at() && menu.itemSelected)}
-                  role="option"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onMouseMove={() => setAt(index())}
-                  onClick={() => pick(u)}
-                >
-                  <Identicon seed={u.id} size={16} />
-                  <span class={sx(palette.rowLabel)}>{u.name}</span>
-                  <Show when={u instanceof Subspace}>
-                    <span class={sx(palette.shortcut)}>
-                      Subspace · {(u as Subspace).members.length}
-                    </span>
-                  </Show>
-                </button>
+                <OptionButton
+                  option={{
+                    label: u.name,
+                    seed: u.id,
+                    hint: u instanceof Subspace ? membersHint(u) : undefined,
+                    run: () => pick(u),
+                  }}
+                  selected={index() === at()}
+                  onHover={() => setAt(index())}
+                />
               )}
             </For>
           </div>
@@ -234,10 +238,12 @@ export function Compose(props: { draftId?: string }): JSX.Element {
         <Show when={shown()}>
           {(draft) => (
             <div class={sx(compose.preview, !edited() && !current() && compose.stale)}>
-              <div class={sx(palette.sectionLabel, palette.labelText, compose.label)}>
+              <div
+                class={sx(base.ellipsis, palette.sectionLabel, palette.labelText, compose.label)}
+              >
                 {status()}
                 <Show when={edited() && trimmed() !== ""}>
-                  <button class={sx(compose.redraft)} onClick={() => setEdited(null)}>
+                  <button class={sx(base.bare, compose.redraft)} onClick={() => setEdited(null)}>
                     Redraft
                   </button>
                 </Show>
@@ -280,7 +286,7 @@ export function Compose(props: { draftId?: string }): JSX.Element {
                                 <Identicon seed={person.id} size={14} />
                                 {firstName(person)}
                                 <button
-                                  class={sx(compose.remove)}
+                                  class={sx(base.bare, base.dim, compose.remove)}
                                   aria-label={`Don't ask ${person.name}`}
                                   onClick={() =>
                                     changeAsk(index, {
@@ -317,11 +323,11 @@ export function Compose(props: { draftId?: string }): JSX.Element {
             {kbd("⇧↵")} new line · {kbd("esc")} keeps a draft
           </span>
           <span class={sx(compose.actions)}>
-            <button class={sx(button.button)} onClick={() => setDialog(null)}>
+            <button class={sx(base.hover, button.button)} onClick={() => setDialog(null)}>
               Save draft {kbd("⌘S")}
             </button>
             <button
-              class={sx(button.button, button.primary)}
+              class={sx(base.hover, button.button, button.primary)}
               disabled={!shown() || submitting()}
               onClick={submit}
             >

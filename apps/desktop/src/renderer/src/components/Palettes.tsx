@@ -6,27 +6,32 @@ import type { Filter } from "sync";
 import {
   account,
   applyTheme,
+  byName,
   dialog,
+  edit,
+  myBuckets,
   me,
+  memberIn,
   open,
+  otherSources,
+  others,
   setDialog,
   signOut,
-  source,
   SOURCES,
   store,
+  summary,
+  toggled,
   switchTo,
   theme,
   type Dialog,
   workspace,
-  type Source,
 } from "../session";
-import { menu } from "../styles/controls";
 import { paletteSectionMarker } from "../styles/markers.stylex";
+import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
-import { FIELDS } from "./Pages";
-import { Identicon } from "./Identicon";
+import { moved, OptionButton, type Option } from "./Menus";
 
 // A modal palette: a click outside or Escape closes it.
 export function Modal(props: { children: JSX.Element }): JSX.Element {
@@ -34,15 +39,14 @@ export function Modal(props: { children: JSX.Element }): JSX.Element {
     <dialog
       ref={(el) => queueMicrotask(() => ((el.closedBy = "any"), el.showModal()))}
       onClose={() => setDialog(null)}
-      class={sx(palette.dialog, palette.open)}
+      class={sx(base.panel, palette.dialog, palette.open)}
     >
       {props.children}
     </dialog>
   );
 }
 
-// `section` heads a run of rows; `hint` sits on the right, like a shortcut.
-type Row = { label: string; hint?: string; seed?: string; section?: string; run: () => void };
+type Row = Option;
 
 // An input over rows that match it, in sections; arrows choose, Enter or a click runs the row.
 function Picker(props: {
@@ -70,8 +74,8 @@ function Picker(props: {
     }, []),
   );
   const onKeyDown = (event: KeyboardEvent): void => {
-    const by = { ArrowDown: 1, ArrowUp: -1 }[event.key];
-    if (by) setAt((index() + by + rows().length) % rows().length);
+    const next = moved(event.key, index(), rows().length);
+    if (next !== undefined) setAt(next);
     else if (event.key === "Enter") rows()[index()]?.run();
     else if (event.key === "Escape" && props.onBack) props.onBack();
     else if (event.key === "Tab" && props.onTab) props.onTab();
@@ -83,7 +87,7 @@ function Picker(props: {
       <div class={sx(palette.inputRow)}>
         <input
           autofocus
-          class={sx(palette.input)}
+          class={sx(base.bare, palette.input)}
           placeholder={props.placeholder}
           spellcheck={false}
           value={query()}
@@ -97,24 +101,17 @@ function Picker(props: {
             {(section) => (
               <div {...stylex.attrs(palette.section, palette.divided, paletteSectionMarker)}>
                 <Show when={section.title}>
-                  <div class={sx(palette.sectionLabel, palette.labelText)}>{section.title}</div>
+                  <div class={sx(base.ellipsis, palette.sectionLabel, palette.labelText)}>
+                    {section.title}
+                  </div>
                 </Show>
                 <For each={section.rows}>
                   {({ row, at }) => (
-                    <button
-                      class={sx(menu.item, at === index() && menu.itemSelected)}
-                      role="option"
-                      aria-selected={at === index() ? "true" : "false"}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onMouseMove={() => setAt(at)}
-                      onClick={() => row.run()}
-                    >
-                      <Show when={row.seed}>{(seed) => <Identicon seed={seed()} size={16} />}</Show>
-                      <span class={sx(palette.rowLabel)}>{row.label}</span>
-                      <Show when={row.hint}>
-                        <span class={sx(palette.shortcut)}>{row.hint}</span>
-                      </Show>
-                    </button>
+                    <OptionButton
+                      option={row}
+                      selected={at === index()}
+                      onHover={() => setAt(at)}
+                    />
                   )}
                 </For>
               </div>
@@ -128,14 +125,22 @@ function Picker(props: {
 
 const matches = (text: string, query: string): boolean =>
   text.toLowerCase().includes(query.toLowerCase());
-const done = (run: () => void) => () => (setDialog(null), run());
+// Closes the palette, then runs.
+const done =
+  <A extends unknown[]>(run: (...args: A) => unknown) =>
+  (...args: A): void => {
+    setDialog(null);
+    run(...args);
+  };
 // The one row a text step has: Enter takes what you typed.
 const entry = (query: string, label: string, run: (text: string) => void): Row[] =>
   query === "" ? [] : [{ label: `${label} “${query}”`, hint: "↵", run: done(() => run(query)) }];
-const people = (query: string, run: (user: User) => void): Row[] =>
-  store
-    .all(User)
-    .filter((u) => u.id !== me().id && matches(u.name, query))
+// A form's step: Enter takes what you typed on to the next one.
+const next = (query: string, section: string, run: (text: string) => void): Row[] =>
+  query === "" ? [] : [{ label: `Next “${query}”`, hint: "↵", section, run: () => run(query) }];
+const people = (query: string, run: (user: User) => void, from = others()): Row[] =>
+  from
+    .filter((u) => matches(u.name, query))
     .map((u) => ({ label: u.name, seed: u.id, run: () => run(u) }));
 
 // The one way a thread is made: ⌘N, ⌘⇧N, /blocked and a # branch all come here. Anyone in `assignees` gets it in
@@ -212,13 +217,11 @@ function Search(): JSX.Element {
             run: () => setDialog({ kind: "viewAs" }),
           },
         ]),
-    ...(Object.keys(SOURCES) as Source[])
-      .filter((s) => s !== source)
-      .map((s) => ({
-        label: `Use ${SOURCES[s]} data`,
-        section: "Data",
-        run: () => switchTo({ source: s }),
-      })),
+    ...otherSources.map((s) => ({
+      label: `Use ${SOURCES[s]} data`,
+      section: "Data",
+      run: () => switchTo({ source: s }),
+    })),
   ];
   return (
     <Picker
@@ -312,31 +315,17 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     open({ thread: made.id });
   };
   const toggle = (name: string): void => {
-    setNames((all) => (all.includes(name) ? all.filter((n) => n !== name) : [...all, name]));
+    setNames((all) => toggled(all, name));
     setTyped("");
-  };
-  const labelsText = (): string => {
-    const [first, ...rest] = names();
-    if (!first) return "No labels";
-    return rest.length ? `${first} +${rest.length}` : first;
   };
   const steps: Record<Step, [string, (query: string) => Row[]]> = {
     write: [
       untrack(() => (props.to ? `What do you need from ${props.to.name}?` : "What do you need?")),
       (text) =>
-        text === ""
-          ? []
-          : [
-              {
-                label: `Next “${text}”`,
-                hint: "↵",
-                section: "Step 1 of 3",
-                run: () => {
-                  setTitle(text);
-                  go("describe", description());
-                },
-              },
-            ],
+        next(text, "Step 1 of 3", () => {
+          setTitle(text);
+          go("describe", description());
+        }),
     ],
     describe: [
       "Add a description… (optional)",
@@ -378,10 +367,12 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
             ] as Row[]
           )
             .filter((row) => matches(row.label, text))
-            .toSorted((a, b) => Number(b.seed === first) - Number(a.seed === first))
+            .toSorted(
+              (a, b) => Number(!!first && b.seed === first) - Number(!!first && a.seed === first),
+            )
             .map((row) => ({ ...row, section })),
           {
-            label: labelsText(),
+            label: summary(names(), "No labels"),
             hint: "⇥",
             section: "Labels",
             run: () => go("labels"),
@@ -392,7 +383,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     labels: [
       "Find or make a label…",
       (text) => {
-        const all = store.all(Label).sort((a, b) => a.name.localeCompare(b.name));
+        const all = byName(store.all(Label));
         const exists = [...all.map((l) => l.name), ...names()].some(
           (name) => name.toLowerCase() === text.toLowerCase(),
         );
@@ -433,8 +424,7 @@ function NewLabel(props: { thread?: Thread }): JSX.Element {
         entry(query, "Make label", (name) => {
           const label = store.create(Label, { name, workspace: workspace() });
           if (!props.thread) return open({ label: label.id });
-          props.thread.labelIds = [...props.thread.labelIds, label.id];
-          props.thread.save();
+          edit(props.thread, { labelIds: [...props.thread.labelIds, label.id] });
         })
       }
     />
@@ -480,13 +470,8 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
   const [name, setName] = createSignal(untrack(() => props.bucket?.name ?? ""));
   const save = (description: string): void => {
     setDialog(null);
-    if (props.bucket) {
-      props.bucket.name = name();
-      props.bucket.description = description;
-      props.bucket.save();
-      return;
-    }
-    const mine = store.where(Bucket, "userId", me().id);
+    if (props.bucket) return edit(props.bucket, { name: name(), description });
+    const mine = myBuckets();
     const position = Math.max(-1, ...mine.map((bucket) => bucket.position)) + 1;
     store.create(Bucket, { user: me(), name: name(), description, position });
   };
@@ -506,20 +491,11 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
       }}
       rows={(text) =>
         naming()
-          ? text === ""
-            ? []
-            : [
-                {
-                  label: `Next “${text}”`,
-                  hint: "↵",
-                  section: `Step 1 of 2 · ${props.bucket ? "Rename" : "New bucket"}`,
-                  run: () => {
-                    setName(text.slice(0, 40));
-                    setNaming(false);
-                    setTyped(props.bucket?.description ?? "");
-                  },
-                },
-              ]
+          ? next(text, `Step 1 of 2 · ${props.bucket ? "Rename" : "New bucket"}`, () => {
+              setName(text.slice(0, 40));
+              setNaming(false);
+              setTyped(props.bucket?.description ?? "");
+            })
           : [
               {
                 label: props.bucket ? "Save bucket" : "Create bucket",
@@ -538,35 +514,6 @@ function ViewAs(): JSX.Element {
     <Picker
       placeholder="View as…"
       rows={(query) => people(query, (u) => switchTo({ viewer: u.id }))}
-    />
-  );
-}
-
-// Signing in happens in the browser, which sends you back here on a `com.threads.arc://` link. When the link doesn't open the
-// app, the sign-in page shows a code to paste here instead.
-// A condition for a view's filter: a field, then one of its values.
-function FilterPicker(props: { add: (condition: Filter) => void }): JSX.Element {
-  const [field, setField] = createSignal<string | null>(null);
-  const query = createSignal("");
-  return (
-    <Picker
-      placeholder={field() ? `${FIELDS[field()!].label} is…` : "Filter by…"}
-      query={query}
-      onBack={() => (field() ? (setField(null), query[1]("")) : setDialog(null))}
-      rows={(text) => {
-        const chosen = field();
-        if (!chosen)
-          return Object.entries(FIELDS)
-            .filter(([, f]) => matches(f.label, text))
-            .map(([key, f]) => ({ label: f.label, run: () => (setField(key), query[1]("")) }));
-        const { compare, values } = FIELDS[chosen];
-        return values()
-          .filter(([, name]) => matches(name, text))
-          .map(([value, name]) => ({
-            label: name,
-            run: done(() => props.add({ [chosen]: { [compare]: value } })),
-          }));
-      }}
     />
   );
 }
@@ -612,20 +559,15 @@ function NewSubspace(): JSX.Element {
 
 // Someone to add to a subspace.
 function AddMember(props: { subspace: Subspace }): JSX.Element {
-  const isIn = (user: User): boolean =>
-    props.subspace.members.filter((m) => m.userId === user.id).length > 0;
   return (
     <Picker
       placeholder={`Add to ${props.subspace.name}…`}
       rows={(query) =>
-        store
-          .all(User)
-          .filter((u) => !isIn(u) && matches(u.name, query))
-          .map((u) => ({
-            label: u.name,
-            seed: u.id,
-            run: done(() => store.create(SubspaceMember, { subspace: props.subspace, user: u })),
-          }))
+        people(
+          query,
+          done((user) => store.create(SubspaceMember, { subspace: props.subspace, user })),
+          store.all(User).filter((u) => !memberIn(props.subspace, u.id)),
+        )
       }
     />
   );
@@ -633,7 +575,6 @@ function AddMember(props: { subspace: Subspace }): JSX.Element {
 
 const PALETTES = {
   search: Search,
-  filter: FilterPicker,
   newView: NewView,
   newSubspace: NewSubspace,
   addMember: AddMember,

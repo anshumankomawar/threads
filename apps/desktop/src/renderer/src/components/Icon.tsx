@@ -21,6 +21,11 @@ const markup = (icon: IconSvgElement): string =>
     })
     .join("");
 
+// An icon that only decorates.
+export const icon = (svg: IconSvgElement, size = 12): JSX.Element => (
+  <Icon icon={svg} size={size} aria-hidden="true" />
+);
+
 export function Icon(props: IconProps): JSX.Element {
   return (
     <svg

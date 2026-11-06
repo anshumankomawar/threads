@@ -5,6 +5,12 @@ import * as stylex from "@stylexjs/stylex";
 import { Bucket, Draft, InboxItem, Label, Subspace, Thread, View } from "models";
 import {
   active,
+  allThreads,
+  byName,
+  firstName,
+  myBuckets,
+  shortDate,
+  shown,
   inbox,
   markDone,
   me,
@@ -13,6 +19,11 @@ import {
   sent,
   setDialog,
   setSidebarOpen,
+  sidebarOpen,
+  canGoBack,
+  canGoForward,
+  goBack,
+  goForward,
   showMenu,
   threadMenu,
   store,
@@ -24,31 +35,21 @@ import {
 import { bucketIcons } from "../bucketIcons";
 import { makeSubspace } from "./Palettes";
 import { topbar } from "../styles/controls";
-import { tabLabel } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { colors, layers, sidebarSpace } from "../styles/tokens.stylex";
+import { base } from "../styles/base";
+import { colors, layers, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { ago, plain } from "./ThreadView";
-import { Icon, type IconSvgElement } from "./Icon";
+import { icon, Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
+import { tab, Tabs } from "./Tabs";
 
 // Rows' fills are pills `GUTTER` in from the edges; their content stays on the sidebar's inset.
 const INSET = sidebarSpace.inset;
 const GUTTER = sidebarSpace.rowGutter;
-const RADIUS = sidebarSpace.rowRadius;
 const PILL = `calc(${INSET} - ${GUTTER})`;
 const FADE = "linear-gradient(to right, #000 calc(100% - 24px), transparent)";
 const center = { display: "flex", alignItems: "center" } as const;
 const column = { display: "flex", flexDirection: "column" } as const;
-const quiet = {
-  padding: 0,
-  borderStyle: "none",
-  font: "inherit",
-  backgroundColor: "transparent",
-} as const;
-const clip = { minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" } as const;
-const hoverBg = { default: "transparent", ":hover": colors.bgQuaternary } as const;
-const dim = { default: colors.textTertiary, ":hover": colors.textPrimary } as const;
-const reduced = "@media (prefers-reduced-motion: reduce)";
 const EDGE = `linear-gradient(to right, transparent 2px, ${colors.strokeFocused} 2px, ${colors.strokeFocused} 3px, transparent 3px)`;
 const WIDTH = { initial: 268, min: 210, max: 400 };
 const clampWidth = (px: number): number => Math.min(WIDTH.max, Math.max(WIDTH.min, Math.round(px)));
@@ -88,7 +89,7 @@ const s = stylex.create({
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
-    backgroundColor: colors.sidebarSolid,
+    backgroundColor: colors.chrome,
   },
   // The resize edge: a 1px line over the border on hover and while dragging.
   edge: {
@@ -103,36 +104,27 @@ const s = stylex.create({
     cursor: "col-resize",
     backgroundImage: { default: null, ":hover": EDGE, ":is([data-resizing])": EDGE },
   },
-  topbar: { paddingLeft: 71.5 },
+  topbar: { paddingLeft: sidebarSpace.afterLights },
+  history: { display: "flex", marginRight: 6 },
+  tight: { width: 18 },
   content: { ...column, flexGrow: 1, minHeight: 0, overflowY: "auto" },
   list: { ...column, margin: 0, padding: 0, listStyle: "none" },
   item: { minWidth: 0, listStyle: "none" },
   pointer: { cursor: "pointer" },
   row: { ...center, position: "relative", gap: 4, height: 28, margin: `0 ${GUTTER}` },
-  rowPad: { padding: `0 ${PILL} 0 calc(31px - ${GUTTER})`, borderRadius: RADIUS },
-  rowLook: { color: colors.textPrimary, outline: "none", backgroundColor: hoverBg },
+  rowPad: { padding: `0 ${PILL} 0 calc(31px - ${GUTTER})`, borderRadius: radii.row },
+  rowLook: { color: colors.textPrimary, outline: "none" },
   active: { backgroundColor: colors.bgTertiary },
-  label: { ...clip, maskImage: { default: null, ":is([data-overflowing])": FADE } },
+  label: { maskImage: { default: null, ":is([data-overflowing])": FADE } },
   rowIcon: { position: "absolute", top: "50%", left: `calc(12px - ${GUTTER})`, display: "flex" },
   rowIconLook: { color: colors.iconTertiary, transform: "translateY(-50%)" },
   meta: { flexShrink: 0, marginLeft: "auto", paddingLeft: 8, whiteSpace: "nowrap", fontSize: 12 },
   faint: { color: colors.textTertiary },
   small: { fontSize: 11 },
   tabs: { ...center, flexShrink: 0, gap: 2, padding: `4px calc(${INSET} - 6px) 6px` },
-  tabGroup: { display: "flex", gap: 2 },
-  tab: { ...center, ...quiet, height: 24, minWidth: 26, padding: "0 6px", borderRadius: 6 },
-  tabLook: { color: colors.iconTertiary, fontSize: 12, backgroundColor: hoverBg },
-  on: { color: colors.textPrimary, backgroundColor: colors.bgTertiary },
-  // The chosen tab grows to its name's measured width (`--label-width`) as the old one shrinks.
-  tabLabel: { ...clip, width: 0, transitionDuration: "280ms" },
-  tabMotion: { transitionProperty: { default: "width, margin-left", [reduced]: "none" } },
-  tabEase: { transitionTimingFunction: "cubic-bezier(0.45, 0, 0.25, 1)" },
-  tabLabelShown: { width: tabLabel["--label-width"], marginLeft: 6 },
-  tabCount: { marginLeft: 4, color: colors.textSecondary, fontSize: 11 },
   tabular: { fontVariantNumeric: "tabular-nums" },
   end: { marginLeft: "auto" },
   fixed: { flexShrink: 0 },
-  ellipsis: { ...clip, textOverflow: "ellipsis" },
   caption: { margin: 0, fontSize: 11, fontWeight: 500 },
   empty: { margin: 0, padding: `4px ${INSET} 6px` },
   section: { ...column, paddingBottom: 10 },
@@ -141,22 +133,18 @@ const s = stylex.create({
   inlineInput: {
     flex: 1,
     minWidth: 0,
-    padding: 0,
-    borderWidth: 0,
     color: colors.textPrimary,
-    font: "inherit",
-    backgroundColor: "transparent",
     outline: "none",
     "::placeholder": { color: colors.textTertiary },
   },
   inbox: { ...column, gap: 6, paddingBottom: 12 },
-  bucket: { margin: `0 ${GUTTER}`, borderRadius: RADIUS },
+  bucket: { margin: `0 ${GUTTER}`, borderRadius: radii.row },
   bucketAfter: { marginTop: 12 },
   quick: { transitionDuration: "120ms", transitionTimingFunction: "ease" },
   // A bucket's name stays at the top of the sidebar while you scroll through its threads.
   header: { ...center, position: "sticky", top: 0, zIndex: 1, height: 26 },
-  headerLook: { padding: `0 ${PILL} 0 0`, backgroundColor: colors.sidebarSolid },
-  toggle: { ...center, ...quiet, flex: 1, gap: 6, minWidth: 0, height: "100%" },
+  headerLook: { padding: `0 ${PILL} 0 0`, backgroundColor: colors.chrome },
+  toggle: { ...center, flex: 1, gap: 6, minWidth: 0, height: "100%" },
   toggleLook: { padding: `0 0 0 ${PILL}`, textAlign: "left" },
   toggleColor: { color: { default: colors.textTertiary, ":hover": colors.textSecondary } },
   sorting: { paddingLeft: `calc(${PILL} + 20px)`, color: colors.textTertiary, cursor: "default" },
@@ -164,11 +152,11 @@ const s = stylex.create({
   chevron: {
     flexShrink: 0,
     marginLeft: "auto",
-    transitionProperty: { default: "transform", [reduced]: "none" },
+    transitionProperty: { default: "transform", [motion.reduced]: "none" },
   },
   chevronOpen: { transform: "rotate(90deg)" },
   count: { color: colors.textTertiary, fontWeight: 400 },
-  link: { ...quiet, margin: "2px 0 0", color: dim, fontSize: 11 },
+  link: { margin: "2px 0 0", fontSize: 11 },
   more: { display: "block", padding: `2px calc(${PILL} + 24px)` },
   newBucket: { ...center, gap: 6, alignSelf: "flex-start", padding: `2px ${INSET}` },
   // A bucket shows `BUCKET_ROWS` threads and scrolls the rest, fading at an end with more past it.
@@ -184,7 +172,7 @@ const s = stylex.create({
         "linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent)",
     },
   },
-  inboxRow: { ...center, gap: 8, padding: `5px ${PILL}`, borderRadius: RADIUS },
+  inboxRow: { ...center, gap: 8, padding: `5px ${PILL}`, borderRadius: radii.row },
   body: { ...column, flex: 1, minWidth: 0 },
   top: { ...center, gap: 4, minWidth: 0 },
   title: { lineHeight: "18px" },
@@ -195,11 +183,7 @@ const s = stylex.create({
     placeItems: "center",
     width: 22,
     height: 22,
-    padding: 0,
-    borderWidth: 0,
-    borderRadius: 6,
-    color: dim,
-    backgroundColor: hoverBg,
+    borderRadius: radii.row,
     cursor: "pointer",
     opacity: {
       default: 0,
@@ -208,8 +192,6 @@ const s = stylex.create({
     },
   },
   doneShown: { opacity: 1 },
-  // A section's +: no background of its own, only a brighter glyph on hover.
-  add: { color: dim, backgroundColor: "transparent" },
 });
 
 const BUCKET_ROWS = 5;
@@ -218,13 +200,12 @@ const ICON = { size: 14, "aria-hidden": "true" } as const;
 // Hugeicons' panel icon with the side pane filled, for a sidebar that's open.
 const LEFT_PANE =
   "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
-export const sidebarIcon = (open: boolean): IconSvgElement =>
+const sidebarIcon = (open: boolean): IconSvgElement =>
   open
     ? [...i.PanelLeftIcon, ["path", { d: LEFT_PANE, fill: "currentColor", key: "pane" }]]
     : i.PanelLeftIcon;
 
-const dueLabel = (c: Thread): string | undefined =>
-  c.dueAt?.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const dueLabel = (c: Thread): string | undefined => c.dueAt && shortDate(c.dueAt);
 
 // A div that acts as a button, for rows that hold other content.
 const pressable = (run: () => void) =>
@@ -270,7 +251,7 @@ function Row(props: {
   return (
     <li class={sx(s.item)}>
       <div
-        class={sx(s.row, s.rowPad, s.rowLook, s.pointer, props.active && s.active)}
+        class={sx(s.row, s.rowPad, base.hover, s.rowLook, s.pointer, props.active && s.active)}
         title={props.title}
         onContextMenu={(e) => props.onMenu?.(e)}
         {...pressable(() => props.onClick())}
@@ -278,7 +259,7 @@ function Row(props: {
         <span class={sx(s.rowIcon, s.rowIconLook)} aria-hidden="true">
           <Icon icon={props.icon} size={12} />
         </span>
-        <span ref={fade} class={sx(s.label)}>
+        <span ref={fade} class={sx(base.clip, s.label)}>
           {props.label}
         </span>
         <Show when={props.meta}>
@@ -293,7 +274,7 @@ function Row(props: {
 const lineOf = (item: InboxItem): string => {
   const last = item.thread.messages.sorted("createdAt").findLast((m) => m.authorId !== me().id);
   return last
-    ? `${last.author.name.split(" ")[0]}: ${plain(last.body)}`
+    ? `${firstName(last.author)}: ${plain(last.body)}`
     : item.manual
       ? "Placed here by you"
       : (item.reason ?? "");
@@ -315,6 +296,7 @@ function InboxRow(props: { item: InboxItem }): JSX.Element {
         ref={row}
         class={sx(
           s.inboxRow,
+          base.hover,
           s.rowLook,
           s.pointer,
           on() && s.active,
@@ -329,17 +311,17 @@ function InboxRow(props: { item: InboxItem }): JSX.Element {
         <Identicon seed={c().ownerId ?? ""} size={16} class={sx(s.fixed)} />
         <span class={sx(s.body)}>
           <span class={sx(s.top)}>
-            <span ref={fade} class={sx(s.label, s.title, unread(props.item) && s.bold)}>
+            <span ref={fade} class={sx(base.clip, s.label, s.title, unread(props.item) && s.bold)}>
               {c().title}
             </span>
             <Show when={dueLabel(c())}>
               <span class={sx(s.meta, s.faint, s.small)}>{dueLabel(c())}</span>
             </Show>
           </span>
-          <span class={sx(s.ellipsis, s.faint, s.small)}>{lineOf(props.item)}</span>
+          <span class={sx(base.ellipsis, s.faint, s.small)}>{lineOf(props.item)}</span>
         </span>
         <button
-          class={sx(s.done, on() && s.doneShown)}
+          class={sx(base.bare, base.hover, base.dim, s.done, on() && s.doneShown)}
           title="Done (⌘E)"
           aria-label="Mark done"
           onClick={(event) => {
@@ -381,7 +363,7 @@ function BucketSection(props: {
   const [expanded, setExpanded] = createSignal(false);
   const hidden = (): number => props.items.length - BUCKET_ROWS;
   const move = (by: number) => () => {
-    const buckets = store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
+    const buckets = myBuckets();
     const at = buckets.indexOf(props.bucket);
     const other = buckets[at + by];
     if (!other) return;
@@ -432,7 +414,7 @@ function BucketSection(props: {
             { label: "Move down", run: move(1) },
             "separator",
             // Sorting needs somewhere to put things.
-            ...(store.where(Bucket, "userId", me().id).length > 1
+            ...(myBuckets().length > 1
               ? [{ label: "Delete bucket", run: () => void props.bucket.delete() }]
               : []),
           ])
@@ -440,6 +422,7 @@ function BucketSection(props: {
       >
         <button
           class={sx(
+            base.bare,
             s.toggle,
             s.toggleLook,
             s.toggleColor,
@@ -458,7 +441,7 @@ function BucketSection(props: {
           }
         >
           <Icon icon={props.icon ?? i.InboxIcon} {...ICON} class={sx(s.fixed)} />
-          <span class={sx(s.ellipsis)}>{props.bucket.name}</span>
+          <span class={sx(base.ellipsis)}>{props.bucket.name}</span>
           <Show when={props.items.length > 0}>
             <span class={sx(s.count, s.tabular)}>{props.items.length}</span>
           </Show>
@@ -474,7 +457,10 @@ function BucketSection(props: {
         <Rows label={props.bucket.name} items={props.items} ref={capList} capped />
       </Show>
       <Show when={!shut() && hidden() > 0}>
-        <button class={sx(s.link, s.more, s.pointer)} onClick={() => setExpanded(!expanded())}>
+        <button
+          class={sx(base.bare, base.dim, s.link, s.more, s.pointer)}
+          onClick={() => setExpanded(!expanded())}
+        >
           {expanded() ? "Show less" : `${hidden()} more`}
         </button>
       </Show>
@@ -497,7 +483,7 @@ function InboxTab(): JSX.Element {
         <section class={sx(s.bucket)}>
           <div class={sx(s.header, s.headerLook)}>
             <span class={sx(s.toggle, s.toggleLook, s.caption, s.sorting)}>
-              <span class={sx(s.ellipsis)}>Sorting</span>
+              <span class={sx(base.ellipsis)}>Sorting</span>
               <span class={sx(s.count, s.tabular)}>{inbox().unsorted.length}</span>
             </span>
           </div>
@@ -518,10 +504,10 @@ function InboxTab(): JSX.Element {
         )}
       </For>
       <button
-        class={sx(s.link, s.newBucket, s.pointer)}
+        class={sx(base.bare, base.dim, s.link, s.newBucket, s.pointer)}
         onClick={() => setDialog({ kind: "bucket" })}
       >
-        <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
+        {icon(i.Add01Icon)}
         New bucket
       </button>
     </div>
@@ -606,12 +592,12 @@ function Section(props: {
         <span class={sx(s.caption, s.faint)}>{props.title}</span>
         <Show when={props.onAdd}>
           <button
-            class={sx(s.done, s.add, s.end, adding() && s.doneShown)}
+            class={sx(base.bare, base.dim, s.done, s.end, adding() && s.doneShown)}
             aria-label={`New ${props.title.toLowerCase().replace(/s$/, "")}`}
             title={`New ${props.title.toLowerCase().replace(/s$/, "")}`}
             onClick={start}
           >
-            <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
+            {icon(i.Add01Icon)}
           </button>
         </Show>
       </div>
@@ -621,7 +607,7 @@ function Section(props: {
             <div class={sx(s.row, s.rowPad, s.active)}>
               <input
                 ref={(input) => queueMicrotask(() => input.focus())}
-                class={sx(s.inlineInput)}
+                class={sx(base.bare, s.inlineInput)}
                 placeholder={props.placeholder}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") finish(event.currentTarget, true);
@@ -643,18 +629,15 @@ function Section(props: {
 
 // Where threads live and how you look at them: all of them and your views, the subspaces, and the labels.
 function SpacesTab(): JSX.Element {
-  const shown = (key: string): string | null | undefined => (view() as Record<string, string>)[key];
   const openIn = (field: "labelIds" | "subspaceIds", id: string): string =>
     String(store.all(Thread).filter((t) => t.isOpen && t[field].includes(id)).length);
-  const byName = <T extends { name: string }>(list: T[]): T[] =>
-    list.sort((a, b) => a.name.localeCompare(b.name));
   return (
     <>
       <Section title="Views">
         <Row
           icon={i.Layers01Icon}
           label="All threads"
-          active={"view" in view() && shown("view") === null}
+          active={allThreads()}
           onClick={() => open({ view: null })}
         />
         <For each={byName(store.all(View))}>
@@ -676,7 +659,7 @@ function SpacesTab(): JSX.Element {
         <For each={byName(store.all(Subspace))}>
           {(sub) => (
             <Row
-              icon={sub.visibility === "private" ? i.LockIcon : i.UserMultipleIcon}
+              icon={sub.visibility === "private" ? i.SquareLock01Icon : i.UserMultipleIcon}
               label={sub.name}
               meta={openIn("subspaceIds", sub.id)}
               active={shown("subspace") === sub.id}
@@ -715,43 +698,68 @@ const TABS = [
     count: () => store.where(Draft, "userId", me().id).length,
     tab: DraftsTab,
   },
-  { label: "Spaces", icon: i.Layers01Icon, count: () => 0, tab: SpacesTab },
+  { label: "Spaces", icon: i.Layers01Icon, tab: SpacesTab },
 ];
 
-export const TopButton = (props: {
+const TopButton = (props: {
   label: string;
   icon: IconSvgElement;
+  disabled?: boolean;
+  // Narrower, to sit tight against its neighbour.
+  tight?: boolean;
   onClick: () => void;
 }): JSX.Element => (
-  <button class={sx(topbar.button)} aria-label={props.label} onClick={() => props.onClick()}>
+  <button
+    class={sx(topbar.button, props.tight && s.tight)}
+    aria-label={props.label}
+    title={props.label}
+    disabled={props.disabled}
+    onClick={() => props.onClick()}
+  >
     <Icon icon={props.icon} {...ICON} />
   </button>
 );
 
-// The top bar, the tabs (the chosen one opens out to show its name), and the chosen tab's list.
+// Beside the window's buttons: on the sidebar's top row, or the main bar's while it's hidden.
+export const AppButtons = (): JSX.Element => (
+  <>
+    <TopButton
+      label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
+      icon={sidebarIcon(sidebarOpen())}
+      onClick={() => setSidebarOpen(!sidebarOpen())}
+    />
+    <TopButton label="Search" icon={i.Search01Icon} onClick={() => setDialog({ kind: "search" })} />
+  </>
+);
+
+// Back and forward through the pages you've opened, side by side before the main bar's title.
+export const HistoryButtons = (): JSX.Element => (
+  <span class={sx(s.history)}>
+    <TopButton
+      label="Back (⌘[)"
+      icon={i.ArrowLeft01Icon}
+      tight
+      disabled={!canGoBack()}
+      onClick={goBack}
+    />
+    <TopButton
+      label="Forward (⌘])"
+      icon={i.ArrowRight01Icon}
+      tight
+      disabled={!canGoForward()}
+      onClick={goForward}
+    />
+  </span>
+);
+
+// The top bar, the tabs, and the chosen tab's list.
 export function Sidebar(): JSX.Element {
-  const [tab, setTab] = createSignal(TABS[0]);
-  const labels: HTMLElement[] = [];
-  // Each name's own width, so the chosen tab grows to exactly fit it; again once the font has loaded.
-  const measure = (): void => {
-    for (const label of labels) label.style.setProperty("--label-width", `${label.scrollWidth}px`);
-  };
-  createEffect(tab, measure);
-  onSettled(() => void document.fonts.ready.then(measure));
+  const [chosen, choose] = createSignal(TABS[0]);
   const profile = (): boolean => (view() as { person?: string }).person === me().id;
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${width()}px` }}>
       <div class={sx(topbar.bar, s.topbar)}>
-        <TopButton
-          label="Hide sidebar"
-          icon={sidebarIcon(true)}
-          onClick={() => setSidebarOpen(false)}
-        />
-        <TopButton
-          label="Search"
-          icon={i.Search01Icon}
-          onClick={() => setDialog({ kind: "search" })}
-        />
+        <AppButtons />
         <span class={sx(topbar.end)}>
           <TopButton
             label="New thread"
@@ -761,34 +769,9 @@ export function Sidebar(): JSX.Element {
         </span>
       </div>
       <div class={sx(s.tabs)}>
-        <div class={sx(s.tabGroup)} role="tablist" aria-label="Sidebar">
-          <For each={TABS}>
-            {(t) => (
-              <button
-                class={sx(s.tab, s.tabLook, s.pointer, tab() === t && s.on)}
-                role="tab"
-                aria-selected={tab() === t ? "true" : "false"}
-                aria-label={t.label}
-                title={t.label}
-                onClick={() => setTab(t)}
-              >
-                <Icon icon={t.icon} {...ICON} />
-                <span
-                  ref={(el) => labels.push(el)}
-                  class={sx(s.tabLabel, s.tabMotion, s.tabEase, tab() === t && s.tabLabelShown)}
-                  aria-hidden="true"
-                >
-                  {t.label}
-                </span>
-                <Show when={t.count() > 0}>
-                  <span class={sx(s.tabCount, s.tabular)}>{t.count()}</span>
-                </Show>
-              </button>
-            )}
-          </For>
-        </div>
+        <Tabs label="Sidebar" tabs={TABS} chosen={chosen()} onChoose={choose} />
         <button
-          class={sx(s.tab, s.tabLook, s.pointer, s.end, profile() && s.on)}
+          class={sx(base.bare, base.hover, tab.tab, s.end, profile() && tab.on)}
           aria-pressed={profile() ? "true" : "false"}
           aria-label="Your profile"
           title="Your profile"
@@ -798,7 +781,7 @@ export function Sidebar(): JSX.Element {
         </button>
       </div>
       <div class={sx(s.content)}>
-        <Dynamic component={tab().tab} />
+        <Dynamic component={chosen().tab} />
       </div>
       <hr
         class={sx(s.edge)}

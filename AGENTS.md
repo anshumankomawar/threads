@@ -24,7 +24,7 @@ All AI-written code must go on the `prototype` branch. Before writing or editing
 
 - electron-vite only hot-reloads the renderer. After changing `src/main` or `src/preload`, restart the desktop dev task. API changes need an API restart.
 - Test with `vp test` in `packages/sync` (unit tests), `packages/testing` (the deterministic simulation), `packages/server`, `packages/models` and `apps/api`.
-- In the app, ⌘K opens search (people, labels, threads, the data source, dark or light mode), ⌘N starts a thread, ⌘⇧N writes one as a message the model drafts, ⌘U switches who you view the app as, and ⌘+ / ⌘- / ⌘0 zoom the main content. In the inbox: J/K next and previous, ⌘E done, H snooze until tomorrow, R reply.
+- In the app, ⌘K opens search (people, labels, threads, the data source, dark or light mode), ⌘N starts a thread, ⌘⇧N writes one as a message the model drafts, ⌘U switches who you view the app as, ⌘[ / ⌘] (or the mouse's back and forward buttons) go back and forward through the pages you've opened, and ⌘+ / ⌘- / ⌘0 zoom the main content. In the inbox: J/K next and previous, ⌘E done, H snooze until tomorrow, R reply.
 
 # Using Vite+, the Unified Toolchain for the Web
 

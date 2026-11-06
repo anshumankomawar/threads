@@ -1,8 +1,9 @@
-import { mentionsIn, Message, SubspaceMember, subspaceMentionsIn, type User } from "models";
+import { mentionsIn, Message, Subspace, subspaceMentionsIn, type User } from "models";
 import { createMemo, createSignal, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { me, open, store } from "../session";
+import { me, open, store, firstName, memberIn } from "../session";
+import { base } from "../styles/base";
 import { toast } from "../styles/controls";
 import { sx } from "../styles/sx";
 import { Identicon } from "./Identicon";
@@ -23,17 +24,17 @@ const LOADED_AT = Date.now();
 
 // "Arjun", "Arjun and KK" or "Arjun, KK and 2 others".
 function namesList(people: User[]): string {
-  const names = people.map((person) => person.name.split(" ")[0]);
+  const names = people.map(firstName);
   if (names.length <= 2) return names.join(" and ");
   return `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length === 3 ? "" : "s"}`;
 }
 
 const mentionsMe = (message: Message): boolean =>
   mentionsIn(message.body).includes(me().id) ||
-  subspaceMentionsIn(message.body).some(
-    (id) =>
-      store.where(SubspaceMember, "subspaceId", id).filter((m) => m.userId === me().id).length > 0,
-  );
+  subspaceMentionsIn(message.body).some((id) => {
+    const sub = store.findById(Subspace, id);
+    return sub !== undefined && memberIn(sub, me().id) !== undefined;
+  });
 
 // Messages that @mention you while the app is open, as one toast at the top right that opens the newest and goes away
 // after a few seconds.
@@ -79,7 +80,7 @@ export function MentionToasts(): JSX.Element {
               <Identicon seed={newest.authorId} size={18} />
             </span>
             <div class={sx(toast.body)}>
-              <div class={sx(toast.title)}>
+              <div class={sx(base.ellipsis, toast.title)}>
                 {toasts().length === 1 ? (
                   <>
                     {em(newest.author.name)} mentioned you in {em(newest.thread.title)}
@@ -122,7 +123,7 @@ function SwipeToast(props: {
   onSettled(() => () => window.clearTimeout(settle));
   return (
     <div
-      {...stylex.attrs(toast.mention, moving() && toast.moving, dyn.slide(offset()))}
+      {...stylex.attrs(base.panel, toast.mention, moving() && toast.moving, dyn.slide(offset()))}
       role="button"
       tabindex={0}
       onPointerDown={(event) => {

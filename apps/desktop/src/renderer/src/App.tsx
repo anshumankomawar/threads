@@ -11,7 +11,6 @@ import {
   open,
   server,
   setDialog,
-  setSidebarOpen,
   setSplit,
   sidebarOpen,
   signedIn,
@@ -22,13 +21,14 @@ import {
   switchTo,
   undo,
   setUndo,
-  view,
-  type Source,
-  setPageActions,
+  allThreads,
+  otherSources,
+  shown,
 } from "./session";
+import { base } from "./styles/base";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
-import { colors, fontSizes, radii } from "./styles/tokens.stylex";
+import { colors, fontSizes, radii, sidebarSpace } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
 import { Icon } from "./components/Icon";
@@ -37,17 +37,10 @@ import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
 import { AllThreadsView, LabelView, PersonView, SavedView, SubspaceView } from "./components/Pages";
-import { Sidebar, sidebarIcon, TopButton } from "./components/Sidebar";
+import { AppButtons, HistoryButtons, Sidebar } from "./components/Sidebar";
 
 const styles = stylex.create({
   // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
-  pageActions: {
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    marginRight: 10,
-    WebkitAppRegion: "no-drag",
-  },
   saveError: {
     display: "flex",
     flexShrink: 0,
@@ -60,35 +53,26 @@ const styles = stylex.create({
     borderBottomColor: colors.strokeTertiary,
     color: colors.urgent,
   },
-  saveErrorDismiss: {
-    display: "flex",
-    flexShrink: 0,
-    padding: 0,
-    borderStyle: "none",
-    color: "inherit",
-    backgroundColor: "transparent",
-    cursor: "pointer",
-  },
+  saveErrorDismiss: { display: "flex", flexShrink: 0, cursor: "pointer" },
   main: {
     position: "relative",
     display: "flex",
     flex: 1,
     flexDirection: "column",
     minWidth: 0,
-    backgroundColor: `color-mix(in srgb, ${colors.chrome} 72%, transparent)`,
+    backgroundColor: colors.frosted,
   },
   // Beside the sidebar, or clear of the traffic lights without it.
-  topbarBesideSidebar: { paddingLeft: 12 },
-  topbarAlone: { paddingLeft: 71.5 },
+  topbarBesideSidebar: { paddingLeft: 8 },
+  topbarAlone: { paddingLeft: sidebarSpace.afterLights },
   viewAs: {
     display: "flex",
     gap: 6,
     alignItems: "center",
     height: 22,
-    marginRight: 4,
     padding: "0 6px",
     borderStyle: "none",
-    borderRadius: radii.control,
+    borderRadius: radii.row,
     color: { default: colors.textSecondary, ":hover": colors.textPrimary },
     font: "inherit",
     fontSize: fontSizes.body,
@@ -107,14 +91,8 @@ const styles = stylex.create({
     borderLeftStyle: "solid",
     borderLeftColor: colors.panelBorder,
   },
-  splitPaneBar: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 2.5,
-    alignItems: "center",
-    height: 34,
-    padding: "0 8px 0 12px",
-  },
+  // A top bar of its own (after `topbar.bar`), inset as the main one is.
+  splitPaneBar: { padding: "0 8px" },
   splitTitle: { flex: 1 },
   status: {
     display: "grid",
@@ -134,9 +112,9 @@ function Waiting(): JSX.Element {
         <div>
           Waiting for the {SOURCES[source]} API at {server.url}…
           <div class={sx(styles.sources)}>
-            <For each={(Object.keys(SOURCES) as Source[]).filter((s) => s !== source)}>
+            <For each={otherSources}>
               {(s) => (
-                <button class={sx(chip.chip)} onClick={() => switchTo({ source: s })}>
+                <button class={sx(base.hover, chip.chip)} onClick={() => switchTo({ source: s })}>
                   Use {SOURCES[s]} data
                 </button>
               )}
@@ -149,9 +127,10 @@ function Waiting(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
-  const shown = (key: "label" | "person" | "subspace" | "view"): string | undefined =>
-    (view() as Record<string, string | undefined>)[key] ?? undefined;
-  const allThreads = (): boolean => "view" in view() && shown("view") === undefined;
+  const label = () => store.findById(Label, shown("label") ?? "");
+  const subspace = () => store.findById(Subspace, shown("subspace") ?? "");
+  const savedView = () => store.findById(View, shown("view") ?? "");
+  const person = () => store.findById(User, shown("person") ?? "");
   return (
     <>
       <Titlebar />
@@ -167,7 +146,7 @@ export default function App(): JSX.Element {
               <div class={sx(styles.saveError)} role="alert">
                 <span>That change wasn't saved: {reason()}.</span>
                 <button
-                  class={sx(styles.saveErrorDismiss)}
+                  class={sx(base.bare, styles.saveErrorDismiss)}
                   aria-label="Dismiss"
                   onClick={() => store.dismissRejection()}
                 >
@@ -180,27 +159,18 @@ export default function App(): JSX.Element {
             class={sx(topbar.bar, sidebarOpen() ? styles.topbarBesideSidebar : styles.topbarAlone)}
           >
             <Show when={!sidebarOpen()}>
-              <TopButton
-                label="Show sidebar"
-                icon={sidebarIcon(false)}
-                onClick={() => setSidebarOpen(true)}
-              />
-              <TopButton
-                label="Search"
-                icon={i.Search01Icon}
-                onClick={() => setDialog({ kind: "search" })}
-              />
+              <AppButtons />
             </Show>
-            <span class={sx(topbar.title)}>
+            <HistoryButtons />
+            <span class={sx(base.ellipsis, topbar.title)}>
               {active()?.title ??
-                store.findById(Label, shown("label") ?? "")?.name ??
-                store.findById(Subspace, shown("subspace") ?? "")?.name ??
-                store.findById(View, shown("view") ?? "")?.name ??
+                label()?.name ??
+                subspace()?.name ??
+                savedView()?.name ??
                 (allThreads() ? "All threads" : undefined) ??
-                store.findById(User, shown("person") ?? "")?.name}
+                person()?.name}
             </span>
             <span class={sx(topbar.end)}>
-              <span ref={setPageActions} class={sx(styles.pageActions)} />
               <button
                 class={sx(styles.viewAs)}
                 disabled={account !== null}
@@ -217,19 +187,19 @@ export default function App(): JSX.Element {
             </span>
           </div>
           <Switch>
-            <Match when={store.findById(Label, shown("label") ?? "")} keyed>
+            <Match when={label()} keyed>
               {(label) => <LabelView label={label} />}
             </Match>
-            <Match when={store.findById(Subspace, shown("subspace") ?? "")} keyed>
+            <Match when={subspace()} keyed>
               {(subspace) => <SubspaceView subspace={subspace} />}
             </Match>
-            <Match when={store.findById(View, shown("view") ?? "")} keyed>
+            <Match when={savedView()} keyed>
               {(saved) => <SavedView view={saved} />}
             </Match>
             <Match when={allThreads()}>
               <AllThreadsView />
             </Match>
-            <Match when={store.findById(User, shown("person") ?? "")} keyed>
+            <Match when={person()} keyed>
               {(user) => <PersonView user={user} />}
             </Match>
             <Match when={active()} keyed>
@@ -239,8 +209,10 @@ export default function App(): JSX.Element {
                   <Show when={store.findById(Thread, split() ?? "")} keyed>
                     {(beside) => (
                       <section class={sx(styles.splitPane)} aria-label={beside.title}>
-                        <div class={sx(styles.splitPaneBar)}>
-                          <span class={sx(topbar.title, styles.splitTitle)}>{beside.title}</span>
+                        <div class={sx(topbar.bar, styles.splitPaneBar)}>
+                          <span class={sx(base.ellipsis, topbar.title, styles.splitTitle)}>
+                            {beside.title}
+                          </span>
                           <button
                             class={sx(topbar.button)}
                             aria-label="Open as the main thread"
@@ -266,9 +238,12 @@ export default function App(): JSX.Element {
           </Switch>
           <Show when={undo()}>
             {(offered) => (
-              <div class={sx(toast.undo)} role="status">
+              <div class={sx(base.panel, toast.undo)} role="status">
                 <span>{offered().text}</span>
-                <button class={sx(toast.action)} onClick={() => (offered().run(), setUndo(null))}>
+                <button
+                  class={sx(base.bare, toast.action)}
+                  onClick={() => (offered().run(), setUndo(null))}
+                >
                   Undo
                 </button>
               </div>

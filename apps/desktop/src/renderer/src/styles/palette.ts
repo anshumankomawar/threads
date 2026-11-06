@@ -1,26 +1,21 @@
 import * as stylex from "@stylexjs/stylex";
 import { paletteSectionMarker } from "./markers.stylex";
-import { colors, fontSizes, radii, shadows } from "./tokens.stylex";
+import { colors, fontSizes, motion, radii, shadows } from "./tokens.stylex";
 
-const base = {
-  cut: { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  bare: { padding: 0, borderStyle: "none", font: "inherit", backgroundColor: "transparent" },
-  below: {
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: colors.panelBorder,
-  },
-  flex: { display: "flex", flexShrink: 0, alignItems: "center" },
+const below = {
+  borderBottomWidth: 1,
+  borderBottomStyle: "solid",
+  borderBottomColor: colors.panelBorder,
 } as const;
+const row = { display: "flex", flexShrink: 0, alignItems: "center" } as const;
 const text = { default: colors.textPrimary, "::placeholder": colors.textTertiary } as const;
-const reduced = "@media (prefers-reduced-motion: reduce)";
 
 const panelIn = stylex.keyframes({
   from: { opacity: 0, transform: "translateY(-4px) scale(0.99)" },
 });
 const backdropIn = stylex.keyframes({ from: { opacity: 0 } });
 
-// Palettes (Palettes.tsx `Modal`) are a modal <dialog>: a menu panel, 560px wide, centered, 120px from the top.
+// Palettes (Palettes.tsx `Modal`) are a modal <dialog>: a `base.panel`, 560px wide, centered, 120px from the top.
 export const palette = stylex.create({
   dialog: {
     flexDirection: "column",
@@ -35,17 +30,12 @@ export const palette = stylex.create({
     margin: "120px auto auto",
     padding: 0,
     overflow: "hidden",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.panelBorder,
-    borderRadius: radii.panel,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     lineHeight: "16px",
-    backgroundColor: colors.panel,
     boxShadow: shadows.panel,
     outline: "none",
-    animationName: { default: panelIn, [reduced]: "none" },
+    animationName: { default: panelIn, [motion.reduced]: "none" },
     animationDuration: "120ms",
     animationTimingFunction: "ease-out",
     "::backdrop": {
@@ -57,9 +47,8 @@ export const palette = stylex.create({
   },
   // `display: flex` only while open, so a closed dialog stays hidden.
   open: { display: { default: "none", ":is([open])": "flex" } },
-  inputRow: { ...base.below, ...base.flex, height: 37, padding: "0 10px" },
+  inputRow: { ...below, ...row, height: 37, padding: "0 10px" },
   input: {
-    ...base.bare,
     flex: 1,
     minWidth: 0,
     color: text,
@@ -83,10 +72,8 @@ export const palette = stylex.create({
     },
     borderTopColor: colors.panelBorder,
   },
-  sectionLabel: { ...base.cut, ...base.flex, gap: 4, height: 28, padding: "0 14px 0 10px" },
+  sectionLabel: { ...row, gap: 4, height: 28, padding: "0 14px 0 10px" },
   labelText: { color: colors.textSecondary, fontSize: fontSizes.label },
-  rowLabel: { ...base.cut, flex: 1 },
-  shortcut: { flexShrink: 0, color: colors.textSecondary, wordSpacing: "2.5px" },
 });
 
 // Compose (⌘⇧N): what you write on top, the model's draft of the thread under it.
@@ -94,8 +81,7 @@ export const compose = stylex.create({
   // Holds the panel's keys without changing its layout.
   keys: { display: "contents" },
   input: {
-    ...base.below,
-    ...base.bare,
+    ...below,
     flexShrink: 0,
     minHeight: 88,
     padding: 12,
@@ -106,7 +92,7 @@ export const compose = stylex.create({
     resize: "none",
     fieldSizing: "content",
   },
-  mentions: { ...base.below, flexShrink: 0, padding: "4px 0" },
+  mentions: { ...below, flexShrink: 0, padding: "4px 0" },
   preview: {
     minHeight: 0,
     padding: "10px 0",
@@ -116,7 +102,7 @@ export const compose = stylex.create({
   },
   stale: { opacity: 0.6 },
   label: { gap: 8 },
-  redraft: { ...base.bare, color: colors.accent, cursor: "pointer" },
+  redraft: { color: colors.accent, cursor: "pointer" },
   // Fields read as text and edit in place: no box until you're in one.
   field: {
     display: "block",
@@ -162,13 +148,9 @@ export const compose = stylex.create({
     fontSize: fontSizes.body,
   },
   person: { display: "inline-flex", gap: 5, alignItems: "center" },
-  remove: {
-    ...base.bare,
-    color: { default: colors.textTertiary, ":hover": colors.textPrimary },
-    cursor: "pointer",
-  },
+  remove: { cursor: "pointer" },
   footer: {
-    ...base.flex,
+    ...row,
     gap: 8,
     justifyContent: "space-between",
     padding: "6px 8px 6px 12px",

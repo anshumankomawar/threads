@@ -3,7 +3,8 @@ import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import logo from "../assets/logo.png";
 import logoDark from "../assets/logo-dark.png";
-import { source, SOURCES, theme, useSource, type Source } from "../startup";
+import { otherSources, source, SOURCES, theme, useSource } from "../startup";
+import { base } from "../styles/base";
 import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { Titlebar } from "./DragRegionResync";
@@ -24,8 +25,7 @@ const styles = stylex.create({
     display: "grid",
     flex: 1,
     placeItems: "center",
-    // The main area's frosted ground, over the window's vibrancy.
-    backgroundColor: `color-mix(in srgb, ${colors.chrome} 72%, transparent)`,
+    backgroundColor: colors.frosted,
   },
   column: { display: "flex", flexDirection: "column", gap: 12, alignItems: "center", width: 320 },
   logo: { width: 52, height: 52, marginBottom: 14 },
@@ -60,12 +60,8 @@ const styles = stylex.create({
   note: { margin: 0, color: colors.textTertiary, fontSize: fontSizes.name, textAlign: "center" },
   error: { color: colors.urgent },
   link: {
-    padding: 0,
-    borderStyle: "none",
     color: { default: colors.textSecondary, ":hover": colors.textPrimary },
-    font: "inherit",
     fontSize: fontSizes.name,
-    backgroundColor: "transparent",
     cursor: "pointer",
   },
   footer: {
@@ -153,7 +149,7 @@ export default function SignIn(): JSX.Element {
             </Match>
           </Switch>
           <Show when={step() !== "start"}>
-            <button class={sx(styles.link)} onClick={() => go("start")}>
+            <button class={sx(base.bare, styles.link)} onClick={() => go("start")}>
               Back to login
             </button>
           </Show>
@@ -164,9 +160,9 @@ export default function SignIn(): JSX.Element {
           </Show>
           <div class={sx(styles.footer)}>
             <span>{SOURCES[source]}</span>
-            <For each={(Object.keys(SOURCES) as Source[]).filter((s) => s !== source)}>
+            <For each={otherSources}>
               {(other) => (
-                <button class={sx(styles.link)} onClick={() => void useSource(other)}>
+                <button class={sx(base.bare, styles.link)} onClick={() => void useSource(other)}>
                   Use {SOURCES[other]}
                 </button>
               )}

@@ -1,20 +1,11 @@
 import * as stylex from "@stylexjs/stylex";
-import { colors, fontSizes, layers, radii, shadows } from "./tokens.stylex";
-
-const hover = (fill: string) => ({ default: "transparent", ":hover": fill });
-const underlineOnHover = { default: null, ":hover": "underline" };
-const bare = {
-  padding: 0,
-  borderStyle: "none",
-  color: "inherit",
-  font: "inherit",
-  textAlign: "left",
-  backgroundColor: "transparent",
-} as const;
+import { base } from "./base";
+import { colors, fontSizes, layers, motion, radii, shadows } from "./tokens.stylex";
 
 // Below, starting at the anchor's left edge (StyleX's types only know single keywords).
 const UNDER = "bottom span-right" as "bottom";
 
+// Each style here goes after the `base` styles it names, as in `sx(base.hover, chip.chip)`.
 export const chip = stylex.create({
   chip: {
     display: "inline-flex",
@@ -30,7 +21,6 @@ export const chip = stylex.create({
     font: "inherit",
     fontSize: fontSizes.body,
     whiteSpace: "nowrap",
-    backgroundColor: hover(colors.bgQuaternary),
     cursor: "pointer",
   },
   open: { backgroundColor: colors.bgQuaternary },
@@ -52,7 +42,7 @@ export const chipTone = stylex.create({
 
 const menuIn = stylex.keyframes({ from: { opacity: 0, transform: "translateY(-2px)" } });
 
-// Every menu shares one panel and one row. Keyboard menus mark the row with `itemSelected`; pointer menus use
+// Every menu shares one panel (after `base.panel`) and one row (after `base.bare`). Keyboard menus mark the row with `itemSelected`; pointer menus use
 // `itemHover` (its default restates transparent: StyleX merges whole properties).
 export const menu = stylex.create({
   menu: {
@@ -61,27 +51,21 @@ export const menu = stylex.create({
     maxHeight: 320,
     padding: "4px 0",
     overflowY: "auto",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.panelBorder,
-    borderRadius: radii.panel,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     lineHeight: "16px",
-    backgroundColor: colors.panel,
     boxShadow: shadows.panel,
   },
   // A popover menu: shown only while open (the panel's `display` would otherwise beat the browser's hiding), fading
   // in as it opens.
   popover: {
     display: { default: "none", ":popover-open": "flex" },
-    animationName: { default: menuIn, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationName: { default: menuIn, [motion.reduced]: "none" },
     animationDuration: "90ms",
     animationTimingFunction: "ease-out",
   },
   context: { position: "fixed", zIndex: layers.contextMenu, minWidth: 200 },
   item: {
-    ...bare,
     display: "flex",
     flexShrink: 0,
     gap: 8,
@@ -94,10 +78,10 @@ export const menu = stylex.create({
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  itemHover: { backgroundColor: hover(colors.panelSelected) },
+  itemHover: { backgroundColor: { default: "transparent", ":hover": colors.panelSelected } },
   itemSelected: { backgroundColor: colors.panelSelected },
   itemIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
-  label: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" },
+  label: { flex: 1 },
   hint: { marginLeft: 6, color: colors.textTertiary },
   accent: { color: colors.accent },
   separator: {
@@ -120,28 +104,22 @@ export const topbar = stylex.create({
     height: 22,
     padding: 0,
     borderStyle: "none",
-    borderRadius: radii.control,
+    borderRadius: radii.row,
     color: colors.textPrimary,
-    backgroundColor: hover(colors.bgTertiary),
-    cursor: "pointer",
+    backgroundColor: { default: "transparent", ":hover:not(:disabled)": colors.bgTertiary },
+    cursor: { default: "pointer", ":disabled": "default" },
+    opacity: { default: 1, ":disabled": 0.35 },
     WebkitAppRegion: "no-drag",
   },
-  title: {
-    minWidth: 0,
-    overflow: "hidden",
-    color: colors.textSecondary,
-    whiteSpace: "nowrap",
-    textOverflow: "ellipsis",
-  },
+  title: { color: colors.textSecondary },
   end: { display: "flex", flexShrink: 0, gap: 2.5, marginLeft: "auto", paddingRight: 8 },
 });
 
 export const link = stylex.create({
   // A name that opens someone's profile; put an author or mention style after it.
-  person: { ...bare, textDecoration: underlineOnHover, cursor: "pointer" },
+  person: { textDecoration: { default: null, ":hover": "underline" }, cursor: "pointer" },
   mention: { color: colors.accent },
   thread: {
-    ...bare,
     display: "inline-flex",
     gap: 4,
     alignItems: "center",
@@ -165,7 +143,7 @@ export const link = stylex.create({
 // Class strings for Tiptap's renderHTML, which can't take StyleX objects.
 export const editorClass = {
   mention: stylex.attrs(link.mention).class ?? "",
-  threadLink: stylex.attrs(link.thread).class ?? "",
+  threadLink: stylex.attrs(base.bare, link.thread).class ?? "",
 };
 
 export const button = stylex.create({
@@ -178,11 +156,10 @@ export const button = stylex.create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.panelBorder,
-    borderRadius: radii.button,
+    borderRadius: radii.row,
     color: colors.textPrimary,
     font: "inherit",
     fontSize: fontSizes.body,
-    backgroundColor: hover(colors.bgQuaternary),
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { default: null, ":disabled": 0.5 },
   },
@@ -215,16 +192,11 @@ export const toast = stylex.create({
     gap: 10,
     alignItems: "flex-start",
     padding: "10px 10px 10px 12px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.panelBorder,
-    borderRadius: radii.panel,
-    backgroundColor: colors.panel,
     boxShadow: shadows.float,
     cursor: "pointer",
     touchAction: "pan-y",
     userSelect: "none",
-    animationName: { default: mentionIn, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationName: { default: mentionIn, [motion.reduced]: "none" },
     animationDuration: "160ms",
     animationTimingFunction: "ease-out",
     transitionProperty: "transform, opacity",
@@ -234,13 +206,7 @@ export const toast = stylex.create({
   moving: { transitionProperty: "none" },
   avatar: { flexShrink: 0, marginTop: 7.5 },
   body: { flex: 1, minWidth: 0 },
-  title: {
-    overflow: "hidden",
-    color: colors.textSecondary,
-    fontSize: fontSizes.body,
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
+  title: { color: colors.textSecondary, fontSize: fontSizes.body },
   emphasis: { color: colors.textPrimary },
   text: {
     display: "-webkit-box",
@@ -259,18 +225,13 @@ export const toast = stylex.create({
     gap: 14,
     alignItems: "center",
     padding: "8px 12px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.panelBorder,
-    borderRadius: radii.panel,
     color: colors.textSecondary,
     fontSize: fontSizes.body,
-    backgroundColor: colors.panel,
     boxShadow: shadows.float,
     transform: "translateX(-50%)",
-    animationName: { default: toastIn, "@media (prefers-reduced-motion: reduce)": "none" },
+    animationName: { default: toastIn, [motion.reduced]: "none" },
     animationDuration: "160ms",
     animationTimingFunction: "ease-out",
   },
-  action: { ...bare, color: colors.accent, cursor: "pointer" },
+  action: { color: colors.accent, cursor: "pointer" },
 });

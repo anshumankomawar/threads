@@ -2,10 +2,10 @@
 // person reloads with a new session.
 import { createSignal } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { createStore, httpTransport, indexedLocalDB, type Filter } from "sync";
+import { createStore, httpTransport, indexedLocalDB, type Filter, type Model } from "sync";
 import {
   Bucket,
-  type Subspace,
+  Subspace,
   InboxItem,
   Thread,
   User,
@@ -25,6 +25,7 @@ export {
   server,
   signOut,
   source,
+  otherSources,
   SOURCES,
   theme,
   type Source,
@@ -60,6 +61,32 @@ export const me = (): User => store.findById(User, viewerId ?? "")!;
 // A store holds one workspace, so a person has at most one membership in it.
 export const workspace = (): Workspace => store.all(Workspace)[0];
 export const memberOf = (user: User): WorkspaceMember | undefined => [...user.memberships][0];
+
+// ── Small things every view uses ──
+export const firstName = (user: { name: string }): string => user.name.split(" ")[0];
+export const byName = <T extends { name: string }>(list: T[]): T[] =>
+  [...list].sort((a, b) => a.name.localeCompare(b.name));
+// "No labels", "Security", or "Security +1".
+export const summary = (names: string[], none: string): string =>
+  names.length === 0 ? none : names.length === 1 ? names[0] : `${names[0]} +${names.length - 1}`;
+export const shortDate = (date: Date): string =>
+  date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+// An id list with `id` added, or taken out if it's there.
+export const toggled = (ids: string[], id: string): string[] =>
+  ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id];
+export function edit<T extends Model>(record: T, change: Partial<T>): void {
+  Object.assign(record, change);
+  record.save();
+}
+// Who you can @mention: everyone else, and the subspaces with someone in them.
+export const others = (): User[] => store.all(User).filter((u) => u.id !== me().id);
+export const subspacesWithMembers = (): Subspace[] =>
+  store.all(Subspace).filter((sub) => sub.members.length > 0);
+export const memberIn = (sub: Subspace, userId: string) =>
+  sub.members.filter((m) => m.userId === userId)[0];
+export const membersHint = (sub: Subspace): string => `Subspace · ${sub.members.length}`;
+export const myBuckets = (): Bucket[] =>
+  store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
 export const signedIn = (): boolean =>
   viewerId !== null && store.findById(User, viewerId) !== undefined;
 
@@ -85,11 +112,15 @@ export type View =
   | { person: string }
   | { subspace: string }
   | { view: string | null };
-export type MenuItem = { label: string; run: () => void; icon?: JSX.Element } | "separator";
+// An item runs something, or opens its own `items` in the menu's place. One with `checked` is a toggle: it shows a check
+// and leaves the menu open.
+export type MenuItem =
+  | { label: string; icon?: JSX.Element; checked?: boolean; run: () => void }
+  | { label: string; icon?: JSX.Element; items: MenuItem[] }
+  | "separator";
 export type Dialog =
   | { kind: "search" | "viewAs" }
   | { kind: "newThread"; labelId?: string; subspaceId?: string; to?: User }
-  | { kind: "filter"; add: (condition: Filter) => void }
   | { kind: "newView"; filter: Filter }
   | { kind: "newSubspace" }
   | { kind: "addMember"; subspace: Subspace }
@@ -105,8 +136,6 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
   null,
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
-// Where a page puts its own actions: the top bar, beside its name.
-export const [pageActions, setPageActions] = createSignal<HTMLElement>();
 export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));
@@ -170,7 +199,7 @@ export const inbox = store.view(() => {
       (i) => i.thread?.isOpen && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > time),
     )
     .sort(byUrgency);
-  const buckets = store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
+  const buckets = myBuckets();
   const sections = buckets.map((bucket) => ({
     bucket,
     items: items.filter((i) => i.bucketId === bucket.id),
@@ -199,6 +228,10 @@ const activeId = (): string | null => {
   return "thread" in shown ? shown.thread : null;
 };
 export const active = (): Thread | undefined => store.findById(Thread, activeId() ?? "");
+// The id the view shows of one kind of page, if it's that kind.
+export const shown = (key: "label" | "person" | "subspace" | "view"): string | undefined =>
+  (view() as Record<string, string | null | undefined>)[key] ?? undefined;
+export const allThreads = (): boolean => "view" in view() && shown("view") === undefined;
 
 function markSeen(thread: Thread | undefined): void {
   const item = thread && itemFor(thread);
@@ -208,13 +241,47 @@ function markSeen(thread: Thread | undefined): void {
 }
 
 // Opening a thread, or leaving one, marks it seen.
-export function open(next: View): void {
+function show(next: View): void {
   markSeen(active());
   setView(next);
   if (!("thread" in next) || next.thread === null) return;
   if (next.thread === split()) setSplit(null);
   markSeen(store.findById(Thread, next.thread));
 }
+
+// Where you've been and where you came back from, as in a browser: going somewhere new clears the way forward.
+const [history, setHistory] = createSignal<{ back: View[]; forward: View[] }>({
+  back: [],
+  forward: [],
+});
+export const canGoBack = (): boolean => history().back.length > 0;
+export const canGoForward = (): boolean => history().forward.length > 0;
+
+export function open(next: View): void {
+  if (JSON.stringify(next) === JSON.stringify(view())) return;
+  setHistory(({ back }) => ({ back: [...back, view()], forward: [] }));
+  show(next);
+}
+
+export function goBack(): void {
+  const { back, forward } = history();
+  if (back.length === 0) return;
+  setHistory({ back: back.slice(0, -1), forward: [view(), ...forward] });
+  show(back.at(-1)!);
+}
+
+export function goForward(): void {
+  const { back, forward } = history();
+  if (forward.length === 0) return;
+  setHistory({ back: [...back, view()], forward: forward.slice(1) });
+  show(forward[0]);
+}
+
+// The mouse's back and forward buttons.
+window.addEventListener("mouseup", (event) => {
+  if (event.button === 3) goBack();
+  if (event.button === 4) goForward();
+});
 
 // After you finish one, the next in your inbox opens; in the split view, the split closes.
 function moveOn(thread: Thread): void {
@@ -239,7 +306,7 @@ export function markDone(item: InboxItem): void {
 }
 
 // Out of your inbox until 9 tomorrow morning.
-export function snooze(item: InboxItem): void {
+function snooze(item: InboxItem): void {
   moveOn(item.thread);
   item.snoozedUntil = new Date(new Date(Date.now() + 86_400_000).setHours(9, 0, 0, 0));
   item.save();
@@ -271,9 +338,7 @@ export function threadMenu(thread: Thread): MenuItem[] {
           { label: "Done", run: () => markDone(item) },
           { label: "Snooze until tomorrow", run: () => snooze(item) },
           "separator" as const,
-          ...store
-            .where(Bucket, "userId", me().id)
-            .sort((a, b) => a.position - b.position)
+          ...myBuckets()
             .filter((bucket) => bucket !== item.bucket)
             .map((bucket) => ({
               label: `Move to ${bucket.name}`,
@@ -298,7 +363,7 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 }
 
 // ── Keys ──
-// ⌘K search, ⌘N new thread, ⌘⇧N compose, ⌘U view as, ⌘+ ⌘- ⌘0 zoom. Superhuman's, never with a dialog or menu
+// ⌘K search, ⌘[ ⌘] back and forward, ⌘N new thread, ⌘⇧N compose, ⌘U view as, ⌘+ ⌘- ⌘0 zoom. Superhuman's, never with a dialog or menu
 // open: ⌘E done (even while typing), and when not typing J/K next or previous, H snooze, R reply.
 window.addEventListener("keydown", (event) => {
   if (event.altKey || event.ctrlKey || !signedIn()) return;
@@ -313,6 +378,8 @@ window.addEventListener("keydown", (event) => {
   const reading = free && !typing;
   const run: Record<string, (() => void) | false | undefined> = {
     "⌘k": () => setDialog({ kind: "search" }),
+    "⌘[": free && goBack,
+    "⌘]": free && goForward,
     "⌘n": () => {
       const shown = view();
       setDialog({

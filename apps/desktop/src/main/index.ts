@@ -52,8 +52,9 @@ function createWindow(): void {
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hidden",
-          // Centered on the top bar at the 110% scale (macOS draws them unscaled).
-          trafficLightPosition: { x: 9, y: 11 },
+          // Centered on the top bar at the 110% scale (macOS draws them unscaled): 34px × 1.1 is 37.4pt, so their
+          // centres (y + 6.75) sit at 18.75pt, level with its icons.
+          trafficLightPosition: { x: 9, y: 12 },
           vibrancy: "sidebar",
           visualEffectState: "active",
           backgroundColor: "#40000000",

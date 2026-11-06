@@ -8,7 +8,8 @@ const mix = (base: string, percent: number): string =>
 
 export const colors = stylex.defineVars({
   chrome: "oklch(0.191 0 0)",
-  sidebarSolid: "#1a1a1a",
+  // The main area's ground: `chrome`, frosted over the window's vibrancy. The sidebar has `chrome` itself.
+  frosted: mix("oklch(0.191 0 0)", 72),
   textPrimary: DARK_BASE,
   textSecondary: mix(DARK_BASE, 74),
   textTertiary: mix(DARK_BASE, 60),
@@ -22,6 +23,9 @@ export const colors = stylex.defineVars({
   panelSelected: "#222222",
   accent: "#78aee7",
   accentFill: "#1f252c",
+  // Solid buttons (a table view's New): Notion's blue, in both themes.
+  primary: "rgb(35 131 226)",
+  primaryHover: "rgb(28 112 196)",
   statusClosed: "oklch(0.713 0.094 155.438)",
   urgent: "oklch(0.712 0.177 12.651)",
   overlay: "rgb(0 0 0 / 45%)",
@@ -30,7 +34,7 @@ export const colors = stylex.defineVars({
 
 export const lightTheme = stylex.createTheme(colors, {
   chrome: "oklch(0.985 0 0)",
-  sidebarSolid: "#f4f4f3",
+  frosted: mix("oklch(0.985 0 0)", 72),
   textPrimary: LIGHT_BASE,
   textSecondary: mix(LIGHT_BASE, 72),
   textTertiary: mix(LIGHT_BASE, 55),
@@ -44,6 +48,8 @@ export const lightTheme = stylex.createTheme(colors, {
   panelSelected: "#efefed",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
+  primary: "rgb(35 131 226)",
+  primaryHover: "rgb(28 112 196)",
   statusClosed: "oklch(0.55 0.11 155.438)",
   urgent: "oklch(0.58 0.2 12.651)",
   overlay: "rgb(0 0 0 / 18%)",
@@ -53,7 +59,9 @@ export const lightTheme = stylex.createTheme(colors, {
 export const sidebarSpace = stylex.defineConsts({
   inset: "12px",
   rowGutter: "6px",
-  rowRadius: "6px",
+  // Where the top bar's first button starts, beside the traffic lights: its centre lands where a fourth light would
+  // (theirs are 23pt apart), so it's 9pt from the last, as they are from each other. In CSS pixels at the 110% scale.
+  afterLights: "66px",
 });
 
 // The main content's zoom (⌘+, ⌘-, ⌘0), set on the root by the store.
@@ -68,10 +76,11 @@ export const layers = stylex.defineConsts({
   contextMenu: 60,
 });
 
+// Small things in text and menus (chips, links, menu items, fields) · every row and button that fills on hover ·
+// floating panels.
 export const radii = stylex.defineConsts({
   control: "4px",
-  button: "5px",
-  item: "6px",
+  row: "6px",
   panel: "8px",
 });
 
@@ -83,6 +92,11 @@ export const fontSizes = stylex.defineConsts({
   input: "14px",
   message: "15px",
   pageTitle: "20px",
+});
+
+// Animations stop for anyone who asks the system for less motion.
+export const motion = stylex.defineConsts({
+  reduced: "@media (prefers-reduced-motion: reduce)",
 });
 
 export const shadows = stylex.defineConsts({
