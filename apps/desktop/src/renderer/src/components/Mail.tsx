@@ -8,7 +8,6 @@ import {
   byName,
   inbox,
   itemFor,
-  lastActive,
   markDone,
   me,
   myBuckets,
@@ -16,7 +15,6 @@ import {
   placeIn,
   save,
   saved,
-  sent,
   setDialog,
   shortDate,
   shown,
@@ -191,7 +189,6 @@ function Mailbox(props: {
   icon: IconSvgElement;
   count?: number;
   indent?: boolean;
-  disclosure?: { open: boolean; toggle: () => void };
   // What right-clicking it offers.
   menu?: () => MenuItem[];
 }): JSX.Element {
@@ -215,22 +212,6 @@ function Mailbox(props: {
           chooseMailbox(props.box);
         }}
       >
-        <Show when={!props.indent}>
-          <span class={sx(s.disclosureSlot)}>
-            <Show when={props.disclosure}>
-              {(d) => (
-                <button
-                  class={sx(base.bare, s.disclosure, d().open && s.disclosureOpen)}
-                  aria-label={d().open ? "Collapse" : "Expand"}
-                  aria-expanded={d().open ? "true" : "false"}
-                  onClick={(e) => (e.stopPropagation(), d().toggle())}
-                >
-                  <Icon icon={i.ArrowRight01Icon} size={10} aria-hidden="true" />
-                </button>
-              )}
-            </Show>
-          </span>
-        </Show>
         <span class={sx(s.mailboxIcon)}>
           <Icon icon={props.icon} {...ICON} />
         </span>
@@ -308,118 +289,14 @@ function Section(props: {
   );
 }
 
-// Which spaces and labels are open in the sidebar to show their threads (all start shut).
-const [expanded, setExpanded] = createSignal<string[]>(saved("mail-expanded", []));
 // From the latest list, written or not (Solid applies writes in batches), so two toggles at once both count.
 const toggleIn = (list: string[], key: string): string[] =>
   list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
-const toggleExpanded = (key: string): void =>
-  void setExpanded((list) => {
-    const next = toggleIn(list, key);
-    save("mail-expanded", next);
-    return next;
-  });
-
-// A row under a mailbox that opens out: a thread (or a draft) of it.
-type SubRow = {
-  key: string;
-  title: string;
-  // Something in it you haven't seen: the system-blue dot after its title, as in the list.
-  unread?: boolean;
-  current: boolean;
-  run: () => void;
-  menu?: (event: MouseEvent) => void;
-};
-
-const threadRow = (thread: Thread, box: Mailbox): SubRow => ({
-  key: thread.id,
-  title: thread.title,
-  unread: (() => {
-    const item = itemFor(thread);
-    return item !== undefined && !item.doneAt && unread(item);
-  })(),
-  // A thread can be under several mailboxes (a space, a label, Sent); it shows selected only under the one the list is
-  // showing, where you opened it, as Finder selects an item in the place you're looking at it.
-  current: active() === thread && sameMailbox(mailbox(), box),
-  // Opening it lists its mailbox too, where it shows selected.
-  run: () => {
-    chooseMailbox(box);
-    open({ thread: thread.id });
-  },
-  menu: (event) => showMenu(event, threadMenu(thread)),
-});
 
 const draftTitle = (draft: Draft): string =>
   draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft";
 
-// A mailbox that opens out, under its name, to its rows: five tall, scrolling for the rest. All start shut.
-function Expandable(props: {
-  box: Mailbox;
-  label: string;
-  icon: IconSvgElement;
-  rows: SubRow[];
-  // Shown beside its name; by default how many rows it has.
-  count?: number;
-  empty: string;
-  // What right-clicking it offers, given the item that shows or hides its rows.
-  menu?: (toggle: MenuItem) => MenuItem[];
-}): JSX.Element {
-  const key = (): string => `${props.box.kind}:${"id" in props.box ? props.box.id : ""}`;
-  const isOpen = (): boolean => expanded().includes(key());
-  const toggle = (): MenuItem => ({
-    label: isOpen() ? "Hide Threads" : "Show Threads",
-    icon: icon(isOpen() ? i.ViewOffIcon : i.ViewIcon, 13),
-    run: () => toggleExpanded(key()),
-  });
-  return (
-    <>
-      <Mailbox
-        box={props.box}
-        label={props.label}
-        icon={props.icon}
-        count={props.count ?? props.rows.length}
-        disclosure={{ open: isOpen(), toggle: () => toggleExpanded(key()) }}
-        menu={() => (props.menu ? props.menu(toggle()) : [toggle()])}
-      />
-      <li class={sx(s.mailboxItem)}>
-        <Collapse open={isOpen()}>
-          <ul class={sx(s.mailboxes, s.threadRows)} aria-label={`${props.label}: its threads`}>
-            <For each={props.rows}>
-              {(row) => (
-                <li class={sx(s.mailboxItem)}>
-                  <div
-                    role="button"
-                    tabindex={0}
-                    data-pill
-                    class={sx(s.threadRow, row.current && s.threadRowOpen)}
-                    title={row.title}
-                    onClick={() => row.run()}
-                    onContextMenu={(e) => row.menu?.(e)}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter" && e.key !== " ") return;
-                      e.preventDefault();
-                      row.run();
-                    }}
-                  >
-                    <span class={sx(base.ellipsis, s.threadTitle)}>{row.title}</span>
-                    <Show when={row.unread}>
-                      <span class={sx(s.threadUnread)} aria-label="Unread" />
-                    </Show>
-                  </div>
-                </li>
-              )}
-            </For>
-            <Show when={props.rows.length === 0}>
-              <li class={sx(s.mailboxItem, s.threadNone)}>{props.empty}</li>
-            </Show>
-          </ul>
-        </Collapse>
-      </li>
-    </>
-  );
-}
-
-// A space or label, opening out to its open threads, newest first.
+// A space or label: how many open threads it has, and what right-clicking it offers.
 function SpaceOrLabel(props: {
   box: { kind: "subspace" | "label"; id: string };
   label: string;
@@ -427,12 +304,9 @@ function SpaceOrLabel(props: {
 }): JSX.Element {
   const field = (): "subspaceIds" | "labelIds" =>
     props.box.kind === "subspace" ? "subspaceIds" : "labelIds";
-  const threads = (): Thread[] =>
-    store
-      .all(Thread)
-      .filter((t) => t.isOpen && t[field()].includes(props.box.id))
-      .sort((a, b) => lastActive(b) - lastActive(a));
-  const menu = (toggle: MenuItem): MenuItem[] => {
+  const openCount = (): number =>
+    store.all(Thread).filter((t) => t.isOpen && t[field()].includes(props.box.id)).length;
+  const menu = (): MenuItem[] => {
     const box = props.box;
     if (box.kind === "label")
       return [
@@ -441,8 +315,6 @@ function SpaceOrLabel(props: {
           icon: icon(i.PencilEdit02Icon, 13),
           run: () => setDialog({ kind: "newThread", labelId: box.id }),
         },
-        "separator",
-        toggle,
       ];
     const sub = store.findById(Subspace, box.id);
     return [
@@ -465,17 +337,14 @@ function SpaceOrLabel(props: {
             },
           ]
         : []),
-      "separator",
-      toggle,
     ];
   };
   return (
-    <Expandable
+    <Mailbox
       box={props.box}
       label={props.label}
       icon={props.icon}
-      rows={threads().map((t) => threadRow(t, props.box))}
-      empty="No open threads"
+      count={openCount()}
       menu={menu}
     />
   );
@@ -546,84 +415,42 @@ export function MailSidebar(): JSX.Element {
             label="Inbox"
             icon={i.InboxIcon}
             count={inbox().order.length}
-            disclosure={{ open: !folded().includes("inbox"), toggle: () => toggleFold("inbox") }}
             menu={() => [
               {
                 label: "New Bucket…",
                 icon: icon(i.Add01Icon, 13),
                 run: () => setDialog({ kind: "bucket" }),
               },
-              {
-                label: folded().includes("inbox") ? "Show Buckets" : "Hide Buckets",
-                icon: icon(folded().includes("inbox") ? i.ViewIcon : i.ViewOffIcon, 13),
-                run: () => toggleFold("inbox"),
-              },
             ]}
           />
-          <li class={sx(s.mailboxItem)}>
-            <Collapse open={!folded().includes("inbox")}>
-              <ul class={sx(s.mailboxes)}>
-                <Show when={inbox().unsorted.length > 0}>
-                  <Mailbox
-                    box={{ kind: "unsorted" }}
-                    label="Sorting"
-                    icon={i.Clock01Icon}
-                    count={inbox().unsorted.length}
-                    indent
-                  />
-                </Show>
-                <For each={inbox().sections}>
-                  {(section) => (
-                    <Mailbox
-                      box={{ kind: "bucket", id: section.bucket.id }}
-                      label={section.bucket.name}
-                      icon={icons().get(section.bucket.id) ?? i.InboxIcon}
-                      count={section.items.length}
-                      indent
-                      menu={() => bucketMenu(section.bucket)}
-                    />
-                  )}
-                </For>
-              </ul>
-            </Collapse>
-          </li>
-          <Expandable
-            box={{ kind: "sent" }}
-            label="Sent"
-            icon={i.SentIcon}
-            count={0}
-            rows={sent().map((t) => threadRow(t, { kind: "sent" }))}
-            empty="Nothing sent that's waiting"
-          />
-          <Expandable
+
+          <Show when={inbox().unsorted.length > 0}>
+            <Mailbox
+              box={{ kind: "unsorted" }}
+              label="Sorting"
+              icon={i.Clock01Icon}
+              count={inbox().unsorted.length}
+              indent
+            />
+          </Show>
+          <For each={inbox().sections}>
+            {(section) => (
+              <Mailbox
+                box={{ kind: "bucket", id: section.bucket.id }}
+                label={section.bucket.name}
+                icon={icons().get(section.bucket.id) ?? i.InboxIcon}
+                count={section.items.length}
+                indent
+                menu={() => bucketMenu(section.bucket)}
+              />
+            )}
+          </For>
+          <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
+          <Mailbox
             box={{ kind: "drafts" }}
             label="Drafts"
             icon={i.NoteEditIcon}
-            rows={drafts().map((draft): SubRow => ({
-              key: draft.id,
-              title: draftTitle(draft),
-              current: shown("draft") === draft.id,
-              // A kept draft opens as a page in the reading pane, like the thread it will be.
-              run: () => {
-                chooseMailbox({ kind: "drafts" });
-                open({ draft: draft.id });
-              },
-              menu: (e) =>
-                showMenu(e, [
-                  {
-                    label: "Open Draft",
-                    icon: icon(i.NoteEditIcon, 13),
-                    run: () => open({ draft: draft.id }),
-                  },
-                  "separator",
-                  {
-                    label: "Delete Draft",
-                    icon: icon(i.Delete02Icon, 13),
-                    run: () => void draft.delete(),
-                  },
-                ]),
-            }))}
-            empty="No drafts"
+            count={drafts().length}
           />
         </ul>
         <Section
@@ -765,7 +592,10 @@ function Row(props: { thread: Thread }): JSX.Element {
         </span>
         <span class={sx(s.rowBody)}>
           <span class={sx(s.rowTop)}>
-            <span class={sx(base.ellipsis, s.from)}>{from()?.name ?? ""}</span>
+            <span class={sx(s.who)}>
+              <Identicon seed={from()?.id ?? t().ownerId ?? ""} size={16} class={sx(s.whoAvatar)} />
+              <span class={sx(base.ellipsis, s.from)}>{from()?.name ?? ""}</span>
+            </span>
             <span class={sx(s.stamp)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
           </span>
           <span class={sx(s.subjectLine)}>
@@ -1228,17 +1058,8 @@ const s = stylex.create({
     cursor: "default",
     outline: "none",
   },
-  // Indented by a margin, not padding, and without the disclosure's slot, so the pill starts just before its icon,
-  // which sits 14px in from a top-level one's (6 + 12 + 6 = 24).
-  indent: { marginLeft: 32 },
-  disclosureSlot: { display: "flex", flexShrink: 0, justifyContent: "center", width: 12 },
-  disclosure: {
-    display: "flex",
-    color: colors.textTertiary,
-    transitionProperty: "transform",
-    transitionDuration: { default: "220ms", [motion.reduced]: "0s" },
-    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
-  },
+  // A bucket under Inbox: indented by a margin, not padding, so the pill starts just before its icon.
+  indent: { marginLeft: 14 },
   collapse: {
     display: "grid",
     gridTemplateRows: "0fr",
@@ -1248,43 +1069,7 @@ const s = stylex.create({
     transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
   collapseOpen: { gridTemplateRows: "1fr", opacity: 1 },
-  // A space's or label's threads: five rows tall, scrolling past that.
-  threadRows: { maxHeight: 24 * 5 + 2 * 4, overflowY: "auto", overscrollBehavior: "contain" },
-  threadRow: {
-    display: "flex",
-    gap: 10,
-    alignItems: "center",
-    height: 24,
-    // The title in line with the names above (at 44); the indent is a margin, so the pill starts just before the title
-    // rather than at the sidebar's edge.
-    marginLeft: 38,
-    paddingLeft: 6,
-    paddingRight: 8,
-    borderRadius: radii.row,
-    color: colors.textSecondary,
-    fontSize: fontSizes.body,
-    cursor: "default",
-    outline: "none",
-  },
-  // The thread open beside, under its mailbox: its title stands out, while the pill stays on the mailbox (the sidebar
-  // chooses where you're looking; the list shows what's open).
-  threadRowOpen: { color: colors.textPrimary, fontWeight: 500 },
-  threadUnread: {
-    flexShrink: 0,
-    width: 7,
-    height: 7,
-    borderRadius: "50%",
-    backgroundColor: colors.systemBlue,
-  },
-  threadTitle: { flex: 1 },
-  threadNone: {
-    paddingLeft: 44,
-    color: colors.textTertiary,
-    fontSize: fontSizes.small,
-    lineHeight: "24px",
-  },
   collapseInner: { minHeight: 0, overflow: "hidden" },
-  disclosureOpen: { transform: "rotate(90deg)" },
   mailboxIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
   mailboxName: { flex: 1 },
   count: {
@@ -1414,8 +1199,13 @@ const s = stylex.create({
   },
   unreadDot: { width: 8, height: 8, borderRadius: "50%", backgroundColor: colors.systemBlue },
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
-  rowTop: { display: "flex", gap: 8, alignItems: "baseline" },
-  from: { flex: 1, fontSize: fontSizes.name, fontWeight: 600 },
+  // The first line, with a little room under it (as much as above a row's due date and labels).
+  rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 3 },
+  // Who wrote last: a small avatar before their name, on the first line, clear of the unread dot's column.
+  who: { display: "flex", flex: 1, gap: 6, alignItems: "center", minWidth: 0 },
+  whoAvatar: { flexShrink: 0 },
+  // A line as tall as the avatar beside it, so the name sits centred on it.
+  from: { flex: 1, fontSize: fontSizes.name, fontWeight: 600, lineHeight: "16px" },
   draftLabel: { color: colors.urgent },
   stamp: {
     flexShrink: 0,
