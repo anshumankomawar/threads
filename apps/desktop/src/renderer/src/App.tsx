@@ -244,12 +244,16 @@ export default function App(): JSX.Element {
             {(offered) => (
               <div class={sx(base.panel, toast.undo)} role="status">
                 <span>{offered().text}</span>
-                <button
-                  class={sx(base.bare, toast.action)}
-                  onClick={() => (offered().run(), setUndo(null))}
-                >
-                  Undo
-                </button>
+                <Show when={offered().run}>
+                  {(run) => (
+                    <button
+                      class={sx(base.bare, toast.action)}
+                      onClick={() => (run()(), setUndo(null))}
+                    >
+                      Undo
+                    </button>
+                  )}
+                </Show>
               </div>
             )}
           </Show>

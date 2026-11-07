@@ -53,6 +53,7 @@ import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
+import { commandFor, keysOf } from "../hotkeys";
 
 const styles = stylex.create({
   // The viewport minus about one block, so the last entry can reach the top but never leave the screen.
@@ -547,6 +548,9 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
             },
             handleKeyDown: (view, event) => {
               if (onMenuKey(event)) return true;
+              // The app's ⌘ keys before the editor's own (⌘E is Mark Done, not code): the window's handler runs them.
+              const keys = keysOf(event);
+              if (keys?.includes("⌘") && commandFor(keys)) return true;
               if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
               const body = editor.getText({ blockSeparator: "\n" }).trim();
               if (!body) return true;

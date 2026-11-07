@@ -143,7 +143,8 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
   null,
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
-export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
+// A toast at the bottom: what just happened, and undoing it if it can be.
+export const [undo, setUndo] = createSignal<{ text: string; run?: () => void } | null>(null);
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));
 function applyZoom(next: number): void {
@@ -163,7 +164,7 @@ export const showMenu = (event: MouseEvent, items: MenuItem[]): void => {
 };
 
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
-function offerUndo(text: string, run: () => void): void {
+function offerUndo(text: string, run?: () => void): void {
   clearTimeout(undoTimer);
   setUndo({ text, run });
   undoTimer = setTimeout(() => setUndo(null), 5000);
@@ -307,6 +308,16 @@ function moveOn(thread: Thread): void {
 }
 
 // ⌘E, or the inbox row's done button. Done with the open thread, the next one opens.
+// Back into your inbox, as ⌘E on something already done does.
+export function markUndone(item: InboxItem): void {
+  item.doneAt = undefined;
+  item.save();
+  offerUndo("Moved to Inbox", () => {
+    item.doneAt = new Date();
+    item.save();
+  });
+}
+
 export function markDone(item: InboxItem): void {
   if (active() === item.thread) moveOn(item.thread);
   item.doneAt = new Date();
@@ -421,8 +432,14 @@ window.addEventListener("keydown", (event) => {
   const order = listOrder();
   const current = active();
   const at = current ? order.indexOf(current) : -1;
-  // Done is for what's in your inbox, whichever list it's open from.
-  const item = current && inbox().order.includes(current) ? itemFor(current) : undefined;
+  // Done is for what's in your inbox, whichever list it's open from; on something done it puts it back.
+  const item = current && itemFor(current);
+  const toggleDone = (): void =>
+    !item || !item.thread.isOpen
+      ? offerUndo(item ? "Resolved threads leave your inbox" : "Not in your inbox")
+      : item.doneAt
+        ? markUndone(item)
+        : markDone(item);
   const reading = free && !typing;
   const run: Record<HotkeyId, (() => void) | false | undefined> = {
     search: () => setDialog({ kind: "search" }),
@@ -448,7 +465,7 @@ window.addEventListener("keydown", (event) => {
     compose: () => setDialog({ kind: "compose" }),
     next: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
     previous: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
-    done: free && item && (() => markDone(item)),
+    done: free && current && toggleDone,
     reply: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
     resolve: free && current && (() => setState(current, current.isOpen ? "resolved" : "open")),
     zoomIn: () => applyZoom(zoom() + 0.1),
