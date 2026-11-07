@@ -57,11 +57,11 @@ export function OptionButton(props: {
         when={o().seed}
         fallback={
           <Show when={o().icon}>
-            {(svg) => <span class={sx(look.itemIcon)}>{icon(svg(), 13)}</span>}
+            {(svg) => <span class={sx(look.itemIcon)}>{icon(svg(), props.inset ? 14 : 13)}</span>}
           </Show>
         }
       >
-        {(seed) => <Identicon seed={seed()} size={16} />}
+        {(seed) => <Identicon seed={seed()} size={props.inset ? 14 : 16} />}
       </Show>
       <span class={sx(base.ellipsis, look.label)}>{o().label}</span>
       <Show when={o().hint}>

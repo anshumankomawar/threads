@@ -79,14 +79,22 @@ export const palette = stylex.create({
   },
   filterChosen: { color: colors.accent, backgroundColor: colors.accentFill },
   filterKey: { opacity: 0.7, wordSpacing: "1px" },
-  section: { display: "flex", flexDirection: "column" },
+  // Its rows and headings as the sidebar's (Mail.tsx): 26px rows 2px apart, 22px headings, sections 14px apart.
+  section: { display: "flex", flexDirection: "column", gap: 2 },
   // A section after another is set apart by a little space, not a rule.
   divided: {
-    marginTop: { default: 0, [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: 8 },
+    marginTop: { default: 0, [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: 14 },
   },
-  sectionLabel: { ...row, gap: 4, height: 28, padding: `0 ${EDGE}px` },
-  // A palette's row (OptionButton's `inset`): its wash INSET in from the sides, its icon and hint on the EDGE.
-  item: { height: 28, margin: `0 ${INSET}px`, padding: `0 ${EDGE - INSET}px` },
+  sectionLabel: { ...row, gap: 4, height: 22, padding: `0 ${EDGE}px` },
+  // A palette's row (OptionButton's `inset`): its wash INSET in from the sides, its icon and hint on the EDGE, its
+  // height, corners and icon gap the sidebar's.
+  item: {
+    gap: 6,
+    height: 26,
+    margin: `0 ${INSET}px`,
+    padding: `0 ${EDGE - INSET}px`,
+    borderRadius: radii.row,
+  },
   labelText: { color: colors.textSecondary, fontSize: fontSizes.label },
 });
 
