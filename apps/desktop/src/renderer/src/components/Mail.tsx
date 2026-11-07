@@ -208,8 +208,8 @@ function Mailbox(props: {
   icon: IconSvgElement;
   count?: number;
   indent?: boolean;
-  // What right-clicking it offers; `at` is its row, for a form to open beside.
-  menu?: (at: Element) => MenuItem[];
+  // What right-clicking it offers.
+  menu?: () => MenuItem[];
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
@@ -222,7 +222,7 @@ function Mailbox(props: {
         class={sx(s.mailbox, props.indent && s.indent)}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
-          const items = props.menu?.(e.currentTarget);
+          const items = props.menu?.();
           if (items) showMenu(e, items);
         }}
         onKeyDown={(e) => {
@@ -268,11 +268,13 @@ type Add = { label: string; placeholder: string; make: (name: string) => Mailbox
 function Section(props: { title: string; add?: Add; children: JSX.Element }): JSX.Element {
   const shut = (): boolean => folded().includes(props.title);
   let plus: HTMLButtonElement | undefined;
-  const ask = (from: Element | null | undefined): void => {
+  // From the +, over it; from the heading's menu, in the menu's place under its title.
+  const ask = (from: Element | DOMRect | null | undefined, title?: string): void => {
     const add = props.add;
     if (!add || !from) return;
     askInline({
       at: from,
+      title,
       icon: i.Add01Icon,
       fields: [{ label: add.label, placeholder: add.placeholder }],
       submit: ([name]) => chooseMailbox(add.make(name)),
@@ -289,7 +291,7 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
               {
                 label: add.label,
                 icon: icon(i.Add01Icon, 13),
-                run: () => ask(plus?.querySelector("svg")),
+                run: (from) => ask(from, add.label),
               },
             ]);
         }}
@@ -386,11 +388,12 @@ function SpaceOrLabel(props: {
   );
 }
 
-// A bucket's name and what goes in it (which the model sorts by), asked for in a form beside the row `at`.
-function askBucket(at: Element, bucket?: Bucket): void {
+// A bucket's name and what goes in it (which the model sorts by), asked for in a form grown out of the menu entry
+// that asked, at `from`.
+function askBucket(from: DOMRect, bucket?: Bucket): void {
   askInline({
-    at,
-    beside: true,
+    at: from,
+    title: bucket ? "Edit Bucket" : "New Bucket",
     icon: bucket ? i.PencilEdit01Icon : i.Add01Icon,
     fields: [
       { label: "Name", placeholder: "Name the bucket", value: bucket?.name },
@@ -415,7 +418,7 @@ function askBucket(at: Element, bucket?: Bucket): void {
 }
 
 // What right-clicking a bucket offers, as the old sidebar's bucket headings did.
-function bucketMenu(bucket: Bucket, at: Element): MenuItem[] {
+function bucketMenu(bucket: Bucket): MenuItem[] {
   const move = (by: number) => () => {
     const buckets = myBuckets();
     const other = buckets[buckets.indexOf(bucket) + by];
@@ -428,9 +431,9 @@ function bucketMenu(bucket: Bucket, at: Element): MenuItem[] {
     {
       label: "Edit Bucket",
       icon: icon(i.PencilEdit01Icon, 13),
-      run: () => askBucket(at, bucket),
+      run: (from) => askBucket(from, bucket),
     },
-    { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
+    { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: (from) => askBucket(from) },
     "separator",
     { label: "Move Up", icon: icon(i.ArrowUp01Icon, 13), run: move(-1) },
     { label: "Move Down", icon: icon(i.ArrowDown01Icon, 13), run: move(1) },
@@ -479,8 +482,8 @@ export function MailSidebar(): JSX.Element {
             label="Inbox"
             icon={i.InboxIcon}
             count={inbox().order.length}
-            menu={(at) => [
-              { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
+            menu={() => [
+              { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: (from) => askBucket(from) },
               "separator",
               {
                 label: "Mark All as Read",
@@ -512,7 +515,7 @@ export function MailSidebar(): JSX.Element {
                 icon={icons().get(section.bucket.id) ?? i.InboxIcon}
                 count={section.items.length}
                 indent
-                menu={(at) => bucketMenu(section.bucket, at)}
+                menu={() => bucketMenu(section.bucket)}
               />
             )}
           </For>

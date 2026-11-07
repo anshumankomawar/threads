@@ -122,7 +122,8 @@ export type View =
 // An item runs something, or opens its own `items` in the menu's place. One with `checked` is a toggle: it shows a check
 // and leaves the menu open.
 export type MenuItem =
-  | { label: string; icon?: JSX.Element; checked?: boolean; run: () => void }
+  // `run` is told where the row's icon was, for a form that grows out of it (InlineForm).
+  | { label: string; icon?: JSX.Element; checked?: boolean; run: (from: DOMRect) => void }
   | { label: string; icon?: JSX.Element; items: MenuItem[] }
   | "separator";
 export type Dialog =

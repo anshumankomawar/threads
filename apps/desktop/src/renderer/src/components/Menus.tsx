@@ -75,7 +75,7 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
   } | null>(null);
   const row = (
     item: Exclude<MenuItem, "separator">,
-    run: (() => void) | undefined,
+    run: ((from: DOMRect) => void) | undefined,
     checked?: boolean,
   ): JSX.Element => {
     const opens = "items" in item;
@@ -96,7 +96,12 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
         onClick={(event) =>
           opens
             ? setSub({ item, row: (event.currentTarget as HTMLElement).getBoundingClientRect() })
-            : run?.()
+            : run?.(
+                (
+                  (event.currentTarget as HTMLElement).querySelector("svg") ??
+                  (event.currentTarget as HTMLElement)
+                ).getBoundingClientRect(),
+              )
         }
       >
         <Show when={gutter()}>
@@ -129,7 +134,7 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
           ) : item.checked !== undefined ? (
             row(item, item.run, item.checked)
           ) : (
-            row(item, () => (props.close(), item.run()))
+            row(item, (from) => (props.close(), item.run(from)))
           )
         }
       </For>
