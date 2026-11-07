@@ -799,7 +799,8 @@ const s = stylex.create({
     backgroundColor: { default: "transparent", ":focus-visible": colors.bgQuaternary },
   },
   mailboxOn: { backgroundColor: colors.bgTertiary },
-  indent: { paddingLeft: 14 },
+  // Indented by a margin, not padding, so its hover and selection fill starts at the indent too.
+  indent: { marginLeft: 14 },
   disclosureSlot: { display: "flex", flexShrink: 0, justifyContent: "center", width: 12 },
   disclosure: {
     display: "flex",
@@ -824,8 +825,10 @@ const s = stylex.create({
     gap: 10,
     alignItems: "center",
     height: 24,
-    // Under the mailbox's icon, so the titles line up with the names above.
-    paddingLeft: 22,
+    // Under the mailbox's icon, so the titles line up with the names above; the indent is a margin, so the row's
+    // fill starts there rather than at the sidebar's edge.
+    marginLeft: 18,
+    paddingLeft: 4,
     paddingRight: 8,
     borderRadius: radii.row,
     color: colors.textSecondary,

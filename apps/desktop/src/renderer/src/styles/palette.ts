@@ -62,6 +62,21 @@ export const palette = stylex.create({
     paddingTop: 4,
     overflowY: "auto",
   },
+  // The tabs under ⌘K's input that narrow what it finds (⌘1–⌘4).
+  filters: { ...below, ...row, gap: 4, height: 35, padding: "0 8px" },
+  filter: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 22,
+    padding: "0 6px",
+    borderRadius: radii.control,
+    color: colors.textSecondary,
+    fontSize: fontSizes.label,
+    cursor: "pointer",
+  },
+  filterChosen: { color: colors.accent, backgroundColor: colors.accentFill },
+  filterKey: { opacity: 0.7, wordSpacing: "1px" },
   section: { display: "flex", flexDirection: "column", paddingBottom: 4 },
   // A section after another gets a divider.
   divided: {
