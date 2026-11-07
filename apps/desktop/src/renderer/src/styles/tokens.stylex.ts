@@ -63,8 +63,9 @@ export const sidebarSpace = stylex.defineConsts({
   inset: "12px",
   rowGutter: "6px",
   // Where the top bar's first button starts, beside the traffic lights: its centre lands where a fourth light would
-  // (theirs are 23pt apart), so it's 9pt from the last, as they are from each other. In CSS pixels at the 110% scale.
-  afterLights: "66px",
+  // (theirs are 23pt apart, the first's centre 18.75pt in), so it's 9pt from the last, as they are from each other.
+  // (12 + 3 × 23 + 6.75)pt ÷ 1.1, less half the 22px button. In CSS pixels at the 110% scale.
+  afterLights: "69px",
 });
 
 // The main content's zoom (⌘+, ⌘-, ⌘0), set on the root by the store.
@@ -82,9 +83,11 @@ export const layers = stylex.defineConsts({
 // Small things in text and menus (chips, links, menu items, fields) · every row and button that fills on hover ·
 // floating panels.
 export const radii = stylex.defineConsts({
-  control: "4px",
-  row: "6px",
-  panel: "8px",
+  control: "6px",
+  row: "10px",
+  panel: "14px",
+  // A capsule: chips and fields whose ends are fully round, whatever their height.
+  pill: "999px",
 });
 
 export const fontSizes = stylex.defineConsts({

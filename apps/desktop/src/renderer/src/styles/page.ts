@@ -101,7 +101,7 @@ export const page = stylex.create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.strokeTertiary,
-    borderRadius: 12,
+    borderRadius: radii.pill,
     color: colors.accent,
     fontSize: size.body,
     cursor: "pointer",

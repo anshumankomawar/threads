@@ -6,7 +6,7 @@ import logoDark from "../assets/logo-dark.png";
 import { otherSources, source, SOURCES, theme, useSource } from "../startup";
 import { base } from "../styles/base";
 import { sx } from "../styles/sx";
-import { colors, fontSizes } from "../styles/tokens.stylex";
+import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { Titlebar } from "./DragRegionResync";
 
 const field = {
@@ -15,7 +15,7 @@ const field = {
   padding: "0 18px",
   borderWidth: 1,
   borderStyle: "solid",
-  borderRadius: 22,
+  borderRadius: radii.pill,
   font: "inherit",
   fontSize: fontSizes.input,
 } as const;

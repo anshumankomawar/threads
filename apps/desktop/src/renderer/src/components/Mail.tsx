@@ -8,6 +8,7 @@ import {
   byName,
   inbox,
   itemFor,
+  lastActive,
   markDone,
   me,
   myBuckets,
@@ -38,7 +39,7 @@ import { bucketIcons } from "../bucketIcons";
 import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, radii, sidebarSpace } from "../styles/tokens.stylex";
+import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./Sidebar";
 import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
@@ -136,6 +137,16 @@ function Mailbox(props: {
   );
 }
 
+// Folds its content away and back, easing its height (a grid row from 0fr to 1fr) and fading it, as a disclosure does in
+// macOS. What's folded stays mounted, so it can animate both ways, but out of reach of the keyboard.
+function Collapse(props: { open: boolean; children: JSX.Element }): JSX.Element {
+  return (
+    <div class={sx(s.collapse, props.open && s.collapseOpen)} inert={!props.open}>
+      <div class={sx(s.collapseInner)}>{props.children}</div>
+    </div>
+  );
+}
+
 const [folded, setFolded] = createSignal<string[]>(saved("mail-folded", []));
 const toggleFold = (key: string): void => {
   const next = folded().includes(key) ? folded().filter((k) => k !== key) : [...folded(), key];
@@ -176,15 +187,93 @@ function Section(props: {
           )}
         </Show>
       </div>
-      <Show when={!shut()}>
+      <Collapse open={!shut()}>
         <ul class={sx(s.mailboxes)}>{props.children}</ul>
-      </Show>
+      </Collapse>
     </section>
   );
 }
 
-const openIn = (field: "subspaceIds" | "labelIds", id: string): number =>
-  store.all(Thread).filter((t) => t.isOpen && t[field].includes(id)).length;
+// Which spaces and labels are open in the sidebar to show their threads (all start shut).
+const [expanded, setExpanded] = createSignal<string[]>(saved("mail-expanded", []));
+const toggleExpanded = (key: string): void => {
+  const next = expanded().includes(key)
+    ? expanded().filter((k) => k !== key)
+    : [...expanded(), key];
+  setExpanded(next);
+  save("mail-expanded", next);
+};
+
+// A space or label that opens out, under its name, to its open threads, newest first: five rows tall, scrolling for
+// the rest. Opening one of them lists the space's (or label's) threads beside the sidebar too.
+function Expandable(props: {
+  box: { kind: "subspace" | "label"; id: string };
+  label: string;
+  icon: IconSvgElement;
+}): JSX.Element {
+  const key = (): string => `${props.box.kind}:${props.box.id}`;
+  const open_ = (): boolean => expanded().includes(key());
+  const field = (): "subspaceIds" | "labelIds" =>
+    props.box.kind === "subspace" ? "subspaceIds" : "labelIds";
+  const threads = (): Thread[] =>
+    store
+      .all(Thread)
+      .filter((t) => t.isOpen && t[field()].includes(props.box.id))
+      .sort((a, b) => lastActive(b) - lastActive(a));
+  return (
+    <>
+      <Mailbox
+        box={props.box}
+        label={props.label}
+        icon={props.icon}
+        count={threads().length}
+        disclosure={{ open: open_(), toggle: () => toggleExpanded(key()) }}
+      />
+      <li class={sx(s.mailboxItem)}>
+        <Collapse open={open_()}>
+          <ul class={sx(s.mailboxes, s.threadRows)} aria-label={`${props.label} threads`}>
+            <For each={threads()}>
+              {(thread) => (
+                <li class={sx(s.mailboxItem)}>
+                  <div
+                    role="button"
+                    tabindex={0}
+                    class={sx(s.threadRow, active() === thread && s.mailboxOn)}
+                    title={thread.title}
+                    onClick={() => {
+                      chooseMailbox(props.box);
+                      open({ thread: thread.id });
+                    }}
+                    onContextMenu={(e) => showMenu(e, threadMenu(thread))}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault();
+                      chooseMailbox(props.box);
+                      open({ thread: thread.id });
+                    }}
+                  >
+                    <span
+                      class={sx(
+                        s.threadDot,
+                        thread.state === "blocked" && s.threadDotBlocked,
+                        thread.priority === "urgent" && s.threadDotUrgent,
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span class={sx(base.ellipsis, s.threadTitle)}>{thread.title}</span>
+                  </div>
+                </li>
+              )}
+            </For>
+            <Show when={threads().length === 0}>
+              <li class={sx(s.mailboxItem, s.threadNone)}>No open threads</li>
+            </Show>
+          </ul>
+        </Collapse>
+      </li>
+    </>
+  );
+}
 
 export function MailSidebar(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
@@ -212,28 +301,32 @@ export function MailSidebar(): JSX.Element {
             count={inbox().order.length}
             disclosure={{ open: !folded().includes("inbox"), toggle: () => toggleFold("inbox") }}
           />
-          <Show when={!folded().includes("inbox")}>
-            <Show when={inbox().unsorted.length > 0}>
-              <Mailbox
-                box={{ kind: "unsorted" }}
-                label="Sorting"
-                icon={i.Clock01Icon}
-                count={inbox().unsorted.length}
-                indent
-              />
-            </Show>
-            <For each={inbox().sections}>
-              {(section) => (
-                <Mailbox
-                  box={{ kind: "bucket", id: section.bucket.id }}
-                  label={section.bucket.name}
-                  icon={icons().get(section.bucket.id) ?? i.InboxIcon}
-                  count={section.items.length}
-                  indent
-                />
-              )}
-            </For>
-          </Show>
+          <li class={sx(s.mailboxItem)}>
+            <Collapse open={!folded().includes("inbox")}>
+              <ul class={sx(s.mailboxes)}>
+                <Show when={inbox().unsorted.length > 0}>
+                  <Mailbox
+                    box={{ kind: "unsorted" }}
+                    label="Sorting"
+                    icon={i.Clock01Icon}
+                    count={inbox().unsorted.length}
+                    indent
+                  />
+                </Show>
+                <For each={inbox().sections}>
+                  {(section) => (
+                    <Mailbox
+                      box={{ kind: "bucket", id: section.bucket.id }}
+                      label={section.bucket.name}
+                      icon={icons().get(section.bucket.id) ?? i.InboxIcon}
+                      count={section.items.length}
+                      indent
+                    />
+                  )}
+                </For>
+              </ul>
+            </Collapse>
+          </li>
           <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
           <Mailbox
             box={{ kind: "drafts" }}
@@ -248,11 +341,10 @@ export function MailSidebar(): JSX.Element {
         >
           <For each={byName(store.all(Subspace))}>
             {(sub) => (
-              <Mailbox
+              <Expandable
                 box={{ kind: "subspace", id: sub.id }}
                 label={sub.name}
                 icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
-                count={openIn("subspaceIds", sub.id)}
               />
             )}
           </For>
@@ -263,11 +355,10 @@ export function MailSidebar(): JSX.Element {
         >
           <For each={byName(store.all(Label))}>
             {(label) => (
-              <Mailbox
+              <Expandable
                 box={{ kind: "label", id: label.id }}
                 label={label.name}
                 icon={i.Tag01Icon}
-                count={openIn("labelIds", label.id)}
               />
             )}
           </For>
@@ -350,7 +441,7 @@ function Row(props: { thread: Thread }): JSX.Element {
         tabindex={on() ? 0 : -1}
         data-active={on() ? "" : undefined}
         aria-current={on() ? "true" : undefined}
-        class={sx(s.row, on() && s.rowOn, t().state === "blocked" && !on() && s.faded)}
+        class={sx(s.row, on() && s.rowOn)}
         onClick={() => open({ thread: t().id })}
         onContextMenu={(e) => showMenu(e, threadMenu(t()))}
       >
@@ -723,8 +814,52 @@ const s = stylex.create({
     display: "flex",
     color: colors.textTertiary,
     transitionProperty: "transform",
-    transitionDuration: "120ms",
+    transitionDuration: { default: "220ms", [motion.reduced]: "0s" },
+    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
+  collapse: {
+    display: "grid",
+    gridTemplateRows: "0fr",
+    opacity: 0,
+    transitionProperty: "grid-template-rows, opacity",
+    transitionDuration: { default: "220ms", [motion.reduced]: "0s" },
+    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+  },
+  collapseOpen: { gridTemplateRows: "1fr", opacity: 1 },
+  // A space's or label's threads: five rows tall, scrolling past that.
+  threadRows: { maxHeight: 24 * 5, overflowY: "auto", overscrollBehavior: "contain" },
+  threadRow: {
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    height: 24,
+    // Under the mailbox's icon, so the titles line up with the names above.
+    paddingLeft: 22,
+    paddingRight: 8,
+    borderRadius: radii.row,
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    cursor: "default",
+    outline: "none",
+    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
+  },
+  threadDot: {
+    flexShrink: 0,
+    width: 6,
+    height: 6,
+    borderRadius: "50%",
+    backgroundColor: colors.iconTertiary,
+  },
+  threadDotBlocked: { backgroundColor: "#ff9f0a" },
+  threadDotUrgent: { backgroundColor: colors.urgent },
+  threadTitle: { flex: 1 },
+  threadNone: {
+    paddingLeft: 38,
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+    lineHeight: "24px",
+  },
+  collapseInner: { minHeight: 0, overflow: "hidden" },
   disclosureOpen: { transform: "rotate(90deg)" },
   mailboxIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
   mailboxName: { flex: 1 },
@@ -755,8 +890,9 @@ const s = stylex.create({
   sectionChevron: {
     display: "flex",
     opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1 },
-    transitionProperty: "transform",
-    transitionDuration: "120ms",
+    transitionProperty: "transform, opacity",
+    transitionDuration: { default: "220ms", [motion.reduced]: "0s" },
+    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
   sectionChevronOpen: { transform: "rotate(90deg)" },
   sectionAdd: {
@@ -792,7 +928,7 @@ const s = stylex.create({
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
   listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
-  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 700 },
+  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
   listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   listScroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "0 6px 12px", outline: "none" },
   groupHeader: {
@@ -803,7 +939,7 @@ const s = stylex.create({
     padding: "0 10px",
     color: colors.textTertiary,
     fontSize: fontSizes.small,
-    fontWeight: 600,
+    fontWeight: 500,
   },
   groupCount: { fontWeight: 400 },
   rows: { margin: 0, padding: 0, listStyle: "none" },
@@ -825,7 +961,6 @@ const s = stylex.create({
     outline: "none",
   },
   rowOn: { backgroundColor: colors.bgTertiary },
-  faded: { opacity: 0.6 },
   unreadSlot: {
     display: "flex",
     flexShrink: 0,
@@ -871,7 +1006,7 @@ const s = stylex.create({
   dueSoon: { color: colors.urgent },
   labelChip: {
     padding: "0 6px",
-    borderRadius: 999,
+    borderRadius: radii.pill,
     color: colors.textSecondary,
     fontSize: fontSizes.small,
     lineHeight: "16px",

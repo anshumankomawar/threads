@@ -64,8 +64,9 @@ function createWindow(): void {
       ? {
           titleBarStyle: "hidden",
           // Centered on the top bar at the 110% scale (macOS draws them unscaled): 34px × 1.1 is 37.4pt, so their
-          // centres (y + 6.75) sit at 18.75pt, level with its icons.
-          trafficLightPosition: { x: 9, y: 12 },
+          // centres (y + 6.75) sit at 18.75pt, level with its icons; and as far from the window's left edge as from its
+          // top, so they sit square in the corner.
+          trafficLightPosition: { x: 12, y: 12 },
           vibrancy: "sidebar",
           visualEffectState: "active",
           backgroundColor: "#40000000",
