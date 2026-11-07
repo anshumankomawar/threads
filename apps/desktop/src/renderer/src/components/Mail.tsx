@@ -682,7 +682,6 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
           ])
         }
       >
-        <span class={sx(s.unreadSlot)} />
         <span class={sx(s.rowBody)}>
           <span class={sx(s.rowTop)}>
             <span class={sx(base.ellipsis, s.from)}>{title()}</span>
@@ -693,7 +692,7 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
           </Show>
         </span>
       </div>
-      <span class={sx(s.divider)} aria-hidden="true" />
+      <span class={sx(s.divider, s.dividerDraft)} aria-hidden="true" />
     </li>
   );
 }
@@ -1160,6 +1159,8 @@ const s = stylex.create({
   groupCount: { fontWeight: 400 },
   rows: { margin: 0, padding: 0, listStyle: "none" },
   rowItem: { listStyle: "none" },
+  // A draft can't be unread, so its row has no dot column: its text, and hairline, start at the row's padding.
+  dividerDraft: { marginLeft: 8 },
   // The hairline under a row, as Mail draws it: from the text's column (past the unread dot: 8 + 12 + 8) to the row's
   // right edge. It gives way on both sides of a selected or hovered row, so the pill stands clear
   // rather than cut by the lines above and below it, fading as the pill slides rather than blinking ahead of it.
