@@ -29,7 +29,8 @@ import { PersonView } from "./Pages";
 import { ThreadView } from "./ThreadView";
 
 // A link's thread or person in a small window floating over the app, as Little Arc opens a link: read it where you are,
-// then expand it into the reading pane, split it beside the thread you're in, or click away (or Escape) to let it go.
+// then expand it into the reading pane, split it beside the thread you're in, or close it (× or Escape). Clicking
+// back into the app leaves it open beside it.
 // Its title bar moves it and its edges resize it, and it opens where you left it. A link inside it peeks in its place.
 
 const peekIn = stylex.keyframes({
@@ -183,18 +184,17 @@ export function Peek(): JSX.Element {
     <div
       ref={(el) => {
         window = el;
-        // A manual popover, so a menu opened in it (a right-click, a property's, the reply's) doesn't close it: it
-        // closes itself on Escape or a click outside it and outside anything opened over it.
-        document.addEventListener(
-          "pointerdown",
-          (event) => {
-            const target = event.target as Element;
-            if (!el.matches(":popover-open") || el.contains(target)) return;
-            if (target.closest(":popover-open, dialog[open]")) return;
-            close();
-          },
-          { capture: true },
-        );
+        // A manual popover, as a window is: a menu opened in it doesn't close it, and neither does working in the app
+        // beside it. It closes from its × or Escape (in it, or in the app with nothing else open).
+        document.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape" || event.defaultPrevented || !el.matches(":popover-open"))
+            return;
+          if (el.contains(event.target as Node)) return;
+          if ((event.target as Element).closest?.("input, textarea, [contenteditable='true']"))
+            return;
+          if (document.querySelector(":popover-open:not([data-peek]), dialog[open]")) return;
+          close();
+        });
         // Open while there's something to peek at; a link inside it replaces what's shown.
         createEffect(peeked, (shown) => {
           // Taking the focus, so Escape and the keys are its, not the reply's behind it.

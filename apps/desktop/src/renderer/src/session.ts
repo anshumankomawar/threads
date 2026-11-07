@@ -617,7 +617,8 @@ window.addEventListener("keydown", (event) => {
   // A form grown out of the sidebar or a menu keeps its keys (InlineForm).
   if (target.closest("[data-holds-keys]")) return;
   const typing = target.closest("input, textarea, [contenteditable='true']") !== null;
-  const free = !document.querySelector("dialog[open], :popover-open");
+  // (Peek is a window beside the app, not over it: the app's keys still work while it's open.)
+  const free = !document.querySelector("dialog[open], :popover-open:not([data-peek])");
   // Escape leaves the reply, unless it just closed one of the reply's menus.
   if (
     event.key === "Escape" &&

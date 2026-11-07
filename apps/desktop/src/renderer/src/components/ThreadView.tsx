@@ -26,6 +26,8 @@ import {
   me,
   myBuckets,
   open,
+  save,
+  saved,
   others,
   placeIn,
   setDialog,
@@ -87,11 +89,19 @@ const styles = stylex.create({
     alignItems: "center",
     height: 24,
     padding: "0 6px",
-    color: colors.textTertiary,
+    color: { default: colors.textTertiary, ":hover": colors.textSecondary },
     fontSize: fontSizes.small,
     fontWeight: 500,
+    cursor: "pointer",
   },
   linksCount: { fontWeight: 400 },
+  linksChevron: {
+    display: "flex",
+    marginLeft: -4,
+    transitionProperty: "transform",
+    transitionDuration: "180ms",
+  },
+  linksChevronOpen: { transform: "rotate(90deg)" },
   linked: {
     display: "flex",
     gap: 8,
@@ -350,7 +360,16 @@ function Header(props: { thread: Thread }): JSX.Element {
 }
 
 // The threads this one links to (what it's made of, with how many are resolved) and those that link to it, under its
-// properties. Each peeks open, so you can look without leaving.
+// properties. Each peeks open, so you can look without leaving. Either list folds away under its heading, and stays
+// folded (for every thread) until you open it again.
+const [folded, setFolded] = createSignal<string[]>(saved("links-folded", []));
+const toggleFold = (key: string): void =>
+  void setFolded((list) => {
+    const next = list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+    save("links-folded", next);
+    return next;
+  });
+
 function LinkedThreads(props: { thread: Thread }): JSX.Element {
   const out = (): Thread[] => linksFrom(props.thread);
   const back = (): Thread[] => linksTo(props.thread);
@@ -373,28 +392,37 @@ function LinkedThreads(props: { thread: Thread }): JSX.Element {
       </Show>
     </button>
   );
+  const group = (
+    key: string,
+    title: string,
+    threads: () => Thread[],
+    count?: () => string | undefined,
+  ) => (
+    <Show when={threads().length > 0}>
+      <button
+        class={sx(base.bare, styles.linksHeading)}
+        aria-expanded={folded().includes(key) ? "false" : "true"}
+        onClick={() => toggleFold(key)}
+      >
+        <span>{title}</span>
+        <span class={sx(styles.linksCount)}>{count?.() ?? threads().length}</span>
+        <span class={sx(styles.linksChevron, !folded().includes(key) && styles.linksChevronOpen)}>
+          {icon(i.ArrowRight01Icon, 9)}
+        </span>
+      </button>
+      <Show when={!folded().includes(key)}>
+        <For each={threads()}>{row}</For>
+      </Show>
+    </Show>
+  );
   return (
     <Show when={out().length > 0 || back().length > 0}>
       <div class={sx(styles.links)}>
-        <Show when={out().length > 0}>
-          <div class={sx(styles.linksHeading)}>
-            <span>Links to</span>
-            <Show when={progress()}>
-              {(p) => (
-                <span class={sx(styles.linksCount)}>
-                  {p().done} of {p().total} resolved
-                </span>
-              )}
-            </Show>
-          </div>
-          <For each={out()}>{row}</For>
-        </Show>
-        <Show when={back().length > 0}>
-          <div class={sx(styles.linksHeading)}>
-            <span>Linked from</span>
-          </div>
-          <For each={back()}>{row}</For>
-        </Show>
+        {group("out", "Links to", out, () => {
+          const p = progress();
+          return p && `${p.done} of ${p.total} resolved`;
+        })}
+        {group("back", "Linked from", back)}
       </div>
     </Show>
   );
