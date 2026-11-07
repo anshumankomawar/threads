@@ -148,16 +148,28 @@ function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
     };
     following = requestAnimationFrame(step);
   };
-  const onOver = (event: Event): void => {
-    const row = (event.target as Element).closest<HTMLElement>("[data-pill]");
-    if (row && container.contains(row) && row !== over) {
-      over = row;
-      place();
-    }
-  };
   const onLeave = (): void => {
     over = null;
     place();
+  };
+  // Under the pointer, the row it's on. Between rows (a gap, a heading) it stays where it was; past the first or last
+  // row, in the column's empty space, it goes back to the selection.
+  const onOver = (event: Event): void => {
+    const row = (event.target as Element).closest<HTMLElement>("[data-pill]");
+    if (row && container.contains(row)) {
+      if (row !== over) {
+        over = row;
+        place();
+      }
+      return;
+    }
+    if (!over || !(event instanceof PointerEvent)) return;
+    const rows = [...container.querySelectorAll<HTMLElement>("[data-pill]")].filter(
+      (el) => !el.closest("[inert]"),
+    );
+    const top = rows[0]?.getBoundingClientRect().top ?? 0;
+    const bottom = rows.at(-1)?.getBoundingClientRect().bottom ?? 0;
+    if (event.clientY < top || event.clientY > bottom) onLeave();
   };
   const onScroll = (): void => place(false);
   container.addEventListener("pointerover", onOver);
@@ -275,7 +287,7 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
           if (add)
             showMenu(e, [
               {
-                label: `${add.label}…`,
+                label: add.label,
                 icon: icon(i.Add01Icon, 13),
                 run: () => ask(plus?.querySelector("svg")),
               },
@@ -335,7 +347,7 @@ function SpaceOrLabel(props: {
     if (box.kind === "label")
       return [
         {
-          label: "New Thread with This Label…",
+          label: "New Thread with This Label",
           icon: icon(i.PencilEdit02Icon, 13),
           run: () => setDialog({ kind: "newThread", labelId: box.id }),
         },
@@ -348,14 +360,14 @@ function SpaceOrLabel(props: {
         run: () => open({ subspace: box.id }),
       },
       {
-        label: "New Thread in This Space…",
+        label: "New Thread in This Space",
         icon: icon(i.PencilEdit02Icon, 13),
         run: () => setDialog({ kind: "newThread", subspaceId: box.id }),
       },
       ...(sub
         ? [
             {
-              label: "Add Member…",
+              label: "Add Member",
               icon: icon(i.UserAdd01Icon, 13),
               run: () => setDialog({ kind: "addMember", subspace: sub }),
             },
@@ -413,11 +425,11 @@ function bucketMenu(bucket: Bucket, at: Element): MenuItem[] {
   };
   return [
     {
-      label: "Edit Bucket…",
+      label: "Edit Bucket",
       icon: icon(i.PencilEdit01Icon, 13),
       run: () => askBucket(at, bucket),
     },
-    { label: "New Bucket…", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
+    { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
     "separator",
     { label: "Move Up", icon: icon(i.ArrowUp01Icon, 13), run: move(-1) },
     { label: "Move Down", icon: icon(i.ArrowDown01Icon, 13), run: move(1) },
@@ -467,7 +479,7 @@ export function MailSidebar(): JSX.Element {
             icon={i.InboxIcon}
             count={inbox().order.length}
             menu={(at) => [
-              { label: "New Bucket…", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
+              { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
               "separator",
               {
                 label: "Mark All as Read",
@@ -563,7 +575,7 @@ export function MailSidebar(): JSX.Element {
                   saved.ownerId === me().id
                     ? [
                         {
-                          label: "View Settings…",
+                          label: "View Settings",
                           icon: icon(i.Settings02Icon, 13),
                           run: () => open({ view: saved.id }),
                         },

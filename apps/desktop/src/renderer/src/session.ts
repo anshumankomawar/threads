@@ -138,6 +138,9 @@ export type Dialog =
 
 export const [view, setView] = createSignal<View>({ thread: null });
 export const [split, setSplit] = createSignal<string | null>(null);
+// A link's thread or person, floating over the app (Peek) until you expand it, split it beside, or click away.
+export type Peeked = { thread: string } | { person: string };
+export const [peeked, peek] = createSignal<Peeked | null>(null);
 export const [dialog, setDialog] = createSignal<Dialog | null>(null);
 export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(
   null,

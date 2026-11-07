@@ -246,7 +246,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         <ComboButton
           label="Add member"
           class={sx(base.bare, button.solid)}
-          placeholder="Add someone…"
+          placeholder="Add someone"
           empty="Everyone's in it."
           options={(query) =>
             store
@@ -300,7 +300,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         <textarea
           class={sx(base.bare, page.description, page.descriptionField)}
           aria-label="Description"
-          placeholder="Add a description…"
+          placeholder="Add a description"
           rows={1}
           value={s().description ?? ""}
           onKeyDown={(event) => event.key === "Escape" && event.currentTarget.blur()}
@@ -418,7 +418,7 @@ export function SettingsView(): JSX.Element {
           onClick={() => setRecording(recording() === h.id ? null : h.id)}
         >
           <Show when={recording() === h.id} fallback={<Keys keys={keysFor(h.id)} />}>
-            <span class={sx(page.recording)}>Press keys…</span>
+            <span class={sx(page.recording)}>Press keys</span>
           </Show>
         </button>
       ),

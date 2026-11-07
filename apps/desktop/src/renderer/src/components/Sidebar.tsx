@@ -405,10 +405,10 @@ function BucketSection(props: {
         onContextMenu={(e) =>
           showMenu(e, [
             {
-              label: "Edit bucket…",
+              label: "Edit bucket",
               run: () => setDialog({ kind: "bucket", bucket: props.bucket }),
             },
-            { label: "New bucket…", run: () => setDialog({ kind: "bucket" }) },
+            { label: "New bucket", run: () => setDialog({ kind: "bucket" }) },
             "separator",
             { label: "Move up", run: move(-1) },
             { label: "Move down", run: move(1) },

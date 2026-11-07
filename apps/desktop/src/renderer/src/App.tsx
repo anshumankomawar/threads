@@ -11,6 +11,7 @@ import {
   open,
   server,
   setDialog,
+  peek,
   setSplit,
   sidebarOpen,
   signedIn,
@@ -40,6 +41,7 @@ import { MentionToasts } from "./components/MentionToasts";
 import { LabelView, PersonView, SavedView, SettingsView, SubspaceView } from "./components/Pages";
 import { HistoryButtons } from "./components/Sidebar";
 import { DraftView } from "./components/DraftView";
+import { Peek } from "./components/Peek";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
 import { mailbox } from "./mail";
 
@@ -111,9 +113,9 @@ const styles = stylex.create({
 function Waiting(): JSX.Element {
   return (
     <div class={sx(styles.status)}>
-      <Show when={store.connection() === "offline"} fallback="Loading…">
+      <Show when={store.connection() === "offline"} fallback="Loading">
         <div>
-          Waiting for the {SOURCES[source]} API at {server.url}…
+          Waiting for the {SOURCES[source]} API at {server.url}
           <div class={sx(styles.sources)}>
             <For each={otherSources}>
               {(s) => (
@@ -231,6 +233,14 @@ export default function App(): JSX.Element {
                           </span>
                           <button
                             class={sx(topbar.button)}
+                            aria-label="Pop out"
+                            title="Pop out"
+                            onClick={() => (setSplit(null), peek({ thread: beside.id }))}
+                          >
+                            <Icon icon={i.SquareArrowUpRightIcon} size={13} aria-hidden="true" />
+                          </button>
+                          <button
+                            class={sx(topbar.button)}
                             aria-label="Open as the main thread"
                             onClick={() => open({ thread: beside.id })}
                           >
@@ -273,6 +283,7 @@ export default function App(): JSX.Element {
         <Palettes />
         <MentionToasts />
         <ContextMenu />
+        <Peek />
       </Show>
     </>
   );

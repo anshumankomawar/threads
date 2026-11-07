@@ -147,7 +147,7 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
                 class={sx(thread.text, thread.description, styles.field, styles.description)}
                 rows={1}
                 aria-label="Description"
-                placeholder="Add a description…"
+                placeholder="Add a description"
                 value={doc().context}
                 onInput={(e) => change({ context: e.currentTarget.value })}
               />
@@ -217,8 +217,8 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
                 aria-label="Message"
                 placeholder={
                   doc().asks.length === 0
-                    ? "Write it… @mention someone to ask them"
-                    : "Another message… @mention someone to bring them in"
+                    ? "Write it and @mention someone to ask them"
+                    : "Another message, @mention someone to bring them in"
                 }
                 value={next()}
                 onInput={(e) => setNext(e.currentTarget.value)}

@@ -264,7 +264,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
         }),
     ],
     describe: [
-      "Add a description… (optional)",
+      "Add a description (optional)",
       (text) => [
         {
           label: text === "" ? "Skip the description" : "Next",
@@ -278,7 +278,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       ],
     ],
     pick: [
-      "Assign to…",
+      "Assign to",
       (text) => {
         const section = `Step 3 of 3 · ${title()}`;
         const first = props.to?.id;
@@ -317,7 +317,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       },
     ],
     labels: [
-      "Find or make a label…",
+      "Find or make a label",
       (text) => {
         const all = byName(store.all(Label));
         const exists = [...all.map((l) => l.name), ...names()].some(
@@ -415,7 +415,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
     <Picker
       placeholder={
         naming()
-          ? "Name the bucket… (Follow-ups)"
+          ? "Name the bucket (Follow-ups)"
           : "What goes in it? (anything a customer asked for or reported)"
       }
       query={query}
@@ -448,7 +448,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
 function ViewAs(): JSX.Element {
   return (
     <Picker
-      placeholder="View as…"
+      placeholder="View as"
       rows={(query) => people(query, (u) => switchTo({ viewer: u.id }))}
     />
   );
@@ -497,7 +497,7 @@ function NewSubspace(): JSX.Element {
 function AddMember(props: { subspace: Subspace }): JSX.Element {
   return (
     <Picker
-      placeholder={`Add to ${props.subspace.name}…`}
+      placeholder={`Add to ${props.subspace.name}`}
       rows={(query) =>
         people(
           query,

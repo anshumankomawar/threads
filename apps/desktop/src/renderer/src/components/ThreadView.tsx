@@ -29,7 +29,7 @@ import {
   others,
   placeIn,
   setDialog,
-  setSplit,
+  peek,
   setState,
   shortDate,
   showMenu,
@@ -159,7 +159,7 @@ const nameOf = (id: string): string | undefined => store.findById(User, id)?.nam
 const subspaceOf = (id: string): string | undefined => store.findById(Subspace, id)?.name;
 export const plain = (text: string): string => plainText(text, titleOf, nameOf, subspaceOf);
 
-// Text with its thread links and mentions live: a link opens beside, a mention opens the profile.
+// Text with its thread links and mentions live: a link or a mention peeks at what it names (Peek).
 function LinkedText(props: { text: string; current: string; byline?: boolean }): JSX.Element {
   return (
     <For each={splitText(props.text)}>
@@ -171,7 +171,7 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
           >
             <button
               class={sx(base.bare, link.thread, props.byline && link.threadInByline)}
-              onClick={() => setSplit(part.thread)}
+              onClick={() => peek({ thread: part.thread })}
             >
               {icon(i.GitBranchIcon, 11)}
               <span class={sx(base.ellipsis)}>{titleOf(part.thread) ?? "Thread"}</span>
@@ -189,7 +189,7 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
         ) : "person" in part ? (
           <button
             class={sx(base.bare, link.person, link.mention)}
-            onClick={() => open({ person: part.person })}
+            onClick={() => peek({ person: part.person })}
           >
             @{nameOf(part.person) ?? "someone"}
           </button>
@@ -211,7 +211,7 @@ function Meta(props: {
     <div {...stylex.attrs(thread.meta, props.marker && threadLineMarker)}>
       <button
         class={sx(base.bare, link.person, thread.author)}
-        onClick={() => props.user && open({ person: props.user.id })}
+        onClick={() => props.user && peek({ person: props.user.id })}
       >
         {props.user?.name ?? "Someone"}
       </button>
@@ -483,8 +483,8 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
               placeholder: () => {
                 const names = peopleIn(c()).map(firstName);
                 return names.length === 0
-                  ? "Reply… @mention someone to bring them in"
-                  : `Reply to ${LIST.format(names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} others`] : names)}…`;
+                  ? "Reply, @mention someone to bring them in"
+                  : `Reply to ${LIST.format(names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} others`] : names)}`;
               },
             }),
             ...caretExtensions(
@@ -579,7 +579,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
         {(it) => (
           <MenuChip
             look={value}
-            label={<span class={sx(base.ellipsis)}>{it().bucket?.name ?? "Sorting…"}</span>}
+            label={<span class={sx(base.ellipsis)}>{it().bucket?.name ?? "Sorting"}</span>}
             icon={icon(bucketIcon(it().bucket), 13)}
             tone={it().bucket ? undefined : "muted"}
             title={
@@ -607,7 +607,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
         records={store.all(Label)}
         none="No labels"
         icon={i.Tag01Icon}
-        more={[{ label: "New label…", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
+        more={[{ label: "New label", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
       />
       <ListChip
         look={value}

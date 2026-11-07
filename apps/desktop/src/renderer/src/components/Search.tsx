@@ -158,7 +158,7 @@ export function Search(): JSX.Element {
       ? []
       : [
           {
-            label: "View as…",
+            label: "View as",
             hint: keysFor("viewAs"),
             section: "Data",
             run: () => setDialog({ kind: "viewAs" }),
@@ -282,7 +282,7 @@ export function Search(): JSX.Element {
           ref={input}
           autofocus
           class={sx(base.bare, palette.input, styles.input)}
-          placeholder={tokens().length > 0 ? "" : "Search… or filter with from: in: is: label:"}
+          placeholder={tokens().length > 0 ? "" : "Search, or filter with from: in: is: label:"}
           spellcheck={false}
           value={text()}
           onInput={(event) => setText(event.currentTarget.value)}
