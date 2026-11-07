@@ -761,11 +761,6 @@ function Row(props: { thread: Thread }): JSX.Element {
         onClick={() => open({ thread: t().id })}
         onContextMenu={(e) => showMenu(e, threadMenu(t()))}
       >
-        <span class={sx(s.unreadSlot)}>
-          <Show when={isUnread()}>
-            <span class={sx(s.unreadDot)} aria-label="Unread" />
-          </Show>
-        </span>
         <span class={sx(s.rowBody)}>
           {/* What it's about first, then who wrote last: the topic is what you scan a list for. */}
           <span class={sx(s.rowTop)}>
@@ -788,7 +783,13 @@ function Row(props: { thread: Thread }): JSX.Element {
                 {t().title}
               </span>
             </span>
-            <span class={sx(s.stamp)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
+            {/* Unread: a dot before when, on the right, so read rows lose no width to an empty column. */}
+            <span class={sx(s.stamp)}>
+              <Show when={isUnread()}>
+                <span class={sx(s.unreadDot)} aria-label="Unread" />
+              </Show>
+              {stamp(last()?.createdAt ?? t().createdAt)}
+            </span>
           </span>
           {/* Three lines, every row: the title, then two of who wrote last leading into what they wrote. The due date
               and labels float to the end of the second, the words running round them. */}
@@ -1346,21 +1347,19 @@ const s = stylex.create({
     display: "flex",
     gap: 8,
     alignItems: "flex-start",
-    // As much room left of the unread dot as between it and the text (10px each side of it).
-    padding: "9px 10px 10px 8px",
+    padding: "9px 10px 10px",
     borderRadius: radii.row,
     color: colors.textPrimary,
     cursor: "default",
     outline: "none",
   },
-  unreadSlot: {
-    display: "flex",
+  unreadDot: {
     flexShrink: 0,
-    justifyContent: "center",
-    width: 12,
-    paddingTop: 5,
+    width: 7,
+    height: 7,
+    borderRadius: "50%",
+    backgroundColor: colors.systemBlue,
   },
-  unreadDot: { width: 8, height: 8, borderRadius: "50%", backgroundColor: colors.systemBlue },
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
   // The first line, with a little room under it (as much as above a row's due date and labels).
   // The title and when, on the first line.
@@ -1368,7 +1367,10 @@ const s = stylex.create({
   // Who wrote last, at the start of the preview: a little stronger than their words.
   from: { color: colors.textSecondary, fontWeight: 500 },
   stamp: {
+    display: "flex",
     flexShrink: 0,
+    gap: 6,
+    alignItems: "center",
     color: colors.textTertiary,
     fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
