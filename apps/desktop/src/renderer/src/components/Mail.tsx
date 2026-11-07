@@ -790,28 +790,30 @@ function Row(props: { thread: Thread }): JSX.Element {
             </span>
             <span class={sx(s.stamp)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
           </span>
-          {/* Who wrote last leads into what they wrote, so the name and their words read as one. */}
-          <span class={sx(s.preview)}>
-            <span class={sx(s.from)}>{from()?.name ?? ""}</span>
-            <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
-          </span>
-          {/* Always there, empty or not, so every row is the same height. */}
-          <span class={sx(s.chips)}>
-            <Show when={t().isOpen && t().dueAt}>
-              {(due) => (
-                <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
-                  <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
-                  {shortDate(due())}
-                </span>
-              )}
-            </Show>
-            <For
-              each={t()
-                .labelIds.map((id) => store.findById(Label, id))
-                .filter((l) => l !== undefined)}
-            >
-              {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
-            </For>
+          {/* Two lines, every row: the title, then who wrote last leading into what they wrote (cut to the line), with
+              the due date and labels at its end. */}
+          <span class={sx(s.rowBottom)}>
+            <span class={sx(base.ellipsis, s.preview)}>
+              <span class={sx(s.from)}>{from()?.name ?? ""}</span>
+              <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
+            </span>
+            <span class={sx(s.chips)}>
+              <Show when={t().isOpen && t().dueAt}>
+                {(due) => (
+                  <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
+                    <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
+                    {shortDate(due())}
+                  </span>
+                )}
+              </Show>
+              <For
+                each={t()
+                  .labelIds.map((id) => store.findById(Label, id))
+                  .filter((l) => l !== undefined)}
+              >
+                {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
+              </For>
+            </span>
           </span>
         </span>
       </div>
@@ -1391,24 +1393,15 @@ const s = stylex.create({
   priority: { flexShrink: 0, color: "#ff9f0a", fontSize: fontSizes.body, fontWeight: 700 },
   urgent: { color: colors.urgent },
   stateMark: { display: "flex", flexShrink: 0, color: colors.textTertiary },
-  // Two lines' room even when it's one, so rows don't change height.
-  preview: {
-    minHeight: 32,
-    display: "-webkit-box",
-    overflow: "hidden",
-    color: colors.textTertiary,
-    fontSize: fontSizes.body,
-    lineHeight: "16px",
-    WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 2,
-  },
-  // One line, never wrapping: what doesn't fit is cut off rather than making the row taller.
+  preview: { flex: 1, color: colors.textTertiary, fontSize: fontSizes.body, lineHeight: "16px" },
+  // The preview's line: the preview takes what the due date and labels leave.
+  rowBottom: { display: "flex", gap: 8, alignItems: "center", minWidth: 0 },
   chips: {
     display: "flex",
+    flexShrink: 0,
     gap: 6,
     alignItems: "center",
-    height: 16,
-    marginTop: 3,
+    maxWidth: "50%",
     overflow: "hidden",
   },
   due: {
