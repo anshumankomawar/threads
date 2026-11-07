@@ -485,7 +485,7 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 }
 
 // ── Keys ──
-// Which mailbox ⌘1–⌘4 choose (Inbox, Personal, Sent, Drafts): mail.ts says how, as it owns the mailboxes.
+// Which mailbox ⌘1–⌘4 choose (Inbox, Sent, Drafts, Personal): mail.ts says how, as it owns the mailboxes.
 let chooseBox: (which: "inbox" | "personal" | "sent" | "drafts") => void = () => {};
 export const onChooseBox = (choose: typeof chooseBox): void => {
   chooseBox = choose;
