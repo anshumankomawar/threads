@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Draft, Label, Subspace, Thread, User, View } from "models";
+import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
 import {
   active,
   byName,
@@ -24,6 +24,7 @@ import {
   threadMenu,
   unread,
   view,
+  type MenuItem,
 } from "../session";
 import {
   chooseMailbox,
@@ -94,6 +95,8 @@ function Mailbox(props: {
   count?: number;
   indent?: boolean;
   disclosure?: { open: boolean; toggle: () => void };
+  // What right-clicking it offers.
+  menu?: () => MenuItem[];
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
@@ -104,26 +107,32 @@ function Mailbox(props: {
         aria-current={on() ? "true" : undefined}
         class={sx(s.mailbox, props.indent && s.indent, on() && s.mailboxOn)}
         onClick={() => chooseMailbox(props.box)}
+        onContextMenu={(e) => {
+          const items = props.menu?.();
+          if (items) showMenu(e, items);
+        }}
         onKeyDown={(e) => {
           if (e.key !== "Enter" && e.key !== " ") return;
           e.preventDefault();
           chooseMailbox(props.box);
         }}
       >
-        <span class={sx(s.disclosureSlot)}>
-          <Show when={props.disclosure}>
-            {(d) => (
-              <button
-                class={sx(base.bare, s.disclosure, d().open && s.disclosureOpen)}
-                aria-label={d().open ? "Collapse" : "Expand"}
-                aria-expanded={d().open ? "true" : "false"}
-                onClick={(e) => (e.stopPropagation(), d().toggle())}
-              >
-                <Icon icon={i.ArrowRight01Icon} size={10} aria-hidden="true" />
-              </button>
-            )}
-          </Show>
-        </span>
+        <Show when={!props.indent}>
+          <span class={sx(s.disclosureSlot)}>
+            <Show when={props.disclosure}>
+              {(d) => (
+                <button
+                  class={sx(base.bare, s.disclosure, d().open && s.disclosureOpen)}
+                  aria-label={d().open ? "Collapse" : "Expand"}
+                  aria-expanded={d().open ? "true" : "false"}
+                  onClick={(e) => (e.stopPropagation(), d().toggle())}
+                >
+                  <Icon icon={i.ArrowRight01Icon} size={10} aria-hidden="true" />
+                </button>
+              )}
+            </Show>
+          </span>
+        </Show>
         <span class={sx(s.mailboxIcon)}>
           <Icon icon={props.icon} {...ICON} />
         </span>
@@ -162,7 +171,13 @@ function Section(props: {
   const shut = (): boolean => folded().includes(props.title);
   return (
     <section class={sx(s.section)}>
-      <div class={sx(s.sectionHeader, stylex.defaultMarker())}>
+      <div
+        class={sx(s.sectionHeader, stylex.defaultMarker())}
+        onContextMenu={(e) => {
+          const add = props.add;
+          if (add) showMenu(e, [{ label: `${add.label}…`, run: add.run }]);
+        }}
+      >
         <button
           class={sx(base.bare, s.sectionTitle)}
           aria-expanded={shut() ? "false" : "true"}
@@ -214,6 +229,36 @@ function Expandable(props: {
   const open_ = (): boolean => expanded().includes(key());
   const field = (): "subspaceIds" | "labelIds" =>
     props.box.kind === "subspace" ? "subspaceIds" : "labelIds";
+  const menu = (): MenuItem[] => {
+    const box = props.box;
+    const toggle: MenuItem = {
+      label: open_() ? "Hide threads" : "Show threads",
+      run: () => toggleExpanded(key()),
+    };
+    if (box.kind === "label")
+      return [
+        { label: "Open label page", run: () => open({ label: box.id }) },
+        {
+          label: "New thread with this label…",
+          run: () => setDialog({ kind: "newThread", labelId: box.id }),
+        },
+        "separator",
+        toggle,
+      ];
+    const sub = store.findById(Subspace, box.id);
+    return [
+      { label: "Open space page", run: () => open({ subspace: box.id }) },
+      {
+        label: "New thread in this space…",
+        run: () => setDialog({ kind: "newThread", subspaceId: box.id }),
+      },
+      ...(sub
+        ? [{ label: "Add member…", run: () => setDialog({ kind: "addMember", subspace: sub }) }]
+        : []),
+      "separator",
+      toggle,
+    ];
+  };
   const threads = (): Thread[] =>
     store
       .all(Thread)
@@ -227,6 +272,7 @@ function Expandable(props: {
         icon={props.icon}
         count={threads().length}
         disclosure={{ open: open_(), toggle: () => toggleExpanded(key()) }}
+        menu={menu}
       />
       <li class={sx(s.mailboxItem)}>
         <Collapse open={open_()}>
@@ -274,6 +320,39 @@ function Expandable(props: {
   );
 }
 
+// What right-clicking a bucket offers, as the old sidebar's bucket headings did.
+function bucketMenu(bucket: Bucket): MenuItem[] {
+  const move = (by: number) => () => {
+    const buckets = myBuckets();
+    const other = buckets[buckets.indexOf(bucket) + by];
+    if (!other) return;
+    [bucket.position, other.position] = [other.position, bucket.position];
+    bucket.save();
+    other.save();
+  };
+  return [
+    { label: "Edit bucket…", run: () => setDialog({ kind: "bucket", bucket }) },
+    { label: "New bucket…", run: () => setDialog({ kind: "bucket" }) },
+    "separator",
+    { label: "Move up", run: move(-1) },
+    { label: "Move down", run: move(1) },
+    // Sorting needs somewhere to put things.
+    ...(myBuckets().length > 1
+      ? [
+          "separator" as const,
+          {
+            label: "Delete bucket",
+            run: () => {
+              if (sameMailbox(mailbox(), { kind: "bucket", id: bucket.id }))
+                chooseMailbox({ kind: "inbox" });
+              void bucket.delete();
+            },
+          },
+        ]
+      : []),
+  ];
+}
+
 export function MailSidebar(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   return (
@@ -299,6 +378,13 @@ export function MailSidebar(): JSX.Element {
             icon={i.InboxIcon}
             count={inbox().order.length}
             disclosure={{ open: !folded().includes("inbox"), toggle: () => toggleFold("inbox") }}
+            menu={() => [
+              { label: "New bucket…", run: () => setDialog({ kind: "bucket" }) },
+              {
+                label: folded().includes("inbox") ? "Show buckets" : "Hide buckets",
+                run: () => toggleFold("inbox"),
+              },
+            ]}
           />
           <li class={sx(s.mailboxItem)}>
             <Collapse open={!folded().includes("inbox")}>
@@ -320,6 +406,7 @@ export function MailSidebar(): JSX.Element {
                       icon={icons().get(section.bucket.id) ?? i.InboxIcon}
                       count={section.items.length}
                       indent
+                      menu={() => bucketMenu(section.bucket)}
                     />
                   )}
                 </For>
@@ -363,13 +450,34 @@ export function MailSidebar(): JSX.Element {
           </For>
         </Section>
         <Section title="Views">
-          <Mailbox box={{ kind: "all" }} label="All threads" icon={i.DashboardSquare01Icon} />
+          <Mailbox
+            box={{ kind: "all" }}
+            label="All threads"
+            icon={i.DashboardSquare01Icon}
+            menu={() => [{ label: "Open as a table", run: () => open({ view: null }) }]}
+          />
           <For each={byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id))}>
             {(saved) => (
               <Mailbox
                 box={{ kind: "view", id: saved.id }}
                 label={saved.name}
                 icon={i.FilterIcon}
+                menu={() => [
+                  { label: "Open as a table", run: () => open({ view: saved.id }) },
+                  ...(saved.ownerId === me().id
+                    ? [
+                        "separator" as const,
+                        {
+                          label: "Delete view",
+                          run: () => {
+                            if (sameMailbox(mailbox(), { kind: "view", id: saved.id }))
+                              chooseMailbox({ kind: "all" });
+                            void saved.delete();
+                          },
+                        },
+                      ]
+                    : []),
+                ]}
               />
             )}
           </For>
@@ -433,7 +541,7 @@ function Row(props: { thread: Thread }): JSX.Element {
     if (shown) row.scrollIntoView({ block: "nearest" });
   });
   return (
-    <li class={sx(s.rowItem)}>
+    <li class={sx(s.rowItem)} data-on={on() ? "" : undefined}>
       <div
         ref={row}
         role="button"
@@ -516,6 +624,16 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
         tabindex={0}
         class={sx(s.row)}
         onClick={() => setDialog({ kind: "compose", draftId: props.draft.id })}
+        onContextMenu={(e) =>
+          showMenu(e, [
+            {
+              label: "Open draft",
+              run: () => setDialog({ kind: "compose", draftId: props.draft.id }),
+            },
+            "separator",
+            { label: "Delete draft", run: () => void props.draft.delete() },
+          ])
+        }
       >
         <span class={sx(s.unreadSlot)} />
         <span class={sx(s.rowBody)}>
@@ -783,7 +901,15 @@ const s = stylex.create({
   },
   sidebarBar: { paddingLeft: sidebarSpace.afterLights },
   nav: { flex: 1, minHeight: 0, padding: "2px 8px 12px", overflowY: "auto" },
-  mailboxes: { margin: 0, padding: 0, listStyle: "none" },
+  // A little space between rows, so neighbouring fills (a space and its open thread) don't run together.
+  mailboxes: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
+  },
   mailboxItem: { listStyle: "none" },
   mailbox: {
     display: "flex",
@@ -799,8 +925,9 @@ const s = stylex.create({
     backgroundColor: { default: "transparent", ":focus-visible": colors.bgQuaternary },
   },
   mailboxOn: { backgroundColor: colors.bgTertiary },
-  // Indented by a margin, not padding, so its hover and selection fill starts at the indent too.
-  indent: { marginLeft: 14 },
+  // Indented by a margin, not padding, and without the disclosure's slot, so its hover and selection fill starts just
+  // before its icon (which lines up with where it was: 14 + 12 + 6).
+  indent: { marginLeft: 26, paddingLeft: 6 },
   disclosureSlot: { display: "flex", flexShrink: 0, justifyContent: "center", width: 12 },
   disclosure: {
     display: "flex",
@@ -819,7 +946,7 @@ const s = stylex.create({
   },
   collapseOpen: { gridTemplateRows: "1fr", opacity: 1 },
   // A space's or label's threads: five rows tall, scrolling past that.
-  threadRows: { maxHeight: 24 * 5, overflowY: "auto", overscrollBehavior: "contain" },
+  threadRows: { maxHeight: 24 * 5 + 2 * 4, overflowY: "auto", overscrollBehavior: "contain" },
   threadRow: {
     display: "flex",
     gap: 10,
@@ -827,8 +954,8 @@ const s = stylex.create({
     height: 24,
     // Under the mailbox's icon, so the titles line up with the names above; the indent is a margin, so the row's
     // fill starts there rather than at the sidebar's edge.
-    marginLeft: 18,
-    paddingLeft: 4,
+    marginLeft: 16,
+    paddingLeft: 6,
     paddingRight: 8,
     borderRadius: radii.row,
     color: colors.textSecondary,
@@ -939,10 +1066,15 @@ const s = stylex.create({
   rows: { margin: 0, padding: 0, listStyle: "none" },
   rowItem: {
     listStyle: "none",
-    // A hairline between rows, inset past the dot and avatar as Mail's is.
+    // A hairline between rows; it gives way on both sides of a selected or hovered row, so its rounded fill stands
+    // clear rather than cut by the lines above and below it.
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: colors.strokeTertiary,
+    borderBottomColor: {
+      default: colors.strokeTertiary,
+      ":is([data-on], :hover)": "transparent",
+      ":has(+ :is([data-on], :hover))": "transparent",
+    },
   },
   row: {
     display: "flex",

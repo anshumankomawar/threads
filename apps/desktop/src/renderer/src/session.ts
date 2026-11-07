@@ -148,7 +148,11 @@ function applyZoom(next: number): void {
 
 export const showMenu = (event: MouseEvent, items: MenuItem[]): void => {
   event.preventDefault();
-  setMenu({ x: event.clientX, y: event.clientY, items });
+  const open = (): void => void setMenu({ x: event.clientX, y: event.clientY, items });
+  // On macOS a right click asks for the menu as its button goes down. Opened then, the button coming up would
+  // light-dismiss it (it wasn't open when the button went down), so with a button held it opens once that's up.
+  if (event.buttons === 0) return open();
+  window.addEventListener("pointerup", () => setTimeout(open), { once: true, capture: true });
 };
 
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
