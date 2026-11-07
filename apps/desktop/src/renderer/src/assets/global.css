@@ -32,6 +32,12 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* No focus rings anywhere: where you are shows as each control's own hover or selected state, as in Mail. */
+  :focus,
+  :focus-visible {
+    outline: none;
+  }
+
   body * {
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;

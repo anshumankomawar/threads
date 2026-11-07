@@ -41,6 +41,8 @@ export type InlineAsk = {
   title?: string;
   icon: IconSvgElement;
   fields: { label: string; placeholder: string; value?: string }[];
+  // What has to be typed for Enter to do it (a name, to confirm a delete); otherwise it waits.
+  accept?: (values: string[]) => boolean;
   submit: (values: string[]) => void;
 };
 
@@ -155,7 +157,9 @@ export function InlineForm(): JSX.Element {
         const inputs: HTMLInputElement[] = [];
         const rect = (): DOMRect =>
           ask.at instanceof Element ? ask.at.getBoundingClientRect() : ask.at;
-        const size = Math.round(rect().width) || 13;
+        // An icon's own size; from anything bigger (a button), a menu entry's.
+        const width = Math.round(rect().width);
+        const size = width > 0 && width <= 16 ? width : 13;
         const open = (panel: HTMLDivElement): void => {
           holdFocus(panel);
           queueMicrotask(() => {
@@ -164,6 +168,9 @@ export function InlineForm(): JSX.Element {
             panel.style.top = `${at.top + at.height / 2 - TO_FIRST_ROW}px`;
             const ghost = ask.ghost;
             panel.showPopover();
+            // On screen: near the window's right edge, it opens leftward far enough to fit.
+            const { width } = panel.getBoundingClientRect();
+            panel.style.left = `${Math.max(8, Math.min(at.left - LEAD, innerWidth - width - 8))}px`;
             // The menu's copy over the form, fading out; the form under it, fading in faster, so neither is ever
             // half there over the page.
             if (ghost) {
@@ -184,7 +191,7 @@ export function InlineForm(): JSX.Element {
         const enter = (n: number): void => {
           if (n < inputs.length - 1) return inputs[n + 1].focus();
           const values = inputs.map((input) => input.value.trim());
-          if (!values[0]) return inputs[0].focus();
+          if (!values[0] || (ask.accept && !ask.accept(values))) return inputs[0].focus();
           setAsked(null);
           ask.submit(values);
         };

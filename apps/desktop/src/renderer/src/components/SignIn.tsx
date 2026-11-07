@@ -50,7 +50,7 @@ const styles = stylex.create({
   },
   input: {
     ...field,
-    borderColor: { default: colors.strokeTertiary, ":focus": colors.strokeFocused },
+    borderColor: colors.strokeTertiary,
     outline: "none",
     color: colors.textPrimary,
     backgroundColor: "transparent",

@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Draft, Label, Subspace, Thread, User, View } from "models";
+import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
 import {
   active,
   itemFor,
@@ -34,7 +34,14 @@ import { Icon } from "./components/Icon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
-import { LabelView, PersonView, SavedView, SettingsView, SubspaceView } from "./components/Pages";
+import {
+  BucketView,
+  LabelView,
+  PersonView,
+  SavedView,
+  SettingsView,
+  SubspaceView,
+} from "./components/Pages";
 import { HistoryButtons } from "./components/Sidebar";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
@@ -115,13 +122,14 @@ function Waiting(): JSX.Element {
 
 export default function App(): JSX.Element {
   // With no thread open, the chosen mailbox's own page: a space's, a view's or a label's settings.
-  const chosenId = (kind: "subspace" | "view" | "label"): string | undefined => {
+  const chosenId = (kind: "subspace" | "view" | "label" | "bucket"): string | undefined => {
     const shownNow = view();
     const box = mailbox();
     return "thread" in shownNow && shownNow.thread === null && box.kind === kind
       ? box.id
       : undefined;
   };
+  const bucket = () => store.findById(Bucket, shown("bucket") ?? chosenId("bucket") ?? "");
   const label = () => store.findById(Label, shown("label") ?? chosenId("label") ?? "");
   const subspace = () => store.findById(Subspace, shown("subspace") ?? chosenId("subspace") ?? "");
   const savedView = () => store.findById(View, shown("view") ?? chosenId("view") ?? "");
@@ -157,6 +165,7 @@ export default function App(): JSX.Element {
             <span class={sx(base.ellipsis, topbar.title)}>
               {active()?.title ??
                 label()?.name ??
+                bucket()?.name ??
                 subspace()?.name ??
                 savedView()?.name ??
                 (allThreads() ? "Workspace" : undefined) ??
@@ -179,6 +188,9 @@ export default function App(): JSX.Element {
             </Match>
             <Match when={savedView()} keyed>
               {(saved) => <SavedView view={saved} />}
+            </Match>
+            <Match when={bucket()} keyed>
+              {(chosenBucket) => <BucketView bucket={chosenBucket} />}
             </Match>
             <Match when={label()} keyed>
               {(chosenLabel) => <LabelView label={chosenLabel} />}

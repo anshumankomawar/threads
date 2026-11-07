@@ -59,7 +59,7 @@ export const page = stylex.create({
     padding: "0 8px",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: { default: colors.strokeTertiary, ":focus-within": colors.strokeFocused },
+    borderColor: colors.strokeTertiary,
     borderRadius: radii.row,
     color: colors.iconTertiary,
     cursor: "text",

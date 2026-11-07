@@ -114,6 +114,7 @@ export type View =
   | { label: string }
   | { person: string }
   | { subspace: string }
+  | { bucket: string }
   | { view: string | null }
   | { settings: null }
   | { personal: null }
@@ -269,7 +270,7 @@ const activeId = (): string | null => {
 export const active = (): Thread | undefined => store.findById(Thread, activeId() ?? "");
 // The id the view shows of one kind of page, if it's that kind.
 export const shown = (
-  key: "label" | "person" | "subspace" | "view" | "draft",
+  key: "label" | "person" | "subspace" | "bucket" | "view" | "draft",
 ): string | undefined => (view() as Record<string, string | null | undefined>)[key] ?? undefined;
 export const allThreads = (): boolean => "view" in view() && shown("view") === undefined;
 

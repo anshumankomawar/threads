@@ -417,6 +417,23 @@ function askBucket(from: DOMRect, bucket?: Bucket): void {
   });
 }
 
+// Deleting a bucket, confirmed by typing its name in a form grown out of the entry that asked; its threads go back to
+// the model to sort.
+export function askDeleteBucket(from: DOMRect, bucket: Bucket): void {
+  askInline({
+    at: from,
+    icon: i.Delete02Icon,
+    title: "Delete Bucket",
+    fields: [{ label: "Bucket name", placeholder: `Type “${bucket.name}” to delete it` }],
+    accept: ([typed]) => typed === bucket.name,
+    submit: () => {
+      if (sameMailbox(mailbox(), { kind: "bucket", id: bucket.id }))
+        chooseMailbox({ kind: "inbox" });
+      void bucket.delete();
+    },
+  });
+}
+
 // What right-clicking a bucket offers, as the old sidebar's bucket headings did.
 function bucketMenu(bucket: Bucket): MenuItem[] {
   const move = (by: number) => () => {
@@ -444,11 +461,7 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
           {
             label: "Delete Bucket",
             icon: icon(i.Delete02Icon, 13),
-            run: () => {
-              if (sameMailbox(mailbox(), { kind: "bucket", id: bucket.id }))
-                chooseMailbox({ kind: "inbox" });
-              void bucket.delete();
-            },
+            run: (from) => askDeleteBucket(from, bucket),
           },
         ]
       : []),
@@ -815,7 +828,13 @@ function valueIcon(field: string, value: string): JSX.Element | undefined {
 
 // The list's button to a mailbox's page: a space's or view's settings (a gear), or someone's profile.
 const pageLabel = (box: Mailbox): string =>
-  box.kind === "subspace" ? "Space settings" : box.kind === "view" ? "View settings" : "Profile";
+  box.kind === "subspace"
+    ? "Space settings"
+    : box.kind === "view"
+      ? "View settings"
+      : box.kind === "bucket"
+        ? "Bucket settings"
+        : "Profile";
 
 // What a mailbox's page shows beside its list: a space's description, members and settings, a saved view's settings,
 // or someone's profile.
@@ -824,9 +843,11 @@ const pageOf = (box: Mailbox) =>
     ? { subspace: box.id }
     : box.kind === "view"
       ? { view: box.id }
-      : box.kind === "person"
-        ? { person: box.id }
-        : undefined;
+      : box.kind === "bucket"
+        ? { bucket: box.id }
+        : box.kind === "person"
+          ? { person: box.id }
+          : undefined;
 
 export function MessageList(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
@@ -835,19 +856,21 @@ export function MessageList(): JSX.Element {
     const next: Mailbox | undefined =
       "subspace" in shown
         ? { kind: "subspace", id: shown.subspace }
-        : "label" in shown
-          ? { kind: "label", id: shown.label }
-          : "person" in shown
-            ? { kind: "person", id: shown.person }
-            : "draft" in shown
-              ? { kind: "drafts" }
-              : "personal" in shown
-                ? { kind: "personal" }
-                : "view" in shown
-                  ? shown.view === null
-                    ? { kind: "all" }
-                    : { kind: "view", id: shown.view }
-                  : undefined;
+        : "bucket" in shown
+          ? { kind: "bucket", id: shown.bucket }
+          : "label" in shown
+            ? { kind: "label", id: shown.label }
+            : "person" in shown
+              ? { kind: "person", id: shown.person }
+              : "draft" in shown
+                ? { kind: "drafts" }
+                : "personal" in shown
+                  ? { kind: "personal" }
+                  : "view" in shown
+                    ? shown.view === null
+                      ? { kind: "all" }
+                      : { kind: "view", id: shown.view }
+                    : undefined;
     if (next) showMailbox(next);
   });
   // A space's threads, and those of any space a filter names, load even if you're not in it.

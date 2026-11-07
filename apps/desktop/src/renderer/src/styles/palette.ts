@@ -145,14 +145,15 @@ export const compose = stylex.create({
     padding: "2px 6px",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: { default: "transparent", ":focus": colors.strokeFocused },
+    borderColor: "transparent",
     borderRadius: radii.control,
     color: text,
     font: "inherit",
+    // While you're in it, the same wash as under the pointer: a field, not a ring.
     backgroundColor: {
       default: "transparent",
       ":hover": colors.bgQuaternary,
-      ":focus": "transparent",
+      ":focus": colors.bgQuaternary,
     },
     outline: "none",
     resize: "none",

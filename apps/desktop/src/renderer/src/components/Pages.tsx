@@ -1,12 +1,15 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Label, Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
-import { me, memberOf, open, store, edit, memberIn, workspace } from "../session";
+import * as stylex from "@stylexjs/stylex";
+import { Bucket, Label, Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
+import { me, memberOf, myBuckets, open, store, edit, memberIn, workspace } from "../session";
+import { askDeleteBucket } from "./Mail";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
+import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { ComboButton, MenuChip } from "./Menus";
@@ -194,6 +197,78 @@ export function SavedView(props: { view: View }): JSX.Element {
     </div>
   );
 }
+
+// A bucket of your inbox: its name and what goes in it (the model sorts threads into it by that), edited in place, and
+// deleting it. Its threads are listed beside.
+export function BucketView(props: { bucket: Bucket }): JSX.Element {
+  const b = (): Bucket => props.bucket;
+  const settings: Page = {
+    tab: SETTINGS,
+    body: (
+      <Settings>
+        <Setting name="Name" hint="How it's listed in your inbox.">
+          <input
+            class={sx(base.bare, fields.field)}
+            aria-label="Name"
+            value={b().name}
+            spellcheck={false}
+            onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
+            onBlur={(event) => {
+              const name = event.currentTarget.value.trim().slice(0, 40);
+              if (name && name !== b().name) edit(b(), { name });
+            }}
+          />
+        </Setting>
+        <Setting name="What goes in it" hint="Threads like this are sorted into it.">
+          <textarea
+            class={sx(base.bare, fields.field, fields.area)}
+            aria-label="What goes in it"
+            rows={1}
+            value={b().description}
+            onBlur={(event) => {
+              const description = event.currentTarget.value.trim().slice(0, 500);
+              if (description !== b().description) edit(b(), { description });
+            }}
+          />
+        </Setting>
+        {/* Sorting needs somewhere to put things. */}
+        <Show when={myBuckets().length > 1}>
+          <Setting name="Delete bucket" hint="Its threads go back to be sorted.">
+            <button
+              class={sx(base.hover, chip.chip, chipTone.urgent)}
+              onClick={(event) => askDeleteBucket(event.currentTarget.getBoundingClientRect(), b())}
+            >
+              Delete
+            </button>
+          </Setting>
+        </Show>
+      </Settings>
+    ),
+  };
+  return (
+    <div class={sx(page.page)}>
+      <Title name={b().name} />
+      <p class={sx(page.summary)}>Its threads are listed beside; filter them there.</p>
+      <PageTabs pages={[settings]} />
+    </div>
+  );
+}
+
+// A setting's text field: plain text with a quiet border, a wash while you're in it.
+const fields = stylex.create({
+  field: {
+    width: 280,
+    padding: "4px 8px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.strokeTertiary,
+    borderRadius: radii.control,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    backgroundColor: { default: "transparent", ":focus": colors.bgQuaternary },
+  },
+  area: { resize: "none", fieldSizing: "content", minHeight: 24 },
+});
 
 // A label: its threads are listed beside, and here it can go.
 export function LabelView(props: { label: Label }): JSX.Element {
