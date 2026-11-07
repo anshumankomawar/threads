@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { paletteSectionMarker } from "./markers.stylex";
-import { colors, contentZoom, fontSizes, motion, radii, shadows } from "./tokens.stylex";
+import { colors, contentZoom, fontSizes, motion, radii } from "./tokens.stylex";
 
 const below = {
   borderBottomWidth: 1,
@@ -33,7 +33,7 @@ export const palette = stylex.create({
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     lineHeight: "16px",
-    boxShadow: shadows.panel,
+    boxShadow: colors.shadowPanel,
     outline: "none",
     animationName: { default: panelIn, [motion.reduced]: "none" },
     animationDuration: "120ms",

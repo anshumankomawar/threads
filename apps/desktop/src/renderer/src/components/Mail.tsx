@@ -388,8 +388,7 @@ function Expandable(props: {
                     role="button"
                     tabindex={0}
                     data-pill
-                    aria-current={row.current ? "true" : undefined}
-                    class={sx(s.threadRow)}
+                    class={sx(s.threadRow, row.current && s.threadRowOpen)}
                     title={row.title}
                     onClick={() => row.run()}
                     onContextMenu={(e) => row.menu?.(e)}
@@ -1265,6 +1264,9 @@ const s = stylex.create({
     cursor: "default",
     outline: "none",
   },
+  // The thread open beside, under its mailbox: its title stands out, while the pill stays on the mailbox (the sidebar
+  // chooses where you're looking; the list shows what's open).
+  threadRowOpen: { color: colors.textPrimary, fontWeight: 500 },
   threadDot: {
     flexShrink: 0,
     width: 6,

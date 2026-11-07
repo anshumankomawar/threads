@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { base } from "./base";
-import { colors, fontSizes, layers, motion, radii, shadows } from "./tokens.stylex";
+import { colors, fontSizes, layers, motion, radii } from "./tokens.stylex";
 
 // Below, starting at the anchor's left edge (StyleX's types only know single keywords).
 const UNDER = "bottom span-right" as "bottom";
@@ -54,7 +54,7 @@ export const menu = stylex.create({
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     lineHeight: "16px",
-    boxShadow: shadows.panel,
+    boxShadow: colors.shadowPanel,
   },
   // A popover menu: shown only while open (the panel's `display` would otherwise beat the browser's hiding), fading
   // in as it opens.
@@ -221,7 +221,7 @@ export const toast = stylex.create({
     gap: 10,
     alignItems: "flex-start",
     padding: "10px 10px 10px 12px",
-    boxShadow: shadows.float,
+    boxShadow: colors.shadowFloat,
     cursor: "pointer",
     touchAction: "pan-y",
     userSelect: "none",
@@ -256,7 +256,7 @@ export const toast = stylex.create({
     padding: "8px 12px",
     color: colors.textSecondary,
     fontSize: fontSizes.body,
-    boxShadow: shadows.float,
+    boxShadow: colors.shadowFloat,
     transform: "translateX(-50%)",
     animationName: { default: toastIn, [motion.reduced]: "none" },
     animationDuration: "160ms",

@@ -34,6 +34,10 @@ export const colors = stylex.defineVars({
   avatarRing: "transparent",
   // Mail's unread dot.
   systemBlue: "#0a84ff",
+  // Shadows under floating panels (menus, palettes) and floating bars (toasts, a draft's bar): deep on dark, where a
+  // shadow has little to show against, and light on light.
+  shadowPanel: "0 4px 12px rgb(0 0 0 / 28%)",
+  shadowFloat: "0 8px 24px rgb(0 0 0 / 35%)",
 });
 
 export const lightTheme = stylex.createTheme(colors, {
@@ -60,6 +64,8 @@ export const lightTheme = stylex.createTheme(colors, {
   overlay: "rgb(0 0 0 / 18%)",
   avatarRing: "rgb(0 0 0 / 14%)",
   systemBlue: "#007aff",
+  shadowPanel: "0 2px 8px rgb(0 0 0 / 8%)",
+  shadowFloat: "0 4px 14px rgb(0 0 0 / 9%)",
 });
 
 export const sidebarSpace = stylex.defineConsts({
@@ -106,9 +112,4 @@ export const fontSizes = stylex.defineConsts({
 // Animations stop for anyone who asks the system for less motion.
 export const motion = stylex.defineConsts({
   reduced: "@media (prefers-reduced-motion: reduce)",
-});
-
-export const shadows = stylex.defineConsts({
-  panel: "0 4px 12px rgb(0 0 0 / 28%)",
-  float: "0 8px 24px rgb(0 0 0 / 35%)",
 });

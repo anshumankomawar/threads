@@ -57,7 +57,7 @@ const styles = stylex.create({
     borderColor: colors.panelBorder,
     borderRadius: radii.panel,
     backgroundColor: colors.panel,
-    boxShadow: "0 4px 16px rgb(0 0 0 / 22%)",
+    boxShadow: colors.shadowFloat,
   },
   barText: { display: "flex", flex: 1, gap: 6, alignItems: "center", color: colors.textSecondary },
   delete: {
