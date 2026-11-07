@@ -12,7 +12,7 @@ export const HOTKEYS = [
   { id: "forward", label: "Forward", section: "General", keys: "⌘]" },
   { id: "sidebar", label: "Show or hide the sidebar", section: "General", keys: "⌘\\" },
   // The sidebar's segments, in order.
-  { id: "mailGroup", label: "Mail", section: "Sidebar", keys: "⌘1" },
+  { id: "mailGroup", label: "Inbox", section: "Sidebar", keys: "⌘1" },
   { id: "spacesGroup", label: "Spaces", section: "Sidebar", keys: "⌘2" },
   { id: "viewsGroup", label: "Views", section: "Sidebar", keys: "⌘3" },
   { id: "newThread", label: "New thread", section: "Create", keys: "⌘N" },

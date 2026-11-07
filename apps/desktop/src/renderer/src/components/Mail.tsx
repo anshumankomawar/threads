@@ -491,11 +491,11 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   ];
 }
 
-// The sidebar's segments, each one group of mailboxes: your mail (the inbox, its buckets, sent and drafts), the
+// The sidebar's segments, each one group of mailboxes: your inbox (with its buckets, sent and drafts), the
 // workspace's spaces and labels, and views across it. The one shown follows the mailbox you choose, wherever from.
 type SidebarGroup = "mail" | "spaces" | "views";
 const GROUPS: (Tab & { key: SidebarGroup })[] = [
-  { key: "mail", label: "Mail", icon: i.InboxIcon },
+  { key: "mail", label: "Inbox", icon: i.InboxIcon },
   { key: "spaces", label: "Spaces", icon: i.Layers01Icon },
   { key: "views", label: "Views", icon: i.ViewIcon },
 ];
@@ -548,7 +548,7 @@ export function MailSidebar(): JSX.Element {
           <ul class={sx(s.mailboxes)}>
             <Mailbox
               box={{ kind: "inbox" }}
-              label="Inbox"
+              label="Buckets"
               icon={i.InboxIcon}
               count={inbox().order.length}
               menu={() => [

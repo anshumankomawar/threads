@@ -312,7 +312,7 @@ const place = (
 function places(): Command[] {
   const icons = bucketIcons(myBuckets());
   return [
-    place("inbox", "Inbox", i.InboxIcon, { kind: "inbox" }, "mail"),
+    place("inbox", "Buckets", i.InboxIcon, { kind: "inbox" }, "inbox mail all"),
     ...inbox().sections.map((s) =>
       place(
         s.bucket.id,
@@ -416,9 +416,9 @@ function app(): Command[] {
   return [
     ...hotkey("settings", "Settings", section, i.Settings02Icon, "preferences hotkeys"),
     ...hotkey("sidebar", "Show or Hide the Sidebar", section, i.PanelLeftIcon, "toggle"),
-    ...hotkey("mailGroup", "Show Mail", section, i.InboxIcon, "sidebar tab"),
-    ...hotkey("spacesGroup", "Show Spaces", section, i.Layers01Icon, "sidebar tab"),
-    ...hotkey("viewsGroup", "Show Views", section, i.ViewIcon, "sidebar tab"),
+    ...hotkey("mailGroup", "Show Inbox Tab", section, i.InboxIcon, "sidebar tab"),
+    ...hotkey("spacesGroup", "Show Spaces Tab", section, i.Layers01Icon, "sidebar tab"),
+    ...hotkey("viewsGroup", "Show Views Tab", section, i.ViewIcon, "sidebar tab"),
     ...hotkey("back", "Back", section, i.ArrowLeft01Icon, "history previous"),
     ...hotkey("forward", "Forward", section, i.ArrowRight01Icon, "history next"),
     {

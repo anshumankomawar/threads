@@ -203,8 +203,9 @@ export const drafts = store.view(() =>
 // The mailbox's name, for the list's header.
 export function mailboxTitle(box: Mailbox): string {
   switch (box.kind) {
+    // All of your inbox, every bucket at once (the sidebar's Inbox tab holds it).
     case "inbox":
-      return "Inbox";
+      return "Buckets";
     case "unsorted":
       return "Sorting";
     case "sent":
