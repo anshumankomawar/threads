@@ -183,6 +183,18 @@ export function Peek(): JSX.Element {
     <div
       ref={(el) => {
         window = el;
+        // A manual popover, so a menu opened in it (a right-click, a property's, the reply's) doesn't close it: it
+        // closes itself on Escape or a click outside it and outside anything opened over it.
+        document.addEventListener(
+          "pointerdown",
+          (event) => {
+            const target = event.target as Element;
+            if (!el.matches(":popover-open") || el.contains(target)) return;
+            if (target.closest(":popover-open, dialog[open]")) return;
+            close();
+          },
+          { capture: true },
+        );
         // Open while there's something to peek at; a link inside it replaces what's shown.
         createEffect(peeked, (shown) => {
           // Taking the focus, so Escape and the keys are its, not the reply's behind it.
@@ -192,7 +204,8 @@ export function Peek(): JSX.Element {
           } else if (!shown && el.matches(":popover-open")) el.hidePopover();
         });
       }}
-      popover="auto"
+      popover="manual"
+      data-peek
       tabindex={-1}
       class={sx(styles.window)}
       style={{
@@ -206,6 +219,13 @@ export function Peek(): JSX.Element {
       onToggle={(event) => event.newState === "closed" && peek(null)}
       // Back and forward (⌘[ ⌘] as rebound) go through what you've peeked at, not the app behind it.
       onKeyDown={(event) => {
+        // Escape closes it, once whatever's open over it (a menu, the reply's) has had it.
+        if (event.key === "Escape") {
+          if (event.defaultPrevented || document.querySelector(":popover-open:not([data-peek])"))
+            return;
+          event.preventDefault();
+          return close();
+        }
         const id = commandFor(keysOf(event) ?? "");
         if (id === "back") peekBack();
         else if (id === "forward") peekForward();

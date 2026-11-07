@@ -121,26 +121,45 @@ export function Search(): JSX.Element {
   const commands = (): Option[] => [
     {
       label: "New thread",
+      icon: i.PencilEdit02Icon,
       hint: keysFor("newThread"),
       section: "Quick actions",
       run: () => setDialog({ kind: "newThread" }),
     },
-    { label: "New label", section: "Quick actions", run: () => setDialog({ kind: "newLabel" }) },
+    {
+      label: "New label",
+      icon: i.Tag01Icon,
+      section: "Quick actions",
+      run: () => setDialog({ kind: "newLabel" }),
+    },
     {
       label: "New subspace",
+      icon: i.Layers01Icon,
       section: "Quick actions",
       run: () => setDialog({ kind: "newSubspace" }),
     },
-    { label: "Personal", section: "Views", run: done(() => open({ personal: null })) },
-    { label: "Workspace", section: "Views", run: done(() => open({ view: null })) },
+    {
+      label: "Personal",
+      icon: i.UserIcon,
+      section: "Views",
+      run: done(() => open({ personal: null })),
+    },
+    {
+      label: "Workspace",
+      icon: i.DashboardSquare01Icon,
+      section: "Views",
+      run: done(() => open({ view: null })),
+    },
     {
       label: "Settings",
+      icon: i.Settings02Icon,
       hint: keysFor("settings"),
       section: "Views",
       run: done(() => open({ settings: null })),
     },
     {
       label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
+      icon: theme() === "dark" ? i.Sun03Icon : i.Moon02Icon,
       section: "Views",
       run: done(() => applyTheme(theme() === "dark" ? "light" : "dark")),
     },
@@ -149,6 +168,7 @@ export function Search(): JSX.Element {
       ? [
           {
             label: `Sign out (${account.email})`,
+            icon: i.Logout01Icon,
             section: "Account",
             run: done(() => void signOut()),
           },
@@ -159,6 +179,7 @@ export function Search(): JSX.Element {
       : [
           {
             label: "View as",
+            icon: i.UserSwitchIcon,
             hint: keysFor("viewAs"),
             section: "Data",
             run: () => setDialog({ kind: "viewAs" }),
@@ -166,6 +187,7 @@ export function Search(): JSX.Element {
         ]),
     ...otherSources.map((s) => ({
       label: `Use ${SOURCES[s]} data`,
+      icon: i.DatabaseIcon,
       section: "Data",
       run: () => switchTo({ source: s }),
     })),
@@ -173,6 +195,7 @@ export function Search(): JSX.Element {
 
   const threadRow = (t: Thread): Option => ({
     label: t.title,
+    icon: i.Comment01Icon,
     section: "Threads",
     run: done(() => open({ thread: t.id })),
   });
@@ -199,16 +222,19 @@ export function Search(): JSX.Element {
       })),
       ...(c === 0 || c === 2 ? store.all(Subspace).filter(named) : []).map((sub) => ({
         label: sub.name,
+        icon: sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon,
         section: "Subspaces",
         run: done(() => open({ subspace: sub.id })),
       })),
       ...(c === 0 || c === 2 ? store.all(View).filter(named) : []).map((v) => ({
         label: v.name,
+        icon: i.FilterIcon,
         section: "Views",
         run: done(() => open({ view: v.id })),
       })),
       ...(c === 0 || c === 2 ? store.all(Label).filter(named) : []).map((l) => ({
         label: l.name,
+        icon: i.Tag01Icon,
         section: "Labels",
         run: done(() => open({ label: l.id })),
       })),

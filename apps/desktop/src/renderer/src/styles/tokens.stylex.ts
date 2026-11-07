@@ -30,7 +30,7 @@ export const colors = stylex.defineVars({
   primaryHover: "rgb(28 112 196)",
   statusClosed: "oklch(0.713 0.094 155.438)",
   urgent: "oklch(0.712 0.177 12.651)",
-  overlay: "rgb(0 0 0 / 45%)",
+  overlay: "rgb(0 0 0 / 22%)",
   avatarRing: "transparent",
   // Mail's unread dot.
   systemBlue: "#0a84ff",
@@ -61,7 +61,7 @@ export const lightTheme = stylex.createTheme(colors, {
   primaryHover: "rgb(28 112 196)",
   statusClosed: "oklch(0.55 0.11 155.438)",
   urgent: "oklch(0.58 0.2 12.651)",
-  overlay: "rgb(0 0 0 / 18%)",
+  overlay: "rgb(0 0 0 / 8%)",
   avatarRing: "rgb(0 0 0 / 14%)",
   systemBlue: "#007aff",
   shadowPanel: "0 2px 8px rgb(0 0 0 / 8%)",

@@ -527,7 +527,8 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (
-          <Portal mount={document.body}>
+          // In the top layer it's in (Peek's, a dialog's), or it'd open under it.
+          <Portal mount={editor.view.dom.closest("[popover], dialog") ?? document.body}>
             <div
               class={sx(base.panel, look.menu, styles.caretMenu)}
               role="listbox"

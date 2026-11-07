@@ -11,23 +11,24 @@ const row = { display: "flex", flexShrink: 0, alignItems: "center" } as const;
 const text = { default: colors.textPrimary, "::placeholder": colors.textTertiary } as const;
 
 const panelIn = stylex.keyframes({
-  from: { opacity: 0, transform: "translateY(-4px) scale(0.99)" },
+  from: { opacity: 0, transform: "scale(0.985)" },
 });
 const backdropIn = stylex.keyframes({ from: { opacity: 0 } });
 
-// Palettes (Palettes.tsx `Modal`) are a modal <dialog>: a `base.panel`, 560px wide, centered, 120px from the top.
+// Palettes (Palettes.tsx `Modal`) are a modal <dialog>: a `base.panel`, 560px wide, centered, a third of the way down
+// (and never running off the bottom). It's there at once: a quick fade, over a light dim.
 export const palette = stylex.create({
   dialog: {
     flexDirection: "column",
     width: 560,
     maxWidth: "calc(100vw - 32px)",
-    maxHeight: 474,
+    maxHeight: "min(474px, calc(100vh * 2 / 3 - 24px))",
     // Pinned to the viewport's edges so the auto margins center it.
     top: 0,
     right: 0,
     bottom: 0,
     left: 0,
-    margin: "120px auto auto",
+    margin: "calc(100vh / 3 - 60px) auto auto",
     padding: 0,
     overflow: "hidden",
     color: colors.textPrimary,
@@ -36,13 +37,13 @@ export const palette = stylex.create({
     boxShadow: colors.shadowPanel,
     outline: "none",
     animationName: { default: panelIn, [motion.reduced]: "none" },
-    animationDuration: "120ms",
-    animationTimingFunction: "ease-out",
+    animationDuration: "70ms",
+    animationTimingFunction: "cubic-bezier(0.2, 0.9, 0.3, 1)",
     "::backdrop": {
       backgroundColor: colors.overlay,
       animationName: backdropIn,
-      animationDuration: "120ms",
-      animationTimingFunction: "ease-out",
+      animationDuration: "70ms",
+      animationTimingFunction: "linear",
     },
   },
   // `display: flex` only while open, so a closed dialog stays hidden.
