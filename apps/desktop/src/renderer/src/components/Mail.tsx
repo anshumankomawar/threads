@@ -324,7 +324,8 @@ const toggleExpanded = (key: string): void =>
 type SubRow = {
   key: string;
   title: string;
-  tone?: "blocked" | "urgent";
+  // Something in it you haven't seen: the system-blue dot after its title, as in the list.
+  unread?: boolean;
   current: boolean;
   run: () => void;
   menu?: (event: MouseEvent) => void;
@@ -333,8 +334,10 @@ type SubRow = {
 const threadRow = (thread: Thread, box: Mailbox): SubRow => ({
   key: thread.id,
   title: thread.title,
-  tone:
-    thread.priority === "urgent" ? "urgent" : thread.state === "blocked" ? "blocked" : undefined,
+  unread: (() => {
+    const item = itemFor(thread);
+    return item !== undefined && !item.doneAt && unread(item);
+  })(),
   // A thread can be under several mailboxes (a space, a label, Sent); it shows selected only under the one the list is
   // showing, where you opened it, as Finder selects an item in the place you're looking at it.
   current: active() === thread && sameMailbox(mailbox(), box),
@@ -398,15 +401,10 @@ function Expandable(props: {
                       row.run();
                     }}
                   >
-                    <span
-                      class={sx(
-                        s.threadDot,
-                        row.tone === "blocked" && s.threadDotBlocked,
-                        row.tone === "urgent" && s.threadDotUrgent,
-                      )}
-                      aria-hidden="true"
-                    />
                     <span class={sx(base.ellipsis, s.threadTitle)}>{row.title}</span>
+                    <Show when={row.unread}>
+                      <span class={sx(s.threadUnread)} aria-label="Unread" />
+                    </Show>
                   </div>
                 </li>
               )}
@@ -748,7 +746,7 @@ function Row(props: { thread: Thread }): JSX.Element {
     if (shown) row.scrollIntoView({ block: "nearest" });
   });
   return (
-    <li class={sx(s.rowItem)} data-on={on() ? "" : undefined}>
+    <li class={sx(s.rowItem, stylex.defaultMarker())} data-on={on() ? "" : undefined}>
       <div
         ref={row}
         role="button"
@@ -814,6 +812,7 @@ function Row(props: { thread: Thread }): JSX.Element {
           </Show>
         </span>
       </div>
+      <span class={sx(s.divider)} aria-hidden="true" />
     </li>
   );
 }
@@ -826,7 +825,10 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
   const rest = (): string =>
     props.draft.draft?.title ? props.draft.text : lines().slice(1).join(" ");
   return (
-    <li class={sx(s.rowItem)}>
+    <li
+      class={sx(s.rowItem, stylex.defaultMarker())}
+      data-on={shown("draft") === props.draft.id ? "" : undefined}
+    >
       <div
         role="button"
         tabindex={0}
@@ -863,6 +865,7 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
           </Show>
         </span>
       </div>
+      <span class={sx(s.divider)} aria-hidden="true" />
     </li>
   );
 }
@@ -1253,9 +1256,9 @@ const s = stylex.create({
     gap: 10,
     alignItems: "center",
     height: 24,
-    // The dot under the mailbox's icon (centred at 31), the title in line with the names above (at 44); the indent is a
-    // margin, so the pill starts there rather than at the sidebar's edge.
-    marginLeft: 22,
+    // The title in line with the names above (at 44); the indent is a margin, so the pill starts just before the title
+    // rather than at the sidebar's edge.
+    marginLeft: 38,
     paddingLeft: 6,
     paddingRight: 8,
     borderRadius: radii.row,
@@ -1267,15 +1270,13 @@ const s = stylex.create({
   // The thread open beside, under its mailbox: its title stands out, while the pill stays on the mailbox (the sidebar
   // chooses where you're looking; the list shows what's open).
   threadRowOpen: { color: colors.textPrimary, fontWeight: 500 },
-  threadDot: {
+  threadUnread: {
     flexShrink: 0,
-    width: 6,
-    height: 6,
+    width: 7,
+    height: 7,
     borderRadius: "50%",
-    backgroundColor: colors.iconTertiary,
+    backgroundColor: colors.systemBlue,
   },
-  threadDotBlocked: { backgroundColor: "#ff9f0a" },
-  threadDotUrgent: { backgroundColor: colors.urgent },
   threadTitle: { flex: 1 },
   threadNone: {
     paddingLeft: 44,
@@ -1376,19 +1377,21 @@ const s = stylex.create({
   },
   groupCount: { fontWeight: 400 },
   rows: { margin: 0, padding: 0, listStyle: "none" },
-  rowItem: {
-    listStyle: "none",
-    // A hairline between rows; it gives way on both sides of a selected or hovered row, so its rounded fill stands
-    // clear rather than cut by the lines above and below it.
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: {
+  rowItem: { listStyle: "none" },
+  // The hairline under a row, as Mail draws it: from the text's column (past the unread dot and avatar: 2 + 12 + 8 + 24
+  // + 8) to the row's right edge. It gives way on both sides of a selected or hovered row, so the pill stands clear
+  // rather than cut by the lines above and below it, fading as the pill slides rather than blinking ahead of it.
+  divider: {
+    display: "block",
+    height: 1,
+    marginLeft: 54,
+    marginRight: 10,
+    backgroundColor: {
       default: colors.strokeTertiary,
-      ":is([data-on], :hover)": "transparent",
-      ":has(+ :is([data-on], :hover))": "transparent",
+      [stylex.when.ancestor(":is([data-on], :hover)")]: "transparent",
+      [stylex.when.ancestor(":has(+ :is([data-on], :hover))")]: "transparent",
     },
-    // Fading as the pill slides in or out, rather than blinking ahead of it.
-    transitionProperty: "border-bottom-color",
+    transitionProperty: "background-color",
     transitionDuration: { default: "180ms", [motion.reduced]: "0s" },
     transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
