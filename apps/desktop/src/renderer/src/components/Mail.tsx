@@ -785,6 +785,10 @@ function valueIcon(field: string, value: string): JSX.Element | undefined {
   return undefined;
 }
 
+// The list's button to a mailbox's page: a space's or view's settings (a gear), or someone's profile.
+const pageLabel = (box: Mailbox): string =>
+  box.kind === "subspace" ? "Space settings" : box.kind === "view" ? "View settings" : "Profile";
+
 // What a mailbox's page shows beside its list: a space's description, members and settings, a saved view's settings,
 // or someone's profile.
 const pageOf = (box: Mailbox) =>
@@ -892,11 +896,14 @@ export function MessageList(): JSX.Element {
             {(page) => (
               <button
                 class={sx(topbar.button)}
-                aria-label="About this"
-                title="Show its page"
+                aria-label={pageLabel(mailbox())}
+                title={pageLabel(mailbox())}
                 onClick={() => open(page())}
               >
-                <Icon icon={i.InformationCircleIcon} {...ICON} />
+                <Icon
+                  icon={mailbox().kind === "person" ? i.InformationCircleIcon : i.Settings02Icon}
+                  {...ICON}
+                />
               </button>
             )}
           </Show>
