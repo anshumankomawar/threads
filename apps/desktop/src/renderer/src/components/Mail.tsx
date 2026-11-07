@@ -1360,7 +1360,7 @@ const s = stylex.create({
     gap: 8,
     alignItems: "flex-start",
     // As much room left of the unread dot as between it and the text (10px each side of it).
-    padding: "9px 10px 10px 8px",
+    padding: "12px 10px 13px 8px",
     borderRadius: radii.row,
     color: colors.textPrimary,
     cursor: "default",
@@ -1377,7 +1377,7 @@ const s = stylex.create({
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
   // The first line, with a little room under it (as much as above a row's due date and labels).
   // The title and when, on the first line.
-  rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 3 },
+  rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 5 },
   // Who wrote last, at the start of the preview: a little stronger than their words.
   from: { color: colors.textSecondary, fontWeight: 500 },
   stamp: {
@@ -1395,22 +1395,22 @@ const s = stylex.create({
   // Always two lines tall, whatever's in it, and never more.
   preview: {
     display: "block",
-    height: 32,
+    height: 36,
     overflow: "hidden",
     color: colors.textTertiary,
     fontSize: fontSizes.body,
-    lineHeight: "16px",
+    lineHeight: "18px",
   },
   // Pushes the due date and labels (floated after it) down to the preview's second line. A hair over a line, since
-  // a first line a fraction over 16px would otherwise count as beside them and wrap early.
-  chipsSpacer: { float: "right", width: 0, height: 16.5 },
+  // a first line a fraction over 18px would otherwise count as beside them and wrap early.
+  chipsSpacer: { float: "right", width: 0, height: 18.5 },
   chips: {
     float: "right",
     clear: "right",
     display: "flex",
     gap: 6,
     alignItems: "center",
-    height: 15.5,
+    height: 17.5,
     marginLeft: 8,
   },
   due: {
