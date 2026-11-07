@@ -816,7 +816,6 @@ function Row(props: { thread: Thread }): JSX.Element {
           </span>
         </span>
       </div>
-      <span class={sx(s.divider)} aria-hidden="true" />
     </li>
   );
 }
@@ -867,7 +866,6 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
           </Show>
         </span>
       </div>
-      <span class={sx(s.divider, s.dividerDraft)} aria-hidden="true" />
     </li>
   );
 }
@@ -1334,33 +1332,22 @@ const s = stylex.create({
     fontWeight: 500,
   },
   groupCount: { fontWeight: 400 },
-  rows: { margin: 0, padding: 0, listStyle: "none" },
-  rowItem: { listStyle: "none" },
-  // A draft can't be unread, so its row has no dot column: its text, and hairline, start at the row's padding.
-  dividerDraft: { marginLeft: 8 },
-  // The hairline under a row, as Mail draws it: from the text's column (past the unread dot: 8 + 12 + 8) to the row's
-  // right edge. It gives way on both sides of a selected or hovered row, so the pill stands clear
-  // rather than cut by the lines above and below it, fading as the pill slides rather than blinking ahead of it.
-  divider: {
-    display: "block",
-    height: 1,
-    marginLeft: 28,
-    marginRight: 10,
-    backgroundColor: {
-      default: colors.strokeTertiary,
-      [stylex.when.ancestor(":is([data-on], :hover)")]: "transparent",
-      [stylex.when.ancestor(":has(+ :is([data-on], :hover))")]: "transparent",
-    },
-    transitionProperty: "background-color",
-    transitionDuration: { default: "180ms", [motion.reduced]: "0s" },
-    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+  // No hairlines between rows: compact rows (as the sidebar's are), set apart by the space between them.
+  rows: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    margin: 0,
+    padding: 0,
+    listStyle: "none",
   },
+  rowItem: { listStyle: "none" },
   row: {
     display: "flex",
     gap: 8,
     alignItems: "flex-start",
     // As much room left of the unread dot as between it and the text (10px each side of it).
-    padding: "12px 10px 13px 8px",
+    padding: "9px 10px 10px 8px",
     borderRadius: radii.row,
     color: colors.textPrimary,
     cursor: "default",
@@ -1377,7 +1364,7 @@ const s = stylex.create({
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
   // The first line, with a little room under it (as much as above a row's due date and labels).
   // The title and when, on the first line.
-  rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 5 },
+  rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 3 },
   // Who wrote last, at the start of the preview: a little stronger than their words.
   from: { color: colors.textSecondary, fontWeight: 500 },
   stamp: {
@@ -1395,22 +1382,22 @@ const s = stylex.create({
   // Always two lines tall, whatever's in it, and never more.
   preview: {
     display: "block",
-    height: 36,
+    height: 32,
     overflow: "hidden",
     color: colors.textTertiary,
     fontSize: fontSizes.body,
-    lineHeight: "18px",
+    lineHeight: "16px",
   },
   // Pushes the due date and labels (floated after it) down to the preview's second line. A hair over a line, since
-  // a first line a fraction over 18px would otherwise count as beside them and wrap early.
-  chipsSpacer: { float: "right", width: 0, height: 18.5 },
+  // a first line a fraction over 16px would otherwise count as beside them and wrap early.
+  chipsSpacer: { float: "right", width: 0, height: 16.5 },
   chips: {
     float: "right",
     clear: "right",
     display: "flex",
     gap: 6,
     alignItems: "center",
-    height: 17.5,
+    height: 15.5,
     marginLeft: 8,
   },
   due: {
