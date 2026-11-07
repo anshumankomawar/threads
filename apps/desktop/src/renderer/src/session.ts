@@ -1,7 +1,7 @@
 // The session (data source, who you are, the store) and what's on screen. One store per window: switching source or
 // person reloads with a new session.
 import * as i from "@hugeicons/core-free-icons";
-import { createSignal } from "solid-js";
+import { createSignal, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { createStore, httpTransport, indexedLocalDB, type Filter, type Model } from "sync";
 import {
@@ -249,6 +249,7 @@ function markSeen(thread: Thread | undefined): void {
 // Opening a thread, or leaving one, marks it seen.
 function show(next: View): void {
   markSeen(active());
+  shownView = next;
   setView(next);
   if (!("thread" in next) || next.thread === null) return;
   if (next.thread === split()) setSplit(null);
@@ -256,31 +257,64 @@ function show(next: View): void {
 }
 
 // Where you've been and where you came back from, as in a browser: going somewhere new clears the way forward.
-const [history, setHistory] = createSignal<{ back: View[]; forward: View[] }>({
+const [history, setHistory] = createSignal<{ back: Place[]; forward: Place[] }>({
   back: [],
   forward: [],
 });
 export const canGoBack = (): boolean => history().back.length > 0;
 export const canGoForward = (): boolean => history().forward.length > 0;
 
+// A place in history: the reading pane's view and the mailbox listed beside it (mail.ts registers that), both as last
+// set, since a signal reads its old value until the batch it's written in is done.
+type Place = { view: View; box: unknown };
+let shownView: View | undefined;
+let mailboxes = { now: (): unknown => null, set: (_box: unknown): void => {} };
+export const trackMailbox = (now: () => unknown, set: (box: unknown) => void): void =>
+  void (mailboxes = { now, set });
+const here = (): Place => ({ view: shownView ?? untrack(view), box: mailboxes.now() });
+const samePlace = (a: Place, b: Place): boolean => JSON.stringify(a) === JSON.stringify(b);
+function arrive(place: Place): void {
+  mailboxes.set(place.box);
+  show(place.view);
+}
+
+// One step in history for whatever `go` changes (a mailbox and the thread that closes with it are one), and none if it
+// changes nothing.
+let stepping = false;
+export function step(go: () => void): void {
+  if (stepping) return go();
+  const from = here();
+  stepping = true;
+  try {
+    go();
+  } finally {
+    stepping = false;
+  }
+  if (samePlace(from, here())) return;
+  setHistory(({ back }) => ({
+    back: back.length > 0 && samePlace(back.at(-1)!, from) ? back : [...back, from],
+    forward: [],
+  }));
+}
+
 export function open(next: View): void {
-  if (JSON.stringify(next) === JSON.stringify(view())) return;
-  setHistory(({ back }) => ({ back: [...back, view()], forward: [] }));
-  show(next);
+  step(() => {
+    if (JSON.stringify(next) !== JSON.stringify(here().view)) show(next);
+  });
 }
 
 export function goBack(): void {
   const { back, forward } = history();
   if (back.length === 0) return;
-  setHistory({ back: back.slice(0, -1), forward: [view(), ...forward] });
-  show(back.at(-1)!);
+  setHistory({ back: back.slice(0, -1), forward: [here(), ...forward] });
+  arrive(back.at(-1)!);
 }
 
 export function goForward(): void {
   const { back, forward } = history();
   if (forward.length === 0) return;
-  setHistory({ back: [...back, view()], forward: forward.slice(1) });
-  show(forward[0]);
+  setHistory({ back: [...back, here()], forward: forward.slice(1) });
+  arrive(forward[0]);
 }
 
 // The mouse's back and forward buttons.
@@ -335,6 +369,24 @@ export const placeIn = (item: InboxItem, bucket?: Bucket): void => {
   item.save();
 };
 
+// Everything in your inbox marked read, as Mail's Mark All as Read does.
+export function markAllRead(): void {
+  const now = new Date();
+  for (const thread of inbox().order) {
+    const item = itemFor(thread);
+    if (!item || !hasNew(item)) continue;
+    item.seenAt = now;
+    item.save();
+  }
+}
+// Whatever you placed by hand in your inbox, back to the model to sort.
+export function sortAllForMe(): void {
+  for (const thread of inbox().order) {
+    const item = itemFor(thread);
+    if (item?.manual) placeIn(item);
+  }
+}
+
 // What right-clicking a thread offers, wherever it's listed.
 export function threadMenu(thread: Thread): MenuItem[] {
   const item = inbox().order.includes(thread) ? itemFor(thread) : undefined;
@@ -357,7 +409,7 @@ export function threadMenu(thread: Thread): MenuItem[] {
     ...(item
       ? [
           "separator" as const,
-          { label: "Done", icon: icon(i.CheckmarkCircle02Icon, 13), run: () => markDone(item) },
+          { label: "Done", icon: icon(i.InboxCheckIcon, 13), run: () => markDone(item) },
           {
             label: "Move to",
             icon: icon(i.Folder01Icon, 13),
@@ -381,7 +433,8 @@ export function threadMenu(thread: Thread): MenuItem[] {
           },
         ]
       : []),
-    "separator",
+    // With Done and Move to when it's in your inbox: what you do with the thread, apart from opening it.
+    ...(item ? [] : ["separator" as const]),
     {
       label: thread.isOpen ? "Resolve" : "Reopen",
       icon: icon(thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon, 13),
@@ -413,6 +466,8 @@ const showBox = (which: Parameters<typeof chooseBox>[0]) => (): void => {
 window.addEventListener("keydown", (event) => {
   if (!signedIn()) return;
   const target = event.target as HTMLElement;
+  // A form grown out of the sidebar or a menu keeps its keys (InlineForm).
+  if (target.closest("[data-holds-keys]")) return;
   const typing = target.closest("input, textarea, [contenteditable='true']") !== null;
   const free = !document.querySelector("dialog[open], :popover-open");
   // Escape leaves the reply, unless it just closed one of the reply's menus.

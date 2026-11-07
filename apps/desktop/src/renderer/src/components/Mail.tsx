@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, createUniqueId, For, onSettled, Show } from "solid-js";
+import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
@@ -8,6 +8,8 @@ import {
   byName,
   inbox,
   itemFor,
+  edit,
+  markAllRead,
   markDone,
   me,
   myBuckets,
@@ -20,6 +22,7 @@ import {
   shown,
   showMenu,
   sidebarOpen,
+  sortAllForMe,
   store,
   threadMenu,
   unread,
@@ -30,6 +33,7 @@ import {
 import {
   baseFilter,
   chooseMailbox,
+  showMailbox,
   conditions,
   setConditions,
   drafts,
@@ -42,12 +46,13 @@ import {
 import { bucketIcons } from "../bucketIcons";
 import { describe, FIELDS, subspacesIn } from "../filters";
 import { base } from "../styles/base";
-import { chip, menu as look, topbar } from "../styles/controls";
+import { topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./Sidebar";
 import { icon, Icon, type IconSvgElement } from "./Icon";
+import { askInline, InlineForm } from "./InlineForm";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
@@ -56,8 +61,6 @@ import { dot, plain } from "./ThreadView";
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
 const ICON = { size: 14, "aria-hidden": "true" } as const;
-// Level with its anchor and running right from its left edge (StyleX's types only know the plain areas).
-const FROM_ANCHOR = "center span-right" as "center";
 
 // A column the edge on its right resizes, remembering its width.
 function resizable(key: string, range: { initial: number; min: number; max: number }) {
@@ -193,8 +196,8 @@ function Mailbox(props: {
   icon: IconSvgElement;
   count?: number;
   indent?: boolean;
-  // What right-clicking it offers.
-  menu?: () => MenuItem[];
+  // What right-clicking it offers; `at` is its icon, for a form to grow out of.
+  menu?: (at: Element) => MenuItem[];
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
@@ -207,7 +210,7 @@ function Mailbox(props: {
         class={sx(s.mailbox, props.indent && s.indent)}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
-          const items = props.menu?.();
+          const items = props.menu?.(e.currentTarget.querySelector("svg") ?? e.currentTarget);
           if (items) showMenu(e, items);
         }}
         onKeyDown={(e) => {
@@ -247,24 +250,21 @@ const toggleFold = (key: string): void =>
   });
 
 // A sidebar section: a heading that folds it (as Mail's do), with an add button that shows on hover.
-// A section's + : a small field grown out of it, the size of a context menu, for the new one's name. Enter makes it and selects
-// it; Escape or a click elsewhere closes it, and the focus stays in the sidebar.
+// A section's + : a small field grown out of it (InlineForm) for the new one's name. Enter makes it and selects it.
 type Add = { label: string; placeholder: string; make: (name: string) => Mailbox };
 
 function Section(props: { title: string; add?: Add; children: JSX.Element }): JSX.Element {
   const shut = (): boolean => folded().includes(props.title);
-  const id = createUniqueId();
   let plus: HTMLButtonElement | undefined;
-  let field!: HTMLDivElement;
-  let input!: HTMLInputElement;
-  const [name, setName] = createSignal("");
-  const ask = (): void => field.showPopover({ source: plus } as ShowPopoverOptions);
-  const make = (): void => {
+  const ask = (from: Element | null | undefined): void => {
     const add = props.add;
-    const typed = name().trim();
-    if (!add || !typed) return;
-    field.hidePopover();
-    chooseMailbox(add.make(typed));
+    if (!add || !from) return;
+    askInline({
+      at: from,
+      icon: i.Add01Icon,
+      fields: [{ label: add.label, placeholder: add.placeholder }],
+      submit: ([name]) => chooseMailbox(add.make(name)),
+    });
   };
   return (
     <section class={sx(s.section)}>
@@ -272,7 +272,14 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
         class={sx(s.sectionHeader, stylex.defaultMarker())}
         onContextMenu={(e) => {
           const add = props.add;
-          if (add) showMenu(e, [{ label: `${add.label}…`, icon: icon(i.Add01Icon, 13), run: ask }]);
+          if (add)
+            showMenu(e, [
+              {
+                label: `${add.label}…`,
+                icon: icon(i.Add01Icon, 13),
+                run: () => ask(plus?.querySelector("svg")),
+              },
+            ]);
         }}
       >
         <button
@@ -287,53 +294,15 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
         </button>
         <Show when={props.add}>
           {(add) => (
-            <>
-              <button
-                ref={plus}
-                popovertarget={id}
-                class={sx(base.bare, s.sectionAdd)}
-                aria-label={add().label}
-                title={add().label}
-              >
-                <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
-              </button>
-              <div
-                id={id}
-                ref={field}
-                popover="auto"
-                class={sx(base.panel, look.menu, look.compact, look.popover, chip.menu, s.addPanel)}
-                onToggle={(event) => {
-                  if (event.newState !== "open") return;
-                  setName("");
-                  input.focus();
-                }}
-              >
-                <label class={sx(s.addRow)}>
-                  <button
-                    class={sx(base.bare, s.addPlus)}
-                    aria-label={add().label}
-                    tabindex={-1}
-                    onClick={make}
-                  >
-                    <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
-                  </button>
-                  <input
-                    ref={input}
-                    class={sx(base.bare, s.addInput)}
-                    aria-label={add().label}
-                    placeholder={add().placeholder}
-                    value={name()}
-                    onInput={(e) => setName(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter" || e.isComposing) return;
-                      e.preventDefault();
-                      make();
-                    }}
-                  />
-                  <span class={sx(s.addHint)}>↵</span>
-                </label>
-              </div>
-            </>
+            <button
+              ref={plus}
+              class={sx(base.bare, s.sectionAdd)}
+              aria-label={add().label}
+              title={add().label}
+              onClick={(e) => ask(e.currentTarget.querySelector("svg"))}
+            >
+              <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
+            </button>
           )}
         </Show>
       </div>
@@ -405,8 +374,35 @@ function SpaceOrLabel(props: {
   );
 }
 
+// A bucket's name and what goes in it (which the model sorts by), asked for in a form grown out of `at`.
+function askBucket(at: Element, bucket?: Bucket): void {
+  askInline({
+    at,
+    icon: bucket ? i.PencilEdit01Icon : i.Add01Icon,
+    fields: [
+      { label: "Name", placeholder: "Name the bucket", value: bucket?.name },
+      {
+        label: "What goes in it",
+        placeholder: "What goes in it?",
+        value: bucket?.description,
+      },
+    ],
+    submit: ([name, description]) => {
+      if (bucket) return edit(bucket, { name: name.slice(0, 40), description });
+      const position = Math.max(-1, ...myBuckets().map((b) => b.position)) + 1;
+      const made = store.create(Bucket, {
+        user: me(),
+        name: name.slice(0, 40),
+        description: description.slice(0, 500),
+        position,
+      });
+      chooseMailbox({ kind: "bucket", id: made.id });
+    },
+  });
+}
+
 // What right-clicking a bucket offers, as the old sidebar's bucket headings did.
-function bucketMenu(bucket: Bucket): MenuItem[] {
+function bucketMenu(bucket: Bucket, at: Element): MenuItem[] {
   const move = (by: number) => () => {
     const buckets = myBuckets();
     const other = buckets[buckets.indexOf(bucket) + by];
@@ -419,9 +415,9 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
     {
       label: "Edit Bucket…",
       icon: icon(i.PencilEdit01Icon, 13),
-      run: () => setDialog({ kind: "bucket", bucket }),
+      run: () => askBucket(at, bucket),
     },
-    { label: "New Bucket…", icon: icon(i.Add01Icon, 13), run: () => setDialog({ kind: "bucket" }) },
+    { label: "New Bucket…", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
     "separator",
     { label: "Move Up", icon: icon(i.ArrowUp01Icon, 13), run: move(-1) },
     { label: "Move Down", icon: icon(i.ArrowDown01Icon, 13), run: move(1) },
@@ -470,11 +466,18 @@ export function MailSidebar(): JSX.Element {
             label="Inbox"
             icon={i.InboxIcon}
             count={inbox().order.length}
-            menu={() => [
+            menu={(at) => [
+              { label: "New Bucket…", icon: icon(i.Add01Icon, 13), run: () => askBucket(at) },
+              "separator",
               {
-                label: "New Bucket…",
-                icon: icon(i.Add01Icon, 13),
-                run: () => setDialog({ kind: "bucket" }),
+                label: "Mark All as Read",
+                icon: icon(i.MailOpen01Icon, 13),
+                run: markAllRead,
+              },
+              {
+                label: "Sort All for Me",
+                icon: icon(i.SparklesIcon, 13),
+                run: sortAllForMe,
               },
             ]}
           />
@@ -496,11 +499,10 @@ export function MailSidebar(): JSX.Element {
                 icon={icons().get(section.bucket.id) ?? i.InboxIcon}
                 count={section.items.length}
                 indent
-                menu={() => bucketMenu(section.bucket)}
+                menu={(at) => bucketMenu(section.bucket, at)}
               />
             )}
           </For>
-          <Mailbox box={{ kind: "personal" }} label="Personal" icon={i.UserIcon} />
           <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
           <Mailbox
             box={{ kind: "drafts" }}
@@ -549,6 +551,7 @@ export function MailSidebar(): JSX.Element {
           </For>
         </Section>
         <Section title="Views">
+          <Mailbox box={{ kind: "personal" }} label="Personal" icon={i.UserIcon} />
           <Mailbox box={{ kind: "all" }} label="Workspace" icon={i.DashboardSquare01Icon} />
           <For each={byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id))}>
             {(saved) => (
@@ -582,6 +585,7 @@ export function MailSidebar(): JSX.Element {
           </For>
         </Section>
       </nav>
+      <InlineForm />
       <div class={sx(s.footer)}>
         <button
           class={sx(base.bare, s.profile)}
@@ -828,7 +832,7 @@ export function MessageList(): JSX.Element {
                     ? { kind: "all" }
                     : { kind: "view", id: shown.view }
                   : undefined;
-    if (next && !sameMailbox(next, mailbox())) chooseMailbox(next);
+    if (next) showMailbox(next);
   });
   // A space's threads, and those of any space a filter names, load even if you're not in it.
   createEffect(
@@ -1208,37 +1212,6 @@ const s = stylex.create({
     transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
   sectionChevronOpen: { transform: "rotate(90deg)" },
-  // The + 's field: as wide as Mail's context menu (227pt), one 24pt row inset as a menu's are.
-  // Grown out of the +: drawn over it, so the + its row starts with sits exactly where the button is (the panel's 1px
-  // border, the row's 4.5px inset and its 7.5px padding to the left of it), and running out to the right.
-  addPanel: {
-    width: 219,
-    minWidth: 0,
-    marginLeft: -13,
-    positionArea: FROM_ANCHOR,
-    positionTryFallbacks: "flip-inline",
-  },
-  addPlus: { display: "flex", flexShrink: 0, color: colors.textPrimary, cursor: "pointer" },
-  addRow: {
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    height: 21.8,
-    margin: "0 4.5px",
-    padding: "0 7px 0 7.5px",
-    borderRadius: 5,
-    backgroundColor: colors.panelSelected,
-    cursor: "text",
-  },
-  addInput: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    outline: "none",
-    "::placeholder": { color: colors.textTertiary },
-  },
-  addHint: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   sectionAdd: {
     display: "flex",
     color: { default: colors.textTertiary, ":hover": colors.textPrimary },

@@ -9,6 +9,7 @@ import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
+import { holdFocus } from "./InlineForm";
 
 // One choice in a list you move through with the arrow keys: a palette's rows, the reply's @ # / menus, ⌘⇧N's @ menu.
 // `section` heads a run of a palette's rows; `hint` sits on the right; `accent` makes it stand out ("New thread").
@@ -245,8 +246,8 @@ const combo = stylex.create({
 });
 
 // A button that opens a combo box under it, the size of a context menu: a field to narrow the choices, then the choices,
-// which the arrow keys move through and Enter (or a click) picks. It stays open to pick another, as adding several
-// people at once does; Escape or a click elsewhere closes it.
+// which the arrow keys move through and Enter picks, closing it. A click picks and leaves it open for another, as adding
+// several people at once does; Escape or a click elsewhere closes it.
 export function ComboButton(props: {
   label: JSX.Element;
   class: string;
@@ -260,11 +261,14 @@ export function ComboButton(props: {
   let input!: HTMLInputElement;
   const shown = (): Option[] => props.options(query().trim().toLowerCase());
   const index = (): number => Math.min(at(), shown().length - 1);
-  const pick = (option: Option | undefined): void => {
+  let panel!: HTMLDivElement;
+  // A click picks and stays open for another; Enter picks and is done.
+  const pick = (option: Option | undefined, done = false): void => {
     if (!option) return;
     option.run();
     setQuery("");
-    input.focus();
+    if (done) panel.hidePopover();
+    else input.focus();
   };
   return (
     <>
@@ -273,6 +277,7 @@ export function ComboButton(props: {
       </button>
       <div
         id={id}
+        ref={(el) => (holdFocus(el), (panel = el))}
         popover="auto"
         class={sx(base.panel, look.menu, look.compact, look.popover, combo.panel)}
         role="dialog"
@@ -298,7 +303,7 @@ export function ComboButton(props: {
             onKeyDown={(event) => {
               const next = moved(event.key, index(), shown().length);
               if (next !== undefined) setAt(next);
-              else if (event.key === "Enter" && !event.isComposing) pick(shown()[index()]);
+              else if (event.key === "Enter" && !event.isComposing) pick(shown()[index()], true);
               else return;
               event.preventDefault();
             }}

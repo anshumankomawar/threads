@@ -13,7 +13,9 @@ import {
   save,
   saved,
   sent,
+  step,
   store,
+  trackMailbox,
 } from "./session";
 
 // ── Mail's layout: a sidebar of mailboxes, the chosen one's threads beside it, and the open thread beside them ──
@@ -61,13 +63,30 @@ export function baseFilter(box: Mailbox): Filter[] {
   }
 }
 
-// Choosing a mailbox, as in Mail, leaves no thread open unless the one you're reading is in it.
-export function chooseMailbox(next: Mailbox): void {
+// The mailbox as last set (the signal reads its old one until its batch is done), for history.
+let chosenNow = chosen();
+function setMailbox(next: Mailbox): void {
+  chosenNow = next;
   setChosen(next);
   setExtra([]);
   save("mailbox", next);
-  const reading = active();
-  if (reading && !listed().order.includes(reading)) open({ thread: null });
+}
+trackMailbox(
+  () => chosenNow,
+  (box) => setMailbox(box as Mailbox),
+);
+// Following the open page to its mailbox (a space's page lists its threads), which isn't a step of its own.
+export function showMailbox(next: Mailbox): void {
+  if (!sameMailbox(next, chosenNow)) setMailbox(next);
+}
+
+// Choosing a mailbox, as in Mail, leaves no thread open unless the one you're reading is in it; both are one step back.
+export function chooseMailbox(next: Mailbox): void {
+  step(() => {
+    setMailbox(next);
+    const reading = active();
+    if (reading && !listed().order.includes(reading)) open({ thread: null });
+  });
 }
 
 // A group of rows under a heading: the inbox lists each bucket apart.

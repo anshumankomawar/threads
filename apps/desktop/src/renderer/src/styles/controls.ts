@@ -96,7 +96,8 @@ export const menu = stylex.create({
     height: 1,
     margin: "4.5px 15.5px",
     borderStyle: "none",
-    backgroundColor: colors.panelBorder,
+    // Faint: it groups rows, and shouldn't read as a line through the menu.
+    backgroundColor: colors.strokeTertiary,
   },
   item: {
     display: "flex",
