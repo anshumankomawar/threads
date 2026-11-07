@@ -4,7 +4,7 @@ import * as stylex from "@stylexjs/stylex";
 import { base } from "../styles/base";
 import { menu as look } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { colors, fontSizes } from "../styles/tokens.stylex";
+import { colors, fontSizes, motion } from "../styles/tokens.stylex";
 import { Icon, type IconSvgElement } from "./Icon";
 
 // A small form grown out of what asked for it, the size of a context menu, its icon carried in exactly where it was
@@ -51,7 +51,24 @@ export const askInline = (ask: InlineAsk): void => void setAsked(ask);
 const LEAD = 10;
 const TO_FIRST_ROW = 1 + 3.6 + 21.8 / 2;
 
+// It doesn't fade in, which reads as a redraw: it's revealed from what it grew out of, already there. From a menu entry
+// the row that was the entry is shown and the fields unfold under it; from a +, it opens out to the right of the +.
+const unfold = stylex.keyframes({
+  from: { clipPath: "inset(0 0 calc(100% - 29px) 0 round 11px)" },
+  to: { clipPath: "inset(0 0 0 0 round 11px)" },
+});
+const openOut = stylex.keyframes({
+  from: { clipPath: "inset(0 calc(100% - 32px) 0 0 round 11px)" },
+  to: { clipPath: "inset(0 0 0 0 round 11px)" },
+});
+
 const styles = stylex.create({
+  reveal: {
+    animationDuration: "180ms",
+    animationTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+  },
+  unfold: { animationName: { default: unfold, [motion.reduced]: "none" } },
+  openOut: { animationName: { default: openOut, [motion.reduced]: "none" } },
   panel: {
     position: "fixed",
     display: { default: "none", ":popover-open": "flex" },
@@ -133,7 +150,14 @@ export function InlineForm(): JSX.Element {
           <div
             ref={open}
             popover="auto"
-            class={sx(base.panel, look.menu, look.popover, styles.panel)}
+            class={sx(
+              base.panel,
+              look.menu,
+              look.popover,
+              styles.panel,
+              styles.reveal,
+              ask.title ? styles.unfold : styles.openOut,
+            )}
             role="dialog"
             onToggle={(event) => event.newState === "closed" && asked() === ask && setAsked(null)}
           >

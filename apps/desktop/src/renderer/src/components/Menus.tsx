@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createSignal, createUniqueId, For, Show } from "solid-js";
+import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { menu, setMenu, type MenuItem } from "../session";
@@ -73,6 +73,12 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
     item: MenuItem & { items: MenuItem[] };
     row: DOMRect;
   } | null>(null);
+  // A submenu opens once for its row: coming back to the row (or clicking it) keeps the one that's open rather than
+  // drawing it again.
+  const openSub = (item: MenuItem & { items: MenuItem[] }, event: Event): void => {
+    if (untrack(sub)?.item === item) return;
+    setSub({ item, row: (event.currentTarget as HTMLElement).getBoundingClientRect() });
+  };
   const row = (
     item: Exclude<MenuItem, "separator">,
     run: ((from: DOMRect) => void) | undefined,
@@ -86,16 +92,10 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
         aria-checked={checked === undefined ? undefined : checked ? "true" : "false"}
         aria-haspopup={opens ? "menu" : undefined}
         aria-expanded={opens ? (sub()?.item === item ? "true" : "false") : undefined}
-        onPointerEnter={(event) =>
-          setSub(
-            opens
-              ? { item, row: (event.currentTarget as HTMLElement).getBoundingClientRect() }
-              : null,
-          )
-        }
+        onPointerEnter={(event) => (opens ? openSub(item, event) : setSub(null))}
         onClick={(event) =>
           opens
-            ? setSub({ item, row: (event.currentTarget as HTMLElement).getBoundingClientRect() })
+            ? openSub(item, event)
             : run?.(
                 (
                   (event.currentTarget as HTMLElement).querySelector("svg") ??
