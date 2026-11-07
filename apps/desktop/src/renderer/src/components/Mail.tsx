@@ -86,7 +86,7 @@ const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 5
 
 // ── The sidebar: mailboxes ──
 
-// A mailbox in the sidebar: its icon (in the system blue, as Mail's are), name and count.
+// A mailbox in the sidebar: its icon, name and count.
 function Mailbox(props: {
   box: Mailbox;
   label: string;
@@ -325,15 +325,11 @@ function preview(body: string): string {
 // Today's and past due dates are urgent.
 const dueSoon = (due: Date): boolean => due.getTime() < new Date().setHours(23, 59, 59, 999);
 
-// Whether the list has the keyboard: its selected row is blue then, as Mail's is, and grey otherwise.
-const [listFocused, setListFocused] = createSignal(false);
-
 // A thread as Mail lists a message: who wrote last and when, its title, the start of what they wrote, then its
 // properties.
 function Row(props: { thread: Thread }): JSX.Element {
   const t = (): Thread => props.thread;
   const on = (): boolean => active() === t();
-  const blue = (): boolean => on() && listFocused();
   const item = () => itemFor(t());
   const isUnread = (): boolean => {
     const it = item();
@@ -354,38 +350,29 @@ function Row(props: { thread: Thread }): JSX.Element {
         tabindex={on() ? 0 : -1}
         data-active={on() ? "" : undefined}
         aria-current={on() ? "true" : undefined}
-        class={sx(
-          s.row,
-          on() && s.rowOn,
-          blue() && s.rowBlue,
-          t().state === "blocked" && !on() && s.faded,
-        )}
+        class={sx(s.row, on() && s.rowOn, t().state === "blocked" && !on() && s.faded)}
         onClick={() => open({ thread: t().id })}
         onContextMenu={(e) => showMenu(e, threadMenu(t()))}
       >
         <span class={sx(s.unreadSlot)}>
           <Show when={isUnread()}>
-            <span class={sx(s.unreadDot, blue() && s.unreadDotBlue)} aria-label="Unread" />
+            <span class={sx(s.unreadDot)} aria-label="Unread" />
           </Show>
         </span>
         <Identicon seed={from()?.id ?? t().ownerId ?? ""} size={24} class={sx(s.avatar)} />
         <span class={sx(s.rowBody)}>
           <span class={sx(s.rowTop)}>
             <span class={sx(base.ellipsis, s.from)}>{from()?.name ?? ""}</span>
-            <span class={sx(s.stamp, blue() && s.onBlue)}>
-              {stamp(last()?.createdAt ?? t().createdAt)}
-            </span>
+            <span class={sx(s.stamp)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
           </span>
           <span class={sx(s.subjectLine)}>
             <Show when={t().priority === "urgent" || t().priority === "high"}>
-              <span
-                class={sx(s.priority, t().priority === "urgent" && s.urgent, blue() && s.onBlue)}
-              >
+              <span class={sx(s.priority, t().priority === "urgent" && s.urgent)}>
                 {t().priority === "urgent" ? "!!" : "!"}
               </span>
             </Show>
             <Show when={t().state !== "open"}>
-              <span class={sx(s.stateMark, blue() && s.onBlue)}>
+              <span class={sx(s.stateMark)}>
                 <Icon
                   icon={t().state === "resolved" ? i.CheckmarkCircle02Icon : i.Clock01Icon}
                   size={11}
@@ -398,15 +385,13 @@ function Row(props: { thread: Thread }): JSX.Element {
             </span>
           </span>
           <Show when={last()}>
-            {(message) => (
-              <span class={sx(s.preview, blue() && s.onBlue)}>{preview(message().body)}</span>
-            )}
+            {(message) => <span class={sx(s.preview)}>{preview(message().body)}</span>}
           </Show>
           <Show when={(t().dueAt && t().isOpen) || t().labelIds.length > 0}>
             <span class={sx(s.chips)}>
               <Show when={t().isOpen && t().dueAt}>
                 {(due) => (
-                  <span class={sx(s.due, dueSoon(due()) && s.dueSoon, blue() && s.onBlue)}>
+                  <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
                     <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
                     {shortDate(due())}
                   </span>
@@ -417,9 +402,7 @@ function Row(props: { thread: Thread }): JSX.Element {
                   .labelIds.map((id) => store.findById(Label, id))
                   .filter((l) => l !== undefined)}
               >
-                {(label) => (
-                  <span class={sx(s.labelChip, blue() && s.labelChipBlue)}>{label.name}</span>
-                )}
+                {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
               </For>
             </span>
           </Show>
@@ -559,8 +542,6 @@ export function MessageList(): JSX.Element {
       <div
         ref={list}
         class={sx(s.listScroll)}
-        onFocusIn={() => setListFocused(true)}
-        onFocusOut={(e) => setListFocused(list.contains(e.relatedTarget as Node))}
         onMouseDown={() =>
           queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
         }
@@ -745,7 +726,7 @@ const s = stylex.create({
     transitionDuration: "120ms",
   },
   disclosureOpen: { transform: "rotate(90deg)" },
-  mailboxIcon: { display: "flex", flexShrink: 0, color: colors.systemBlue },
+  mailboxIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
   mailboxName: { flex: 1 },
   count: {
     flexShrink: 0,
@@ -809,9 +790,10 @@ const s = stylex.create({
   },
   listBar: { paddingLeft: 16 },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
-  listHeading: { display: "flex", flexDirection: "column", minWidth: 0, lineHeight: "14px" },
+  // The mailbox's name and, after it on the same line, how many are unread (or listed).
+  listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
   listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 700 },
-  listSubtitle: { color: colors.textTertiary, fontSize: fontSizes.small },
+  listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   listScroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "0 6px 12px", outline: "none" },
   groupHeader: {
     display: "flex",
@@ -843,7 +825,6 @@ const s = stylex.create({
     outline: "none",
   },
   rowOn: { backgroundColor: colors.bgTertiary },
-  rowBlue: { color: colors.selectionText, backgroundColor: colors.selection },
   faded: { opacity: 0.6 },
   unreadSlot: {
     display: "flex",
@@ -853,7 +834,6 @@ const s = stylex.create({
     paddingTop: 5,
   },
   unreadDot: { width: 8, height: 8, borderRadius: "50%", backgroundColor: colors.systemBlue },
-  unreadDotBlue: { backgroundColor: colors.selectionText },
   avatar: { flexShrink: 0, marginTop: 1 },
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
   rowTop: { display: "flex", gap: 8, alignItems: "baseline" },
@@ -865,7 +845,6 @@ const s = stylex.create({
     fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
   },
-  onBlue: { color: "rgb(255 255 255 / 78%)" },
   subjectLine: { display: "flex", gap: 4, alignItems: "center", minWidth: 0 },
   subject: { fontSize: fontSizes.body },
   subjectUnread: { fontWeight: 600 },
@@ -898,7 +877,6 @@ const s = stylex.create({
     lineHeight: "16px",
     backgroundColor: colors.bgTertiary,
   },
-  labelChipBlue: { color: colors.selectionText, backgroundColor: "rgb(255 255 255 / 18%)" },
   empty: {
     display: "flex",
     flexDirection: "column",
