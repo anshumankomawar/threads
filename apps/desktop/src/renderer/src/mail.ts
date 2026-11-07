@@ -8,7 +8,6 @@ import {
   inbox,
   lastActive,
   me,
-  onChooseBox,
   open,
   save,
   saved,
@@ -194,8 +193,6 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
 });
 
 followOrder(() => listed().order);
-// ⌘1–⌘4 choose Inbox, Sent, Drafts and Personal.
-onChooseBox((kind) => chooseMailbox({ kind }));
 
 export const drafts = store.view(() =>
   store

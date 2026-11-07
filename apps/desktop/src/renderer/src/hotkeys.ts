@@ -11,11 +11,10 @@ export const HOTKEYS = [
   { id: "back", label: "Back", section: "General", keys: "⌘[" },
   { id: "forward", label: "Forward", section: "General", keys: "⌘]" },
   { id: "sidebar", label: "Show or hide the sidebar", section: "General", keys: "⌘\\" },
-  // In the sidebar's order: Inbox, Sent and Drafts at the top, then Personal under Views.
-  { id: "inboxBox", label: "Inbox", section: "Mailboxes", keys: "⌘1" },
-  { id: "sentBox", label: "Sent", section: "Mailboxes", keys: "⌘2" },
-  { id: "draftsBox", label: "Drafts", section: "Mailboxes", keys: "⌘3" },
-  { id: "personalBox", label: "Personal", section: "Mailboxes", keys: "⌘4" },
+  // The sidebar's segments, in order.
+  { id: "mailGroup", label: "Mail", section: "Sidebar", keys: "⌘1" },
+  { id: "spacesGroup", label: "Spaces", section: "Sidebar", keys: "⌘2" },
+  { id: "viewsGroup", label: "Views", section: "Sidebar", keys: "⌘3" },
   { id: "newThread", label: "New thread", section: "Create", keys: "⌘N" },
   { id: "compose", label: "Write a thread as a message", section: "Create", keys: "⇧⌘N" },
   { id: "next", label: "Next thread", section: "Inbox", keys: "J" },

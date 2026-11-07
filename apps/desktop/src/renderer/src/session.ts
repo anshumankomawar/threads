@@ -509,14 +509,14 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 }
 
 // ── Keys ──
-// Which mailbox ⌘1–⌘4 choose (Inbox, Sent, Drafts, Personal): mail.ts says how, as it owns the mailboxes.
-let chooseBox: (which: "inbox" | "personal" | "sent" | "drafts") => void = () => {};
-export const onChooseBox = (choose: typeof chooseBox): void => {
-  chooseBox = choose;
+// Which of the sidebar's segments ⌘1, ⌘2… show (by position): Mail.tsx says how, as it owns them.
+let chooseGroup: (at: number) => void = () => {};
+export const onChooseGroup = (choose: typeof chooseGroup): void => {
+  chooseGroup = choose;
 };
-const showBox = (which: Parameters<typeof chooseBox>[0]) => (): void => {
+const showGroup = (at: number) => (): void => {
   setSidebarOpen(true);
-  chooseBox(which);
+  chooseGroup(at);
 };
 
 // What each hotkey does (hotkeys.ts has their keys, which Settings rebinds). Plain keys only when you're not typing, and
@@ -562,10 +562,9 @@ window.addEventListener("keydown", (event) => {
     forward: free && goForward,
     sidebar: () => setSidebarOpen(!sidebarOpen()),
     // Not in a dialog, where ⌘1… choose its own tabs.
-    inboxBox: free && showBox("inbox"),
-    personalBox: free && showBox("personal"),
-    sentBox: free && showBox("sent"),
-    draftsBox: free && showBox("drafts"),
+    mailGroup: free && showGroup(0),
+    spacesGroup: free && showGroup(1),
+    viewsGroup: free && showGroup(2),
     newThread: () => {
       const shown = view();
       setDialog({

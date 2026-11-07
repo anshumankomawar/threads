@@ -19,6 +19,7 @@ import {
   setDialog,
   shortDate,
   shown,
+  onChooseGroup,
   showMenu,
   sidebarOpen,
   sortAllForMe,
@@ -506,6 +507,11 @@ const groupOf = (box: Mailbox): SidebarGroup =>
       : "mail";
 const [group, setGroup] = createSignal<SidebarGroup>(groupOf(mailbox()));
 const chooseGroup = (next: SidebarGroup): void => void setGroup(next);
+// ⌘1, ⌘2… show the segments in order.
+onChooseGroup((at) => {
+  const chosen = GROUPS[at];
+  if (chosen) chooseGroup(chosen.key);
+});
 
 export function MailSidebar(): JSX.Element {
   let nav!: HTMLElement;
