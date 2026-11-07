@@ -10,9 +10,9 @@ export const thread = stylex.create({
     display: "flex",
     flexDirection: "column",
     gap: 20.5,
-    // Left-aligned, on the same edge and top as the other pages.
+    // Left-aligned, on the same edge as the other pages; in the reading pane, just under its toolbar.
     maxWidth: 773,
-    padding: "52px 32px 48px 52px",
+    padding: "16px 32px 48px 52px",
     zoom: contentZoom["--content-zoom"],
   },
   block: { display: "flex", gap: 15, scrollMarginTop: 14 },
