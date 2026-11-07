@@ -56,8 +56,8 @@ import { dot, plain } from "./ThreadView";
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
 const ICON = { size: 14, "aria-hidden": "true" } as const;
-// Under its anchor and growing leftward (StyleX's types only know the plain areas).
-const UNDER_LEFT = "bottom span-left" as "bottom";
+// Beside its anchor on the right, its top level with the anchor's (StyleX's types only know the plain areas).
+const BESIDE = "right span-bottom" as "right";
 
 // A column the edge on its right resizes, remembering its width.
 function resizable(key: string, range: { initial: number; min: number; max: number }) {
@@ -1201,12 +1201,14 @@ const s = stylex.create({
   },
   sectionChevronOpen: { transform: "rotate(90deg)" },
   // The + 's field: as wide as Mail's context menu (227pt), one 24pt row inset as a menu's are.
-  // Under the +, growing leftward from it so it stays over the sidebar.
+  // Out to the right of the +, as a submenu opens, nudged up so its row lines up with the heading.
   addPanel: {
     width: 206,
     minWidth: 0,
-    positionArea: UNDER_LEFT,
-    positionTryFallbacks: "flip-block",
+    marginLeft: 8,
+    marginTop: -9.5,
+    positionArea: BESIDE,
+    positionTryFallbacks: "flip-inline",
   },
   addRow: {
     display: "flex",

@@ -37,10 +37,11 @@ import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
-import { PersonView, SavedView, SettingsView, SubspaceView } from "./components/Pages";
+import { LabelView, PersonView, SavedView, SettingsView, SubspaceView } from "./components/Pages";
 import { HistoryButtons } from "./components/Sidebar";
 import { DraftView } from "./components/DraftView";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
+import { mailbox } from "./mail";
 
 const styles = stylex.create({
   // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
@@ -129,9 +130,17 @@ function Waiting(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
-  const label = () => store.findById(Label, shown("label") ?? "");
-  const subspace = () => store.findById(Subspace, shown("subspace") ?? "");
-  const savedView = () => store.findById(View, shown("view") ?? "");
+  // With no thread open, the chosen mailbox's own page: a space's, a view's or a label's settings.
+  const chosenId = (kind: "subspace" | "view" | "label"): string | undefined => {
+    const shownNow = view();
+    const box = mailbox();
+    return "thread" in shownNow && shownNow.thread === null && box.kind === kind
+      ? box.id
+      : undefined;
+  };
+  const label = () => store.findById(Label, shown("label") ?? chosenId("label") ?? "");
+  const subspace = () => store.findById(Subspace, shown("subspace") ?? chosenId("subspace") ?? "");
+  const savedView = () => store.findById(View, shown("view") ?? chosenId("view") ?? "");
   const person = () => store.findById(User, shown("person") ?? "");
   return (
     <>
@@ -196,6 +205,9 @@ export default function App(): JSX.Element {
             </Match>
             <Match when={savedView()} keyed>
               {(saved) => <SavedView view={saved} />}
+            </Match>
+            <Match when={label()} keyed>
+              {(chosenLabel) => <LabelView label={chosenLabel} />}
             </Match>
             <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
               {(draft) => <DraftView draft={draft} />}

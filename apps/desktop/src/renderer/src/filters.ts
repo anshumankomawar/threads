@@ -35,12 +35,16 @@ export const FIELDS: Record<
   ownerId: { label: "Owner", compare: "eq", values: people },
 };
 
-// One field's test, as the filter bar shows it: "Status: Open".
+// One field's test, as the filter bar shows it: "Status: Open". Either of several ("Owner: Me or Assignee: Me") reads
+// as each joined, and a field it doesn't offer by its own name, so a view made elsewhere still shows.
 export function describe(condition: Filter): string {
+  if ("or" in condition) return (condition.or as Filter[]).map(describe).join(" or ");
+  if ("and" in condition) return (condition.and as Filter[]).map(describe).join(", ");
   const [[field, comparison]] = Object.entries(condition);
-  const { label, values } = FIELDS[field];
-  const value = Object.values(comparison as object)[0];
-  return `${label}: ${values().find(([id]) => id === value)?.[1] ?? "?"}`;
+  const value = String(Object.values(comparison as object)[0]);
+  const known = FIELDS[field];
+  if (!known) return `${field}: ${value}`;
+  return `${known.label}: ${known.values().find(([id]) => id === value)?.[1] ?? "?"}`;
 }
 
 // The subspaces a filter's conditions name, whose threads have to be loaded to test them (you may not be in them).

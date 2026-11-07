@@ -1,7 +1,7 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
+import { Label, Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
 import { me, memberOf, open, setDialog, store, edit, memberIn, workspace } from "../session";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
@@ -191,6 +191,28 @@ export function SavedView(props: { view: View }): JSX.Element {
       <Show when={v().ownerId === me().id}>
         <PageTabs pages={[settings]} />
       </Show>
+    </div>
+  );
+}
+
+// A label: its threads are listed beside, and here it can go.
+export function LabelView(props: { label: Label }): JSX.Element {
+  const l = (): Label => props.label;
+  const settings: Page = {
+    tab: SETTINGS,
+    body: (
+      <Settings>
+        <Setting name="Delete label" hint="It comes off its threads, which stay as they are.">
+          <Delete onClick={() => (open({ thread: null }), void l().delete())} />
+        </Setting>
+      </Settings>
+    ),
+  };
+  return (
+    <div class={sx(page.page)}>
+      <Title name={l().name} />
+      <p class={sx(page.summary)}>Its threads are listed beside; filter them there.</p>
+      <PageTabs pages={[settings]} />
     </div>
   );
 }
