@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Label, Subspace, Thread, User, View } from "models";
+import { Draft, Label, Subspace, Thread, User, View } from "models";
 import {
   active,
   itemFor,
@@ -38,6 +38,7 @@ import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
 import { PersonView, SavedView, SubspaceView } from "./components/Pages";
 import { HistoryButtons } from "./components/Sidebar";
+import { Compose } from "./components/Compose";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
 
 const styles = stylex.create({
@@ -165,6 +166,7 @@ export default function App(): JSX.Element {
                 subspace()?.name ??
                 savedView()?.name ??
                 (allThreads() ? "All threads" : undefined) ??
+                (shown("draft") !== undefined ? "Draft" : undefined) ??
                 person()?.name}
             </span>
             <span class={sx(topbar.end)}>
@@ -192,6 +194,9 @@ export default function App(): JSX.Element {
             </Match>
             <Match when={savedView()} keyed>
               {(saved) => <SavedView view={saved} />}
+            </Match>
+            <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
+              {(draft) => <Compose draftId={draft.id} page />}
             </Match>
             <Match when={person()} keyed>
               {(user) => <PersonView user={user} />}

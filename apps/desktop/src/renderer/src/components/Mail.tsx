@@ -19,6 +19,7 @@ import {
   sent,
   setDialog,
   shortDate,
+  shown,
   showMenu,
   sidebarOpen,
   store,
@@ -254,11 +255,12 @@ function Collapse(props: { open: boolean; children: JSX.Element }): JSX.Element 
 }
 
 const [folded, setFolded] = createSignal<string[]>(saved("mail-folded", []));
-const toggleFold = (key: string): void => {
-  const next = folded().includes(key) ? folded().filter((k) => k !== key) : [...folded(), key];
-  setFolded(next);
-  save("mail-folded", next);
-};
+const toggleFold = (key: string): void =>
+  void setFolded((list) => {
+    const next = toggleIn(list, key);
+    save("mail-folded", next);
+    return next;
+  });
 
 // A sidebar section: a heading that folds it (as Mail's do), with an add button that shows on hover.
 function Section(props: {
@@ -309,13 +311,15 @@ function Section(props: {
 
 // Which spaces and labels are open in the sidebar to show their threads (all start shut).
 const [expanded, setExpanded] = createSignal<string[]>(saved("mail-expanded", []));
-const toggleExpanded = (key: string): void => {
-  const next = expanded().includes(key)
-    ? expanded().filter((k) => k !== key)
-    : [...expanded(), key];
-  setExpanded(next);
-  save("mail-expanded", next);
-};
+// From the latest list, written or not (Solid applies writes in batches), so two toggles at once both count.
+const toggleIn = (list: string[], key: string): string[] =>
+  list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
+const toggleExpanded = (key: string): void =>
+  void setExpanded((list) => {
+    const next = toggleIn(list, key);
+    save("mail-expanded", next);
+    return next;
+  });
 
 // A row under a mailbox that opens out: a thread (or a draft) of it.
 type SubRow = {
@@ -332,7 +336,9 @@ const threadRow = (thread: Thread, box: Mailbox): SubRow => ({
   title: thread.title,
   tone:
     thread.priority === "urgent" ? "urgent" : thread.state === "blocked" ? "blocked" : undefined,
-  current: active() === thread,
+  // A thread can be under several mailboxes (a space, a label, Sent); it shows selected only under the one the list is
+  // showing, where you opened it, as Finder selects an item in the place you're looking at it.
+  current: active() === thread && sameMailbox(mailbox(), box),
   // Opening it lists its mailbox too, where it shows selected.
   run: () => {
     chooseMailbox(box);
@@ -518,6 +524,8 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
 }
 
 export function MailSidebar(): JSX.Element {
+  let nav!: HTMLElement;
+  onSettled(() => slidingPill(nav, nav.firstElementChild as HTMLElement));
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
@@ -534,11 +542,7 @@ export function MailSidebar(): JSX.Element {
           </button>
         </span>
       </div>
-      <nav
-        ref={(el) => onSettled(() => slidingPill(el, el.firstElementChild as HTMLElement))}
-        class={sx(s.nav)}
-        aria-label="Mailboxes"
-      >
+      <nav ref={nav} class={sx(s.nav)} aria-label="Mailboxes">
         <div class={sx(s.pill)} aria-hidden="true" />
         <ul class={sx(s.mailboxes)}>
           <Mailbox
@@ -602,14 +606,18 @@ export function MailSidebar(): JSX.Element {
             rows={drafts().map((draft): SubRow => ({
               key: draft.id,
               title: draftTitle(draft),
-              current: false,
-              run: () => setDialog({ kind: "compose", draftId: draft.id }),
+              current: shown("draft") === draft.id,
+              // A kept draft opens as a page in the reading pane, like the thread it will be.
+              run: () => {
+                chooseMailbox({ kind: "drafts" });
+                open({ draft: draft.id });
+              },
               menu: (e) =>
                 showMenu(e, [
                   {
                     label: "Open Draft",
                     icon: icon(i.NoteEditIcon, 13),
-                    run: () => setDialog({ kind: "compose", draftId: draft.id }),
+                    run: () => open({ draft: draft.id }),
                   },
                   "separator",
                   {
@@ -825,14 +833,16 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
         role="button"
         tabindex={0}
         data-pill
+        data-active={shown("draft") === props.draft.id ? "" : undefined}
+        aria-current={shown("draft") === props.draft.id ? "true" : undefined}
         class={sx(s.row)}
-        onClick={() => setDialog({ kind: "compose", draftId: props.draft.id })}
+        onClick={() => open({ draft: props.draft.id })}
         onContextMenu={(e) =>
           showMenu(e, [
             {
               label: "Open Draft",
               icon: icon(i.NoteEditIcon, 13),
-              run: () => setDialog({ kind: "compose", draftId: props.draft.id }),
+              run: () => open({ draft: props.draft.id }),
             },
             "separator",
             {
@@ -881,11 +891,13 @@ export function MessageList(): JSX.Element {
           ? { kind: "label", id: shown.label }
           : "person" in shown
             ? { kind: "person", id: shown.person }
-            : "view" in shown
-              ? shown.view === null
-                ? { kind: "all" }
-                : { kind: "view", id: shown.view }
-              : undefined;
+            : "draft" in shown
+              ? { kind: "drafts" }
+              : "view" in shown
+                ? shown.view === null
+                  ? { kind: "all" }
+                  : { kind: "view", id: shown.view }
+                : undefined;
     if (next && !sameMailbox(next, mailbox())) chooseMailbox(next);
   });
   // A space's threads, and those of any space a filter names, load even if you're not in it.
@@ -912,6 +924,7 @@ export function MessageList(): JSX.Element {
     return `${count} ${noun}${count === 1 ? "" : "s"}`;
   };
   let list!: HTMLDivElement;
+  onSettled(() => slidingPill(list, list.firstElementChild as HTMLElement));
   // ↑ and ↓ move through the list, as in Mail (J and K do too, anywhere).
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -1010,10 +1023,7 @@ export function MessageList(): JSX.Element {
         </div>
       </Show>
       <div
-        ref={(el) => {
-          list = el;
-          onSettled(() => slidingPill(el, el.firstElementChild as HTMLElement));
-        }}
+        ref={list}
         class={sx(s.listScroll)}
         onMouseDown={() =>
           queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
@@ -1376,6 +1386,10 @@ const s = stylex.create({
       ":is([data-on], :hover)": "transparent",
       ":has(+ :is([data-on], :hover))": "transparent",
     },
+    // Fading as the pill slides in or out, rather than blinking ahead of it.
+    transitionProperty: "border-bottom-color",
+    transitionDuration: { default: "180ms", [motion.reduced]: "0s" },
+    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
   row: {
     display: "flex",

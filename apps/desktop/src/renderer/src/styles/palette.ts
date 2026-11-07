@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { paletteSectionMarker } from "./markers.stylex";
-import { colors, fontSizes, motion, radii, shadows } from "./tokens.stylex";
+import { colors, contentZoom, fontSizes, motion, radii, shadows } from "./tokens.stylex";
 
 const below = {
   borderBottomWidth: 1,
@@ -95,6 +95,14 @@ export const palette = stylex.create({
 export const compose = stylex.create({
   // Holds the panel's keys without changing its layout.
   keys: { display: "contents" },
+  // A draft as a page: where a thread's page puts its text (its fields are inset 12px), and as wide.
+  page: {
+    display: "flex",
+    flexDirection: "column",
+    maxWidth: 773,
+    padding: "40px 32px 48px 40px",
+    zoom: contentZoom["--content-zoom"],
+  },
   input: {
     ...below,
     flexShrink: 0,
@@ -116,7 +124,17 @@ export const compose = stylex.create({
     transitionDuration: "120ms",
   },
   stale: { opacity: 0.6 },
-  label: { gap: 8 },
+  // "New thread", and what the model's doing on the right.
+  head: {
+    ...row,
+    gap: 8,
+    justifyContent: "space-between",
+    height: 22,
+    padding: "0 12px",
+    color: colors.textSecondary,
+    fontSize: fontSizes.label,
+  },
+  status: { ...row, gap: 8, color: colors.textTertiary },
   redraft: { color: colors.accent, cursor: "pointer" },
   // Fields read as text and edit in place: no box until you're in one.
   field: {
@@ -151,30 +169,45 @@ export const compose = stylex.create({
     margin: "2px 6px 0",
     color: { default: colors.textSecondary, "::placeholder": colors.textTertiary },
   },
-  empty: { margin: "6px 12px 0", color: colors.textSecondary },
-  asks: { display: "flex", flexDirection: "column", gap: 8, margin: "10px 0 0", padding: "0 6px" },
-  ask: { display: "flex", flexDirection: "column", gap: 2 },
-  people: {
-    display: "flex",
+  // Its status, owner and who's asked, as chips are on the thread page.
+  properties: {
+    ...row,
     flexWrap: "wrap",
-    gap: 8,
-    padding: "0 6px",
-    color: colors.textSecondary,
+    gap: 12,
+    padding: "8px 12px 4px",
     fontSize: fontSizes.body,
   },
-  person: { display: "inline-flex", gap: 5, alignItems: "center" },
-  remove: { cursor: "pointer" },
+  empty: { margin: "8px 12px 0", color: colors.textSecondary },
+  // Each ask, as the message from you it will be.
+  message: { marginTop: 8, padding: "0 12px" },
+  line: { display: "flex", flexWrap: "wrap", gap: 4, alignItems: "baseline", lineHeight: "21px" },
+  mention: { fontSize: fontSizes.message },
+  askText: {
+    flex: 1,
+    width: "auto",
+    minWidth: 160,
+    padding: "0 4px",
+    fontSize: fontSizes.message,
+    lineHeight: "21px",
+  },
+  // Save draft, quiet, and Send, the one solid button.
   footer: {
     ...row,
-    gap: 8,
-    justifyContent: "space-between",
-    padding: "6px 8px 6px 12px",
+    gap: 2,
+    justifyContent: "flex-end",
+    padding: 8,
     borderTopWidth: 1,
     borderTopStyle: "solid",
     borderTopColor: colors.panelBorder,
-    color: colors.textTertiary,
-    fontSize: fontSizes.small,
+    fontSize: fontSizes.body,
   },
-  kbd: { color: "inherit", font: "inherit" },
-  actions: { display: "flex", gap: 6 },
+  quiet: {
+    ...row,
+    gap: 6,
+    height: 28,
+    padding: "0 10px",
+    borderRadius: radii.row,
+    cursor: "pointer",
+  },
+  kbd: { opacity: 0.7, font: "inherit" },
 });

@@ -179,24 +179,21 @@ export const editorClass = {
 };
 
 export const button = stylex.create({
-  button: {
+  // The one main action somewhere (a table's New, Send): Notion's blue, after `base.bare`.
+  solid: {
     display: "flex",
     gap: 6,
     alignItems: "center",
-    height: 24,
-    padding: "0 8px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.panelBorder,
+    height: 28,
+    marginLeft: 6,
+    padding: "0 12px",
     borderRadius: radii.row,
-    color: colors.textPrimary,
-    font: "inherit",
-    fontSize: fontSizes.body,
+    color: "white",
+    fontWeight: 600,
+    backgroundColor: { default: colors.primary, ":hover": colors.primaryHover },
     cursor: { default: "pointer", ":disabled": "default" },
-    opacity: { default: null, ":disabled": 0.5 },
+    opacity: { default: 1, ":disabled": 0.5 },
   },
-  primary: { borderColor: "transparent", color: colors.accent, backgroundColor: colors.accentFill },
-  kbd: { color: colors.textTertiary },
 });
 
 const toastIn = stylex.keyframes({

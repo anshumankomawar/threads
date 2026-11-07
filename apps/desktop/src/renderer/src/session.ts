@@ -113,7 +113,9 @@ export type View =
   | { label: string }
   | { person: string }
   | { subspace: string }
-  | { view: string | null };
+  | { view: string | null }
+  // A kept draft, open as a page like the thread it will be.
+  | { draft: string };
 // An item runs something, or opens its own `items` in the menu's place. One with `checked` is a toggle: it shows a check
 // and leaves the menu open.
 export type MenuItem =
@@ -228,8 +230,9 @@ const activeId = (): string | null => {
 };
 export const active = (): Thread | undefined => store.findById(Thread, activeId() ?? "");
 // The id the view shows of one kind of page, if it's that kind.
-export const shown = (key: "label" | "person" | "subspace" | "view"): string | undefined =>
-  (view() as Record<string, string | null | undefined>)[key] ?? undefined;
+export const shown = (
+  key: "label" | "person" | "subspace" | "view" | "draft",
+): string | undefined => (view() as Record<string, string | null | undefined>)[key] ?? undefined;
 export const allThreads = (): boolean => "view" in view() && shown("view") === undefined;
 
 function markSeen(thread: Thread | undefined): void {
