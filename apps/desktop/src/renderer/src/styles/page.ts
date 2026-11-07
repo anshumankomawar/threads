@@ -125,4 +125,32 @@ export const page = stylex.create({
   avatars: { display: "flex" },
   // Each face overlaps the one before it.
   avatar: { marginLeft: { default: -4, ":first-child": 0 } },
+  // A hotkey's keys, which you click to change: a rounded fill of their own on hover.
+  keysButton: {
+    display: "flex",
+    alignItems: "center",
+    height: 26,
+    margin: "0 -6px",
+    padding: "0 6px",
+    borderRadius: radii.row,
+    cursor: "pointer",
+  },
+  recordingButton: { backgroundColor: colors.accentFill },
+  recording: { color: colors.accent },
+  // A quiet text button among a tab's tools.
+  quiet: { height: 28, padding: "0 10px", borderRadius: radii.row, cursor: "pointer" },
+  // Keys as key caps, as Superhuman shows them.
+  caps: { display: "inline-flex", gap: 3 },
+  cap: {
+    display: "inline-grid",
+    placeItems: "center",
+    minWidth: 20,
+    height: 20,
+    padding: "0 5px",
+    borderRadius: radii.control,
+    color: colors.textSecondary,
+    fontFamily: "inherit",
+    fontSize: size.label,
+    backgroundColor: colors.bgTertiary,
+  },
 });

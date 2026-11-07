@@ -18,6 +18,7 @@ import {
 
 import { account, save, saved, server, source, useSource, type Source } from "./startup";
 import { icon } from "./components/Icon";
+import { commandFor, keysOf, type HotkeyId } from "./hotkeys";
 
 export {
   account,
@@ -114,6 +115,8 @@ export type View =
   | { person: string }
   | { subspace: string }
   | { view: string | null }
+  | { settings: null }
+  | { personal: null }
   // A kept draft, open as a page like the thread it will be.
   | { draft: string };
 // An item runs something, or opens its own `items` in the menu's place. One with `checked` is a toggle: it shows a check
@@ -384,25 +387,56 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 }
 
 // ── Keys ──
-// ⌘K search, ⌘[ ⌘] back and forward, ⌘N new thread, ⌘⇧N compose, ⌘U view as, ⌘+ ⌘- ⌘0 zoom. Superhuman's, never with a dialog or menu
-// open: ⌘E done (even while typing), and when not typing J/K next or previous, R reply.
+// Which mailbox ⌘1–⌘4 choose (Inbox, Personal, Sent, Drafts): mail.ts says how, as it owns the mailboxes.
+let chooseBox: (which: "inbox" | "personal" | "sent" | "drafts") => void = () => {};
+export const onChooseBox = (choose: typeof chooseBox): void => {
+  chooseBox = choose;
+};
+const showBox = (which: Parameters<typeof chooseBox>[0]) => (): void => {
+  setSidebarOpen(true);
+  chooseBox(which);
+};
+
+// What each hotkey does (hotkeys.ts has their keys, which Settings rebinds). Plain keys only when you're not typing, and
+// none of the reading ones with a dialog or menu open.
 window.addEventListener("keydown", (event) => {
-  if (event.altKey || event.ctrlKey || !signedIn()) return;
-  const key = `${event.metaKey ? "⌘" : ""}${event.shiftKey ? "⇧" : ""}${event.key.toLowerCase()}`;
+  if (!signedIn()) return;
   const target = event.target as HTMLElement;
   const typing = target.closest("input, textarea, [contenteditable='true']") !== null;
   const free = !document.querySelector("dialog[open], :popover-open");
+  // Escape leaves the reply, unless it just closed one of the reply's menus.
+  if (
+    event.key === "Escape" &&
+    typing &&
+    free &&
+    !event.defaultPrevented &&
+    target.closest(".reply")
+  ) {
+    event.preventDefault();
+    return target.blur();
+  }
+  const keys = keysOf(event);
+  const id = keys && commandFor(keys);
+  if (!id || (typing && !/[⌘⌃]/.test(keys))) return;
   const order = listOrder();
   const current = active();
   const at = current ? order.indexOf(current) : -1;
   // Done is for what's in your inbox, whichever list it's open from.
   const item = current && inbox().order.includes(current) ? itemFor(current) : undefined;
   const reading = free && !typing;
-  const run: Record<string, (() => void) | false | undefined> = {
-    "⌘k": () => setDialog({ kind: "search" }),
-    "⌘[": free && goBack,
-    "⌘]": free && goForward,
-    "⌘n": () => {
+  const run: Record<HotkeyId, (() => void) | false | undefined> = {
+    search: () => setDialog({ kind: "search" }),
+    settings: () => (setDialog(null), open({ settings: null })),
+    hotkeys: free && (() => open({ settings: null })),
+    back: free && goBack,
+    forward: free && goForward,
+    sidebar: () => setSidebarOpen(!sidebarOpen()),
+    // Not in a dialog, where ⌘1… choose its own tabs.
+    inboxBox: free && showBox("inbox"),
+    personalBox: free && showBox("personal"),
+    sentBox: free && showBox("sent"),
+    draftsBox: free && showBox("drafts"),
+    newThread: () => {
       const shown = view();
       setDialog({
         kind: "newThread",
@@ -411,26 +445,19 @@ window.addEventListener("keydown", (event) => {
         to: "person" in shown ? store.findById(User, shown.person) : undefined,
       });
     },
-    "⌘⇧n": () => setDialog({ kind: "compose" }),
+    compose: () => setDialog({ kind: "compose" }),
+    next: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
+    previous: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
+    done: free && item && (() => markDone(item)),
+    reply: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
+    resolve: free && current && (() => setState(current, current.isOpen ? "resolved" : "open")),
+    zoomIn: () => applyZoom(zoom() + 0.1),
+    zoomOut: () => applyZoom(zoom() - 0.1),
+    zoomReset: () => applyZoom(1),
     // Signed in, you're who you signed in as.
-    "⌘u": !account && (() => setDialog({ kind: "viewAs" })),
-    "⌘=": () => applyZoom(zoom() + 0.1),
-    "⌘⇧+": () => applyZoom(zoom() + 0.1),
-    "⌘-": () => applyZoom(zoom() - 0.1),
-    "⌘0": () => applyZoom(1),
-    "⌘e": free && item && (() => markDone(item)),
-    j: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
-    k: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
-    r: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
-    // Not when Escape just closed one of the reply's menus.
-    escape:
-      typing &&
-      free &&
-      !event.defaultPrevented &&
-      target.closest(".reply") !== null &&
-      (() => target.blur()),
+    viewAs: !account && (() => setDialog({ kind: "viewAs" })),
   };
-  const action = run[key];
+  const action = run[id];
   if (!action) return;
   event.preventDefault();
   action();

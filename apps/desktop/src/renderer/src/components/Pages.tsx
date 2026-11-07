@@ -1,16 +1,28 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createSignal, Show, untrack } from "solid-js";
+import { createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Subspace, SubspaceMember, User, View } from "models";
-import { me, memberOf, open, setDialog, store, edit, memberIn } from "../session";
+import { Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
+import { me, memberOf, open, setDialog, store, edit, memberIn, workspace } from "../session";
 import { base } from "../styles/base";
-import { chip, chipTone } from "../styles/controls";
+import { button, chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
-import { Table, Toolbar, tool, type Column } from "./Table";
+import { Table, Toolbar, type Column } from "./Table";
+import {
+  bind,
+  caps,
+  changed,
+  HOTKEYS,
+  keysFor,
+  keysOf,
+  reset,
+  resetAll,
+  type Hotkey,
+  type HotkeyId,
+} from "../hotkeys";
 import type { Tab } from "./Tabs";
 
 // A page's name, and a lock when not everyone sees it (`locked` says who does).
@@ -206,7 +218,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         .flatMap((m) => m.user ?? []),
     action: (
       <button
-        class={sx(base.bare, tool.solid)}
+        class={sx(base.bare, button.solid)}
         onClick={() =>
           isMember() ? setDialog({ kind: "addMember", subspace: s() }) : toggle(me())
         }
@@ -287,6 +299,143 @@ export function PersonView(props: { user: User }): JSX.Element {
           <p class={sx(page.summary)}>{summary(u())}</p>
         </div>
       </header>
+    </div>
+  );
+}
+
+function SearchBox(props: {
+  label: string;
+  value: string;
+  onInput: (value: string) => void;
+}): JSX.Element {
+  return (
+    <label class={sx(page.search)}>
+      {icon(i.Search01Icon, 13)}
+      <input
+        class={sx(base.bare, page.searchInput)}
+        aria-label={props.label}
+        placeholder="Search"
+        spellcheck={false}
+        value={props.value}
+        onInput={(event) => props.onInput(event.currentTarget.value)}
+        onKeyDown={(event) =>
+          event.key === "Escape" && (props.onInput(""), event.currentTarget.blur())
+        }
+      />
+    </label>
+  );
+}
+
+// Keys as key caps, or a dash for a command you've left without any.
+function Keys(props: { keys: string }): JSX.Element {
+  return (
+    <Show when={props.keys} fallback={<span class={sx(page.small)}>—</span>}>
+      <span class={sx(page.caps)}>
+        <For each={caps(props.keys)}>{(cap) => <kbd class={sx(page.cap)}>{cap}</kbd>}</For>
+      </span>
+    </Show>
+  );
+}
+
+const HOTKEYS_TAB: Tab = { label: "Hotkeys", icon: i.KeyboardIcon };
+
+// How the app works for you, a tab for each kind of setting, and the workspace's members. Hotkeys: click one, then press its new
+// keys; Escape cancels and ⌫ leaves it without any. Keys another command has move to this one.
+export function SettingsView(): JSX.Element {
+  const [recording, setRecording] = createSignal<HotkeyId | null>(null);
+  const [search, setSearch] = createSignal("");
+  // Ahead of the app's own keys, so the keys you press while recording do nothing else.
+  const record = (event: KeyboardEvent): void => {
+    const id = recording();
+    const keys = id && keysOf(event);
+    if (!keys) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (keys !== "Esc") bind(id, keys === "⌫" || keys === "⌦" ? "" : keys);
+    setRecording(null);
+  };
+  window.addEventListener("keydown", record, true);
+  onCleanup(() => window.removeEventListener("keydown", record, true));
+  const columns: Column<Hotkey>[] = [
+    {
+      label: "Action",
+      icon: i.TextFontIcon,
+      width: 280,
+      sort: (h) => h.label,
+      cell: (h) => <span class={sx(page.titleText)}>{h.label}</span>,
+    },
+    {
+      label: "Section",
+      icon: i.Folder01Icon,
+      width: 140,
+      sort: (h) => HOTKEYS.findIndex((other) => other.section === h.section),
+      cell: (h) => h.section,
+    },
+    {
+      label: "Keys",
+      icon: i.CommandIcon,
+      width: 200,
+      sort: (h) => keysFor(h.id),
+      // The one thing to change here: a button of its own, not the row.
+      cell: (h) => (
+        <button
+          class={sx(
+            base.bare,
+            base.hover,
+            page.keysButton,
+            recording() === h.id && page.recordingButton,
+          )}
+          aria-label={`Change the keys for ${h.label}`}
+          onClick={() => setRecording(recording() === h.id ? null : h.id)}
+        >
+          <Show when={recording() === h.id} fallback={<Keys keys={keysFor(h.id)} />}>
+            <span class={sx(page.recording)}>Press keys…</span>
+          </Show>
+        </button>
+      ),
+    },
+  ];
+  const people = members({ users: () => store.all(WorkspaceMember).flatMap((m) => m.user ?? []) });
+  const hotkeys: Page = {
+    tab: HOTKEYS_TAB,
+    tools: (
+      <>
+        <SearchBox label="Search hotkeys" value={search()} onInput={setSearch} />
+        <Show when={HOTKEYS.some((h) => changed(h.id))}>
+          <button class={sx(base.bare, base.hover, base.dim, page.quiet)} onClick={resetAll}>
+            Reset all
+          </button>
+        </Show>
+      </>
+    ),
+    body: (
+      <Table
+        columns={columns}
+        rows={HOTKEYS.filter((h) =>
+          [h.label, h.section].some((text) =>
+            text.toLowerCase().includes(search().trim().toLowerCase()),
+          ),
+        )}
+        empty="No hotkey matches."
+        end={(h) => (
+          <Show when={changed(h.id)}>
+            <button class={sx(base.bare, base.dim, page.pointer)} onClick={() => reset(h.id)}>
+              Reset
+            </button>
+          </Show>
+        )}
+      />
+    ),
+  };
+  return (
+    <div class={sx(page.page)}>
+      <h1 class={sx(page.title)}>Settings</h1>
+      <p class={sx(page.description)}>
+        How Arc works for you, and who's in {workspace().name}. To change a hotkey, click it and
+        press the keys you want: Escape cancels, and ⌫ leaves it without any. Hotkeys are kept on
+        this Mac.
+      </p>
+      <PageTabs pages={[hotkeys, people]} />
     </div>
   );
 }

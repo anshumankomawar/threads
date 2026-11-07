@@ -492,6 +492,7 @@ export function MailSidebar(): JSX.Element {
               />
             )}
           </For>
+          <Mailbox box={{ kind: "personal" }} label="Personal" icon={i.UserIcon} />
           <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
           <Mailbox
             box={{ kind: "drafts" }}
@@ -540,7 +541,7 @@ export function MailSidebar(): JSX.Element {
           </For>
         </Section>
         <Section title="Views">
-          <Mailbox box={{ kind: "all" }} label="All threads" icon={i.DashboardSquare01Icon} />
+          <Mailbox box={{ kind: "all" }} label="Workspace" icon={i.DashboardSquare01Icon} />
           <For each={byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id))}>
             {(saved) => (
               <Mailbox
@@ -573,14 +574,24 @@ export function MailSidebar(): JSX.Element {
           </For>
         </Section>
       </nav>
-      <button
-        class={sx(base.bare, s.profile)}
-        aria-label="Your profile"
-        onClick={() => open({ person: me().id })}
-      >
-        <Identicon seed={me().id} size={18} />
-        <span class={sx(base.ellipsis)}>{me().name}</span>
-      </button>
+      <div class={sx(s.footer)}>
+        <button
+          class={sx(base.bare, s.profile)}
+          aria-label="Your profile"
+          onClick={() => open({ person: me().id })}
+        >
+          <Identicon seed={me().id} size={18} />
+          <span class={sx(base.ellipsis)}>{me().name}</span>
+        </button>
+        <button
+          class={sx(topbar.button)}
+          aria-label="Settings"
+          title="Settings (⌘,)"
+          onClick={() => open({ settings: null })}
+        >
+          <Icon icon={i.Settings02Icon} {...ICON} />
+        </button>
+      </div>
       <sidebarColumn.Edge label="Resize sidebar" />
     </aside>
   );
@@ -798,11 +809,13 @@ export function MessageList(): JSX.Element {
             ? { kind: "person", id: shown.person }
             : "draft" in shown
               ? { kind: "drafts" }
-              : "view" in shown
-                ? shown.view === null
-                  ? { kind: "all" }
-                  : { kind: "view", id: shown.view }
-                : undefined;
+              : "personal" in shown
+                ? { kind: "personal" }
+                : "view" in shown
+                  ? shown.view === null
+                    ? { kind: "all" }
+                    : { kind: "view", id: shown.view }
+                  : undefined;
     if (next && !sameMailbox(next, mailbox())) chooseMailbox(next);
   });
   // A space's threads, and those of any space a filter names, load even if you're not in it.
@@ -1213,12 +1226,13 @@ const s = stylex.create({
     color: { default: colors.textTertiary, ":hover": colors.textPrimary },
     opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1 },
   },
+  footer: { display: "flex", flexShrink: 0, gap: 4, alignItems: "center", margin: "0 8px 8px" },
   profile: {
     display: "flex",
-    flexShrink: 0,
+    flex: 1,
+    minWidth: 0,
     gap: 8,
     alignItems: "center",
-    margin: "0 8px 8px",
     padding: "6px 8px",
     borderRadius: radii.row,
     color: colors.textSecondary,

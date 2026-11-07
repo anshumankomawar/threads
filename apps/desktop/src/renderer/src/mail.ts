@@ -8,6 +8,7 @@ import {
   inbox,
   lastActive,
   me,
+  onChooseBox,
   open,
   save,
   saved,
@@ -20,7 +21,7 @@ import {
 // What the middle column lists: your inbox (all of it, one bucket, or what the model hasn't sorted yet), what you've
 // sent or drafted, or a space's, label's, person's or saved view's threads.
 export type Mailbox =
-  | { kind: "inbox" | "unsorted" | "sent" | "drafts" | "all" }
+  | { kind: "inbox" | "unsorted" | "personal" | "sent" | "drafts" | "all" }
   | { kind: "bucket" | "subspace" | "label" | "person" | "view"; id: string };
 
 const [chosen, setChosen] = createSignal<Mailbox>(saved<Mailbox>("mailbox", { kind: "inbox" }));
@@ -53,6 +54,8 @@ export function baseFilter(box: Mailbox): Filter[] {
       return [{ labelIds: { contains: box.id } }];
     case "person":
       return [{ or: [{ ownerId: { eq: box.id } }, { assigneeIds: { contains: box.id } }] }];
+    case "personal":
+      return [{ or: [{ ownerId: { eq: "$me" } }, { assigneeIds: { contains: "$me" } }] }];
     default:
       return [];
   }
@@ -101,6 +104,18 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
         ];
       case "sent":
         return [{ key: "sent", threads: sent() }];
+      // Yours: every thread you own or are assigned, open first, newest first.
+      case "personal":
+        return [
+          {
+            key: "personal",
+            threads: newestFirst(
+              store
+                .all(Thread)
+                .filter((t) => t.ownerId === me().id || t.assigneeIds.includes(me().id)),
+            ),
+          },
+        ];
       case "drafts":
         return [];
       case "all":
@@ -160,6 +175,8 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
 });
 
 followOrder(() => listed().order);
+// ⌘1–⌘4 choose Inbox, Personal, Sent and Drafts.
+onChooseBox((kind) => chooseMailbox({ kind }));
 
 export const drafts = store.view(() =>
   store
@@ -179,7 +196,9 @@ export function mailboxTitle(box: Mailbox): string {
     case "drafts":
       return "Drafts";
     case "all":
-      return "All threads";
+      return "Workspace";
+    case "personal":
+      return "Personal";
     case "bucket":
       return store.findById(Bucket, box.id)?.name ?? "Inbox";
     case "subspace":

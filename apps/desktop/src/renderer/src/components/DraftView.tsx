@@ -45,14 +45,14 @@ const styles = stylex.create({
   // Floating at the bottom of the pane, the width of the document: that it isn't sent, and sending it.
   bar: {
     position: "absolute",
-    right: 16,
+    right: 32,
     bottom: 14,
-    left: 16,
+    // On the document's left edge, as the thread view sets it.
+    left: 52,
     display: "flex",
     gap: 10,
     alignItems: "center",
-    maxWidth: 743,
-    margin: "0 auto",
+    maxWidth: 689,
     padding: "8px 8px 8px 14px",
     borderWidth: 1,
     borderStyle: "solid",

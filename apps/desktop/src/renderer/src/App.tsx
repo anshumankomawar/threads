@@ -22,6 +22,7 @@ import {
   undo,
   setUndo,
   allThreads,
+  view,
   otherSources,
   shown,
 } from "./session";
@@ -36,7 +37,7 @@ import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
-import { PersonView, SavedView, SubspaceView } from "./components/Pages";
+import { PersonView, SavedView, SettingsView, SubspaceView } from "./components/Pages";
 import { HistoryButtons } from "./components/Sidebar";
 import { DraftView } from "./components/DraftView";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
@@ -165,8 +166,9 @@ export default function App(): JSX.Element {
                 label()?.name ??
                 subspace()?.name ??
                 savedView()?.name ??
-                (allThreads() ? "All threads" : undefined) ??
+                (allThreads() ? "Workspace" : undefined) ??
                 (shown("draft") !== undefined ? "Draft" : undefined) ??
+                ("settings" in view() ? "Settings" : undefined) ??
                 person()?.name}
             </span>
             <span class={sx(topbar.end)}>
@@ -197,6 +199,9 @@ export default function App(): JSX.Element {
             </Match>
             <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
               {(draft) => <DraftView draft={draft} />}
+            </Match>
+            <Match when={"settings" in view()}>
+              <SettingsView />
             </Match>
             <Match when={person()} keyed>
               {(user) => <PersonView user={user} />}

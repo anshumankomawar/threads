@@ -30,6 +30,7 @@ import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
+import { keysFor } from "../hotkeys";
 import { moved, OptionButton, type Option } from "./Menus";
 import { Modal } from "./Palettes";
 
@@ -120,7 +121,7 @@ export function Search(): JSX.Element {
   const commands = (): Option[] => [
     {
       label: "New thread",
-      hint: "⌘ N",
+      hint: keysFor("newThread"),
       section: "Quick actions",
       run: () => setDialog({ kind: "newThread" }),
     },
@@ -130,7 +131,14 @@ export function Search(): JSX.Element {
       section: "Quick actions",
       run: () => setDialog({ kind: "newSubspace" }),
     },
-    { label: "All threads", section: "Views", run: done(() => open({ view: null })) },
+    { label: "Personal", section: "Views", run: done(() => open({ personal: null })) },
+    { label: "Workspace", section: "Views", run: done(() => open({ view: null })) },
+    {
+      label: "Settings",
+      hint: keysFor("settings"),
+      section: "Views",
+      run: done(() => open({ settings: null })),
+    },
     {
       label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
       section: "Views",
@@ -151,7 +159,7 @@ export function Search(): JSX.Element {
       : [
           {
             label: "View as…",
-            hint: "⌘ U",
+            hint: keysFor("viewAs"),
             section: "Data",
             run: () => setDialog({ kind: "viewAs" }),
           },

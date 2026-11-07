@@ -2,17 +2,17 @@ import * as stylex from "@stylexjs/stylex";
 import { threadLineMarker } from "./markers.stylex";
 import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 
-// A thread as a document (ThreadView): avatars at 15px, text at 52px, about 706px wide.
+// A thread as a document (ThreadView): left-aligned like the other pages, about 706px of text.
 export const thread = stylex.create({
   view: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
-  scroll: { flex: 1, minHeight: 0, overflowY: "auto" },
+  scroll: { flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" },
   doc: {
     display: "flex",
     flexDirection: "column",
     gap: 20.5,
+    // Left-aligned, on the same edge and top as the other pages.
     maxWidth: 773,
-    margin: "0 auto",
-    padding: "13.75px 15px 48px",
+    padding: "52px 32px 48px 52px",
     zoom: contentZoom["--content-zoom"],
   },
   block: { display: "flex", gap: 15, scrollMarginTop: 14 },
