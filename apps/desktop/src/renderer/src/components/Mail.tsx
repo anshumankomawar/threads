@@ -763,7 +763,6 @@ function Row(props: { thread: Thread }): JSX.Element {
             <span class={sx(s.unreadDot)} aria-label="Unread" />
           </Show>
         </span>
-        <Identicon seed={from()?.id ?? t().ownerId ?? ""} size={24} class={sx(s.avatar)} />
         <span class={sx(s.rowBody)}>
           <span class={sx(s.rowTop)}>
             <span class={sx(base.ellipsis, s.from)}>{from()?.name ?? ""}</span>
@@ -1378,13 +1377,13 @@ const s = stylex.create({
   groupCount: { fontWeight: 400 },
   rows: { margin: 0, padding: 0, listStyle: "none" },
   rowItem: { listStyle: "none" },
-  // The hairline under a row, as Mail draws it: from the text's column (past the unread dot and avatar: 2 + 12 + 8 + 24
-  // + 8) to the row's right edge. It gives way on both sides of a selected or hovered row, so the pill stands clear
+  // The hairline under a row, as Mail draws it: from the text's column (past the unread dot: 2 + 12 + 8) to the row's
+  // right edge. It gives way on both sides of a selected or hovered row, so the pill stands clear
   // rather than cut by the lines above and below it, fading as the pill slides rather than blinking ahead of it.
   divider: {
     display: "block",
     height: 1,
-    marginLeft: 54,
+    marginLeft: 22,
     marginRight: 10,
     backgroundColor: {
       default: colors.strokeTertiary,
@@ -1413,8 +1412,6 @@ const s = stylex.create({
     paddingTop: 5,
   },
   unreadDot: { width: 8, height: 8, borderRadius: "50%", backgroundColor: colors.systemBlue },
-  // Centred on the first two lines (who and what: 9px to 43px down the row), not the whole row.
-  avatar: { flexShrink: 0, marginTop: 5 },
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
   rowTop: { display: "flex", gap: 8, alignItems: "baseline" },
   from: { flex: 1, fontSize: fontSizes.name, fontWeight: 600 },

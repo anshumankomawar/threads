@@ -79,7 +79,8 @@ export const menu = stylex.create({
     alignItems: "center",
     height: 21.8,
     margin: "0 4.5px",
-    padding: "0 10px 0 11.5px",
+    // A little tighter inside the highlight than Mail's.
+    padding: "0 7px 0 7.5px",
     borderRadius: 5,
     color: colors.textPrimary,
     whiteSpace: "nowrap",
