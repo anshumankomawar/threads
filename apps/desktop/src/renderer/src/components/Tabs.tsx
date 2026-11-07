@@ -17,7 +17,8 @@ export const tab = stylex.create({
     height: 24,
     minWidth: 26,
     padding: "0 6px",
-    borderRadius: radii.row,
+    // Tighter than a row's: segment tabs are small, and sit close together.
+    borderRadius: radii.control,
     color: colors.iconTertiary,
     fontSize: 12,
     cursor: "pointer",
