@@ -15,20 +15,20 @@ const panelIn = stylex.keyframes({
 });
 const backdropIn = stylex.keyframes({ from: { opacity: 0 } });
 
-// Palettes (Palettes.tsx `Modal`) are a modal <dialog>: a `base.panel`, 560px wide, centered, a third of the way down
-// (and never running off the bottom). It's there at once: a quick fade, over a light dim.
+// Palettes (Palettes.tsx `Modal`) are a modal <dialog>: a `base.panel`, 560px wide, centered, a little under a fifth of
+// the way down (and never running off the bottom). It's there at once: a quick fade, over a light dim.
 export const palette = stylex.create({
   dialog: {
     flexDirection: "column",
     width: 560,
     maxWidth: "calc(100vw - 32px)",
-    maxHeight: "min(474px, calc(100vh * 2 / 3 - 24px))",
+    maxHeight: "min(474px, calc(100vh * 0.82 - 24px))",
     // Pinned to the viewport's edges so the auto margins center it.
     top: 0,
     right: 0,
     bottom: 0,
     left: 0,
-    margin: "calc(100vh / 3 - 60px) auto auto",
+    margin: "max(72px, 18vh) auto auto",
     padding: 0,
     overflow: "hidden",
     color: colors.textPrimary,

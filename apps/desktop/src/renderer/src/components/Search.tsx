@@ -114,7 +114,7 @@ export function Search(): JSX.Element {
           section: `${key[0].toUpperCase()}${key.slice(1)}`,
           run: () => chooseToken({ key, value: c.value, text: c.text }),
         }));
-    // Otherwise none: the menu is the results for what's typed. The placeholder says filters exist.
+    // Otherwise none: the menu is the results for what's typed (filters are there for whoever types one).
     return [];
   };
 
@@ -308,7 +308,7 @@ export function Search(): JSX.Element {
           ref={input}
           autofocus
           class={sx(base.bare, palette.input, styles.input)}
-          placeholder={tokens().length > 0 ? "" : "Search, or filter with from: in: is: label:"}
+          placeholder={tokens().length > 0 ? "" : "Search"}
           spellcheck={false}
           value={text()}
           onInput={(event) => setText(event.currentTarget.value)}
