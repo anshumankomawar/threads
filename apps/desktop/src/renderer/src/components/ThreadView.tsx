@@ -55,6 +55,8 @@ import { createThread, send } from "./Palettes";
 import { linksFrom, linksTo, progressOf } from "../links";
 import { commandFor, keysOf } from "../hotkeys";
 
+const CARET_MENU_WIDTH = 300;
+
 const styles = stylex.create({
   // The thread's height minus about one block, so the last entry can reach the top but never leave the screen.
   overscroll: { height: "calc(100cqh - 140px)" },
@@ -135,7 +137,7 @@ const styles = stylex.create({
   // As wide as your messages can be, so what you type wraps where it will once it's sent.
   replyMine: { width: "80%", flex: "none", textAlign: "right" },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
-  caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: 300 },
+  caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: CARET_MENU_WIDTH },
   linkSelf: { color: colors.textSecondary },
   // A hollow ring while open, filled once it's resolved or blocked.
   dot: {
@@ -618,7 +620,11 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
             <div
               class={sx(base.panel, look.menu, styles.caretMenu)}
               role="listbox"
-              style={{ left: `${rect().left}px`, top: `${rect().bottom + 6}px` }}
+              style={{
+                // At the caret, but kept inside the window: the reply sits on the right, by its edge.
+                left: `${Math.max(8, Math.min(rect().left, innerWidth - CARET_MENU_WIDTH - 8))}px`,
+                top: `${rect().bottom + 6}px`,
+              }}
               onMouseDown={(e) => e.preventDefault()}
             >
               <For each={options()}>
