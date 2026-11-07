@@ -52,6 +52,7 @@ import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
+import { linksFrom, linksTo, progressOf } from "../links";
 import { commandFor, keysOf } from "../hotkeys";
 
 const styles = stylex.create({
@@ -76,6 +77,39 @@ const styles = stylex.create({
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
   // Pulled out by a value's padding, so the first one's icon lines up with the title.
+  // Linked threads, under the properties: quiet headings, and rows that wash under the pointer.
+  links: { display: "flex", flexDirection: "column", margin: "10px 0 0 -6px" },
+  linksHeading: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    height: 24,
+    padding: "0 6px",
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+    fontWeight: 500,
+  },
+  linksCount: { fontWeight: 400 },
+  linked: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    height: 26,
+    padding: "0 6px",
+    borderRadius: radii.row,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  linkedTitle: { flex: 1 },
+  linkedDone: { color: colors.textTertiary, textDecoration: "line-through" },
+  linkedMeta: {
+    display: "flex",
+    flexShrink: 0,
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+  },
   properties: {
     display: "flex",
     flexWrap: "wrap",
@@ -307,8 +341,60 @@ function Header(props: { thread: Thread }): JSX.Element {
           )}
         </Show>
         <Properties thread={c()} />
+        <LinkedThreads thread={c()} />
       </div>
     </header>
+  );
+}
+
+// The threads this one links to (what it's made of, with how many are resolved) and those that link to it, under its
+// properties. Each peeks open, so you can look without leaving.
+function LinkedThreads(props: { thread: Thread }): JSX.Element {
+  const out = (): Thread[] => linksFrom(props.thread);
+  const back = (): Thread[] => linksTo(props.thread);
+  const progress = () => progressOf(props.thread);
+  const row = (t: Thread): JSX.Element => (
+    <button class={sx(base.bare, base.hover, styles.linked)} onClick={() => peek({ thread: t.id })}>
+      {dot(t.state)}
+      <span class={sx(base.ellipsis, styles.linkedTitle, !t.isOpen && styles.linkedDone)}>
+        {t.title}
+      </span>
+      <Show when={t.isOpen && t.dueAt}>
+        {(due) => <span class={sx(styles.linkedMeta)}>{shortDate(due())}</span>}
+      </Show>
+      <Show when={t.owner}>
+        {(owner) => (
+          <span class={sx(styles.linkedMeta)} title={owner().name}>
+            <Identicon seed={owner().id} size={14} />
+          </span>
+        )}
+      </Show>
+    </button>
+  );
+  return (
+    <Show when={out().length > 0 || back().length > 0}>
+      <div class={sx(styles.links)}>
+        <Show when={out().length > 0}>
+          <div class={sx(styles.linksHeading)}>
+            <span>Links to</span>
+            <Show when={progress()}>
+              {(p) => (
+                <span class={sx(styles.linksCount)}>
+                  {p().done} of {p().total} resolved
+                </span>
+              )}
+            </Show>
+          </div>
+          <For each={out()}>{row}</For>
+        </Show>
+        <Show when={back().length > 0}>
+          <div class={sx(styles.linksHeading)}>
+            <span>Linked from</span>
+          </div>
+          <For each={back()}>{row}</For>
+        </Show>
+      </div>
+    </Show>
   );
 }
 

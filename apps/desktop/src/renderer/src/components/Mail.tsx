@@ -53,6 +53,7 @@ import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens
 import { AppButtons } from "./Sidebar";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
+import { progressOf } from "../links";
 import { Tabs, type Tab } from "./Tabs";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
@@ -796,6 +797,15 @@ function Row(props: { thread: Thread }): JSX.Element {
           <span class={sx(s.preview)}>
             <span class={sx(s.chipsSpacer)} aria-hidden="true" />
             <span class={sx(s.chips)}>
+              {/* What it's made of: how many of the threads it links to are resolved. */}
+              <Show when={progressOf(t())}>
+                {(p) => (
+                  <span class={sx(s.due)} title="Linked threads resolved">
+                    <Icon icon={i.Link01Icon} size={10} aria-hidden="true" />
+                    {p().done}/{p().total}
+                  </span>
+                )}
+              </Show>
               <Show when={t().isOpen && t().dueAt}>
                 {(due) => (
                   <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>

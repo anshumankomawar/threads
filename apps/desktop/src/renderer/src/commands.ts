@@ -1,6 +1,7 @@
 import * as i from "@hugeicons/core-free-icons";
 import { Label, PRIORITIES, STATES, Subspace, Thread, User, View } from "models";
 import { bucketIcons } from "./bucketIcons";
+import { linksFrom, linksTo } from "./links";
 import type { IconSvgElement } from "./components/Icon";
 import { LABELS } from "./components/ThreadView";
 import { keysFor, type HotkeyId } from "./hotkeys";
@@ -154,6 +155,27 @@ function threadCommands(thread: Thread): Command[] {
           },
         ]
       : []),
+    // The threads it links to and that link to it, to open or peek at.
+    ...((): Command[] => {
+      const linked = [...linksFrom(thread), ...linksTo(thread)];
+      return linked.length === 0
+        ? []
+        : [
+            {
+              id: "linked",
+              title: "Linked Threads",
+              kind: "action",
+              section,
+              icon: i.Link01Icon,
+              keywords: "links related backlinks progress",
+              page: () => ({
+                title: "Linked Threads",
+                placeholder: "Search",
+                commands: () => linked.map((t) => threadCommand(t, thread.title)),
+              }),
+            },
+          ];
+    })(),
     {
       id: "status",
       title: "Set Status",
