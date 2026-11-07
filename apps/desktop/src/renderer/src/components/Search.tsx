@@ -18,7 +18,6 @@ import {
 import {
   choicesFor,
   isKey,
-  KEYS,
   lastWord,
   passes,
   says,
@@ -99,14 +98,10 @@ export function Search(): JSX.Element {
     setText(typing().before);
     input.focus();
   };
-  const chooseKey = (key: FilterKey): void => {
-    setText(`${typing().before}${key}:`);
-    input.focus();
-  };
 
-  // A filter's values, while one's being typed; the filters themselves, with nothing typed or the start of a key.
+  // A filter's values, once its key is typed (`from:`).
   const suggestions = (): Option[] => {
-    const { key, partial, word } = typing();
+    const { key, partial } = typing();
     if (key)
       return choicesFor(key, partial)
         .slice(0, 8)
@@ -118,17 +113,8 @@ export function Search(): JSX.Element {
           section: `${key[0].toUpperCase()}${key.slice(1)}`,
           run: () => chooseToken({ key, value: c.value, text: c.text }),
         }));
-    const prefix = word.toLowerCase();
-    if (text().trim() !== "" && (prefix === "" || /\s$/.test(text()))) return [];
-    return (Object.keys(KEYS) as FilterKey[])
-      .filter((k) => prefix === "" || k.startsWith(prefix))
-      .map((k) => ({
-        label: `${k}:`,
-        icon: i.FilterIcon,
-        hint: KEYS[k].hint,
-        section: "Search filters",
-        run: () => chooseKey(k),
-      }));
+    // Otherwise none: the menu is the results for what's typed. The placeholder says filters exist.
+    return [];
   };
 
   const commands = (): Option[] => [
@@ -249,9 +235,8 @@ export function Search(): JSX.Element {
     const next = moved(event.key, index(), rows().length);
     if (next !== undefined) setAt(next);
     else if (event.key === "Enter") rows()[index()]?.run();
-    // Tab takes the highlighted suggestion, as a shell completes.
-    else if (event.key === "Tab" && (typing().key || suggestions().length > 0))
-      rows()[index()]?.run();
+    // Tab takes the highlighted value, as a shell completes.
+    else if (event.key === "Tab" && typing().key) rows()[index()]?.run();
     // A finished `key:value` becomes a chip as you type the space after it.
     else if (event.key === " " && tokenOf(typing().word)) chooseToken(tokenOf(typing().word)!);
     else if (
