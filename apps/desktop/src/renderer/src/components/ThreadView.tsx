@@ -69,6 +69,8 @@ const styles = stylex.create({
   eventDot: { width: 6, height: 6, borderRadius: "50%", backgroundColor: colors.iconTertiary },
   // Yours, on the right: avatar and byline at the far edge, the text in a column that leaves the left open.
   mine: { flexDirection: "row-reverse" },
+  // A message carrying on the one before keeps the avatar's column but not its height, so one line is one line tall.
+  noAvatar: { height: 0, marginTop: 0 },
   mineBody: { alignItems: "flex-end" },
   mineText: { maxWidth: "80%", textAlign: "right" },
   to: { color: colors.textSecondary, fontSize: fontSizes.body },
@@ -97,6 +99,8 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   reply: { display: "flex", flex: 1, minWidth: 0 },
+  // As wide as your messages can be, so what you type wraps where it will once it's sent.
+  replyMine: { width: "80%", flex: "none", textAlign: "right" },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
   caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: 300 },
   linkSelf: { color: colors.textSecondary },
@@ -370,7 +374,7 @@ function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): 
         ])
       }
     >
-      <span class={sx(thread.avatar)}>
+      <span class={sx(thread.avatar, props.turn === "grouped" && styles.noAvatar)}>
         <Show when={props.turn === "avatar"}>
           <Identicon seed={m().authorId} size={AVATAR} />
         </Show>
@@ -533,15 +537,16 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   };
   onSettled(() => () => editor.destroy());
   return (
-    <div class={sx(thread.block)} onClick={() => editor.commands.focus()}>
+    // Yours, so on the right as your messages are.
+    <div class={sx(thread.block, styles.mine)} onClick={() => editor.commands.focus()}>
       <span class={sx(thread.avatar)}>
         <Identicon seed={me().id} size={AVATAR} />
       </span>
-      <div class={sx(thread.body)}>
+      <div class={sx(thread.body, styles.mineBody)}>
         <div class={sx(thread.meta)}>
           <span class={sx(thread.author)}>{me().name}</span>
         </div>
-        <div ref={mount} class={sx(styles.reply)} />
+        <div ref={mount} class={sx(styles.reply, styles.replyMine)} />
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (

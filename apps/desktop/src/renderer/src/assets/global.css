@@ -66,14 +66,23 @@
   }
 
   /* The reply editor's content, which ProseMirror makes itself. */
+  /* Spaces that end a wrapped line hang past the edge, rather than leaving a gap at the right-aligned end
+     (ProseMirror's own break-spaces keeps them; important, as its sheet is outside our layer). */
+  .reply.ProseMirror {
+    white-space: pre-wrap !important;
+  }
+
   .reply p {
+    position: relative;
     margin: 0;
   }
 
+  /* At the line's end, where the reply's right-aligned caret is. */
   .reply p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
-    float: left;
-    height: 0;
+    position: absolute;
+    right: 0;
+    white-space: nowrap;
     color: light-dark(
       color-mix(in srgb, oklch(0.21 0 0) 55%, transparent),
       color-mix(in srgb, oklch(0.955 0 0) 60%, transparent)
