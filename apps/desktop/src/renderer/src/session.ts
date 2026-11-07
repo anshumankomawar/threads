@@ -136,7 +136,7 @@ export type MenuItem =
     }
   | { label: string; icon?: JSX.Element; items: MenuItem[] }
   | "separator";
-export type Dialog =
+export type Dialog = (
   | { kind: "search" | "viewAs" }
   | { kind: "newThread"; labelId?: string; subspaceId?: string; to?: User }
   | { kind: "newView"; filter: Filter }
@@ -145,7 +145,11 @@ export type Dialog =
   | { kind: "newLabel"; thread?: Thread }
   | { kind: "compose"; draftId?: string }
   | { kind: "bucket"; bucket?: Bucket }
-  | { kind: "blocked"; thread: Thread };
+  | { kind: "blocked"; thread: Thread }
+) & {
+  // The palette it was opened from (⌘K), which going back from its first step returns to.
+  back?: Dialog;
+};
 
 export const [view, setView] = createSignal<View>({ thread: null });
 export const [split, setSplit] = createSignal<string | null>(null);
@@ -182,7 +186,29 @@ export function peekForward(): void {
   setPeekHistory({ back: [...back, now], forward: forward.slice(1) });
   setPeeked(forward[0]);
 }
-export const [dialog, setDialog] = createSignal<Dialog | null>(null);
+const [dialogNow, setDialogNow] = createSignal<Dialog | null>(null);
+export const dialog = dialogNow;
+// A palette opened while running something from another (⌘K's New Bucket) remembers it, to go back to; one palette
+// replacing another is one continuous window (Palettes keeps the one <dialog>).
+let returnTo: Dialog | null = null;
+export function setDialog(next: Dialog | null): void {
+  const back = returnTo;
+  returnTo = null;
+  setDialogNow(next && back && next.kind !== back.kind ? { ...next, back } : next);
+}
+// Runs `run` from the palette `from`: a palette it opens can go back to `from`; if it opens none, the palette closes.
+export function runFrom(from: Dialog, run: () => void): void {
+  returnTo = from;
+  run();
+  if (returnTo === from) {
+    returnTo = null;
+    setDialogNow(null);
+  }
+}
+// Back a palette: to the one it was opened from, else closed.
+export function dialogBack(): void {
+  setDialogNow(untrack(dialogNow)?.back ?? null);
+}
 // The open context menu: at the pointer, or (`end`) hanging left from a button's corner, as a menu from the right end
 // of a toolbar does.
 export const [menu, setMenu] = createSignal<{

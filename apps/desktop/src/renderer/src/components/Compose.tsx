@@ -24,7 +24,7 @@ import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { dot } from "./ThreadView";
 import { moved, OptionButton } from "./Menus";
-import { createThread, Modal, send } from "./Palettes";
+import { createThread, focusOnShow, Modal, send } from "./Palettes";
 
 type Ask = ComposeDraft["asks"][number];
 
@@ -232,7 +232,10 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
       <div class={sx(compose.keys)} onKeyDown={onKeyDown}>
         <Show when={!props.page}>
           <textarea
-            ref={input}
+            ref={(el) => {
+              input = el;
+              focusOnShow(el);
+            }}
             autofocus
             class={sx(base.bare, compose.input)}
             placeholder="Write it as you'd say it, @mention who it's for"

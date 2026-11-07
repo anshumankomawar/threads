@@ -11,7 +11,7 @@ import {
   type Kind,
   type Page,
 } from "../commands";
-import { lastActive, setDialog, store } from "../session";
+import { lastActive, runFrom, setDialog, store } from "../session";
 import {
   choicesFor,
   isKey,
@@ -28,7 +28,7 @@ import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { moved, OptionButton, type Option } from "./Menus";
-import { Modal } from "./Palettes";
+import { focusOnShow, Modal } from "./Palettes";
 
 // ⌘K (or /): everything in the app, from one field (commands.ts lists it). Before you type: the open thread's actions
 // and where to go. As you type: the best matches of every kind, each under its heading.
@@ -83,7 +83,7 @@ const styles = stylex.create({
   key: { marginRight: 5, color: colors.textSecondary },
 });
 
-const close = (): void => void setDialog(null);
+const close = (): void => setDialog(null);
 
 // The kinds each tab shows, and the character that picks it as you start typing.
 const CATEGORIES: { label: string; kinds: Kind[]; prefix?: string }[] = [
@@ -177,8 +177,8 @@ export function Search(): JSX.Element {
     more: c.page !== undefined,
     run: () => {
       if (c.page) return enter(c.page());
-      close();
-      c.run?.();
+      // A palette it opens (New Bucket's form) takes ⌘K's place in the same window, and can come back to it.
+      runFrom({ kind: "search" }, () => c.run?.());
     },
   });
 
@@ -313,7 +313,10 @@ export function Search(): JSX.Element {
           )}
         </For>
         <input
-          ref={input}
+          ref={(el) => {
+            input = el;
+            focusOnShow(el);
+          }}
           autofocus
           class={sx(base.bare, palette.input, styles.input)}
           placeholder={page()?.placeholder ?? (tokens().length > 0 ? "" : "Search")}

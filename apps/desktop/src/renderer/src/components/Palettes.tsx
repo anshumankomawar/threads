@@ -1,9 +1,11 @@
+import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, Show, untrack, type Signal } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Label, Message, Subspace, SubspaceMember, Thread, User, View } from "models";
 import type { Filter } from "sync";
 import {
+  dialogBack,
   byName,
   dialog,
   edit,
@@ -24,24 +26,37 @@ import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
+import { colors, fontSizes, radii } from "../styles/tokens.stylex";
+import { icon } from "./Icon";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
 import { Search } from "./Search";
 
-// A modal palette: a click outside or Escape closes it.
-export function Modal(props: { children: JSX.Element }): JSX.Element {
-  return (
-    <dialog
-      ref={(el) => queueMicrotask(() => ((el.closedBy = "any"), el.showModal()))}
-      onClose={() => setDialog(null)}
-      class={sx(base.panel, palette.dialog, palette.open)}
-    >
-      {props.children}
-    </dialog>
-  );
-}
+// A palette's content. The window itself is Palettes' one <dialog>, kept open while one palette gives way to another
+// (⌘K to New Bucket's form and back), so it reads as one continuous form rather than closing and opening again.
+export const Modal = (props: { children: JSX.Element }): JSX.Element => <>{props.children}</>;
+// A palette's field takes the focus as it appears, as `autofocus` only does when the window first opens.
+export const focusOnShow = (el: HTMLElement): void => queueMicrotask(() => el.focus());
 
 type Row = Option;
+
+const styles = stylex.create({
+  inputRow: { gap: 8 },
+  // Back to the palette this one came from, before what's typed.
+  backChip: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 3,
+    alignItems: "center",
+    height: 22,
+    padding: "0 7px 0 5px",
+    borderRadius: radii.control,
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    backgroundColor: { default: colors.bgTertiary, ":hover": colors.bgQuaternary },
+    cursor: "pointer",
+  },
+});
 
 // An input over rows that match it, in sections; arrows choose, Enter or a click runs the row.
 function Picker(props: {
@@ -71,11 +86,15 @@ function Picker(props: {
       return out;
     }, []),
   );
+  // Back a step, or from the first, to the palette it came from (⌘K), else closed.
+  const back = (): void => (props.onBack ?? dialogBack)();
   const onKeyDown = (event: KeyboardEvent): void => {
     const next = moved(event.key, index(), rows().length);
+    const atStart =
+      event.currentTarget instanceof HTMLInputElement && event.currentTarget.value === "";
     if (next !== undefined) setAt(next);
     else if (event.key === "Enter") rows()[index()]?.run();
-    else if (event.key === "Escape" && props.onBack) props.onBack();
+    else if (event.key === "Escape" || (event.key === "Backspace" && atStart)) back();
     else if (event.key === "Tab" && props.onTab) props.onTab();
     else if (event.metaKey && props.filters?.[Number(event.key) - 1])
       setFilter(Number(event.key) - 1);
@@ -84,8 +103,21 @@ function Picker(props: {
   };
   return (
     <Modal>
-      <div class={sx(palette.inputRow)}>
+      <div class={sx(palette.inputRow, styles.inputRow)}>
+        {/* Where Back goes once the steps run out: the palette this one was opened from. */}
+        <Show when={dialog()?.back}>
+          <button
+            class={sx(base.bare, styles.backChip)}
+            title="Back (Esc)"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={dialogBack}
+          >
+            {icon(i.ArrowLeft01Icon, 11)}
+            Search
+          </button>
+        </Show>
         <input
+          ref={focusOnShow}
           autofocus
           class={sx(base.bare, palette.input)}
           placeholder={props.placeholder}
@@ -224,7 +256,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     if (step() === "describe") go("write", title());
     else if (step() === "pick") go("describe", description());
     else if (step() === "labels") go("pick");
-    else setDialog(null);
+    else dialogBack();
   };
   const create = (assignees: User[], subspace?: Subspace): void => {
     const labels = store.all(Label);
@@ -424,7 +456,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
         if (!naming()) {
           setNaming(true);
           setTyped(name());
-        } else setDialog(null);
+        } else dialogBack();
       }}
       rows={(text) =>
         naming()
@@ -523,12 +555,26 @@ const PALETTES = {
   compose: Compose,
 };
 
+// The palettes' one window: open while any palette is, its content the palette shown. One palette giving way to
+// another (⌘K's New Bucket, and Back to ⌘K) swaps what's in it without closing it. A click outside or an Escape no
+// palette uses closes it.
 export function Palettes(): JSX.Element {
   return (
-    <Show when={dialog()} keyed>
-      {(shown: Dialog) => (
-        <Dynamic component={PALETTES[shown.kind] as (props: Dialog) => JSX.Element} {...shown} />
-      )}
+    <Show when={dialog() !== null}>
+      <dialog
+        ref={(el) => queueMicrotask(() => ((el.closedBy = "any"), el.showModal()))}
+        onClose={() => setDialog(null)}
+        class={sx(base.panel, palette.dialog, palette.open)}
+      >
+        <Show when={dialog()} keyed>
+          {(shown: Dialog) => (
+            <Dynamic
+              component={PALETTES[shown.kind] as (props: Dialog) => JSX.Element}
+              {...shown}
+            />
+          )}
+        </Show>
+      </dialog>
     </Show>
   );
 }
