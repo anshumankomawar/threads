@@ -790,13 +790,10 @@ function Row(props: { thread: Thread }): JSX.Element {
             </span>
             <span class={sx(s.stamp)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
           </span>
-          {/* Two lines, every row: the title, then who wrote last leading into what they wrote (cut to the line), with
-              the due date and labels at its end. */}
-          <span class={sx(s.rowBottom)}>
-            <span class={sx(base.ellipsis, s.preview)}>
-              <span class={sx(s.from)}>{from()?.name ?? ""}</span>
-              <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
-            </span>
+          {/* Three lines, every row: the title, then two of who wrote last leading into what they wrote. The due date
+              and labels float to the end of the second, the words running round them. */}
+          <span class={sx(s.preview)}>
+            <span class={sx(s.chipsSpacer)} aria-hidden="true" />
             <span class={sx(s.chips)}>
               <Show when={t().isOpen && t().dueAt}>
                 {(due) => (
@@ -814,6 +811,8 @@ function Row(props: { thread: Thread }): JSX.Element {
                 {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
               </For>
             </span>
+            <span class={sx(s.from)}>{from()?.name ?? ""}</span>
+            <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
           </span>
         </span>
       </div>
@@ -1393,16 +1392,26 @@ const s = stylex.create({
   priority: { flexShrink: 0, color: "#ff9f0a", fontSize: fontSizes.body, fontWeight: 700 },
   urgent: { color: colors.urgent },
   stateMark: { display: "flex", flexShrink: 0, color: colors.textTertiary },
-  preview: { flex: 1, color: colors.textTertiary, fontSize: fontSizes.body, lineHeight: "16px" },
-  // The preview's line: the preview takes what the due date and labels leave.
-  rowBottom: { display: "flex", gap: 8, alignItems: "center", minWidth: 0 },
+  // Always two lines tall, whatever's in it, and never more.
+  preview: {
+    display: "block",
+    height: 32,
+    overflow: "hidden",
+    color: colors.textTertiary,
+    fontSize: fontSizes.body,
+    lineHeight: "16px",
+  },
+  // Pushes the due date and labels (floated after it) down to the preview's second line. A hair over a line, since
+  // a first line a fraction over 16px would otherwise count as beside them and wrap early.
+  chipsSpacer: { float: "right", width: 0, height: 16.5 },
   chips: {
+    float: "right",
+    clear: "right",
     display: "flex",
-    flexShrink: 0,
     gap: 6,
     alignItems: "center",
-    maxWidth: "50%",
-    overflow: "hidden",
+    height: 15.5,
+    marginLeft: 8,
   },
   due: {
     display: "flex",
