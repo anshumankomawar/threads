@@ -52,6 +52,7 @@ import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens
 import { AppButtons } from "./Sidebar";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
+import { Tabs, type Tab } from "./Tabs";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
@@ -489,8 +490,27 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   ];
 }
 
+// The sidebar's segments, each one group of mailboxes: your mail (the inbox, its buckets, sent and drafts), the
+// workspace's spaces and labels, and views across it. The one shown follows the mailbox you choose, wherever from.
+type SidebarGroup = "mail" | "spaces" | "views";
+const GROUPS: (Tab & { key: SidebarGroup })[] = [
+  { key: "mail", label: "Mail", icon: i.InboxIcon },
+  { key: "spaces", label: "Spaces", icon: i.Layers01Icon },
+  { key: "views", label: "Views", icon: i.DashboardSquare01Icon },
+];
+const groupOf = (box: Mailbox): SidebarGroup =>
+  box.kind === "subspace" || box.kind === "label"
+    ? "spaces"
+    : box.kind === "personal" || box.kind === "all" || box.kind === "view" || box.kind === "person"
+      ? "views"
+      : "mail";
+const [group, setGroup] = createSignal<SidebarGroup>(groupOf(mailbox()));
+const chooseGroup = (next: SidebarGroup): void => void setGroup(next);
+
 export function MailSidebar(): JSX.Element {
   let nav!: HTMLElement;
+  // Choosing a mailbox from elsewhere (⌘4, a space's page) shows its group.
+  createEffect(mailbox, (box) => void setGroup(groupOf(box)));
   onSettled(() => slidingPill(nav, nav.firstElementChild as HTMLElement));
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   return (
@@ -508,137 +528,151 @@ export function MailSidebar(): JSX.Element {
           </button>
         </span>
       </div>
+      <div class={sx(s.groups)}>
+        <Tabs
+          label="Sidebar"
+          tabs={GROUPS}
+          chosen={GROUPS.find((g) => g.key === group()) ?? GROUPS[0]}
+          onChoose={(g) => chooseGroup(g.key)}
+        />
+      </div>
       <nav ref={nav} class={sx(s.nav)} aria-label="Mailboxes">
         <div class={sx(s.pill)} aria-hidden="true" />
-        <ul class={sx(s.mailboxes)}>
-          <Mailbox
-            box={{ kind: "inbox" }}
-            label="Inbox"
-            icon={i.InboxIcon}
-            count={inbox().order.length}
-            menu={() => [
-              {
-                label: "New Bucket",
-                icon: icon(i.Add01Icon, 13),
-                form: true,
-                run: (from) => askBucket(from),
-              },
-              "separator",
-              {
-                label: "Mark All as Read",
-                icon: icon(i.MailOpen01Icon, 13),
-                run: markAllRead,
-              },
-              {
-                label: "Sort All for Me",
-                icon: icon(i.SparklesIcon, 13),
-                run: sortAllForMe,
-              },
-            ]}
-          />
-
-          <Show when={inbox().unsorted.length > 0}>
+        <Show when={group() === "mail"}>
+          <ul class={sx(s.mailboxes)}>
             <Mailbox
-              box={{ kind: "unsorted" }}
-              label="Sorting"
-              icon={i.Clock01Icon}
-              count={inbox().unsorted.length}
-              indent
+              box={{ kind: "inbox" }}
+              label="Inbox"
+              icon={i.InboxIcon}
+              count={inbox().order.length}
+              menu={() => [
+                {
+                  label: "New Bucket",
+                  icon: icon(i.Add01Icon, 13),
+                  form: true,
+                  run: (from) => askBucket(from),
+                },
+                "separator",
+                {
+                  label: "Mark All as Read",
+                  icon: icon(i.MailOpen01Icon, 13),
+                  run: markAllRead,
+                },
+                {
+                  label: "Sort All for Me",
+                  icon: icon(i.SparklesIcon, 13),
+                  run: sortAllForMe,
+                },
+              ]}
             />
-          </Show>
-          <For each={inbox().sections}>
-            {(section) => (
+
+            <Show when={inbox().unsorted.length > 0}>
               <Mailbox
-                box={{ kind: "bucket", id: section.bucket.id }}
-                label={section.bucket.name}
-                icon={icons().get(section.bucket.id) ?? i.InboxIcon}
-                count={section.items.length}
+                box={{ kind: "unsorted" }}
+                label="Sorting"
+                icon={i.Clock01Icon}
+                count={inbox().unsorted.length}
                 indent
-                menu={() => bucketMenu(section.bucket)}
               />
-            )}
-          </For>
-          <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
-          <Mailbox
-            box={{ kind: "drafts" }}
-            label="Drafts"
-            icon={i.NoteEditIcon}
-            count={drafts().length}
-          />
-        </ul>
-        <Section
-          title="Spaces"
-          add={{
-            label: "New Subspace",
-            placeholder: "Name the space",
-            make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
-          }}
-        >
-          <For each={byName(store.all(Subspace))}>
-            {(sub) => (
-              <SpaceOrLabel
-                box={{ kind: "subspace", id: sub.id }}
-                label={sub.name}
-                icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
-              />
-            )}
-          </For>
-        </Section>
-        <Section
-          title="Labels"
-          add={{
-            label: "New Label",
-            placeholder: "Name the label",
-            make: (name) => ({
-              kind: "label",
-              id: store.create(Label, { name, workspace: workspace() }).id,
-            }),
-          }}
-        >
-          <For each={byName(store.all(Label))}>
-            {(label) => (
-              <SpaceOrLabel
-                box={{ kind: "label", id: label.id }}
-                label={label.name}
-                icon={i.Tag01Icon}
-              />
-            )}
-          </For>
-        </Section>
-        <Section title="Views">
-          <Mailbox box={{ kind: "personal" }} label="Personal" icon={i.UserIcon} />
-          <Mailbox box={{ kind: "all" }} label="Workspace" icon={i.DashboardSquare01Icon} />
-          <For each={byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id))}>
-            {(saved) => (
-              <Mailbox
-                box={{ kind: "view", id: saved.id }}
-                label={saved.name}
-                icon={i.FilterIcon}
-                menu={() =>
-                  saved.ownerId === me().id
-                    ? [
-                        {
-                          label: "View Settings",
-                          icon: icon(i.Settings02Icon, 13),
-                          run: () => open({ view: saved.id }),
-                        },
-                        "separator" as const,
-                        {
-                          label: "Delete View",
-                          icon: icon(i.Delete02Icon, 13),
-                          run: () => {
-                            if (sameMailbox(mailbox(), { kind: "view", id: saved.id }))
-                              chooseMailbox({ kind: "all" });
-                            void saved.delete();
+            </Show>
+            <For each={inbox().sections}>
+              {(section) => (
+                <Mailbox
+                  box={{ kind: "bucket", id: section.bucket.id }}
+                  label={section.bucket.name}
+                  icon={icons().get(section.bucket.id) ?? i.InboxIcon}
+                  count={section.items.length}
+                  indent
+                  menu={() => bucketMenu(section.bucket)}
+                />
+              )}
+            </For>
+            <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
+            <Mailbox
+              box={{ kind: "drafts" }}
+              label="Drafts"
+              icon={i.NoteEditIcon}
+              count={drafts().length}
+            />
+          </ul>
+        </Show>
+        <Show when={group() === "spaces"}>
+          <Section
+            title="Spaces"
+            add={{
+              label: "New Subspace",
+              placeholder: "Name the space",
+              make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
+            }}
+          >
+            <For each={byName(store.all(Subspace))}>
+              {(sub) => (
+                <SpaceOrLabel
+                  box={{ kind: "subspace", id: sub.id }}
+                  label={sub.name}
+                  icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
+                />
+              )}
+            </For>
+          </Section>
+          <Section
+            title="Labels"
+            add={{
+              label: "New Label",
+              placeholder: "Name the label",
+              make: (name) => ({
+                kind: "label",
+                id: store.create(Label, { name, workspace: workspace() }).id,
+              }),
+            }}
+          >
+            <For each={byName(store.all(Label))}>
+              {(label) => (
+                <SpaceOrLabel
+                  box={{ kind: "label", id: label.id }}
+                  label={label.name}
+                  icon={i.Tag01Icon}
+                />
+              )}
+            </For>
+          </Section>
+        </Show>
+        <Show when={group() === "views"}>
+          <ul class={sx(s.mailboxes)}>
+            <Mailbox box={{ kind: "personal" }} label="Personal" icon={i.UserIcon} />
+            <Mailbox box={{ kind: "all" }} label="Workspace" icon={i.DashboardSquare01Icon} />
+            <For each={byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id))}>
+              {(saved) => (
+                <Mailbox
+                  box={{ kind: "view", id: saved.id }}
+                  label={saved.name}
+                  icon={i.FilterIcon}
+                  menu={() =>
+                    saved.ownerId === me().id
+                      ? [
+                          {
+                            label: "View Settings",
+                            icon: icon(i.Settings02Icon, 13),
+                            run: () => open({ view: saved.id }),
                           },
-                        },
-                      ]
-                    : []
-                }
-              />
-            )}
-          </For>
-        </Section>
+                          "separator" as const,
+                          {
+                            label: "Delete View",
+                            icon: icon(i.Delete02Icon, 13),
+                            run: () => {
+                              if (sameMailbox(mailbox(), { kind: "view", id: saved.id }))
+                                chooseMailbox({ kind: "all" });
+                              void saved.delete();
+                            },
+                          },
+                        ]
+                      : []
+                  }
+                />
+              )}
+            </For>
+          </ul>
+        </Show>
       </nav>
       <InlineForm />
       <div class={sx(s.footer)}>
@@ -1141,6 +1175,8 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   sidebarBar: { paddingLeft: sidebarSpace.afterLights },
+  // Under the top bar, on the rows' inset.
+  groups: { flexShrink: 0, padding: "2px 8px 8px" },
   nav: {
     position: "relative",
     // Its own stacking context, so the pill (behind the rows) stays above the sidebar's background.
@@ -1209,7 +1245,8 @@ const s = stylex.create({
     fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
   },
-  section: { marginTop: 14 },
+  // Apart from the one before it; the first in its group sits right under the segments.
+  section: { marginTop: { default: 14, ":first-of-type": 0 } },
   sectionHeader: {
     display: "flex",
     alignItems: "center",
