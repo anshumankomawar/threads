@@ -64,7 +64,39 @@ export const menu = stylex.create({
     animationDuration: "90ms",
     animationTimingFunction: "ease-out",
   },
-  context: { position: "fixed", zIndex: layers.contextMenu, minWidth: 200 },
+  context: { position: "fixed", zIndex: layers.contextMenu, minWidth: 160 },
+  // A context menu as macOS draws one (measured off Mail's, in points, ÷ 1.1 for the window's 110%): 5pt in from the
+  // panel's top and bottom, 24pt rows inset 5pt from its sides, icons 18pt in, titles in one column 39pt in whether
+  // or not a row has an icon, separators 11pt tall inset 17pt, and a 12pt corner.
+  // (5pt less the panel's 1px border.)
+  compact: { maxHeight: 480, padding: "3.6px 0", borderRadius: 11 },
+  // A submenu, beside the row that opens it.
+  submenu: { position: "fixed", zIndex: layers.contextMenu, minWidth: 160 },
+  entry: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 6,
+    alignItems: "center",
+    height: 21.8,
+    margin: "0 4.5px",
+    padding: "0 10px 0 11.5px",
+    borderRadius: 5,
+    color: colors.textPrimary,
+    whiteSpace: "nowrap",
+    cursor: "default",
+    backgroundColor: { default: "transparent", ":hover": colors.panelSelected },
+  },
+  entryOpen: { backgroundColor: colors.panelSelected },
+  entryIcon: { display: "flex", flexShrink: 0, justifyContent: "center", width: 13 },
+  entryLabel: { flex: 1, paddingRight: 8 },
+  entryChevron: { display: "flex", flexShrink: 0, color: colors.textSecondary },
+  entrySeparator: {
+    flexShrink: 0,
+    height: 1,
+    margin: "4.5px 15.5px",
+    borderStyle: "none",
+    backgroundColor: colors.panelBorder,
+  },
   item: {
     display: "flex",
     flexShrink: 0,

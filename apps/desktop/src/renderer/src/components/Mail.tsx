@@ -47,7 +47,7 @@ import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./Sidebar";
-import { Icon, type IconSvgElement } from "./Icon";
+import { icon, Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { plain } from "./ThreadView";
@@ -273,7 +273,8 @@ function Section(props: {
         class={sx(s.sectionHeader, stylex.defaultMarker())}
         onContextMenu={(e) => {
           const add = props.add;
-          if (add) showMenu(e, [{ label: `${add.label}…`, run: add.run }]);
+          if (add)
+            showMenu(e, [{ label: `${add.label}…`, icon: icon(i.Add01Icon, 13), run: add.run }]);
         }}
       >
         <button
@@ -358,7 +359,8 @@ function Expandable(props: {
   const key = (): string => `${props.box.kind}:${"id" in props.box ? props.box.id : ""}`;
   const isOpen = (): boolean => expanded().includes(key());
   const toggle = (): MenuItem => ({
-    label: isOpen() ? "Hide threads" : "Show threads",
+    label: isOpen() ? "Hide Threads" : "Show Threads",
+    icon: icon(isOpen() ? i.ViewOffIcon : i.ViewIcon, 13),
     run: () => toggleExpanded(key()),
   });
   return (
@@ -433,7 +435,8 @@ function SpaceOrLabel(props: {
     if (box.kind === "label")
       return [
         {
-          label: "New thread with this label…",
+          label: "New Thread with This Label…",
+          icon: icon(i.PencilEdit02Icon, 13),
           run: () => setDialog({ kind: "newThread", labelId: box.id }),
         },
         "separator",
@@ -441,13 +444,24 @@ function SpaceOrLabel(props: {
       ];
     const sub = store.findById(Subspace, box.id);
     return [
-      { label: "Open space page", run: () => open({ subspace: box.id }) },
       {
-        label: "New thread in this space…",
+        label: "Open Space Page",
+        icon: icon(i.InformationCircleIcon, 13),
+        run: () => open({ subspace: box.id }),
+      },
+      {
+        label: "New Thread in This Space…",
+        icon: icon(i.PencilEdit02Icon, 13),
         run: () => setDialog({ kind: "newThread", subspaceId: box.id }),
       },
       ...(sub
-        ? [{ label: "Add member…", run: () => setDialog({ kind: "addMember", subspace: sub }) }]
+        ? [
+            {
+              label: "Add Member…",
+              icon: icon(i.UserAdd01Icon, 13),
+              run: () => setDialog({ kind: "addMember", subspace: sub }),
+            },
+          ]
         : []),
       "separator",
       toggle,
@@ -476,17 +490,22 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
     other.save();
   };
   return [
-    { label: "Edit bucket…", run: () => setDialog({ kind: "bucket", bucket }) },
-    { label: "New bucket…", run: () => setDialog({ kind: "bucket" }) },
+    {
+      label: "Edit Bucket…",
+      icon: icon(i.PencilEdit01Icon, 13),
+      run: () => setDialog({ kind: "bucket", bucket }),
+    },
+    { label: "New Bucket…", icon: icon(i.Add01Icon, 13), run: () => setDialog({ kind: "bucket" }) },
     "separator",
-    { label: "Move up", run: move(-1) },
-    { label: "Move down", run: move(1) },
+    { label: "Move Up", icon: icon(i.ArrowUp01Icon, 13), run: move(-1) },
+    { label: "Move Down", icon: icon(i.ArrowDown01Icon, 13), run: move(1) },
     // Sorting needs somewhere to put things.
     ...(myBuckets().length > 1
       ? [
           "separator" as const,
           {
-            label: "Delete bucket",
+            label: "Delete Bucket",
+            icon: icon(i.Delete02Icon, 13),
             run: () => {
               if (sameMailbox(mailbox(), { kind: "bucket", id: bucket.id }))
                 chooseMailbox({ kind: "inbox" });
@@ -529,9 +548,14 @@ export function MailSidebar(): JSX.Element {
             count={inbox().order.length}
             disclosure={{ open: !folded().includes("inbox"), toggle: () => toggleFold("inbox") }}
             menu={() => [
-              { label: "New bucket…", run: () => setDialog({ kind: "bucket" }) },
               {
-                label: folded().includes("inbox") ? "Show buckets" : "Hide buckets",
+                label: "New Bucket…",
+                icon: icon(i.Add01Icon, 13),
+                run: () => setDialog({ kind: "bucket" }),
+              },
+              {
+                label: folded().includes("inbox") ? "Show Buckets" : "Hide Buckets",
+                icon: icon(folded().includes("inbox") ? i.ViewIcon : i.ViewOffIcon, 13),
                 run: () => toggleFold("inbox"),
               },
             ]}
@@ -583,11 +607,16 @@ export function MailSidebar(): JSX.Element {
               menu: (e) =>
                 showMenu(e, [
                   {
-                    label: "Open draft",
+                    label: "Open Draft",
+                    icon: icon(i.NoteEditIcon, 13),
                     run: () => setDialog({ kind: "compose", draftId: draft.id }),
                   },
                   "separator",
-                  { label: "Delete draft", run: () => void draft.delete() },
+                  {
+                    label: "Delete Draft",
+                    icon: icon(i.Delete02Icon, 13),
+                    run: () => void draft.delete(),
+                  },
                 ]),
             }))}
             empty="No drafts"
@@ -595,7 +624,7 @@ export function MailSidebar(): JSX.Element {
         </ul>
         <Section
           title="Spaces"
-          add={{ label: "New subspace", run: () => setDialog({ kind: "newSubspace" }) }}
+          add={{ label: "New Subspace", run: () => setDialog({ kind: "newSubspace" }) }}
         >
           <For each={byName(store.all(Subspace))}>
             {(sub) => (
@@ -609,7 +638,7 @@ export function MailSidebar(): JSX.Element {
         </Section>
         <Section
           title="Labels"
-          add={{ label: "New label", run: () => setDialog({ kind: "newLabel" }) }}
+          add={{ label: "New Label", run: () => setDialog({ kind: "newLabel" }) }}
         >
           <For each={byName(store.all(Label))}>
             {(label) => (
@@ -632,10 +661,15 @@ export function MailSidebar(): JSX.Element {
                 menu={() =>
                   saved.ownerId === me().id
                     ? [
-                        { label: "View settings…", run: () => open({ view: saved.id }) },
+                        {
+                          label: "View Settings…",
+                          icon: icon(i.Settings02Icon, 13),
+                          run: () => open({ view: saved.id }),
+                        },
                         "separator" as const,
                         {
-                          label: "Delete view",
+                          label: "Delete View",
+                          icon: icon(i.Delete02Icon, 13),
                           run: () => {
                             if (sameMailbox(mailbox(), { kind: "view", id: saved.id }))
                               chooseMailbox({ kind: "all" });
@@ -796,11 +830,16 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
         onContextMenu={(e) =>
           showMenu(e, [
             {
-              label: "Open draft",
+              label: "Open Draft",
+              icon: icon(i.NoteEditIcon, 13),
               run: () => setDialog({ kind: "compose", draftId: props.draft.id }),
             },
             "separator",
-            { label: "Delete draft", run: () => void props.draft.delete() },
+            {
+              label: "Delete Draft",
+              icon: icon(i.Delete02Icon, 13),
+              run: () => void props.draft.delete(),
+            },
           ])
         }
       >
@@ -1046,11 +1085,15 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
     showMenu(event, [
       ...myBuckets().map((bucket) => ({
         label: bucket.name,
-        checked: it.bucketId === bucket.id,
+        icon: it.bucketId === bucket.id ? icon(i.Tick02Icon, 13) : undefined,
         run: () => placeIn(it, bucket),
       })),
       "separator" as const,
-      { label: "Sort it for me", run: () => placeIn(it, undefined) },
+      {
+        label: "Sort It for Me",
+        icon: icon(i.SparklesIcon, 13),
+        run: () => placeIn(it, undefined),
+      },
     ]);
   };
   return (

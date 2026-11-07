@@ -59,53 +59,83 @@ export function OptionButton(props: {
   );
 }
 
-// A menu's rows. One with `items` shows them in its place, under a row back.
+// A menu's rows, as macOS lays them out: an icon column (a toggle's check goes there too), titles in one column after it,
+// and a chevron on a row with `items`, whose submenu opens beside it while you're on it.
 function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
-  const [sub, setSub] = createSignal<{ label: string; items: MenuItem[] } | null>(null);
+  const [sub, setSub] = createSignal<{
+    item: MenuItem & { items: MenuItem[] };
+    row: DOMRect;
+  } | null>(null);
   const row = (
-    label: string,
-    before: JSX.Element | undefined,
-    run: () => void,
+    item: Exclude<MenuItem, "separator">,
+    run: (() => void) | undefined,
     checked?: boolean,
-  ): JSX.Element => (
-    <button
-      class={sx(base.bare, look.item, look.itemHover)}
-      role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
-      aria-checked={checked === undefined ? undefined : checked ? "true" : "false"}
-      onClick={run}
-    >
-      <Show when={before}>
-        <span class={sx(look.itemIcon)}>{before}</span>
-      </Show>
-      <span class={sx(base.ellipsis, look.label)}>{label}</span>
-      <Show when={checked}>
-        <span class={sx(look.itemIcon)}>{icon(i.Tick02Icon, 13)}</span>
-      </Show>
-    </button>
-  );
+  ): JSX.Element => {
+    const opens = "items" in item;
+    return (
+      <button
+        class={sx(base.bare, look.entry, sub()?.item === item && look.entryOpen)}
+        role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
+        aria-checked={checked === undefined ? undefined : checked ? "true" : "false"}
+        aria-haspopup={opens ? "menu" : undefined}
+        aria-expanded={opens ? (sub()?.item === item ? "true" : "false") : undefined}
+        onPointerEnter={(event) =>
+          setSub(
+            opens
+              ? { item, row: (event.currentTarget as HTMLElement).getBoundingClientRect() }
+              : null,
+          )
+        }
+        onClick={(event) =>
+          opens
+            ? setSub({ item, row: (event.currentTarget as HTMLElement).getBoundingClientRect() })
+            : run?.()
+        }
+      >
+        <span class={sx(look.entryIcon)}>{checked ? icon(i.Tick02Icon, 13) : item.icon}</span>
+        <span class={sx(base.ellipsis, look.entryLabel)}>{item.label}</span>
+        <Show when={opens}>
+          <span class={sx(look.entryChevron)}>{icon(i.ArrowRight01Icon, 11)}</span>
+        </Show>
+      </button>
+    );
+  };
+  // A submenu beside its row, its first row level with it; on the left if there's no room on the right.
+  const place = (panel: HTMLDivElement, at: DOMRect): void => {
+    queueMicrotask(() => {
+      const { width, height } = panel.getBoundingClientRect();
+      const right = at.right + 4;
+      panel.style.left = `${right + width > innerWidth - 4 ? Math.max(4, at.left - width - 4) : right}px`;
+      panel.style.top = `${Math.max(4, Math.min(at.top - 4.5, innerHeight - height - 4))}px`;
+    });
+  };
   return (
     <>
-      <Show when={sub()}>
-        {(open) => (
-          <>
-            {row(open().label, icon(i.ArrowLeft01Icon), () => setSub(null))}
-            <hr class={sx(look.separator)} />
-          </>
-        )}
-      </Show>
-      <For each={sub()?.items ?? props.items}>
+      <For each={props.items}>
         {(item) =>
           item === "separator" ? (
-            <hr class={sx(look.separator)} />
+            <hr class={sx(look.entrySeparator)} />
           ) : "items" in item ? (
-            row(item.label, item.icon, () => setSub(item))
+            row(item, undefined)
           ) : item.checked !== undefined ? (
-            row(item.label, item.icon, item.run, item.checked)
+            row(item, item.run, item.checked)
           ) : (
-            row(item.label, item.icon, () => (props.close(), item.run()))
+            row(item, () => (props.close(), item.run()))
           )
         }
       </For>
+      <Show when={sub()} keyed>
+        {(open) => (
+          <div
+            ref={(panel) => place(panel, open.row)}
+            class={sx(base.panel, look.menu, look.compact, look.submenu)}
+            style={{ left: `${open.row.right + 4}px`, top: `${open.row.top - 4.5}px` }}
+            role="menu"
+          >
+            <Items items={open.item.items} close={props.close} />
+          </div>
+        )}
+      </Show>
     </>
   );
 }
@@ -126,7 +156,7 @@ export function ContextMenu(): JSX.Element {
           ref={(el) => queueMicrotask(() => show(el, shown))}
           onToggle={(event) => event.newState === "closed" && menu() === shown && setMenu(null)}
           onContextMenu={(event) => event.preventDefault()}
-          class={sx(base.panel, look.menu, look.popover, look.context)}
+          class={sx(base.panel, look.menu, look.compact, look.popover, look.context)}
           style={{ left: `${shown.x}px`, top: `${shown.y}px` }}
           role="menu"
         >
@@ -170,7 +200,7 @@ export function MenuChip(props: {
         ref={popover}
         popover="auto"
         onToggle={(event) => setOpen(event.newState === "open")}
-        class={sx(base.panel, look.menu, look.popover, chip.menu)}
+        class={sx(base.panel, look.menu, look.compact, look.popover, chip.menu)}
         role="menu"
       >
         {/* Mounted while open, so it opens at the top level again. */}

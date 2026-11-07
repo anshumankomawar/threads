@@ -370,9 +370,20 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
       class={sx(thread.block)}
       onContextMenu={(event) =>
         showMenu(event, [
-          { label: "Copy text", run: () => void navigator.clipboard.writeText(plain(m().body)) },
+          {
+            label: "Copy Text",
+            icon: icon(i.Copy01Icon, 13),
+            run: () => void navigator.clipboard.writeText(plain(m().body)),
+          },
           ...(m().authorId === me().id
-            ? ["separator" as const, { label: "Delete message", run: () => void m().delete() }]
+            ? [
+                "separator" as const,
+                {
+                  label: "Delete Message",
+                  icon: icon(i.Delete02Icon, 13),
+                  run: () => void m().delete(),
+                },
+              ]
             : []),
         ])
       }

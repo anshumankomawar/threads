@@ -1,5 +1,6 @@
 // The session (data source, who you are, the store) and what's on screen. One store per window: switching source or
 // person reloads with a new session.
+import * as i from "@hugeicons/core-free-icons";
 import { createSignal } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { createStore, httpTransport, indexedLocalDB, type Filter, type Model } from "sync";
@@ -16,6 +17,7 @@ import {
 } from "models";
 
 import { account, save, saved, server, source, useSource, type Source } from "./startup";
+import { icon } from "./components/Icon";
 
 export {
   account,
@@ -321,27 +323,51 @@ export function threadMenu(thread: Thread): MenuItem[] {
   const item = inbox().order.includes(thread) ? itemFor(thread) : undefined;
   const shown = active();
   return [
-    { label: "Open", run: () => open({ thread: thread.id }) },
+    {
+      label: "Open",
+      icon: icon(i.SquareArrowUpRightIcon, 13),
+      run: () => open({ thread: thread.id }),
+    },
     ...(shown && shown !== thread
-      ? [{ label: "Open beside", run: () => setSplit(thread.id) }]
+      ? [
+          {
+            label: "Open Beside",
+            icon: icon(i.LayoutTwoColumnIcon, 13),
+            run: () => setSplit(thread.id),
+          },
+        ]
       : []),
     ...(item
       ? [
           "separator" as const,
-          { label: "Done", run: () => markDone(item) },
-          "separator" as const,
-          ...myBuckets()
-            .filter((bucket) => bucket !== item.bucket)
-            .map((bucket) => ({
-              label: `Move to ${bucket.name}`,
-              run: () => placeIn(item, bucket),
-            })),
-          ...(item.manual ? [{ label: "Sort it for me", run: () => placeIn(item) }] : []),
+          { label: "Done", icon: icon(i.CheckmarkCircle02Icon, 13), run: () => markDone(item) },
+          {
+            label: "Move to",
+            icon: icon(i.Folder01Icon, 13),
+            items: [
+              ...myBuckets().map((bucket) => ({
+                label: bucket.name,
+                icon: bucket === item.bucket ? icon(i.Tick02Icon, 13) : undefined,
+                run: () => placeIn(item, bucket),
+              })),
+              ...(item.manual
+                ? [
+                    "separator" as const,
+                    {
+                      label: "Sort It for Me",
+                      icon: icon(i.SparklesIcon, 13),
+                      run: () => placeIn(item),
+                    },
+                  ]
+                : []),
+            ],
+          },
         ]
       : []),
     "separator",
     {
       label: thread.isOpen ? "Resolve" : "Reopen",
+      icon: icon(thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon, 13),
       run: () => setState(thread, thread.isOpen ? "resolved" : "open"),
     },
   ];
