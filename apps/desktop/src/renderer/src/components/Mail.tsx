@@ -56,8 +56,8 @@ import { dot, plain } from "./ThreadView";
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
 const ICON = { size: 14, "aria-hidden": "true" } as const;
-// Beside its anchor on the right, its top level with the anchor's (StyleX's types only know the plain areas).
-const BESIDE = "right span-bottom" as "right";
+// Level with its anchor and running right from its left edge (StyleX's types only know the plain areas).
+const FROM_ANCHOR = "center span-right" as "center";
 
 // A column the edge on its right resizes, remembering its width.
 function resizable(key: string, range: { initial: number; min: number; max: number }) {
@@ -247,7 +247,7 @@ const toggleFold = (key: string): void =>
   });
 
 // A sidebar section: a heading that folds it (as Mail's do), with an add button that shows on hover.
-// A section's + : a small field under it, the size of a context menu, for the new one's name. Enter makes it and selects
+// A section's + : a small field grown out of it, the size of a context menu, for the new one's name. Enter makes it and selects
 // it; Escape or a click elsewhere closes it, and the focus stays in the sidebar.
 type Add = { label: string; placeholder: string; make: (name: string) => Mailbox };
 
@@ -309,6 +309,14 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
                 }}
               >
                 <label class={sx(s.addRow)}>
+                  <button
+                    class={sx(base.bare, s.addPlus)}
+                    aria-label={add().label}
+                    tabindex={-1}
+                    onClick={make}
+                  >
+                    <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
+                  </button>
                   <input
                     ref={input}
                     class={sx(base.bare, s.addInput)}
@@ -1201,15 +1209,16 @@ const s = stylex.create({
   },
   sectionChevronOpen: { transform: "rotate(90deg)" },
   // The + 's field: as wide as Mail's context menu (227pt), one 24pt row inset as a menu's are.
-  // Out to the right of the +, as a submenu opens, nudged up so its row lines up with the heading.
+  // Grown out of the +: drawn over it, so the + its row starts with sits exactly where the button is (the panel's 1px
+  // border, the row's 4.5px inset and its 7.5px padding to the left of it), and running out to the right.
   addPanel: {
-    width: 206,
+    width: 219,
     minWidth: 0,
-    marginLeft: 8,
-    marginTop: -9.5,
-    positionArea: BESIDE,
+    marginLeft: -13,
+    positionArea: FROM_ANCHOR,
     positionTryFallbacks: "flip-inline",
   },
+  addPlus: { display: "flex", flexShrink: 0, color: colors.textPrimary, cursor: "pointer" },
   addRow: {
     display: "flex",
     gap: 6,
