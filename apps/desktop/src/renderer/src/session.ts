@@ -18,7 +18,7 @@ import {
 
 import { account, save, saved, server, source, useSource, type Source } from "./startup";
 import { icon } from "./components/Icon";
-import { commandFor, keysOf, type HotkeyId } from "./hotkeys";
+import { commandFor, keysFor, keysOf, type HotkeyId } from "./hotkeys";
 
 export {
   account,
@@ -130,6 +130,8 @@ export type MenuItem =
       icon?: JSX.Element;
       checked?: boolean;
       form?: boolean;
+      // Its hotkey, shown on the right as a menu does (hotkeys.ts's keys, as rebound).
+      keys?: string;
       run: (from: DOMRect) => void;
     }
   | { label: string; icon?: JSX.Element; items: MenuItem[] }
@@ -469,9 +471,15 @@ export function threadMenu(thread: Thread): MenuItem[] {
     ...opening,
     ...(item
       ? [
-          { label: "Done", icon: icon(i.InboxCheckIcon, 13), run: () => markDone(item) },
+          // Done is yours (it leaves your inbox); Resolve is everyone's (it closes the thread).
           {
-            label: "Move to",
+            label: "Mark Done",
+            icon: icon(i.InboxCheckIcon, 13),
+            keys: keysFor("done"),
+            run: () => markDone(item),
+          },
+          {
+            label: "Move to Bucket",
             icon: icon(i.Folder01Icon, 13),
             items: [
               ...myBuckets().map((bucket) => ({
@@ -494,7 +502,8 @@ export function threadMenu(thread: Thread): MenuItem[] {
         ]
       : []),
     {
-      label: thread.isOpen ? "Resolve" : "Reopen",
+      label: thread.isOpen ? "Resolve for Everyone" : "Reopen",
+      keys: keysFor("resolve"),
       icon: icon(thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon, 13),
       run: () => setState(thread, thread.isOpen ? "resolved" : "open"),
     },

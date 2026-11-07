@@ -110,8 +110,14 @@ function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean
           <span class={sx(look.entryIcon)}>{checked ? icon(i.Tick02Icon, 13) : item.icon}</span>
         </Show>
         <span class={sx(base.ellipsis, look.entryLabel)}>{item.label}</span>
+        <Show when={"keys" in item && item.keys}>
+          {(keys) => <span class={sx(look.entryKeys)}>{keys()}</span>}
+        </Show>
         <Show when={opens}>
-          <span class={sx(look.entryChevron)}>{icon(i.ArrowRight01Icon, 11)}</span>
+          {/* Pointing the way its submenu opens. */}
+          <span class={sx(look.entryChevron)}>
+            {icon(props.leftward ? i.ArrowLeft01Icon : i.ArrowRight01Icon, 11)}
+          </span>
         </Show>
       </button>
     );

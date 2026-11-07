@@ -91,6 +91,13 @@ export const menu = stylex.create({
   entryIcon: { display: "flex", flexShrink: 0, justifyContent: "center", width: 13 },
   entryLabel: { flex: 1, paddingRight: 8 },
   entryChevron: { display: "flex", flexShrink: 0, color: colors.textSecondary },
+  // A hotkey at the row's end, quieter than its title.
+  entryKeys: {
+    flexShrink: 0,
+    paddingLeft: 12,
+    color: colors.textTertiary,
+    letterSpacing: "0.04em",
+  },
   entrySeparator: {
     flexShrink: 0,
     height: 1,
