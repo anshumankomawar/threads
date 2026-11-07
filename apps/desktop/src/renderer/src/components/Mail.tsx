@@ -790,32 +790,29 @@ function Row(props: { thread: Thread }): JSX.Element {
             </span>
             <span class={sx(s.stamp)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
           </span>
-          <span class={sx(s.who)}>
-            <Identicon seed={from()?.id ?? t().ownerId ?? ""} size={14} class={sx(s.whoAvatar)} />
-            <span class={sx(base.ellipsis, s.from)}>{from()?.name ?? ""}</span>
+          {/* Who wrote last leads into what they wrote, so the name and their words read as one. */}
+          <span class={sx(s.preview)}>
+            <span class={sx(s.from)}>{from()?.name ?? ""}</span>
+            <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
           </span>
-          <Show when={last()}>
-            {(message) => <span class={sx(s.preview)}>{preview(message().body)}</span>}
-          </Show>
-          <Show when={(t().dueAt && t().isOpen) || t().labelIds.length > 0}>
-            <span class={sx(s.chips)}>
-              <Show when={t().isOpen && t().dueAt}>
-                {(due) => (
-                  <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
-                    <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
-                    {shortDate(due())}
-                  </span>
-                )}
-              </Show>
-              <For
-                each={t()
-                  .labelIds.map((id) => store.findById(Label, id))
-                  .filter((l) => l !== undefined)}
-              >
-                {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
-              </For>
-            </span>
-          </Show>
+          {/* Always there, empty or not, so every row is the same height. */}
+          <span class={sx(s.chips)}>
+            <Show when={t().isOpen && t().dueAt}>
+              {(due) => (
+                <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
+                  <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
+                  {shortDate(due())}
+                </span>
+              )}
+            </Show>
+            <For
+              each={t()
+                .labelIds.map((id) => store.findById(Label, id))
+                .filter((l) => l !== undefined)}
+            >
+              {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
+            </For>
+          </span>
         </span>
       </div>
       <span class={sx(s.divider)} aria-hidden="true" />
@@ -1380,16 +1377,8 @@ const s = stylex.create({
   // The first line, with a little room under it (as much as above a row's due date and labels).
   // The title and when, on the first line.
   rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 3 },
-  // Who wrote last, under the title: a small avatar before their name, quieter than what it's about.
-  who: { display: "flex", gap: 5, alignItems: "center", minWidth: 0, marginBottom: 2 },
-  whoAvatar: { flexShrink: 0 },
-  // A line as tall as the avatar beside it, so the name sits centred on it.
-  from: {
-    color: colors.textSecondary,
-    fontSize: fontSizes.body,
-    fontWeight: 500,
-    lineHeight: "14px",
-  },
+  // Who wrote last, at the start of the preview: a little stronger than their words.
+  from: { color: colors.textSecondary, fontWeight: 500 },
   stamp: {
     flexShrink: 0,
     color: colors.textTertiary,
@@ -1402,7 +1391,9 @@ const s = stylex.create({
   priority: { flexShrink: 0, color: "#ff9f0a", fontSize: fontSizes.body, fontWeight: 700 },
   urgent: { color: colors.urgent },
   stateMark: { display: "flex", flexShrink: 0, color: colors.textTertiary },
+  // Two lines' room even when it's one, so rows don't change height.
   preview: {
+    minHeight: 32,
     display: "-webkit-box",
     overflow: "hidden",
     color: colors.textTertiary,
@@ -1411,9 +1402,18 @@ const s = stylex.create({
     WebkitBoxOrient: "vertical",
     WebkitLineClamp: 2,
   },
-  chips: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginTop: 3 },
+  // One line, never wrapping: what doesn't fit is cut off rather than making the row taller.
+  chips: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 16,
+    marginTop: 3,
+    overflow: "hidden",
+  },
   due: {
     display: "flex",
+    flexShrink: 0,
     gap: 3,
     alignItems: "center",
     color: colors.textTertiary,
@@ -1421,6 +1421,8 @@ const s = stylex.create({
   },
   dueSoon: { color: colors.urgent },
   labelChip: {
+    flexShrink: 0,
+    whiteSpace: "nowrap",
     padding: "0 6px",
     borderRadius: radii.pill,
     color: colors.textSecondary,
