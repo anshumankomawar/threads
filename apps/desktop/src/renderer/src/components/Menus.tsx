@@ -5,6 +5,7 @@ import * as stylex from "@stylexjs/stylex";
 import { menu, setMenu, type MenuItem } from "../session";
 import { base } from "../styles/base";
 import { chip, chipTone, menu as look } from "../styles/controls";
+import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { icon, type IconSvgElement } from "./Icon";
@@ -34,11 +35,18 @@ export function OptionButton(props: {
   option: Option;
   selected: boolean;
   onHover: () => void;
+  // In a palette: on its edges (styles/palette.ts).
+  inset?: boolean;
 }): JSX.Element {
   const o = (): Option => props.option;
   return (
     <button
-      class={sx(base.bare, look.item, props.selected && look.itemSelected)}
+      class={sx(
+        base.bare,
+        look.item,
+        props.inset && palette.item,
+        props.selected && look.itemSelected,
+      )}
       role="option"
       aria-selected={props.selected ? "true" : "false"}
       onMouseDown={(event) => event.preventDefault()}

@@ -20,7 +20,6 @@ import {
   otherSources,
   peek,
   placeIn,
-  recentThreads,
   setDialog,
   setState,
   signOut,
@@ -503,16 +502,11 @@ export function commands(): Command[] {
   ];
 }
 
-// What ⌘K offers before anything's typed: the open thread's actions, threads you've opened lately, then where to go,
-// what to make, and the app.
+// What ⌘K offers before anything's typed: the open thread's actions, then where to go, what to make, and the app.
 export function suggestions(): Command[] {
   const thread = active();
   return [
     ...(thread ? threadCommands(thread) : []),
-    ...recentThreads()
-      .filter((t) => t !== thread)
-      .slice(0, 5)
-      .map((t) => threadCommand(t, "Recent")),
     ...places().slice(0, 1 + inbox().sections.length + 4),
     ...creating(),
     ...app(),

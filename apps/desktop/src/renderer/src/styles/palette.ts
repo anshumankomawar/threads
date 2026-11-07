@@ -10,6 +10,9 @@ const below = {
 const row = { display: "flex", flexShrink: 0, alignItems: "center" } as const;
 const text = { default: colors.textPrimary, "::placeholder": colors.textTertiary } as const;
 
+const EDGE = 14;
+const INSET = 8;
+
 const panelIn = stylex.keyframes({
   from: { opacity: 0, transform: "scale(0.985)" },
 });
@@ -48,8 +51,10 @@ export const palette = stylex.create({
   },
   // `display: flex` only while open, so a closed dialog stays hidden.
   open: { display: { default: "none", ":is([open])": "flex" } },
+  // One edge for everything in a palette: what's typed, the tabs' names, headings, rows' icons and the footer all start
+  // EDGE in from its side (rows' hints end EDGE from the other), and a highlighted tab or row's wash sits INSET in.
   // No rules between its parts: the input, the tabs and the results are set apart by space alone.
-  inputRow: { ...row, height: 44, padding: "0 14px" },
+  inputRow: { ...row, height: 44, padding: `0 ${EDGE}px` },
   input: {
     flex: 1,
     minWidth: 0,
@@ -61,17 +66,17 @@ export const palette = stylex.create({
     display: "flex",
     flexDirection: "column",
     minHeight: 0,
-    paddingTop: 4,
+    padding: "4px 0 8px",
     overflowY: "auto",
   },
   // The tabs under ⌘K's input that narrow what it finds (⌘1–⌘4).
-  filters: { ...row, gap: 4, height: 30, padding: "0 10px 4px" },
+  filters: { ...row, gap: 2, height: 30, padding: `0 ${INSET}px` },
   filter: {
     display: "flex",
     gap: 6,
     alignItems: "center",
     height: 22,
-    padding: "0 6px",
+    padding: `0 ${EDGE - INSET}px`,
     borderRadius: radii.control,
     color: colors.textSecondary,
     fontSize: fontSizes.label,
@@ -79,12 +84,14 @@ export const palette = stylex.create({
   },
   filterChosen: { color: colors.accent, backgroundColor: colors.accentFill },
   filterKey: { opacity: 0.7, wordSpacing: "1px" },
-  section: { display: "flex", flexDirection: "column", paddingBottom: 4 },
+  section: { display: "flex", flexDirection: "column" },
   // A section after another is set apart by a little space, not a rule.
   divided: {
-    marginTop: { default: 0, [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: 6 },
+    marginTop: { default: 0, [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: 8 },
   },
-  sectionLabel: { ...row, gap: 4, height: 28, padding: "0 14px 0 10px" },
+  sectionLabel: { ...row, gap: 4, height: 28, padding: `0 ${EDGE}px` },
+  // A palette's row (OptionButton's `inset`): its wash INSET in from the sides, its icon and hint on the EDGE.
+  item: { height: 28, margin: `0 ${INSET}px`, padding: `0 ${EDGE - INSET}px` },
   labelText: { color: colors.textSecondary, fontSize: fontSizes.label },
 });
 

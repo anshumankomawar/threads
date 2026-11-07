@@ -300,11 +300,6 @@ function markSeen(thread: Thread | undefined): void {
   item.save();
 }
 
-// The threads you've opened lately, newest first, for ⌘K to offer before you've typed anything.
-const [recentIds, setRecentIds] = createSignal<string[]>(saved("recent-threads", []));
-export const recentThreads = (): Thread[] =>
-  recentIds().flatMap((id) => store.findById(Thread, id) ?? []);
-
 // Opening a thread, or leaving one, marks it seen.
 function show(next: View): void {
   markSeen(active());
@@ -313,12 +308,6 @@ function show(next: View): void {
   if (!("thread" in next) || next.thread === null) return;
   if (next.thread === split()) setSplit(null);
   markSeen(store.findById(Thread, next.thread));
-  const id = next.thread;
-  setRecentIds((ids) => {
-    const recent = [id, ...ids.filter((other) => other !== id)].slice(0, 8);
-    save("recent-threads", recent);
-    return recent;
-  });
 }
 
 // Where you've been and where you came back from, as in a browser: going somewhere new clears the way forward.
@@ -559,6 +548,7 @@ function hotkeyActions(
   const reading = free && !typing;
   return {
     search: () => setDialog({ kind: "search" }),
+    searchSlash: free && !typing && (() => setDialog({ kind: "search" })),
     settings: () => (setDialog(null), open({ settings: null })),
     hotkeys: free && (() => open({ settings: null })),
     back: free && goBack,

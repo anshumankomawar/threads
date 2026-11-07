@@ -131,6 +131,7 @@ function Picker(props: {
                       option={row}
                       selected={at === index()}
                       onHover={() => setAt(at)}
+                      inset
                     />
                   )}
                 </For>

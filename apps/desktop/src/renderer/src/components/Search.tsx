@@ -30,8 +30,8 @@ import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { moved, OptionButton, type Option } from "./Menus";
 import { Modal } from "./Palettes";
 
-// ⌘K: everything in the app, from one field (commands.ts lists it). Before you type: the open thread's actions,
-// threads you've opened lately, and where to go. As you type: the best matches of every kind, each under its heading.
+// ⌘K (or /): everything in the app, from one field (commands.ts lists it). Before you type: the open thread's actions
+// and where to go. As you type: the best matches of every kind, each under its heading.
 // A command with choices of its own (Move to Bucket, Set Priority) opens them in its place; Backspace or Escape goes
 // back. Tabs (⌘1–⌘5) or a first character narrow it to one kind: `>` commands, `#` threads, `@` people, `/` places.
 // Threads filter as in Slack or Discord: typing a key (`from:`) suggests its values, and a finished one becomes a chip.
@@ -39,6 +39,7 @@ import { Modal } from "./Palettes";
 
 const styles = stylex.create({
   // The chips sit in the input's row, before what's typed, and wrap if there are many.
+  // Chips and the input wrap here, on the palette's edge.
   inputRow: { flexWrap: "wrap", gap: 4, height: "auto", minHeight: 44, padding: "8px 14px" },
   chip: {
     display: "flex",
@@ -352,7 +353,12 @@ export function Search(): JSX.Element {
                 </Show>
                 <For each={section.rows}>
                   {({ row, at: n }) => (
-                    <OptionButton option={row} selected={n === index()} onHover={() => setAt(n)} />
+                    <OptionButton
+                      option={row}
+                      selected={n === index()}
+                      onHover={() => setAt(n)}
+                      inset
+                    />
                   )}
                 </For>
               </div>
