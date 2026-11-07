@@ -7,7 +7,7 @@ import { firstName, me, open, store, summary } from "../session";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { thread } from "../styles/thread";
+import { AVATAR, thread } from "../styles/thread";
 import { colors, fontSizes, motion, radii } from "../styles/tokens.stylex";
 import { mentioned, plainDraft } from "./Compose";
 import { icon } from "./Icon";
@@ -128,7 +128,7 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
         <article class={sx(thread.doc)}>
           <header class={sx(thread.block, thread.header)}>
             <span class={sx(thread.avatar)}>
-              <Identicon seed={me().id} size={20} />
+              <Identicon seed={me().id} size={AVATAR} />
             </span>
             <div class={sx(thread.body, thread.headerBody)}>
               <div class={sx(thread.meta)}>
@@ -174,7 +174,7 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
             {(ask, index) => (
               <div class={sx(thread.block)}>
                 <span class={sx(thread.avatar)}>
-                  <Identicon seed={me().id} size={20} />
+                  <Identicon seed={me().id} size={AVATAR} />
                 </span>
                 <div class={sx(thread.body)}>
                   <div class={sx(thread.meta)}>
@@ -205,7 +205,7 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
           </For>
           <div class={sx(thread.block)}>
             <span class={sx(thread.avatar)}>
-              <Identicon seed={me().id} size={20} />
+              <Identicon seed={me().id} size={AVATAR} />
             </span>
             <div class={sx(thread.body)}>
               <div class={sx(thread.meta)}>

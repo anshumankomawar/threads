@@ -17,6 +17,7 @@ import {
   STATES,
   User,
   Message,
+  mentionsIn,
 } from "models";
 import {
   byName,
@@ -45,7 +46,7 @@ import { base } from "../styles/base";
 import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { thread } from "../styles/thread";
+import { AVATAR, AVATAR_TOP, thread, TURN_GAP } from "../styles/thread";
 import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
@@ -57,7 +58,6 @@ const styles = stylex.create({
   // The viewport minus about one block, so the last entry can reach the top but never leave the screen.
   overscroll: { height: "calc(100vh - 34px - 140px)" },
   quiet: { color: colors.textTertiary, fontSize: fontSizes.body },
-  event: { marginBlock: -6 },
   eventMarker: {
     display: "flex",
     alignItems: "center",
@@ -65,6 +65,11 @@ const styles = stylex.create({
     height: 18,
     marginTop: 0,
   },
+  // An activity's mark on the spine, and the one that says it's your turn.
+  eventDot: { width: 6, height: 6, borderRadius: "50%", backgroundColor: colors.iconTertiary },
+  yourTurn: { backgroundColor: colors.systemBlue },
+  waitingOn: { color: colors.textPrimary, fontWeight: 500 },
+  to: { color: colors.textSecondary, fontSize: fontSizes.body },
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
   // Pulled out by a value's padding, so the first one's icon lines up with the title.
@@ -110,6 +115,69 @@ const styles = stylex.create({
 export const dot = (state: Thread["state"]): JSX.Element => (
   <span class={sx(styles.dot, state !== "open" && styles[state])} aria-hidden="true" />
 );
+
+// ── The conversation: each turn on a spine down the avatar column ──
+
+// How a turn sits on the spine: an avatar (someone speaking), a dot (activity, or whose turn it is), or a message that
+// carries on the one before it, with neither. Each is pulled up toward the turn before by its own amount, and the line
+// stops a little short of its avatar or dot.
+type Turn = "avatar" | "dot" | "grouped";
+const PULL: Record<Turn, number> = { avatar: 0, dot: -(TURN_GAP - 12), grouped: -(TURN_GAP - 6) };
+const MARK: Record<Turn, [top: number, bottom: number]> = {
+  avatar: [AVATAR_TOP - 4, AVATAR_TOP + AVATAR + 4],
+  dot: [3, 15],
+  grouped: [0, 0],
+};
+const pulled = (turn: Turn): JSX.CSSProperties | undefined =>
+  PULL[turn] ? { "margin-top": `${PULL[turn]}px` } : undefined;
+
+// The line from this turn down to the next one, if there is a next.
+function Spine(props: { turn: Turn; next?: Turn }): JSX.Element {
+  return (
+    <Show when={props.next}>
+      {(next) => (
+        <span
+          class={sx(thread.spine)}
+          aria-hidden="true"
+          style={{
+            top: `${MARK[props.turn][1]}px`,
+            bottom: `${-(TURN_GAP + PULL[next()] + MARK[next()][0])}px`,
+          }}
+        />
+      )}
+    </Show>
+  );
+}
+
+// Who a message is to: the @mentions it opens with, which its byline shows ("→ You, Sam") instead of its text.
+const LEADING = /^(?:\s*\[\[(?:person|subspace):[^\]\s]+\]\])+[\s,:]*/;
+function addressed(body: string): { to: string[]; rest: string } {
+  const lead = LEADING.exec(body)?.[0];
+  const rest = lead ? body.slice(lead.length) : body;
+  if (!lead || !rest.trim()) return { to: [], rest: body };
+  const to = splitText(lead).flatMap((part) =>
+    "person" in part
+      ? part.person === me().id
+        ? ["You"]
+        : [firstName(store.findById(User, part.person) ?? { name: "Someone" })]
+      : "subspace" in part
+        ? [store.findById(Subspace, part.subspace)?.name ?? "a space"]
+        : [],
+  );
+  return { to, rest };
+}
+const LIST = new Intl.ListFormat(undefined, { type: "conjunction" });
+// Others in a thread, by first name: whoever started it, is on it, or has written in it.
+const peopleIn = (c: Thread): User[] =>
+  [
+    ...new Set([
+      c.ownerId ?? "",
+      ...c.assigneeIds,
+      ...c.messages.sorted("createdAt").map((m) => m.authorId),
+    ]),
+  ]
+    .filter((id) => id && id !== me().id)
+    .flatMap((id) => store.findById(User, id) ?? []);
 
 const RELATIVE = new Intl.RelativeTimeFormat(undefined, { style: "narrow" });
 export function ago(date: Date): string {
@@ -241,12 +309,13 @@ function ListChip(props: {
   );
 }
 
-function Header(props: { thread: Thread }): JSX.Element {
+function Header(props: { thread: Thread; next?: Turn }): JSX.Element {
   const c = (): Thread => props.thread;
   return (
     <header class={sx(thread.block, thread.header)}>
+      <Spine turn="avatar" next={props.next} />
       <span class={sx(thread.avatar)}>
-        <Identicon seed={c().ownerId ?? ""} size={20} />
+        <Identicon seed={c().ownerId ?? ""} size={AVATAR} />
       </span>
       <div class={sx(thread.body, thread.headerBody)}>
         <Meta user={c().owner} at={c().createdAt} marker />
@@ -280,11 +349,14 @@ function Header(props: { thread: Thread }): JSX.Element {
   );
 }
 
-function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Element {
+function ActivityLine(props: { activity: Activity; thread: Thread; next?: Turn }): JSX.Element {
   const line = (): Activity => props.activity;
   return (
-    <div class={sx(thread.block, styles.event)}>
-      <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true" />
+    <div class={sx(thread.block)} style={pulled("dot")}>
+      <Spine turn="dot" next={props.next} />
+      <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true">
+        <span class={sx(styles.eventDot)} />
+      </span>
       <div class={sx(styles.quiet, styles.eventText)}>
         <span class={sx(styles.eventActor)}>{line().actor?.name ?? "Someone"}</span>{" "}
         <LinkedText text={line().text} current={props.thread.id} />
@@ -294,11 +366,18 @@ function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Elemen
   );
 }
 
-function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element {
+function MessageBlock(props: {
+  message: Message;
+  thread: Thread;
+  turn: Turn;
+  next?: Turn;
+}): JSX.Element {
   const m = (): Message => props.message;
+  const said = (): { to: string[]; rest: string } => addressed(m().body);
   return (
     <div
       class={sx(thread.block)}
+      style={pulled(props.turn)}
       onContextMenu={(event) =>
         showMenu(event, [
           {
@@ -319,14 +398,57 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
         ])
       }
     >
+      <Spine turn={props.turn} next={props.next} />
       <span class={sx(thread.avatar)}>
-        <Identicon seed={m().authorId} size={20} />
+        <Show when={props.turn === "avatar"}>
+          <Identicon seed={m().authorId} size={AVATAR} />
+        </Show>
       </span>
       <div class={sx(thread.body)}>
-        <Meta user={m().author} at={m().createdAt} />
+        <Show when={props.turn === "avatar"}>
+          <Meta user={m().author} at={m().createdAt}>
+            <Show when={said().to.length > 0}>
+              <span class={sx(styles.to)}>→ {said().to.join(", ")}</span>
+            </Show>
+          </Meta>
+        </Show>
         <div class={sx(thread.text)}>
-          <LinkedText text={m().body} current={props.thread.id} />
+          <LinkedText text={said().rest} current={props.thread.id} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Whose turn it is, just above the reply: yours when the last message asked you, else whoever your last one asked.
+type Waiting = { you: boolean; on: string; since?: string };
+function waitingIn(c: Thread): Waiting | undefined {
+  const last = c.messages.sorted("createdAt").at(-1);
+  if (!c.isOpen || !last) return undefined;
+  const asked = mentionsIn(last.body);
+  if (last.authorId !== me().id)
+    return asked.includes(me().id) || (asked.length === 0 && c.assigneeIds.includes(me().id))
+      ? {
+          you: true,
+          on: "you",
+          since: `${last.author ? firstName(last.author) : "Someone"} asked ${ago(last.createdAt)}`,
+        }
+      : undefined;
+  const on = (asked.length > 0 ? asked : c.assigneeIds)
+    .filter((id) => id !== me().id)
+    .flatMap((id) => store.findById(User, id) ?? []);
+  return on.length > 0 ? { you: false, on: LIST.format(on.map(firstName)) } : undefined;
+}
+function WaitingLine(props: { waiting: Waiting; next?: Turn }): JSX.Element {
+  return (
+    <div class={sx(thread.block)} style={pulled("dot")}>
+      <Spine turn="dot" next={props.next} />
+      <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true">
+        <span class={sx(styles.eventDot, props.waiting.you && styles.yourTurn)} />
+      </span>
+      <div class={sx(styles.quiet, styles.eventText)}>
+        <span class={sx(props.waiting.you && styles.waitingOn)}>Waiting on {props.waiting.on}</span>
+        <Show when={props.waiting.since}>{(since) => <span> · {since()}</span>}</Show>
       </div>
     </div>
   );
@@ -438,7 +560,15 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           extensions: [
             // No underline, so ⌘U stays View As.
             StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
-            Placeholder.configure({ placeholder: "Reply… @mention someone to bring them in" }),
+            // Addressed to whoever's in it, as a letter's reply is.
+            Placeholder.configure({
+              placeholder: () => {
+                const names = peopleIn(c()).map(firstName);
+                return names.length === 0
+                  ? "Reply… @mention someone to bring them in"
+                  : `Reply to ${LIST.format(names.length > 3 ? [...names.slice(0, 2), `${names.length - 2} others`] : names)}…`;
+              },
+            }),
             ...caretExtensions(
               (caret, menu) => (setMenus((all) => ({ ...all, [caret]: menu })), setAt(0)),
             ),
@@ -465,7 +595,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   return (
     <div class={sx(thread.block)} onClick={() => editor.commands.focus()}>
       <span class={sx(thread.avatar)}>
-        <Identicon seed={me().id} size={20} />
+        <Identicon seed={me().id} size={AVATAR} />
       </span>
       <div class={sx(thread.body)}>
         <div class={sx(thread.meta)}>
@@ -617,6 +747,25 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
     [...messages(), ...props.thread.activity.sorted("createdAt")].sort(
       (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
     );
+  // Each entry's place on the spine: a message carries on the one before when it's the same person's, soon after, and
+  // not addressed anew.
+  const turns = createMemo(() => {
+    const list = entries();
+    return list.map((entry, at): Turn => {
+      if (!(entry instanceof Message)) return "dot";
+      const prev = list[at - 1];
+      return prev instanceof Message &&
+        prev.authorId === entry.authorId &&
+        entry.createdAt.getTime() - prev.createdAt.getTime() < 60 * 60_000 &&
+        addressed(entry.body).to.length === 0
+        ? "grouped"
+        : "avatar";
+    });
+  });
+  const waiting = createMemo(() => waitingIn(props.thread));
+  // What follows the entry at `at` (-1 for the header): the next entry, whose turn it is, then the reply.
+  const nextAfter = (at: number): Turn | undefined =>
+    turns()[at + 1] ?? (waiting() ? "dot" : props.thread.isOpen ? "avatar" : undefined);
   // To the end on opening to reply, and whenever you send something.
   let opened = false;
   createEffect(
@@ -630,16 +779,24 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
     <div class={sx(thread.view)}>
       <div class={sx(thread.scroll)}>
         <article class={sx(thread.doc)}>
-          <Header thread={props.thread} />
+          <Header thread={props.thread} next={turns()[0] ?? nextAfter(-1)} />
           <For each={entries()}>
-            {(entry) =>
+            {(entry, at) =>
               entry instanceof Message ? (
-                <MessageBlock message={entry} thread={props.thread} />
+                <MessageBlock
+                  message={entry}
+                  thread={props.thread}
+                  turn={turns()[at()] ?? "avatar"}
+                  next={nextAfter(at())}
+                />
               ) : (
-                <ActivityLine activity={entry} thread={props.thread} />
+                <ActivityLine activity={entry} thread={props.thread} next={nextAfter(at())} />
               )
             }
           </For>
+          <Show when={waiting()}>
+            {(w) => <WaitingLine waiting={w()} next={props.thread.isOpen ? "avatar" : undefined} />}
+          </Show>
           <Show when={props.thread.isOpen}>
             <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
           </Show>

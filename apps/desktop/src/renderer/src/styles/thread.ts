@@ -2,6 +2,12 @@ import * as stylex from "@stylexjs/stylex";
 import { threadLineMarker } from "./markers.stylex";
 import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 
+// A conversation's geometry, which the spine between avatars is drawn from: the space between turns, and each
+// avatar's size and drop (centred on a turn's name and first line).
+export const TURN_GAP = 28;
+export const AVATAR = 28;
+export const AVATAR_TOP = 8;
+
 // A thread as a document (ThreadView): left-aligned like the other pages, about 706px of text.
 export const thread = stylex.create({
   view: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
@@ -9,14 +15,14 @@ export const thread = stylex.create({
   doc: {
     display: "flex",
     flexDirection: "column",
-    gap: 20.5,
+    gap: TURN_GAP,
     // Left-aligned, on the same edge as the other pages; in the reading pane, just under its toolbar.
     maxWidth: 773,
     padding: "16px 32px 48px 52px",
     zoom: contentZoom["--content-zoom"],
   },
-  block: { display: "flex", gap: 15, scrollMarginTop: 14 },
-  header: { paddingBottom: 12 },
+  block: { position: "relative", display: "flex", gap: 14, scrollMarginTop: 14 },
+  header: { paddingBottom: 4 },
   headerBody: { display: "flex", flexDirection: "column", gap: 6 },
   // Put `threadLineMarker` beside it so the title after it moves up.
   byline: {
@@ -47,21 +53,29 @@ export const thread = stylex.create({
     display: "flex",
     flexShrink: 0,
     justifyContent: "center",
-    width: 22,
-    height: 20,
-    marginTop: 10.5,
+    width: AVATAR,
+    height: AVATAR,
+    marginTop: AVATAR_TOP,
   },
   body: { display: "flex", flex: 1, flexDirection: "column", minWidth: 0 },
-  meta: { display: "flex", alignItems: "baseline", gap: 8, lineHeight: "21px" },
+  meta: { display: "flex", alignItems: "baseline", gap: 8, lineHeight: "22px" },
   author: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
   text: {
     flex: 1,
     minWidth: 0,
     color: colors.textPrimary,
     fontSize: fontSizes.message,
-    lineHeight: "21px",
+    lineHeight: "22px",
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
     userSelect: "text",
+  },
+  // A piece of the line through the avatar column, from one turn down to the next; set top and bottom inline.
+  spine: {
+    position: "absolute",
+    left: AVATAR / 2 - 0.5,
+    width: 1,
+    backgroundColor: colors.strokeFocused,
+    pointerEvents: "none",
   },
 });
