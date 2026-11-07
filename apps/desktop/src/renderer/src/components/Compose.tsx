@@ -37,7 +37,7 @@ const mentionedSubspaces = (text: string): Subspace[] =>
   subspacesWithMembers().filter((sub) => namesIn(text).includes(compact(sub.name).toLowerCase()));
 
 // Everyone @mentioned, by first name or full name without spaces, and everyone in a subspace that is, in order.
-const mentioned = (text: string): User[] => {
+export const mentioned = (text: string): User[] => {
   const found = namesIn(text).flatMap((name) =>
     others().filter((u) =>
       [firstName(u), compact(u.name)].some((key) => key.toLowerCase() === name),
@@ -48,7 +48,7 @@ const mentioned = (text: string): User[] => {
 };
 
 // Without the model: the first sentence as the title, and one ask for everyone mentioned.
-const plainDraft = (text: string): ComposeDraft => {
+export const plainDraft = (text: string): ComposeDraft => {
   const rest = text.replaceAll(MENTION, "").replaceAll(/\s+/g, " ").trim();
   const asked = mentioned(text);
   return {

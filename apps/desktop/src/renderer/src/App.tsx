@@ -38,7 +38,7 @@ import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
 import { PersonView, SavedView, SubspaceView } from "./components/Pages";
 import { HistoryButtons } from "./components/Sidebar";
-import { Compose } from "./components/Compose";
+import { DraftView } from "./components/DraftView";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
 
 const styles = stylex.create({
@@ -196,7 +196,7 @@ export default function App(): JSX.Element {
               {(saved) => <SavedView view={saved} />}
             </Match>
             <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
-              {(draft) => <Compose draftId={draft.id} page />}
+              {(draft) => <DraftView draft={draft} />}
             </Match>
             <Match when={person()} keyed>
               {(user) => <PersonView user={user} />}

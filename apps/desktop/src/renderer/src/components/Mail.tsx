@@ -130,9 +130,11 @@ function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
     }
     shown = true;
   };
-  // While rows move (a section folding, a list resizing), follow them frame by frame.
+  // While rows move (a section folding open or shut), follow them frame by frame. Only for that: the pill's own slide
+  // and the list's fading hairlines are transitions too, and following them would snap the pill instead of sliding it.
   let following = 0;
-  const follow = (): void => {
+  const follow = (event?: TransitionEvent): void => {
+    if (event && (event.target === pill || event.propertyName !== "grid-template-rows")) return;
     if (following) return;
     const until = performance.now() + 320;
     const step = (): void => {
@@ -158,10 +160,7 @@ function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
   container.addEventListener("pointerleave", onLeave);
   container.addEventListener("scroll", onScroll, { capture: true, passive: true });
   container.addEventListener("transitionrun", follow);
-  const mutations = new MutationObserver(() => {
-    place();
-    follow();
-  });
+  const mutations = new MutationObserver(() => place());
   mutations.observe(container, {
     subtree: true,
     childList: true,
