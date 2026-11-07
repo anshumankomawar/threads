@@ -9,7 +9,7 @@ import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { holdFocus } from "./InlineForm";
+import { holdFocus, menuLeaving } from "./InlineForm";
 
 // One choice in a list you move through with the arrow keys: a palette's rows, the reply's @ # / menus, ⌘⇧N's @ menu.
 // `section` heads a run of a palette's rows; `hint` sits on the right; `accent` makes it stand out ("New thread").
@@ -93,16 +93,14 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
         aria-haspopup={opens ? "menu" : undefined}
         aria-expanded={opens ? (sub()?.item === item ? "true" : "false") : undefined}
         onPointerEnter={(event) => (opens ? openSub(item, event) : setSub(null))}
-        onClick={(event) =>
-          opens
-            ? openSub(item, event)
-            : run?.(
-                (
-                  (event.currentTarget as HTMLElement).querySelector("svg") ??
-                  (event.currentTarget as HTMLElement)
-                ).getBoundingClientRect(),
-              )
-        }
+        onClick={(event) => {
+          const entry = event.currentTarget as HTMLElement;
+          if (opens) return openSub(item, event);
+          // Kept a moment, in case what it runs grows a form out of it (InlineForm), which then fades in over it.
+          const menu = entry.closest<HTMLElement>("[role=menu]");
+          if (menu) menuLeaving(menu);
+          run?.((entry.querySelector("svg") ?? entry).getBoundingClientRect());
+        }}
       >
         <Show when={gutter()}>
           <span class={sx(look.entryIcon)}>{checked ? icon(i.Tick02Icon, 13) : item.icon}</span>

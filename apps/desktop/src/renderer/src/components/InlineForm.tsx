@@ -44,30 +44,58 @@ export type InlineAsk = {
   submit: (values: string[]) => void;
 };
 
-const [asked, setAsked] = createSignal<InlineAsk | null>(null);
-export const askInline = (ask: InlineAsk): void => void setAsked(ask);
+const [asked, setAsked] = createSignal<(InlineAsk & { ghost?: HTMLElement }) | null>(null);
+export const askInline = (ask: InlineAsk): void => {
+  setAsked({ ...ask, ghost: leaving ?? undefined });
+  leaving = null;
+};
+
+// A menu closing as one of its entries runs: if that entry asks for a form, the menu's copy stays a moment and fades
+// out as the form fades in over it, the entry in the same place in both, so the one turns into the other.
+let leaving: HTMLElement | null = null;
+export function menuLeaving(menu: HTMLElement): void {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const rect = menu.getBoundingClientRect();
+  const ghost = menu.cloneNode(true) as HTMLElement;
+  ghost.removeAttribute("id");
+  ghost.setAttribute("popover", "manual");
+  ghost.setAttribute("aria-hidden", "true");
+  Object.assign(ghost.style, {
+    position: "fixed",
+    margin: "0",
+    right: "auto",
+    bottom: "auto",
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    animation: "none",
+    pointerEvents: "none",
+  });
+  leaving = ghost;
+  // Nothing asked for it: let it go.
+  setTimeout(() => {
+    if (leaving === ghost) leaving = null;
+  });
+}
 
 // The panel's 1px border and its padding, before the icon; and from its top edge to the middle of the first row.
 const LEAD = 10;
 const TO_FIRST_ROW = 1 + 3.6 + 21.8 / 2;
 
-// It doesn't fade in, which reads as a redraw: it's revealed from what it grew out of, already there. From a menu entry
-// the row that was the entry is shown and the fields unfold under it; from a +, it opens out to the right of the +.
-const unfold = stylex.keyframes({
-  from: { clipPath: "inset(0 0 calc(100% - 29px) 0 round 11px)" },
-  to: { clipPath: "inset(0 0 0 0 round 11px)" },
-});
+// From a +, it's revealed from the + outward rather than fading in (which reads as a redraw). From a menu entry it
+// cross-fades with the menu instead (askInline's `ghost`).
 const openOut = stylex.keyframes({
   from: { clipPath: "inset(0 calc(100% - 32px) 0 0 round 11px)" },
   to: { clipPath: "inset(0 0 0 0 round 11px)" },
 });
 
 const styles = stylex.create({
+  still: { animationName: "none" },
   reveal: {
     animationDuration: "180ms",
     animationTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
-  unfold: { animationName: { default: unfold, [motion.reduced]: "none" } },
   openOut: { animationName: { default: openOut, [motion.reduced]: "none" } },
   panel: {
     position: "fixed",
@@ -134,7 +162,21 @@ export function InlineForm(): JSX.Element {
             const at = rect();
             panel.style.left = `${at.left - LEAD}px`;
             panel.style.top = `${at.top + at.height / 2 - TO_FIRST_ROW}px`;
+            const ghost = ask.ghost;
             panel.showPopover();
+            // The menu's copy over the form, fading out; the form under it, fading in faster, so neither is ever
+            // half there over the page.
+            if (ghost) {
+              document.body.append(ghost);
+              ghost.showPopover();
+              ghost
+                .animate([{ opacity: 1 }, { opacity: 0 }], { duration: 160, easing: "ease-in" })
+                .finished.then(
+                  () => ghost.remove(),
+                  () => ghost.remove(),
+                );
+              panel.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 90, easing: "ease-out" });
+            }
             inputs[0]?.focus();
             inputs[0]?.select();
           });
@@ -155,8 +197,8 @@ export function InlineForm(): JSX.Element {
               look.menu,
               look.popover,
               styles.panel,
-              styles.reveal,
-              ask.title ? styles.unfold : styles.openOut,
+              // From a menu, no animation of its own: the cross-fade is it.
+              ask.ghost ? styles.still : [styles.reveal, styles.openOut],
             )}
             role="dialog"
             onToggle={(event) => event.newState === "closed" && asked() === ask && setAsked(null)}
