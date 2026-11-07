@@ -25,16 +25,11 @@ import {
 } from "../hotkeys";
 import type { Tab } from "./Tabs";
 
-// A page's name, and a lock when not everyone sees it (`locked` says who does).
-function Title(props: { name: string; locked?: string }): JSX.Element {
+// A page's name.
+function Title(props: { name: string }): JSX.Element {
   return (
     <header class={sx(page.titleRow)}>
       <h1 class={sx(page.title)}>{props.name}</h1>
-      <Show when={props.locked}>
-        <span class={sx(page.lock)} title={props.locked}>
-          {icon(i.SquareLock01Icon, 14)}
-        </span>
-      </Show>
     </header>
   );
 }
@@ -191,7 +186,7 @@ export function SavedView(props: { view: View }): JSX.Element {
   };
   return (
     <div class={sx(page.page)}>
-      <Title name={v().name} locked={v().shared ? undefined : "Only you see this view"} />
+      <Title name={v().name} />
       <p class={sx(page.summary)}>Its threads are listed beside; filter them there.</p>
       <Show when={v().ownerId === me().id}>
         <PageTabs pages={[settings]} />
