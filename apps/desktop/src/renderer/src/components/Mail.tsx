@@ -1377,13 +1377,13 @@ const s = stylex.create({
   groupCount: { fontWeight: 400 },
   rows: { margin: 0, padding: 0, listStyle: "none" },
   rowItem: { listStyle: "none" },
-  // The hairline under a row, as Mail draws it: from the text's column (past the unread dot: 2 + 12 + 8) to the row's
+  // The hairline under a row, as Mail draws it: from the text's column (past the unread dot: 8 + 12 + 8) to the row's
   // right edge. It gives way on both sides of a selected or hovered row, so the pill stands clear
   // rather than cut by the lines above and below it, fading as the pill slides rather than blinking ahead of it.
   divider: {
     display: "block",
     height: 1,
-    marginLeft: 22,
+    marginLeft: 28,
     marginRight: 10,
     backgroundColor: {
       default: colors.strokeTertiary,
@@ -1398,7 +1398,8 @@ const s = stylex.create({
     display: "flex",
     gap: 8,
     alignItems: "flex-start",
-    padding: "9px 10px 10px 2px",
+    // As much room left of the unread dot as between it and the text (10px each side of it).
+    padding: "9px 10px 10px 8px",
     borderRadius: radii.row,
     color: colors.textPrimary,
     cursor: "default",
