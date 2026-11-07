@@ -4,8 +4,6 @@ import * as stylex from "@stylexjs/stylex";
 import { Bucket, Label, Message, Subspace, SubspaceMember, Thread, User, View } from "models";
 import type { Filter } from "sync";
 import {
-  account,
-  applyTheme,
   byName,
   dialog,
   edit,
@@ -13,16 +11,12 @@ import {
   me,
   memberIn,
   open,
-  otherSources,
   others,
   setDialog,
-  signOut,
-  SOURCES,
   store,
   summary,
   toggled,
   switchTo,
-  theme,
   type Dialog,
   workspace,
 } from "../session";
@@ -32,6 +26,7 @@ import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
+import { Search } from "./Search";
 
 // A modal palette: a click outside or Escape closes it.
 export function Modal(props: { children: JSX.Element }): JSX.Element {
@@ -200,91 +195,6 @@ export function send(thread: Thread, body: string): void {
     workspaceId: thread.workspaceId,
     subspaceIds: thread.subspaceIds,
   });
-}
-
-function Search(): JSX.Element {
-  const commands = (): Row[] => [
-    {
-      label: "New thread",
-      hint: "⌘ N",
-      section: "Quick actions",
-      run: () => setDialog({ kind: "newThread" }),
-    },
-    { label: "New label", section: "Quick actions", run: () => setDialog({ kind: "newLabel" }) },
-    {
-      label: "New subspace",
-      section: "Quick actions",
-      run: () => setDialog({ kind: "newSubspace" }),
-    },
-    { label: "All threads", section: "Views", run: done(() => open({ view: null })) },
-    {
-      label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-      section: "Views",
-      run: done(() => applyTheme(theme() === "dark" ? "light" : "dark")),
-    },
-    // Signed in, you're who you signed in as; only Sample is viewed as anyone.
-    ...(account
-      ? [
-          {
-            label: `Sign out (${account.email})`,
-            section: "Account",
-            run: done(() => void signOut()),
-          },
-        ]
-      : []),
-    ...(account
-      ? []
-      : [
-          {
-            label: "View as…",
-            hint: "⌘ U",
-            section: "Data",
-            run: () => setDialog({ kind: "viewAs" }),
-          },
-        ]),
-    ...otherSources.map((s) => ({
-      label: `Use ${SOURCES[s]} data`,
-      section: "Data",
-      run: () => switchTo({ source: s }),
-    })),
-  ];
-  return (
-    <Picker
-      placeholder="Search…"
-      filters={["All", "Threads", "Spaces", "People"]}
-      rows={(query, filter) =>
-        [
-          ...(filter === 0 ? commands() : []),
-          ...(filter === 0 || filter === 3 ? store.all(User) : []).map((u) => ({
-            label: u.name,
-            section: "People",
-            seed: u.id,
-            run: done(() => open({ person: u.id })),
-          })),
-          ...(filter === 0 || filter === 2 ? store.all(Subspace) : []).map((sub) => ({
-            label: sub.name,
-            section: "Subspaces",
-            run: done(() => open({ subspace: sub.id })),
-          })),
-          ...(filter === 0 || filter === 2 ? store.all(View) : []).map((v) => ({
-            label: v.name,
-            section: "Views",
-            run: done(() => open({ view: v.id })),
-          })),
-          ...(filter === 0 || filter === 2 ? store.all(Label) : []).map((l) => ({
-            label: l.name,
-            section: "Labels",
-            run: done(() => open({ label: l.id })),
-          })),
-          ...(filter === 0 || filter === 1 ? store.all(Thread) : []).map((t) => ({
-            label: t.title,
-            section: "Threads",
-            run: done(() => open({ thread: t.id })),
-          })),
-        ].filter((row) => matches(row.label, query))
-      }
-    />
-  );
 }
 
 type Step = "write" | "describe" | "pick" | "labels";
