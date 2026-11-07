@@ -23,10 +23,10 @@
     user-select: none;
     color: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
     background: light-dark(rgb(255 255 255 / 72%), rgb(0 0 0 / 62%));
-    /* Linear's stack. Inter's optical size follows the text size, so large titles get its Display design. */
+    /* The system's San Francisco, as Mail is set: its optical sizes (Text, Display) follow the size by themselves. */
     font-family:
-      "Inter Variable", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      "Helvetica Neue", sans-serif;
+      -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue",
+      sans-serif;
     font-size: 12px;
     line-height: 16px;
     -webkit-font-smoothing: antialiased;

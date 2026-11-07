@@ -169,7 +169,7 @@ const hasNew = (item: InboxItem): boolean =>
 export const unread = (item: InboxItem): boolean => item.thread !== active() && hasNew(item);
 
 // A message counts as activity on its thread, though it doesn't change the Thread's row.
-const lastActive = (thread: Thread): number =>
+export const lastActive = (thread: Thread): number =>
   Math.max(
     thread.updatedAt.getTime(),
     thread.messages.sorted("createdAt").at(-1)?.createdAt.getTime() ?? 0,
@@ -283,10 +283,17 @@ window.addEventListener("mouseup", (event) => {
   if (event.button === 4) goForward();
 });
 
-// After you finish one, the next in your inbox opens; in the split view, the split closes.
+// The threads J and K step through, and where finishing one moves on to: the list that's showing (mail.ts says which),
+// else the inbox's order.
+let listOrder: () => Thread[] = () => inbox().order;
+export const followOrder = (order: () => Thread[]): void => {
+  listOrder = order;
+};
+
+// After you finish one, the next in the list opens; in the split view, the split closes.
 function moveOn(thread: Thread): void {
   if (thread.id === split()) return void setSplit(null);
-  const order = inbox().order;
+  const order = listOrder();
   const at = order.indexOf(thread);
   const next = [...order.slice(at + 1), ...order.slice(0, Math.max(0, at))].find(
     (c) => c !== thread,
@@ -306,7 +313,7 @@ export function markDone(item: InboxItem): void {
 }
 
 // Out of your inbox until 9 tomorrow morning.
-function snooze(item: InboxItem): void {
+export function snooze(item: InboxItem): void {
   moveOn(item.thread);
   item.snoozedUntil = new Date(new Date(Date.now() + 86_400_000).setHours(9, 0, 0, 0));
   item.save();
@@ -371,10 +378,11 @@ window.addEventListener("keydown", (event) => {
   const target = event.target as HTMLElement;
   const typing = target.closest("input, textarea, [contenteditable='true']") !== null;
   const free = !document.querySelector("dialog[open], :popover-open");
-  const order = inbox().order;
+  const order = listOrder();
   const current = active();
   const at = current ? order.indexOf(current) : -1;
-  const item = current && at !== -1 ? itemFor(current) : undefined;
+  // Done and snooze are for what's in your inbox, whichever list it's open from.
+  const item = current && inbox().order.includes(current) ? itemFor(current) : undefined;
   const reading = free && !typing;
   const run: Record<string, (() => void) | false | undefined> = {
     "⌘k": () => setDialog({ kind: "search" }),

@@ -28,7 +28,7 @@ import {
 import { base } from "./styles/base";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
-import { colors, fontSizes, radii, sidebarSpace } from "./styles/tokens.stylex";
+import { colors, fontSizes, radii } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
 import { Icon } from "./components/Icon";
@@ -37,7 +37,8 @@ import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
 import { AllThreadsView, LabelView, PersonView, SavedView, SubspaceView } from "./components/Pages";
-import { AppButtons, HistoryButtons, Sidebar } from "./components/Sidebar";
+import { HistoryButtons } from "./components/Sidebar";
+import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
 
 const styles = stylex.create({
   // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
@@ -62,9 +63,8 @@ const styles = stylex.create({
     minWidth: 0,
     backgroundColor: colors.frosted,
   },
-  // Beside the sidebar, or clear of the traffic lights without it.
-  topbarBesideSidebar: { paddingLeft: 8 },
-  topbarAlone: { paddingLeft: sidebarSpace.afterLights },
+  // Beside the list, which has the window's buttons when the sidebar's hidden.
+  topbarBesideList: { paddingLeft: 8 },
   viewAs: {
     display: "flex",
     gap: 6,
@@ -136,9 +136,11 @@ export default function App(): JSX.Element {
       <Titlebar />
       <DragRegionResync />
       <Show when={signedIn()} fallback={<Waiting />}>
+        {/* Mail's columns: the mailboxes, the chosen one's threads, and the thread you're reading. */}
         <Show when={sidebarOpen()}>
-          <Sidebar />
+          <MailSidebar />
         </Show>
+        <MessageList />
         <main class={sx(styles.main)}>
           {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
           <Show when={store.rejection()}>
@@ -155,12 +157,7 @@ export default function App(): JSX.Element {
               </div>
             )}
           </Show>
-          <div
-            class={sx(topbar.bar, sidebarOpen() ? styles.topbarBesideSidebar : styles.topbarAlone)}
-          >
-            <Show when={!sidebarOpen()}>
-              <AppButtons />
-            </Show>
+          <div class={sx(topbar.bar, styles.topbarBesideList)}>
             <HistoryButtons />
             <span class={sx(base.ellipsis, topbar.title)}>
               {active()?.title ??
@@ -171,6 +168,9 @@ export default function App(): JSX.Element {
                 person()?.name}
             </span>
             <span class={sx(topbar.end)}>
+              <Show when={active()} keyed>
+                {(thread) => <ThreadActions thread={thread} />}
+              </Show>
               <button
                 class={sx(styles.viewAs)}
                 disabled={account !== null}
@@ -186,7 +186,7 @@ export default function App(): JSX.Element {
               </button>
             </span>
           </div>
-          <Switch>
+          <Switch fallback={<NothingOpen />}>
             <Match when={label()} keyed>
               {(label) => <LabelView label={label} />}
             </Match>

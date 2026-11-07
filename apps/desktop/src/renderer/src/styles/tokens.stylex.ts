@@ -30,6 +30,10 @@ export const colors = stylex.defineVars({
   urgent: "oklch(0.712 0.177 12.651)",
   overlay: "rgb(0 0 0 / 45%)",
   avatarRing: "transparent",
+  // Mail's: the system blue of unread dots and sidebar icons, and a selected row's fill while its list has focus.
+  systemBlue: "#0a84ff",
+  selection: "#0058d0",
+  selectionText: "#ffffff",
 });
 
 export const lightTheme = stylex.createTheme(colors, {
@@ -54,6 +58,9 @@ export const lightTheme = stylex.createTheme(colors, {
   urgent: "oklch(0.58 0.2 12.651)",
   overlay: "rgb(0 0 0 / 18%)",
   avatarRing: "rgb(0 0 0 / 14%)",
+  systemBlue: "#007aff",
+  selection: "#0063e1",
+  selectionText: "#ffffff",
 });
 
 export const sidebarSpace = stylex.defineConsts({
