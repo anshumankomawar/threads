@@ -46,7 +46,7 @@ import { base } from "../styles/base";
 import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { AVATAR, AVATAR_TOP, thread, TURN_GAP } from "../styles/thread";
+import { AVATAR, thread, TURN_GAP } from "../styles/thread";
 import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
@@ -116,38 +116,14 @@ export const dot = (state: Thread["state"]): JSX.Element => (
   <span class={sx(styles.dot, state !== "open" && styles[state])} aria-hidden="true" />
 );
 
-// ── The conversation: each turn on a spine down the avatar column ──
+// ── The conversation ──
 
-// How a turn sits on the spine: an avatar (someone speaking), a dot (activity, or whose turn it is), or a message that
-// carries on the one before it, with neither. Each is pulled up toward the turn before by its own amount, and the line
-// stops a little short of its avatar or dot.
+// How a turn sits: someone speaking (an avatar), a line of activity or whose turn it is (a dot), or a message that
+// carries on the one before it, with neither. Each is pulled up toward the turn before by its own amount.
 type Turn = "avatar" | "dot" | "grouped";
 const PULL: Record<Turn, number> = { avatar: 0, dot: -(TURN_GAP - 12), grouped: -(TURN_GAP - 6) };
-const MARK: Record<Turn, [top: number, bottom: number]> = {
-  avatar: [AVATAR_TOP - 4, AVATAR_TOP + AVATAR + 4],
-  dot: [3, 15],
-  grouped: [0, 0],
-};
 const pulled = (turn: Turn): JSX.CSSProperties | undefined =>
   PULL[turn] ? { "margin-top": `${PULL[turn]}px` } : undefined;
-
-// The line from this turn down to the next one, if there is a next.
-function Spine(props: { turn: Turn; next?: Turn }): JSX.Element {
-  return (
-    <Show when={props.next}>
-      {(next) => (
-        <span
-          class={sx(thread.spine)}
-          aria-hidden="true"
-          style={{
-            top: `${MARK[props.turn][1]}px`,
-            bottom: `${-(TURN_GAP + PULL[next()] + MARK[next()][0])}px`,
-          }}
-        />
-      )}
-    </Show>
-  );
-}
 
 // Who a message is to: the @mentions it opens with, which its byline shows ("→ You, Sam") instead of its text.
 const LEADING = /^(?:\s*\[\[(?:person|subspace):[^\]\s]+\]\])+[\s,:]*/;
@@ -309,11 +285,10 @@ function ListChip(props: {
   );
 }
 
-function Header(props: { thread: Thread; next?: Turn }): JSX.Element {
+function Header(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   return (
     <header class={sx(thread.block, thread.header)}>
-      <Spine turn="avatar" next={props.next} />
       <span class={sx(thread.avatar)}>
         <Identicon seed={c().ownerId ?? ""} size={AVATAR} />
       </span>
@@ -349,11 +324,10 @@ function Header(props: { thread: Thread; next?: Turn }): JSX.Element {
   );
 }
 
-function ActivityLine(props: { activity: Activity; thread: Thread; next?: Turn }): JSX.Element {
+function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Element {
   const line = (): Activity => props.activity;
   return (
     <div class={sx(thread.block)} style={pulled("dot")}>
-      <Spine turn="dot" next={props.next} />
       <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true">
         <span class={sx(styles.eventDot)} />
       </span>
@@ -366,12 +340,7 @@ function ActivityLine(props: { activity: Activity; thread: Thread; next?: Turn }
   );
 }
 
-function MessageBlock(props: {
-  message: Message;
-  thread: Thread;
-  turn: Turn;
-  next?: Turn;
-}): JSX.Element {
+function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): JSX.Element {
   const m = (): Message => props.message;
   const said = (): { to: string[]; rest: string } => addressed(m().body);
   return (
@@ -398,7 +367,6 @@ function MessageBlock(props: {
         ])
       }
     >
-      <Spine turn={props.turn} next={props.next} />
       <span class={sx(thread.avatar)}>
         <Show when={props.turn === "avatar"}>
           <Identicon seed={m().authorId} size={AVATAR} />
@@ -439,10 +407,9 @@ function waitingIn(c: Thread): Waiting | undefined {
     .flatMap((id) => store.findById(User, id) ?? []);
   return on.length > 0 ? { you: false, on: LIST.format(on.map(firstName)) } : undefined;
 }
-function WaitingLine(props: { waiting: Waiting; next?: Turn }): JSX.Element {
+function WaitingLine(props: { waiting: Waiting }): JSX.Element {
   return (
     <div class={sx(thread.block)} style={pulled("dot")}>
-      <Spine turn="dot" next={props.next} />
       <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true">
         <span class={sx(styles.eventDot, props.waiting.you && styles.yourTurn)} />
       </span>
@@ -763,9 +730,6 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
     });
   });
   const waiting = createMemo(() => waitingIn(props.thread));
-  // What follows the entry at `at` (-1 for the header): the next entry, whose turn it is, then the reply.
-  const nextAfter = (at: number): Turn | undefined =>
-    turns()[at + 1] ?? (waiting() ? "dot" : props.thread.isOpen ? "avatar" : undefined);
   // To the end on opening to reply, and whenever you send something.
   let opened = false;
   createEffect(
@@ -779,7 +743,7 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
     <div class={sx(thread.view)}>
       <div class={sx(thread.scroll)}>
         <article class={sx(thread.doc)}>
-          <Header thread={props.thread} next={turns()[0] ?? nextAfter(-1)} />
+          <Header thread={props.thread} />
           <For each={entries()}>
             {(entry, at) =>
               entry instanceof Message ? (
@@ -787,16 +751,13 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
                   message={entry}
                   thread={props.thread}
                   turn={turns()[at()] ?? "avatar"}
-                  next={nextAfter(at())}
                 />
               ) : (
-                <ActivityLine activity={entry} thread={props.thread} next={nextAfter(at())} />
+                <ActivityLine activity={entry} thread={props.thread} />
               )
             }
           </For>
-          <Show when={waiting()}>
-            {(w) => <WaitingLine waiting={w()} next={props.thread.isOpen ? "avatar" : undefined} />}
-          </Show>
+          <Show when={waiting()}>{(w) => <WaitingLine waiting={w()} />}</Show>
           <Show when={props.thread.isOpen}>
             <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
           </Show>

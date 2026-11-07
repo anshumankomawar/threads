@@ -2,8 +2,8 @@ import * as stylex from "@stylexjs/stylex";
 import { threadLineMarker } from "./markers.stylex";
 import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 
-// A conversation's geometry, which the spine between avatars is drawn from: the space between turns, and each
-// avatar's size and drop (centred on a turn's name and first line).
+// A conversation's geometry: the space between turns, and each avatar's size and drop (centred on a turn's name and
+// first line).
 export const TURN_GAP = 28;
 export const AVATAR = 28;
 export const AVATAR_TOP = 8;
@@ -69,13 +69,5 @@ export const thread = stylex.create({
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
     userSelect: "text",
-  },
-  // A piece of the line through the avatar column, from one turn down to the next; set top and bottom inline.
-  spine: {
-    position: "absolute",
-    left: AVATAR / 2 - 0.5,
-    width: 1,
-    backgroundColor: colors.strokeFocused,
-    pointerEvents: "none",
   },
 });
