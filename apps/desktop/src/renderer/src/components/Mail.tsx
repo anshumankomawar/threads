@@ -20,7 +20,6 @@ import {
   shortDate,
   showMenu,
   sidebarOpen,
-  snooze,
   store,
   threadMenu,
   unread,
@@ -724,14 +723,6 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
             </button>
             <button
               class={sx(topbar.button)}
-              aria-label="Snooze"
-              title="Snooze until tomorrow (H)"
-              onClick={() => snooze(it())}
-            >
-              <Icon icon={i.Clock01Icon} {...ICON} />
-            </button>
-            <button
-              class={sx(topbar.button)}
               aria-label="Move to"
               title="Move to a bucket"
               onClick={moveMenu}
@@ -763,7 +754,7 @@ export function NothingOpen(): JSX.Element {
   );
 }
 
-const EDGE = `linear-gradient(to right, transparent 2px, ${colors.strokeFocused} 2px, ${colors.strokeFocused} 3px, transparent 3px)`;
+const EDGE = `linear-gradient(to right, transparent 2px, ${colors.resizeEdge} 2px, ${colors.resizeEdge} 3px, transparent 3px)`;
 
 const s = stylex.create({
   // The resize edge on a column's right.

@@ -50,7 +50,7 @@ const PILL = `calc(${INSET} - ${GUTTER})`;
 const FADE = "linear-gradient(to right, #000 calc(100% - 24px), transparent)";
 const center = { display: "flex", alignItems: "center" } as const;
 const column = { display: "flex", flexDirection: "column" } as const;
-const EDGE = `linear-gradient(to right, transparent 2px, ${colors.strokeFocused} 2px, ${colors.strokeFocused} 3px, transparent 3px)`;
+const EDGE = `linear-gradient(to right, transparent 2px, ${colors.resizeEdge} 2px, ${colors.resizeEdge} 3px, transparent 3px)`;
 const WIDTH = { initial: 268, min: 210, max: 400 };
 const clampWidth = (px: number): number => Math.min(WIDTH.max, Math.max(WIDTH.min, Math.round(px)));
 const [width, setWidth] = createSignal(clampWidth(saved("sidebar-width", WIDTH.initial)));

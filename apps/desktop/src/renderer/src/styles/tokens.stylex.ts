@@ -18,6 +18,8 @@ export const colors = stylex.defineVars({
   iconTertiary: mix(DARK_BASE, 52),
   strokeTertiary: mix(DARK_BASE, 8),
   strokeFocused: mix(DARK_BASE, 15),
+  // A column's resize edge while it's hovered or dragged: just stronger than the border it's on.
+  resizeEdge: mix(DARK_BASE, 11),
   panel: "#171717",
   panelBorder: "#212121",
   panelSelected: "#222222",
@@ -45,6 +47,7 @@ export const lightTheme = stylex.createTheme(colors, {
   iconTertiary: mix(LIGHT_BASE, 50),
   strokeTertiary: mix(LIGHT_BASE, 10),
   strokeFocused: mix(LIGHT_BASE, 20),
+  resizeEdge: mix(LIGHT_BASE, 12),
   panel: "#ffffff",
   panelBorder: "#e4e4e2",
   panelSelected: "#efefed",

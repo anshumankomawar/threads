@@ -175,10 +175,6 @@ export const lastActive = (thread: Thread): number =>
     thread.messages.sorted("createdAt").at(-1)?.createdAt.getTime() ?? 0,
   );
 
-// Snoozed threads come back on the minute.
-const [now, setNow] = createSignal(Date.now());
-setInterval(() => setNow(Date.now()), 60_000);
-
 const RANK = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
 const byUrgency = (a: InboxItem, b: InboxItem): number => {
   const [x, y] = [a.thread, b.thread];
@@ -192,12 +188,9 @@ const byUrgency = (a: InboxItem, b: InboxItem): number => {
 
 // Your inbox in your buckets, most urgent first; what the model hasn't sorted yet waits apart.
 export const inbox = store.view(() => {
-  const time = now();
   const items = store
     .where(InboxItem, "userId", me().id)
-    .filter(
-      (i) => i.thread?.isOpen && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > time),
-    )
+    .filter((i) => i.thread?.isOpen && !i.doneAt)
     .sort(byUrgency);
   const buckets = myBuckets();
   const sections = buckets.map((bucket) => ({
@@ -312,17 +305,6 @@ export function markDone(item: InboxItem): void {
   });
 }
 
-// Out of your inbox until 9 tomorrow morning.
-export function snooze(item: InboxItem): void {
-  moveOn(item.thread);
-  item.snoozedUntil = new Date(new Date(Date.now() + 86_400_000).setHours(9, 0, 0, 0));
-  item.save();
-  offerUndo("Snoozed until tomorrow", () => {
-    item.snoozedUntil = undefined;
-    item.save();
-  });
-}
-
 // Into one of your buckets by hand, or back to the model.
 export const placeIn = (item: InboxItem, bucket?: Bucket): void => {
   item.bucket = bucket;
@@ -343,7 +325,6 @@ export function threadMenu(thread: Thread): MenuItem[] {
       ? [
           "separator" as const,
           { label: "Done", run: () => markDone(item) },
-          { label: "Snooze until tomorrow", run: () => snooze(item) },
           "separator" as const,
           ...myBuckets()
             .filter((bucket) => bucket !== item.bucket)
@@ -371,7 +352,7 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 
 // ── Keys ──
 // ⌘K search, ⌘[ ⌘] back and forward, ⌘N new thread, ⌘⇧N compose, ⌘U view as, ⌘+ ⌘- ⌘0 zoom. Superhuman's, never with a dialog or menu
-// open: ⌘E done (even while typing), and when not typing J/K next or previous, H snooze, R reply.
+// open: ⌘E done (even while typing), and when not typing J/K next or previous, R reply.
 window.addEventListener("keydown", (event) => {
   if (event.altKey || event.ctrlKey || !signedIn()) return;
   const key = `${event.metaKey ? "⌘" : ""}${event.shiftKey ? "⇧" : ""}${event.key.toLowerCase()}`;
@@ -381,7 +362,7 @@ window.addEventListener("keydown", (event) => {
   const order = listOrder();
   const current = active();
   const at = current ? order.indexOf(current) : -1;
-  // Done and snooze are for what's in your inbox, whichever list it's open from.
+  // Done is for what's in your inbox, whichever list it's open from.
   const item = current && inbox().order.includes(current) ? itemFor(current) : undefined;
   const reading = free && !typing;
   const run: Record<string, (() => void) | false | undefined> = {
@@ -407,7 +388,6 @@ window.addEventListener("keydown", (event) => {
     "⌘e": free && item && (() => markDone(item)),
     j: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
     k: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
-    h: reading && item && (() => snooze(item)),
     r: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
     // Not when Escape just closed one of the reply's menus.
     escape:
