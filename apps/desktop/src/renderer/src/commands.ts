@@ -352,39 +352,39 @@ function creating(): Command[] {
   const section = "Create";
   const narrowed = conditions();
   return [
-    ...hotkey("newThread", "New Thread", section, i.PencilEdit02Icon, "start write"),
+    ...hotkey("newThread", "Thread", section, i.PencilEdit02Icon, "new start write"),
     ...hotkey(
       "compose",
-      "Write a Thread as a Message",
+      "Thread from a Message",
       section,
       i.MessageAdd01Icon,
-      "draft compose",
+      "new write draft compose",
     ),
     {
       id: "new-space",
-      title: "New Space",
+      title: "Space",
       kind: "action",
       section,
       icon: i.Layers01Icon,
-      keywords: "subspace team",
+      keywords: "new subspace team",
       run: () => setDialog({ kind: "newSubspace" }),
     },
     {
       id: "new-label",
-      title: "New Label",
+      title: "Label",
       kind: "action",
       section,
       icon: i.Tag01Icon,
-      keywords: "tag",
+      keywords: "new tag",
       run: () => setDialog({ kind: "newLabel" }),
     },
     {
       id: "new-bucket",
-      title: "New Bucket",
+      title: "Bucket",
       kind: "action",
       section,
       icon: i.Folder01Icon,
-      keywords: "inbox sort",
+      keywords: "new inbox sort",
       run: () => setDialog({ kind: "bucket" }),
     },
     // The list's filter, kept as a view of its own.
@@ -392,11 +392,11 @@ function creating(): Command[] {
       ? [
           {
             id: "save-view",
-            title: "Save Filter as View",
+            title: "View from This Filter",
             kind: "action" as const,
             section,
             icon: i.FilterIcon,
-            keywords: "view saved query",
+            keywords: "new save view saved query",
             run: () =>
               setDialog({
                 kind: "newView",
