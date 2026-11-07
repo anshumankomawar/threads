@@ -615,9 +615,10 @@ function Properties(props: { thread: Thread }): JSX.Element {
         thread={c()}
         field="subspaceIds"
         records={store.all(Subspace)}
-        none="Everyone"
+        // In no space, it's simply the workspace's: anyone can see it, which needs no name of its own.
+        none="No space"
         icon={i.Layers01Icon}
-        title="Where it lives: its subspaces' members see it, and only they when one is private"
+        title="Where it lives: its spaces' members see it, and only they when one is private"
       />
       <ListChip
         look={value}
