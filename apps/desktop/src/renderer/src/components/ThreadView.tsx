@@ -55,8 +55,8 @@ import { createThread, send } from "./Palettes";
 import { commandFor, keysOf } from "../hotkeys";
 
 const styles = stylex.create({
-  // The viewport minus about one block, so the last entry can reach the top but never leave the screen.
-  overscroll: { height: "calc(100vh - 34px - 140px)" },
+  // The thread's height minus about one block, so the last entry can reach the top but never leave the screen.
+  overscroll: { height: "calc(100cqh - 140px)" },
   quiet: { color: colors.textTertiary, fontSize: fontSizes.body },
   eventMarker: {
     display: "flex",

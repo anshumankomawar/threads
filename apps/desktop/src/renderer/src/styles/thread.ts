@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { threadLineMarker } from "./markers.stylex";
+import { peekMarker, threadLineMarker } from "./markers.stylex";
 import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 
 // A conversation's geometry: the space between turns, and each avatar's size and drop (centred on a turn's name and
@@ -10,7 +10,16 @@ export const AVATAR_TOP = 8;
 
 // A thread as a document (ThreadView): left-aligned like the other pages, about 706px of text.
 export const thread = stylex.create({
-  view: { position: "relative", display: "flex", flex: 1, minHeight: 0, minWidth: 0 },
+  // A size container, so what's after the last entry can be measured against the thread's own height (cqh), wherever
+  // it's shown: the reading pane, the split, Peek.
+  view: {
+    position: "relative",
+    display: "flex",
+    flex: 1,
+    minHeight: 0,
+    minWidth: 0,
+    containerType: "size",
+  },
   scroll: { flex: 1, minHeight: 0, minWidth: 0, overflowY: "auto" },
   doc: {
     display: "flex",
@@ -18,7 +27,10 @@ export const thread = stylex.create({
     gap: TURN_GAP,
     // Left-aligned, on the same edge as the other pages; in the reading pane, just under its toolbar.
     maxWidth: 773,
-    padding: "16px 32px 48px 52px",
+    padding: {
+      default: "16px 32px 48px 52px",
+      [stylex.when.ancestor(":is(*)", peekMarker)]: "16px 24px 32px",
+    },
     zoom: contentZoom["--content-zoom"],
   },
   block: { position: "relative", display: "flex", gap: 14, scrollMarginTop: 14 },

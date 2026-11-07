@@ -3,9 +3,25 @@ import { createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Thread, User } from "models";
-import { active, open, peek, peeked, save, saved, setSplit, store, type Peeked } from "../session";
+import {
+  active,
+  canPeekBack,
+  canPeekForward,
+  open,
+  peek,
+  peekBack,
+  peeked,
+  peekForward,
+  save,
+  saved,
+  setSplit,
+  store,
+  type Peeked,
+} from "../session";
+import { commandFor, keysFor, keysOf } from "../hotkeys";
 import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
+import { peekMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
@@ -47,12 +63,10 @@ const styles = stylex.create({
     cursor: "default",
     userSelect: "none",
     gap: 2,
-    padding: "0 8px 0 16px",
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: colors.strokeTertiary,
+    padding: "0 8px",
   },
   title: { flex: 1 },
+  lastNav: { marginRight: 6 },
   // Its edges and corners resize it: thin strips just inside, over what's under them.
   edge: { position: "absolute", zIndex: 2 },
   n: { top: 0, left: 8, right: 8, height: 5, cursor: "ns-resize" },
@@ -190,6 +204,14 @@ export function Peek(): JSX.Element {
       role="dialog"
       aria-label={peeked() ? titleOf(peeked()!) : undefined}
       onToggle={(event) => event.newState === "closed" && peek(null)}
+      // Back and forward (⌘[ ⌘] as rebound) go through what you've peeked at, not the app behind it.
+      onKeyDown={(event) => {
+        const id = commandFor(keysOf(event) ?? "");
+        if (id === "back") peekBack();
+        else if (id === "forward") peekForward();
+        else return;
+        event.preventDefault();
+      }}
     >
       <Show when={peeked()} keyed>
         {(shown) => (
@@ -204,6 +226,24 @@ export function Peek(): JSX.Element {
               )}
             </For>
             <div class={sx(topbar.bar, styles.bar)} onPointerDown={grab("move")}>
+              <button
+                class={sx(topbar.button)}
+                aria-label="Back"
+                title={`Back (${keysFor("back")})`}
+                disabled={!canPeekBack()}
+                onClick={peekBack}
+              >
+                <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
+              </button>
+              <button
+                class={sx(topbar.button, styles.lastNav)}
+                aria-label="Forward"
+                title={`Forward (${keysFor("forward")})`}
+                disabled={!canPeekForward()}
+                onClick={peekForward}
+              >
+                <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
+              </button>
               <span class={sx(base.ellipsis, topbar.title, styles.title)}>{titleOf(shown)}</span>
               <Show when={"thread" in shown && shown.thread}>
                 {(thread) => (
@@ -234,7 +274,7 @@ export function Peek(): JSX.Element {
                 <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
               </button>
             </div>
-            <div class={sx(styles.body)}>
+            <div {...stylex.attrs(styles.body, peekMarker)}>
               <Switch>
                 <Match when={"thread" in shown && store.findById(Thread, shown.thread)} keyed>
                   {(thread) => <ThreadView thread={thread} autofocus={false} />}

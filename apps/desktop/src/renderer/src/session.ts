@@ -138,9 +138,39 @@ export type Dialog =
 
 export const [view, setView] = createSignal<View>({ thread: null });
 export const [split, setSplit] = createSignal<string | null>(null);
-// A link's thread or person, floating over the app (Peek) until you expand it, split it beside, or click away.
+// A link's thread or person, floating over the app (Peek) until you expand it, split it beside, or click away. It has
+// its own history while it's open: a link inside it is a step forward, and closing it forgets them.
 export type Peeked = { thread: string } | { person: string };
-export const [peeked, peek] = createSignal<Peeked | null>(null);
+const [peekedNow, setPeeked] = createSignal<Peeked | null>(null);
+const [peekHistory, setPeekHistory] = createSignal<{ back: Peeked[]; forward: Peeked[] }>({
+  back: [],
+  forward: [],
+});
+export const peeked = peekedNow;
+export const canPeekBack = (): boolean => peekHistory().back.length > 0;
+export const canPeekForward = (): boolean => peekHistory().forward.length > 0;
+export function peek(next: Peeked | null): void {
+  const now = untrack(peekedNow);
+  if (JSON.stringify(next) === JSON.stringify(now)) return;
+  setPeekHistory(
+    next && now ? ({ back }) => ({ back: [...back, now], forward: [] }) : { back: [], forward: [] },
+  );
+  setPeeked(next);
+}
+export function peekBack(): void {
+  const { back, forward } = untrack(peekHistory);
+  const now = untrack(peekedNow);
+  if (back.length === 0 || !now) return;
+  setPeekHistory({ back: back.slice(0, -1), forward: [now, ...forward] });
+  setPeeked(back.at(-1)!);
+}
+export function peekForward(): void {
+  const { back, forward } = untrack(peekHistory);
+  const now = untrack(peekedNow);
+  if (forward.length === 0 || !now) return;
+  setPeekHistory({ back: [...back, now], forward: forward.slice(1) });
+  setPeeked(forward[0]);
+}
 export const [dialog, setDialog] = createSignal<Dialog | null>(null);
 export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(
   null,
@@ -320,10 +350,11 @@ export function goForward(): void {
   arrive(forward[0]);
 }
 
-// The mouse's back and forward buttons.
+// The mouse's back and forward buttons: Peek's own, while it's open.
 window.addEventListener("mouseup", (event) => {
-  if (event.button === 3) goBack();
-  if (event.button === 4) goForward();
+  const peeking = untrack(peekedNow) !== null;
+  if (event.button === 3) (peeking ? peekBack : goBack)();
+  if (event.button === 4) (peeking ? peekForward : goForward)();
 });
 
 // The threads J and K step through, and where finishing one moves on to: the list that's showing (mail.ts says which),

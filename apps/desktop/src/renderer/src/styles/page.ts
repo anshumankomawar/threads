@@ -1,4 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
+import { peekMarker } from "./markers.stylex";
 import { colors, contentZoom, fontSizes as size, radii } from "./tokens.stylex";
 
 const muted = colors.textTertiary;
@@ -11,7 +12,10 @@ export const page = stylex.create({
     flexDirection: "column",
     minHeight: 0,
     // In the reading pane, just under its toolbar, as a thread starts.
-    padding: "16px 52px 48px",
+    padding: {
+      default: "16px 52px 48px",
+      [stylex.when.ancestor(":is(*)", peekMarker)]: "16px 24px 32px",
+    },
     overflowY: "auto",
     zoom: contentZoom["--content-zoom"],
   },
