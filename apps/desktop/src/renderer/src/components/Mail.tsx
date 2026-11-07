@@ -497,7 +497,7 @@ type SidebarGroup = "mail" | "spaces" | "views";
 const GROUPS: (Tab & { key: SidebarGroup })[] = [
   { key: "mail", label: "Mail", icon: i.InboxIcon },
   { key: "spaces", label: "Spaces", icon: i.Layers01Icon },
-  { key: "views", label: "Views", icon: i.DashboardSquare01Icon },
+  { key: "views", label: "Views", icon: i.ViewIcon },
 ];
 const groupOf = (box: Mailbox): SidebarGroup =>
   box.kind === "subspace" || box.kind === "label"
