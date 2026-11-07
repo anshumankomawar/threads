@@ -685,10 +685,9 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
         <span class={sx(s.unreadSlot)} />
         <span class={sx(s.rowBody)}>
           <span class={sx(s.rowTop)}>
-            <span class={sx(base.ellipsis, s.from, s.draftLabel)}>Draft</span>
+            <span class={sx(base.ellipsis, s.from)}>{title()}</span>
             <span class={sx(s.stamp)}>{stamp(props.draft.updatedAt)}</span>
           </span>
-          <span class={sx(base.ellipsis, s.subject)}>{title()}</span>
           <Show when={rest()}>
             <span class={sx(s.preview)}>{rest()}</span>
           </Show>
@@ -1205,7 +1204,6 @@ const s = stylex.create({
   whoAvatar: { flexShrink: 0 },
   // A line as tall as the avatar beside it, so the name sits centred on it.
   from: { flex: 1, fontSize: fontSizes.name, fontWeight: 600, lineHeight: "16px" },
-  draftLabel: { color: colors.urgent },
   stamp: {
     flexShrink: 0,
     color: colors.textTertiary,
