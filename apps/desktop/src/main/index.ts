@@ -5,19 +5,30 @@ import icon from "../../resources/icon.png?asset";
 import iconDark from "../../resources/icon-dark.png?asset";
 import { setupSignIn } from "./signIn";
 
+// A second copy for development, run beside the usual one (THREADS_SIDE_BY_SIDE=<folder>): its own data folder and
+// DevTools port (THREADS_DEBUG_PORT), it doesn't claim the sign-in link, and with THREADS_HIDDEN set its window is never
+// shown (drive it over the DevTools protocol), so it can't disturb the copy you're using.
+const sideBySide = is.dev ? process.env["THREADS_SIDE_BY_SIDE"] : undefined;
+const hidden = sideBySide !== undefined && process.env["THREADS_HIDDEN"] !== undefined;
+if (sideBySide) app.setPath("userData", sideBySide);
+
 // Signing in through the browser (src/main/signIn.ts), which has to be set up before the app is ready.
-setupSignIn();
+setupSignIn({ claimLink: !sideBySide });
 
 const UI_SCALE = 1.1;
 
 // The app's name in its menus ("About Arc", "Quit Arc"). The data folder is fixed first, since it follows the name:
 // in development it stays "desktop", so renaming keeps saved settings, drafts and caches.
-const userData = app.getPath("userData");
+const userData = sideBySide ?? app.getPath("userData");
 app.setName("Arc");
 app.setPath("userData", userData);
 
 // In development, expose the Chrome DevTools protocol on localhost so scripts can drive and inspect the app.
-if (is.dev) app.commandLine.appendSwitch("remote-debugging-port", "9333");
+if (is.dev)
+  app.commandLine.appendSwitch(
+    "remote-debugging-port",
+    process.env["THREADS_DEBUG_PORT"] ?? "9333",
+  );
 
 // The Dock icon in the app's theme. A packaged app on macOS 26 has the Icon Composer bundle, which macOS switches
 // itself (with Liquid Glass, clear and tinted); in development, and on older macOS, the Dock shows this instead.
@@ -36,7 +47,7 @@ app.on("before-quit", () => {
 });
 
 function showWindow(): void {
-  if (!app.isReady()) return;
+  if (!app.isReady() || hidden) return;
   if (appWindow === undefined) return createWindow();
   if (appWindow.isMinimized()) appWindow.restore();
   appWindow.show();
@@ -83,6 +94,7 @@ function createWindow(): void {
   });
 
   mainWindow.on("ready-to-show", () => {
+    if (hidden) return;
     // In dev, open without stealing focus so the window manager doesn't jump workspaces.
     if (is.dev) {
       mainWindow.showInactive();
@@ -106,6 +118,7 @@ function createWindow(): void {
 
 void app.whenReady().then(() => {
   electronApp.setAppUserModelId("com.threads.arc");
+  if (hidden) app.dock?.hide();
 
   // Dark until the renderer says otherwise (it sends its saved theme as it starts), so the vibrancy material matches.
   nativeTheme.themeSource = "dark";

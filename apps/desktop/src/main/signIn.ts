@@ -16,7 +16,9 @@ import { app, ipcMain } from "electron";
 // another source restarts the app. Each source keeps its own session.
 const RESTART_DEV = 75;
 const HOSTED_URL = import.meta.env.VITE_API_URL;
-const SOURCE_FILE = join(app.getPath("userData"), "source");
+// A second copy run beside the usual one keeps its own (see index.ts); this is read on import, before index.ts runs.
+const DATA_DIR = (is.dev && process.env["THREADS_SIDE_BY_SIDE"]) || app.getPath("userData");
+const SOURCE_FILE = join(DATA_DIR, "source");
 const source = ((): string => {
   try {
     return readFileSync(SOURCE_FILE, "utf8");
@@ -34,7 +36,7 @@ const auth = createAuthClient({
       // Google sign-in goes straight to Google; this page is only where the browser lands afterwards.
       signInURL: `${API_URL}/`,
       protocol: { scheme: "com.threads.arc" },
-      storage: storage(),
+      storage: storage({ cwd: DATA_DIR }),
       storagePrefix: `better-auth:${source}`,
       // Threads shows its own avatars.
       userImageProxy: { enabled: false },
@@ -56,8 +58,9 @@ async function signedIn(): Promise<unknown> {
 
 // Must run before the app is ready: it registers the `com.threads.arc://` link and the window's sign-in bridges. Not the
 // plugin's content security policy, which would keep the window from reaching the API.
-export function setupSignIn(): void {
-  auth.setupMain({ scheme: true, bridges: true });
+// `claimLink` is false for a second copy run beside the usual one, which leaves the link to it.
+export function setupSignIn({ claimLink = true } = {}): void {
+  auth.setupMain({ scheme: claimLink, bridges: true });
   ipcMain.handle("threads:signed-in", signedIn);
   ipcMain.handle("threads:source", () => source);
   ipcMain.handle("threads:use-source", (_event, next: string) => {
