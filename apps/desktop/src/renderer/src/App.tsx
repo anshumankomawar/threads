@@ -36,7 +36,7 @@ import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
-import { AllThreadsView, LabelView, PersonView, SavedView, SubspaceView } from "./components/Pages";
+import { PersonView, SavedView, SubspaceView } from "./components/Pages";
 import { HistoryButtons } from "./components/Sidebar";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
 
@@ -187,17 +187,11 @@ export default function App(): JSX.Element {
             </span>
           </div>
           <Switch fallback={<NothingOpen />}>
-            <Match when={label()} keyed>
-              {(label) => <LabelView label={label} />}
-            </Match>
             <Match when={subspace()} keyed>
               {(subspace) => <SubspaceView subspace={subspace} />}
             </Match>
             <Match when={savedView()} keyed>
               {(saved) => <SavedView view={saved} />}
-            </Match>
-            <Match when={allThreads()}>
-              <AllThreadsView />
             </Match>
             <Match when={person()} keyed>
               {(user) => <PersonView user={user} />}

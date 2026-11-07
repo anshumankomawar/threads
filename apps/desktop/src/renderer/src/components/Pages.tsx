@@ -1,32 +1,8 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, Show, untrack } from "solid-js";
+import { createSignal, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import {
-  Label,
-  PRIORITIES,
-  STATES,
-  Subspace,
-  SubspaceMember,
-  Thread,
-  User,
-  View,
-  WorkspaceMember,
-} from "models";
-import { matches, type Filter } from "sync";
-import {
-  me,
-  memberOf,
-  open,
-  setDialog,
-  store,
-  threadMenu,
-  type Dialog,
-  edit,
-  firstName,
-  memberIn,
-  toggled,
-} from "../session";
-import { save, saved } from "../startup";
+import { Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
+import { me, memberOf, open, setDialog, store, edit, memberIn } from "../session";
 import { base } from "../styles/base";
 import { chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
@@ -34,9 +10,8 @@ import { sx } from "../styles/sx";
 import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
-import { iconTool, Table, Toolbar, tool, type Column } from "./Table";
+import { Table, Toolbar, tool, type Column } from "./Table";
 import type { Tab } from "./Tabs";
-import { ago, dot, LABELS } from "./ThreadView";
 
 // A page's name, and a lock when not everyone sees it (`locked` says who does).
 function Title(props: { name: string; locked?: string }): JSX.Element {
@@ -68,7 +43,6 @@ function Setting(props: { name: string; hint: string; children: JSX.Element }): 
     </li>
   );
 }
-const THREADS: Tab = { label: "Threads", icon: i.Message01Icon };
 const MEMBERS: Tab = { label: "Members", icon: i.UserMultipleIcon };
 const SETTINGS: Tab = { label: "Settings", icon: i.Settings02Icon };
 
@@ -92,100 +66,12 @@ function PageTabs(props: { pages: Page[] }): JSX.Element {
   );
 }
 
-const labelsOf = (t: Thread): Label[] =>
-  t.labelIds.flatMap((id) => store.findById(Label, id) ?? []);
 const pill = (text: string, before?: JSX.Element): JSX.Element => (
   <span class={sx(page.pill)}>
     {before}
     <span class={sx(base.ellipsis)}>{text}</span>
   </span>
 );
-const COLUMNS: Column<Thread>[] = [
-  {
-    label: "Title",
-    icon: i.TextFontIcon,
-    width: 256,
-    sort: (t) => t.title.toLowerCase(),
-    cell: (t) => <span class={sx(page.titleText)}>{t.title}</span>,
-  },
-  {
-    label: "Status",
-    icon: i.Loading03Icon,
-    width: 108,
-    sort: (t) => ORDER.indexOf(t.state),
-    cell: (t) => pill(LABELS[t.state], dot(t.state)),
-  },
-  {
-    label: "Priority",
-    icon: i.Flag01Icon,
-    width: 104,
-    sort: (t) => PRIORITIES.indexOf(t.priority),
-    cell: (t) => (t.priority === "none" ? "" : pill(LABELS[t.priority])),
-  },
-  {
-    label: "Owner",
-    icon: i.UserIcon,
-    width: 136,
-    sort: (t) => t.owner?.name ?? "",
-    cell: (t) => (
-      <Show when={t.owner}>
-        {(owner) => (
-          <span class={sx(page.inCell)}>
-            <Identicon seed={owner().id} size={18} />
-            <span class={sx(base.ellipsis)}>{owner().name}</span>
-          </span>
-        )}
-      </Show>
-    ),
-  },
-  {
-    label: "Assignees",
-    icon: i.UserMultipleIcon,
-    width: 100,
-    sort: (t) => t.assigneeIds.length,
-    cell: (t) => (
-      <span
-        class={sx(page.avatars)}
-        title={assignees(t)
-          .map((u) => u.name)
-          .join(", ")}
-      >
-        <For each={assignees(t)}>
-          {(u) => <Identicon seed={u.id} size={18} class={sx(page.avatar)} />}
-        </For>
-      </span>
-    ),
-  },
-  {
-    label: "Labels",
-    icon: i.Tag01Icon,
-    width: 152,
-    sort: (t) =>
-      labelsOf(t)
-        .map((l) => l.name)
-        .join(),
-    cell: (t) => (
-      <span class={sx(page.pills)}>
-        <For each={labelsOf(t)}>{(label) => pill(label.name)}</For>
-      </span>
-    ),
-  },
-  {
-    label: "Updated",
-    icon: i.Clock01Icon,
-    width: 104,
-    sort: (t) => t.updatedAt.getTime(),
-    cell: (t) => ago(t.updatedAt),
-  },
-];
-// The columns the tables leave out, picked under Properties and kept for next time (so a column added later shows).
-// The title always shows.
-const [columnsHidden, setColumnsHidden] = createSignal<string[]>(saved("hiddenColumns", []));
-const hideColumn = (label: string): void => {
-  setColumnsHidden(toggled(columnsHidden(), label));
-  save("hiddenColumns", columnsHidden());
-};
-const visible = (): Column<Thread>[] => COLUMNS.filter((c) => !columnsHidden().includes(c.label));
 // A members table's columns: anyone's name, email and role in the workspace.
 const MEMBER_COLUMNS: Column<User>[] = [
   {
@@ -264,187 +150,14 @@ function members(props: {
   };
 }
 
-const assignees = (t: Thread): User[] =>
-  t.assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
-// The thread list's order by status, resolved last.
-const ORDER: Thread["state"][] = ["open", "blocked", "resolved"];
-
 const Delete = (props: { onClick: () => void }): JSX.Element => (
   <button class={sx(base.hover, chip.chip, chipTone.urgent)} onClick={() => props.onClick()}>
     Delete
   </button>
 );
-const people = (): [string, string][] => [
-  ["$me", "Me"],
-  ...store.all(User).map((u): [string, string] => [u.id, u.name]),
-];
-
-// The thread fields a filter can test, how, and the values it offers.
-const FIELDS: Record<
-  string,
-  { label: string; compare: "eq" | "contains"; values: () => [string, string][] }
-> = {
-  state: { label: "Status", compare: "eq", values: () => STATES.map((s) => [s, LABELS[s]]) },
-  priority: {
-    label: "Priority",
-    compare: "eq",
-    values: () => PRIORITIES.map((p) => [p, LABELS[p]]),
-  },
-  subspaceIds: {
-    label: "Subspace",
-    compare: "contains",
-    values: () => store.all(Subspace).map((s) => [s.id, s.name]),
-  },
-  labelIds: {
-    label: "Label",
-    compare: "contains",
-    values: () => store.all(Label).map((l) => [l.id, l.name]),
-  },
-  assigneeIds: { label: "Assignee", compare: "contains", values: people },
-  ownerId: { label: "Owner", compare: "eq", values: people },
-};
-
-// One field's test, as the filter bar shows it: "Status: Open".
-function describe(condition: Filter): string {
-  const [[field, comparison]] = Object.entries(condition);
-  const { label, values } = FIELDS[field];
-  const value = Object.values(comparison as object)[0];
-  return `${label}: ${values().find(([id]) => id === value)?.[1] ?? "?"}`;
-}
-
-// A page's Threads tab: a table view of the threads that pass `base` and the conditions you add, as in Notion, with
-// Filter, Properties and New in its tools. Until you sort, open threads come first, then blocked, then resolved
-// (dimmed), newest first in each. Conditions on a subspace follow it, so its threads load even if you're not in it. Unsaved, the conditions can become a saved view; on a saved view's page they're its filter.
-function threadsTab(props: {
-  base: Filter[];
-  view?: View;
-  newThread: Extract<Dialog, { kind: "newThread" }>;
-  empty: string;
-}): Page {
-  const [conditions, setConditions] = createSignal<Filter[]>(
-    untrack(() => props.view?.filter.and ?? []),
-  );
-  const filter = (): Filter => ({ and: [...props.base, ...conditions()] });
-  createEffect(
-    () =>
-      filter().and!.flatMap((condition) => {
-        const contains = (condition.subspaceIds as { contains?: string } | undefined)?.contains;
-        return contains ? [contains] : [];
-      }),
-    (ids) => ids.forEach((id) => store.subscribe(`subspace:${id}`)),
-  );
-  const change = (next: Filter[]): void => {
-    setConditions(next);
-    if (props.view) edit(props.view, { filter: { and: next } });
-  };
-  const threads = (): Thread[] =>
-    store
-      .all(Thread)
-      .filter((t) => matches(t, filter(), { me: me().id }))
-      .sort(
-        (a, b) =>
-          ORDER.indexOf(a.state) - ORDER.indexOf(b.state) ||
-          b.updatedAt.getTime() - a.updatedAt.getTime(),
-      );
-  return {
-    tab: THREADS,
-    tools: (
-      <>
-        <MenuChip
-          look={iconTool}
-          title="Filter"
-          label={icon(i.FilterIcon, 16)}
-          items={Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
-            label,
-            items: values().map(([value, name]) => ({
-              label: name,
-              run: () => change([...conditions(), { [field]: { [compare]: value } }]),
-            })),
-          }))}
-        />
-        <MenuChip
-          look={iconTool}
-          title="Properties"
-          label={icon(i.LeftToRightListBulletIcon, 16)}
-          items={COLUMNS.slice(1).map((c) => ({
-            label: c.label,
-            icon: icon(c.icon, 13),
-            checked: !columnsHidden().includes(c.label),
-            run: () => hideColumn(c.label),
-          }))}
-        />
-        <button
-          class={sx(base.bare, tool.solid)}
-          title="New thread (⌘N)"
-          onClick={() => setDialog(props.newThread)}
-        >
-          New
-        </button>
-      </>
-    ),
-    body: (
-      <>
-        <Show when={conditions().length > 0}>
-          <div class={sx(page.filters)}>
-            <For each={conditions()}>
-              {(condition) => (
-                <button
-                  class={sx(base.bare, base.hover, page.filterPill)}
-                  title="Remove"
-                  onClick={() => change(conditions().filter((c) => c !== condition))}
-                >
-                  {describe(condition)}
-                  {icon(i.Cancel01Icon, 11)}
-                </button>
-              )}
-            </For>
-            <Show when={!props.view}>
-              <button
-                class={sx(base.bare, base.dim, page.filterPill)}
-                onClick={() => setDialog({ kind: "newView", filter: filter() })}
-              >
-                Save view
-              </button>
-            </Show>
-          </div>
-        </Show>
-        <Table
-          columns={visible()}
-          rows={threads()}
-          empty={props.empty}
-          open={(t) => open({ thread: t.id })}
-          menu={threadMenu}
-          dim={(t) => !t.isOpen}
-          hide={hideColumn}
-        />
-      </>
-    ),
-  };
-}
-
-// Every thread you can see, to filter and save as a view.
-export function AllThreadsView(): JSX.Element {
-  const threads = threadsTab({
-    base: [],
-    newThread: { kind: "newThread" },
-    empty: "No threads yet.",
-  });
-  return (
-    <div class={sx(page.page)}>
-      <h1 class={sx(page.title)}>All threads</h1>
-      <PageTabs pages={[threads]} />
-    </div>
-  );
-}
 
 export function SavedView(props: { view: View }): JSX.Element {
   const v = (): View => props.view;
-  const threads = threadsTab({
-    base: [],
-    view: v(),
-    newThread: { kind: "newThread" },
-    empty: "Nothing matches.",
-  });
   const settings: Page = {
     tab: SETTINGS,
     body: (
@@ -467,26 +180,16 @@ export function SavedView(props: { view: View }): JSX.Element {
   return (
     <div class={sx(page.page)}>
       <Title name={v().name} locked={v().shared ? undefined : "Only you see this view"} />
-      <PageTabs pages={v().ownerId === me().id ? [threads, settings] : [threads]} />
+      <p class={sx(page.summary)}>Its threads are listed beside; filter them there.</p>
+      <Show when={v().ownerId === me().id}>
+        <PageTabs pages={[settings]} />
+      </Show>
     </div>
   );
 }
 
-export function LabelView(props: { label: Label }): JSX.Element {
-  const threads = threadsTab({
-    base: [{ labelIds: { contains: props.label.id } }],
-    newThread: { kind: "newThread", labelId: props.label.id },
-    empty: "Nothing here yet.",
-  });
-  return (
-    <div class={sx(page.page)}>
-      <h1 class={sx(page.title)}>{props.label.name}</h1>
-      <PageTabs pages={[threads]} />
-    </div>
-  );
-}
-
-// A subspace: who's in it, whether it's private, and its threads. Members add or remove people; anyone joins an open one.
+// A subspace: who's in it and whether it's private (its threads are listed beside). Members add or remove people; anyone
+// joins an open one.
 export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   const s = (): Subspace => props.subspace;
   const isMember = (): boolean => memberIn(s(), me().id) !== undefined;
@@ -496,11 +199,6 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
     else store.create(SubspaceMember, { subspace: s(), user });
   };
   const isPrivate = (): boolean => s().visibility === "private";
-  const threads = threadsTab({
-    base: [{ subspaceIds: { contains: s().id } }],
-    newThread: { kind: "newThread", subspaceId: s().id },
-    empty: "No threads here yet.",
-  });
   const people = members({
     users: () =>
       s()
@@ -570,21 +268,17 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
           }
         />
       </Show>
-      <PageTabs pages={isMember() ? [threads, people, settings] : [threads, people]} />
+      <PageTabs pages={isMember() ? [people, settings] : [people]} />
     </div>
   );
 }
 
-// Someone and their role here, and the threads they own or are assigned. Yours also has the workspace's members.
+// Someone and their role here (the threads they own or are assigned are listed beside). Yours also has the workspace's
+// members.
 export function PersonView(props: { user: User }): JSX.Element {
   const u = (): User => props.user;
   const summary = (user: User): string =>
     [user.email, ROLE[memberOf(user)?.role ?? "member"]].filter(Boolean).join(" · ");
-  const threads = threadsTab({
-    base: [{ or: [{ ownerId: { eq: u().id } }, { assigneeIds: { contains: u().id } }] }],
-    newThread: { kind: "newThread", to: u() },
-    empty: `No threads with ${firstName(u())} yet.`,
-  });
   const people = members({ users: () => store.all(WorkspaceMember).flatMap((m) => m.user ?? []) });
   return (
     <div class={sx(page.page)}>
@@ -595,7 +289,9 @@ export function PersonView(props: { user: User }): JSX.Element {
           <p class={sx(page.summary)}>{summary(u())}</p>
         </div>
       </header>
-      <PageTabs pages={u().id === me().id ? [threads, people] : [threads]} />
+      <Show when={u().id === me().id}>
+        <PageTabs pages={[people]} />
+      </Show>
     </div>
   );
 }

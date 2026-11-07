@@ -1,8 +1,9 @@
 import { createSignal } from "solid-js";
-import { Bucket, Draft, Label, Subspace, Thread, View } from "models";
-import { matches } from "sync";
+import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
+import { matches, type Filter } from "sync";
 import {
   active,
+  edit,
   followOrder,
   inbox,
   lastActive,
@@ -17,10 +18,10 @@ import {
 // ── Mail's layout: a sidebar of mailboxes, the chosen one's threads beside it, and the open thread beside them ──
 
 // What the middle column lists: your inbox (all of it, one bucket, or what the model hasn't sorted yet), what you've
-// sent or drafted, or a space's, label's or saved view's threads.
+// sent or drafted, or a space's, label's, person's or saved view's threads.
 export type Mailbox =
   | { kind: "inbox" | "unsorted" | "sent" | "drafts" | "all" }
-  | { kind: "bucket" | "subspace" | "label" | "view"; id: string };
+  | { kind: "bucket" | "subspace" | "label" | "person" | "view"; id: string };
 
 const [chosen, setChosen] = createSignal<Mailbox>(saved<Mailbox>("mailbox", { kind: "inbox" }));
 export const mailbox = chosen;
@@ -28,9 +29,39 @@ export const mailbox = chosen;
 export const sameMailbox = (a: Mailbox, b: Mailbox): boolean =>
   a.kind === b.kind && ("id" in a ? a.id : null) === ("id" in b ? b.id : null);
 
+// What narrows the list beyond its mailbox, as a table's filter did: a saved view's are its own (and changing them
+// changes it); any other mailbox starts unfiltered.
+const [extra, setExtra] = createSignal<Filter[]>([]);
+export function conditions(): Filter[] {
+  const box = chosen();
+  if (box.kind !== "view") return extra();
+  return store.findById(View, box.id)?.filter.and ?? [];
+}
+export function setConditions(next: Filter[]): void {
+  const box = chosen();
+  const saved = box.kind === "view" ? store.findById(View, box.id) : undefined;
+  if (saved) edit(saved, { filter: { and: next } });
+  else setExtra(next);
+}
+
+// What a mailbox's threads have in common, as a filter, so that saving its filtered list as a view keeps them.
+export function baseFilter(box: Mailbox): Filter[] {
+  switch (box.kind) {
+    case "subspace":
+      return [{ subspaceIds: { contains: box.id } }];
+    case "label":
+      return [{ labelIds: { contains: box.id } }];
+    case "person":
+      return [{ or: [{ ownerId: { eq: box.id } }, { assigneeIds: { contains: box.id } }] }];
+    default:
+      return [];
+  }
+}
+
 // Choosing a mailbox, as in Mail, leaves no thread open unless the one you're reading is in it.
 export function chooseMailbox(next: Mailbox): void {
   setChosen(next);
+  setExtra([]);
   save("mailbox", next);
   const reading = active();
   if (reading && !listed().order.includes(reading)) open({ thread: null });
@@ -88,6 +119,17 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
             threads: newestFirst(store.all(Thread).filter((t) => t.labelIds.includes(box.id))),
           },
         ];
+      case "person":
+        return [
+          {
+            key: box.id,
+            threads: newestFirst(
+              store
+                .all(Thread)
+                .filter((t) => t.ownerId === box.id || t.assigneeIds.includes(box.id)),
+            ),
+          },
+        ];
       case "view": {
         const saved = store.findById(View, box.id);
         const filter = saved?.filter;
@@ -102,7 +144,19 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
       }
     }
   })();
-  return { groups, order: groups.flatMap((g) => g.threads) };
+  // Then the filter's conditions, if any.
+  const and = box.kind === "view" ? [] : extra();
+  const narrowed =
+    and.length === 0
+      ? groups
+      : groups
+          .map((g) => ({
+            ...g,
+            threads: g.threads.filter((t) => matches(t, { and }, { me: me().id })),
+          }))
+          // A bucket the filter empties isn't shown at all.
+          .filter((g) => g.threads.length > 0);
+  return { groups: narrowed, order: narrowed.flatMap((g) => g.threads) };
 });
 
 followOrder(() => listed().order);
@@ -134,5 +188,7 @@ export function mailboxTitle(box: Mailbox): string {
       return store.findById(Label, box.id)?.name ?? "";
     case "view":
       return store.findById(View, box.id)?.name ?? "";
+    case "person":
+      return store.findById(User, box.id)?.name ?? "";
   }
 }

@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
@@ -16,6 +16,7 @@ import {
   placeIn,
   save,
   saved,
+  sent,
   setDialog,
   shortDate,
   showMenu,
@@ -27,7 +28,10 @@ import {
   type MenuItem,
 } from "../session";
 import {
+  baseFilter,
   chooseMailbox,
+  conditions,
+  setConditions,
   drafts,
   listed,
   mailbox,
@@ -36,13 +40,16 @@ import {
   type Mailbox,
 } from "../mail";
 import { bucketIcons } from "../bucketIcons";
+import { describe, FIELDS, subspacesIn } from "../filters";
 import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
+import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./Sidebar";
 import { Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
+import { MenuChip } from "./Menus";
 import { plain } from "./ThreadView";
 
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
@@ -85,6 +92,96 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
 const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
 const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 520 });
 
+// ── One pill for hover and selection ──
+
+// Rows marked `data-pill` share one pill that slides to whichever you're over (or have focused), and rests on the
+// selected one (`aria-current`) otherwise: hover and selection are one shape, never two. The pill sits behind the rows in
+// `container`, which scrolls it with them.
+function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
+  let over: HTMLElement | null = null;
+  let shown = false;
+  const target = (): HTMLElement | null => {
+    if (over?.isConnected && !over.closest("[inert]")) return over;
+    const current = [
+      ...container.querySelectorAll<HTMLElement>('[data-pill][aria-current="true"]'),
+    ];
+    // The most specific selection: a space's open thread rather than the space.
+    return current.filter((el) => !el.closest("[inert]")).at(-1) ?? null;
+  };
+  const place = (slide = true): void => {
+    const t = target();
+    if (!t) {
+      pill.style.opacity = "0";
+      shown = false;
+      return;
+    }
+    const box = container.getBoundingClientRect();
+    const row = t.getBoundingClientRect();
+    const instant = !shown || !slide;
+    if (instant) pill.style.transition = "none";
+    pill.style.transform = `translate(${row.left - box.left + container.scrollLeft}px, ${row.top - box.top + container.scrollTop}px)`;
+    pill.style.width = `${row.width}px`;
+    pill.style.height = `${row.height}px`;
+    pill.style.opacity = "1";
+    if (instant) {
+      void pill.offsetWidth;
+      pill.style.transition = "";
+    }
+    shown = true;
+  };
+  // While rows move (a section folding, a list resizing), follow them frame by frame.
+  let following = 0;
+  const follow = (): void => {
+    if (following) return;
+    const until = performance.now() + 320;
+    const step = (): void => {
+      place(false);
+      following = performance.now() < until ? requestAnimationFrame(step) : 0;
+    };
+    following = requestAnimationFrame(step);
+  };
+  const onOver = (event: Event): void => {
+    const row = (event.target as Element).closest<HTMLElement>("[data-pill]");
+    if (row && container.contains(row) && row !== over) {
+      over = row;
+      place();
+    }
+  };
+  const onLeave = (): void => {
+    over = null;
+    place();
+  };
+  const onScroll = (): void => place(false);
+  container.addEventListener("pointerover", onOver);
+  container.addEventListener("focusin", onOver);
+  container.addEventListener("pointerleave", onLeave);
+  container.addEventListener("scroll", onScroll, { capture: true, passive: true });
+  container.addEventListener("transitionrun", follow);
+  const mutations = new MutationObserver(() => {
+    place();
+    follow();
+  });
+  mutations.observe(container, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["aria-current", "inert"],
+  });
+  const sizes = new ResizeObserver(() => place(false));
+  sizes.observe(container);
+  place(false);
+  return () => {
+    container.removeEventListener("pointerover", onOver);
+    container.removeEventListener("focusin", onOver);
+    container.removeEventListener("pointerleave", onLeave);
+    container.removeEventListener("scroll", onScroll, { capture: true });
+    container.removeEventListener("transitionrun", follow);
+    mutations.disconnect();
+    sizes.disconnect();
+    cancelAnimationFrame(following);
+  };
+}
+
 // ── The sidebar: mailboxes ──
 
 // A mailbox in the sidebar: its icon, name and count.
@@ -104,8 +201,9 @@ function Mailbox(props: {
       <div
         role="button"
         tabindex={0}
+        data-pill
         aria-current={on() ? "true" : undefined}
-        class={sx(s.mailbox, props.indent && s.indent, on() && s.mailboxOn)}
+        class={sx(s.mailbox, props.indent && s.indent)}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
           const items = props.menu?.();
@@ -218,26 +316,122 @@ const toggleExpanded = (key: string): void => {
   save("mail-expanded", next);
 };
 
-// A space or label that opens out, under its name, to its open threads, newest first: five rows tall, scrolling for
-// the rest. Opening one of them lists the space's (or label's) threads beside the sidebar too.
+// A row under a mailbox that opens out: a thread (or a draft) of it.
+type SubRow = {
+  key: string;
+  title: string;
+  tone?: "blocked" | "urgent";
+  current: boolean;
+  run: () => void;
+  menu?: (event: MouseEvent) => void;
+};
+
+const threadRow = (thread: Thread, box: Mailbox): SubRow => ({
+  key: thread.id,
+  title: thread.title,
+  tone:
+    thread.priority === "urgent" ? "urgent" : thread.state === "blocked" ? "blocked" : undefined,
+  current: active() === thread,
+  // Opening it lists its mailbox too, where it shows selected.
+  run: () => {
+    chooseMailbox(box);
+    open({ thread: thread.id });
+  },
+  menu: (event) => showMenu(event, threadMenu(thread)),
+});
+
+const draftTitle = (draft: Draft): string =>
+  draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft";
+
+// A mailbox that opens out, under its name, to its rows: five tall, scrolling for the rest. All start shut.
 function Expandable(props: {
+  box: Mailbox;
+  label: string;
+  icon: IconSvgElement;
+  rows: SubRow[];
+  // Shown beside its name; by default how many rows it has.
+  count?: number;
+  empty: string;
+  // What right-clicking it offers, given the item that shows or hides its rows.
+  menu?: (toggle: MenuItem) => MenuItem[];
+}): JSX.Element {
+  const key = (): string => `${props.box.kind}:${"id" in props.box ? props.box.id : ""}`;
+  const isOpen = (): boolean => expanded().includes(key());
+  const toggle = (): MenuItem => ({
+    label: isOpen() ? "Hide threads" : "Show threads",
+    run: () => toggleExpanded(key()),
+  });
+  return (
+    <>
+      <Mailbox
+        box={props.box}
+        label={props.label}
+        icon={props.icon}
+        count={props.count ?? props.rows.length}
+        disclosure={{ open: isOpen(), toggle: () => toggleExpanded(key()) }}
+        menu={() => (props.menu ? props.menu(toggle()) : [toggle()])}
+      />
+      <li class={sx(s.mailboxItem)}>
+        <Collapse open={isOpen()}>
+          <ul class={sx(s.mailboxes, s.threadRows)} aria-label={`${props.label}: its threads`}>
+            <For each={props.rows}>
+              {(row) => (
+                <li class={sx(s.mailboxItem)}>
+                  <div
+                    role="button"
+                    tabindex={0}
+                    data-pill
+                    aria-current={row.current ? "true" : undefined}
+                    class={sx(s.threadRow)}
+                    title={row.title}
+                    onClick={() => row.run()}
+                    onContextMenu={(e) => row.menu?.(e)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault();
+                      row.run();
+                    }}
+                  >
+                    <span
+                      class={sx(
+                        s.threadDot,
+                        row.tone === "blocked" && s.threadDotBlocked,
+                        row.tone === "urgent" && s.threadDotUrgent,
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span class={sx(base.ellipsis, s.threadTitle)}>{row.title}</span>
+                  </div>
+                </li>
+              )}
+            </For>
+            <Show when={props.rows.length === 0}>
+              <li class={sx(s.mailboxItem, s.threadNone)}>{props.empty}</li>
+            </Show>
+          </ul>
+        </Collapse>
+      </li>
+    </>
+  );
+}
+
+// A space or label, opening out to its open threads, newest first.
+function SpaceOrLabel(props: {
   box: { kind: "subspace" | "label"; id: string };
   label: string;
   icon: IconSvgElement;
 }): JSX.Element {
-  const key = (): string => `${props.box.kind}:${props.box.id}`;
-  const open_ = (): boolean => expanded().includes(key());
   const field = (): "subspaceIds" | "labelIds" =>
     props.box.kind === "subspace" ? "subspaceIds" : "labelIds";
-  const menu = (): MenuItem[] => {
+  const threads = (): Thread[] =>
+    store
+      .all(Thread)
+      .filter((t) => t.isOpen && t[field()].includes(props.box.id))
+      .sort((a, b) => lastActive(b) - lastActive(a));
+  const menu = (toggle: MenuItem): MenuItem[] => {
     const box = props.box;
-    const toggle: MenuItem = {
-      label: open_() ? "Hide threads" : "Show threads",
-      run: () => toggleExpanded(key()),
-    };
     if (box.kind === "label")
       return [
-        { label: "Open label page", run: () => open({ label: box.id }) },
         {
           label: "New thread with this label…",
           run: () => setDialog({ kind: "newThread", labelId: box.id }),
@@ -259,64 +453,15 @@ function Expandable(props: {
       toggle,
     ];
   };
-  const threads = (): Thread[] =>
-    store
-      .all(Thread)
-      .filter((t) => t.isOpen && t[field()].includes(props.box.id))
-      .sort((a, b) => lastActive(b) - lastActive(a));
   return (
-    <>
-      <Mailbox
-        box={props.box}
-        label={props.label}
-        icon={props.icon}
-        count={threads().length}
-        disclosure={{ open: open_(), toggle: () => toggleExpanded(key()) }}
-        menu={menu}
-      />
-      <li class={sx(s.mailboxItem)}>
-        <Collapse open={open_()}>
-          <ul class={sx(s.mailboxes, s.threadRows)} aria-label={`${props.label} threads`}>
-            <For each={threads()}>
-              {(thread) => (
-                <li class={sx(s.mailboxItem)}>
-                  <div
-                    role="button"
-                    tabindex={0}
-                    class={sx(s.threadRow, active() === thread && s.mailboxOn)}
-                    title={thread.title}
-                    onClick={() => {
-                      chooseMailbox(props.box);
-                      open({ thread: thread.id });
-                    }}
-                    onContextMenu={(e) => showMenu(e, threadMenu(thread))}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter" && e.key !== " ") return;
-                      e.preventDefault();
-                      chooseMailbox(props.box);
-                      open({ thread: thread.id });
-                    }}
-                  >
-                    <span
-                      class={sx(
-                        s.threadDot,
-                        thread.state === "blocked" && s.threadDotBlocked,
-                        thread.priority === "urgent" && s.threadDotUrgent,
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span class={sx(base.ellipsis, s.threadTitle)}>{thread.title}</span>
-                  </div>
-                </li>
-              )}
-            </For>
-            <Show when={threads().length === 0}>
-              <li class={sx(s.mailboxItem, s.threadNone)}>No open threads</li>
-            </Show>
-          </ul>
-        </Collapse>
-      </li>
-    </>
+    <Expandable
+      box={props.box}
+      label={props.label}
+      icon={props.icon}
+      rows={threads().map((t) => threadRow(t, props.box))}
+      empty="No open threads"
+      menu={menu}
+    />
   );
 }
 
@@ -370,7 +515,12 @@ export function MailSidebar(): JSX.Element {
           </button>
         </span>
       </div>
-      <nav class={sx(s.nav)} aria-label="Mailboxes">
+      <nav
+        ref={(el) => onSettled(() => slidingPill(el, el.firstElementChild as HTMLElement))}
+        class={sx(s.nav)}
+        aria-label="Mailboxes"
+      >
+        <div class={sx(s.pill)} aria-hidden="true" />
         <ul class={sx(s.mailboxes)}>
           <Mailbox
             box={{ kind: "inbox" }}
@@ -413,12 +563,34 @@ export function MailSidebar(): JSX.Element {
               </ul>
             </Collapse>
           </li>
-          <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
-          <Mailbox
+          <Expandable
+            box={{ kind: "sent" }}
+            label="Sent"
+            icon={i.SentIcon}
+            count={0}
+            rows={sent().map((t) => threadRow(t, { kind: "sent" }))}
+            empty="Nothing sent that's waiting"
+          />
+          <Expandable
             box={{ kind: "drafts" }}
             label="Drafts"
             icon={i.NoteEditIcon}
-            count={drafts().length}
+            rows={drafts().map((draft): SubRow => ({
+              key: draft.id,
+              title: draftTitle(draft),
+              current: false,
+              run: () => setDialog({ kind: "compose", draftId: draft.id }),
+              menu: (e) =>
+                showMenu(e, [
+                  {
+                    label: "Open draft",
+                    run: () => setDialog({ kind: "compose", draftId: draft.id }),
+                  },
+                  "separator",
+                  { label: "Delete draft", run: () => void draft.delete() },
+                ]),
+            }))}
+            empty="No drafts"
           />
         </ul>
         <Section
@@ -427,7 +599,7 @@ export function MailSidebar(): JSX.Element {
         >
           <For each={byName(store.all(Subspace))}>
             {(sub) => (
-              <Expandable
+              <SpaceOrLabel
                 box={{ kind: "subspace", id: sub.id }}
                 label={sub.name}
                 icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
@@ -441,7 +613,7 @@ export function MailSidebar(): JSX.Element {
         >
           <For each={byName(store.all(Label))}>
             {(label) => (
-              <Expandable
+              <SpaceOrLabel
                 box={{ kind: "label", id: label.id }}
                 label={label.name}
                 icon={i.Tag01Icon}
@@ -450,22 +622,17 @@ export function MailSidebar(): JSX.Element {
           </For>
         </Section>
         <Section title="Views">
-          <Mailbox
-            box={{ kind: "all" }}
-            label="All threads"
-            icon={i.DashboardSquare01Icon}
-            menu={() => [{ label: "Open as a table", run: () => open({ view: null }) }]}
-          />
+          <Mailbox box={{ kind: "all" }} label="All threads" icon={i.DashboardSquare01Icon} />
           <For each={byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id))}>
             {(saved) => (
               <Mailbox
                 box={{ kind: "view", id: saved.id }}
                 label={saved.name}
                 icon={i.FilterIcon}
-                menu={() => [
-                  { label: "Open as a table", run: () => open({ view: saved.id }) },
-                  ...(saved.ownerId === me().id
+                menu={() =>
+                  saved.ownerId === me().id
                     ? [
+                        { label: "View settings…", run: () => open({ view: saved.id }) },
                         "separator" as const,
                         {
                           label: "Delete view",
@@ -476,8 +643,8 @@ export function MailSidebar(): JSX.Element {
                           },
                         },
                       ]
-                    : []),
-                ]}
+                    : []
+                }
               />
             )}
           </For>
@@ -547,8 +714,9 @@ function Row(props: { thread: Thread }): JSX.Element {
         role="button"
         tabindex={on() ? 0 : -1}
         data-active={on() ? "" : undefined}
+        data-pill
         aria-current={on() ? "true" : undefined}
-        class={sx(s.row, on() && s.rowOn)}
+        class={sx(s.row)}
         onClick={() => open({ thread: t().id })}
         onContextMenu={(e) => showMenu(e, threadMenu(t()))}
       >
@@ -614,7 +782,7 @@ function Row(props: { thread: Thread }): JSX.Element {
 function DraftRow(props: { draft: Draft }): JSX.Element {
   // Its drafted title, else its first line; the rest is the preview.
   const lines = (): string[] => props.draft.text.split("\n");
-  const title = (): string => props.draft.draft?.title || lines()[0] || "Untitled draft";
+  const title = (): string => draftTitle(props.draft);
   const rest = (): string =>
     props.draft.draft?.title ? props.draft.text : lines().slice(1).join(" ");
   return (
@@ -622,6 +790,7 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
       <div
         role="button"
         tabindex={0}
+        data-pill
         class={sx(s.row)}
         onClick={() => setDialog({ kind: "compose", draftId: props.draft.id })}
         onContextMenu={(e) =>
@@ -651,34 +820,44 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
   );
 }
 
-// What a page shows of a space, label or view: its members and settings, or the table of all its threads.
+// What a mailbox's page shows beside its list: a space's description, members and settings, a saved view's settings,
+// or someone's profile.
 const pageOf = (box: Mailbox) =>
   box.kind === "subspace"
     ? { subspace: box.id }
-    : box.kind === "label"
-      ? { label: box.id }
-      : box.kind === "view"
-        ? { view: box.id }
-        : box.kind === "all"
-          ? { view: null }
-          : undefined;
+    : box.kind === "view"
+      ? { view: box.id }
+      : box.kind === "person"
+        ? { person: box.id }
+        : undefined;
 
 export function MessageList(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
-  // Opening a space's, label's or view's page (from ⌘K, say) lists its threads here too.
+  // Opening a space's, label's, person's or view's page (from ⌘K, say) lists its threads here too.
   createEffect(view, (shown) => {
     const next: Mailbox | undefined =
       "subspace" in shown
         ? { kind: "subspace", id: shown.subspace }
         : "label" in shown
           ? { kind: "label", id: shown.label }
-          : "view" in shown
-            ? shown.view === null
-              ? { kind: "all" }
-              : { kind: "view", id: shown.view }
-            : undefined;
+          : "person" in shown
+            ? { kind: "person", id: shown.person }
+            : "view" in shown
+              ? shown.view === null
+                ? { kind: "all" }
+                : { kind: "view", id: shown.view }
+              : undefined;
     if (next && !sameMailbox(next, mailbox())) chooseMailbox(next);
   });
+  // A space's threads, and those of any space a filter names, load even if you're not in it.
+  createEffect(
+    () => {
+      const box = mailbox();
+      return [...(box.kind === "subspace" ? [box.id] : []), ...subspacesIn(conditions())];
+    },
+    (ids) => ids.forEach((id) => store.subscribe(`subspace:${id}`)),
+  );
+  const filterable = (): boolean => mailbox().kind !== "drafts";
   const total = (): number =>
     mailbox().kind === "drafts" ? drafts().length : listed().order.length;
   const unreadCount = (): number =>
@@ -723,6 +902,20 @@ export function MessageList(): JSX.Element {
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>
         </span>
         <span class={sx(topbar.end)}>
+          <Show when={filterable()}>
+            <MenuChip
+              look={topbar.button}
+              title="Filter"
+              label={<Icon icon={i.FilterIcon} {...ICON} />}
+              items={Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
+                label,
+                items: values().map(([value, name]) => ({
+                  label: name,
+                  run: () => setConditions([...conditions(), { [field]: { [compare]: value } }]),
+                })),
+              }))}
+            />
+          </Show>
           <Show when={pageOf(mailbox())}>
             {(page) => (
               <button
@@ -747,14 +940,48 @@ export function MessageList(): JSX.Element {
           </Show>
         </span>
       </div>
+      {/* What narrows the list: each condition (click to remove it), and saving them as a view. */}
+      <Show when={filterable() && conditions().length > 0}>
+        <div class={sx(page.filters, s.filterRow)}>
+          <For each={conditions()}>
+            {(condition) => (
+              <button
+                class={sx(base.bare, base.hover, page.filterPill)}
+                title="Remove"
+                onClick={() => setConditions(conditions().filter((c) => c !== condition))}
+              >
+                {describe(condition)}
+                <Icon icon={i.Cancel01Icon} size={11} aria-hidden="true" />
+              </button>
+            )}
+          </For>
+          <Show when={mailbox().kind !== "view"}>
+            <button
+              class={sx(base.bare, base.dim, page.filterPill)}
+              onClick={() =>
+                setDialog({
+                  kind: "newView",
+                  filter: { and: [...baseFilter(mailbox()), ...conditions()] },
+                })
+              }
+            >
+              Save view
+            </button>
+          </Show>
+        </div>
+      </Show>
       <div
-        ref={list}
+        ref={(el) => {
+          list = el;
+          onSettled(() => slidingPill(el, el.firstElementChild as HTMLElement));
+        }}
         class={sx(s.listScroll)}
         onMouseDown={() =>
           queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
         }
         onKeyDown={onKeyDown}
       >
+        <div class={sx(s.pill)} aria-hidden="true" />
         <Show
           when={mailbox().kind === "drafts"}
           fallback={
@@ -900,7 +1127,30 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   sidebarBar: { paddingLeft: sidebarSpace.afterLights },
-  nav: { flex: 1, minHeight: 0, padding: "2px 8px 12px", overflowY: "auto" },
+  nav: {
+    position: "relative",
+    // Its own stacking context, so the pill (behind the rows) stays above the sidebar's background.
+    isolation: "isolate",
+    flex: 1,
+    minHeight: 0,
+    padding: "2px 8px 12px",
+    overflowY: "auto",
+  },
+  pill: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    zIndex: -1,
+    width: 0,
+    height: 0,
+    borderRadius: radii.row,
+    backgroundColor: colors.bgTertiary,
+    opacity: 0,
+    pointerEvents: "none",
+    transitionProperty: "transform, width, height, opacity",
+    transitionDuration: { default: "180ms", [motion.reduced]: "0s" },
+    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+  },
   // A little space between rows, so neighbouring fills (a space and its open thread) don't run together.
   mailboxes: {
     display: "flex",
@@ -916,18 +1166,18 @@ const s = stylex.create({
     gap: 6,
     alignItems: "center",
     height: 26,
+    // Room before the disclosure, so its caret isn't against the row's edge.
+    paddingLeft: 6,
     paddingRight: 8,
     borderRadius: radii.row,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     cursor: "default",
     outline: "none",
-    backgroundColor: { default: "transparent", ":focus-visible": colors.bgQuaternary },
   },
-  mailboxOn: { backgroundColor: colors.bgTertiary },
-  // Indented by a margin, not padding, and without the disclosure's slot, so its hover and selection fill starts just
-  // before its icon (which lines up with where it was: 14 + 12 + 6).
-  indent: { marginLeft: 26, paddingLeft: 6 },
+  // Indented by a margin, not padding, and without the disclosure's slot, so the pill starts just before its icon,
+  // which sits 14px in from a top-level one's (6 + 12 + 6 = 24).
+  indent: { marginLeft: 32 },
   disclosureSlot: { display: "flex", flexShrink: 0, justifyContent: "center", width: 12 },
   disclosure: {
     display: "flex",
@@ -952,9 +1202,9 @@ const s = stylex.create({
     gap: 10,
     alignItems: "center",
     height: 24,
-    // Under the mailbox's icon, so the titles line up with the names above; the indent is a margin, so the row's
-    // fill starts there rather than at the sidebar's edge.
-    marginLeft: 16,
+    // The dot under the mailbox's icon (centred at 31), the title in line with the names above (at 44); the indent is a
+    // margin, so the pill starts there rather than at the sidebar's edge.
+    marginLeft: 22,
     paddingLeft: 6,
     paddingRight: 8,
     borderRadius: radii.row,
@@ -962,7 +1212,6 @@ const s = stylex.create({
     fontSize: fontSizes.body,
     cursor: "default",
     outline: "none",
-    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
   },
   threadDot: {
     flexShrink: 0,
@@ -975,7 +1224,7 @@ const s = stylex.create({
   threadDotUrgent: { backgroundColor: colors.urgent },
   threadTitle: { flex: 1 },
   threadNone: {
-    paddingLeft: 38,
+    paddingLeft: 44,
     color: colors.textTertiary,
     fontSize: fontSizes.small,
     lineHeight: "24px",
@@ -1051,7 +1300,16 @@ const s = stylex.create({
   listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
   listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
   listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
-  listScroll: { flex: 1, minHeight: 0, overflowY: "auto", padding: "0 6px 12px", outline: "none" },
+  filterRow: { paddingLeft: 12, paddingRight: 12 },
+  listScroll: {
+    position: "relative",
+    isolation: "isolate",
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    padding: "0 6px 12px",
+    outline: "none",
+  },
   groupHeader: {
     display: "flex",
     gap: 6,
@@ -1086,7 +1344,6 @@ const s = stylex.create({
     cursor: "default",
     outline: "none",
   },
-  rowOn: { backgroundColor: colors.bgTertiary },
   unreadSlot: {
     display: "flex",
     flexShrink: 0,
