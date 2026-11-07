@@ -38,6 +38,11 @@
     outline: none;
   }
 
+  /* A top bar's icons a little heavier than Hugeicons' 1.5, which reads thin at 14px beside the title. */
+  [data-bar] svg [stroke-width] {
+    stroke-width: 1.75;
+  }
+
   body * {
     scrollbar-width: thin;
     scrollbar-color: var(--scrollbar-thumb) transparent;

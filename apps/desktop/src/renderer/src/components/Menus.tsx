@@ -63,7 +63,8 @@ export function OptionButton(props: {
 
 // A menu's rows, as macOS lays them out: an icon column (a toggle's check goes there too), titles in one column after it,
 // and a chevron on a row with `items`, whose submenu opens beside it while you're on it.
-function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
+// `leftward`, as a menu hanging from a toolbar's right end: its submenus open to the left.
+function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean }): JSX.Element {
   // A menu where no row has an icon (or a check) has no icon column at all.
   const gutter = (): boolean =>
     props.items.some(
@@ -117,7 +118,16 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
     queueMicrotask(() => {
       const { width, height } = panel.getBoundingClientRect();
       const right = at.right + 4;
-      panel.style.left = `${right + width > innerWidth - 4 ? Math.max(4, at.left - width - 4) : right}px`;
+      const left = at.left - width - 4;
+      panel.style.left = `${
+        props.leftward
+          ? left >= 4
+            ? left
+            : right
+          : right + width > innerWidth - 4
+            ? Math.max(4, left)
+            : right
+      }px`;
       panel.style.top = `${Math.max(4, Math.min(at.top - 4.5, innerHeight - height - 4))}px`;
     });
   };
@@ -144,7 +154,7 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
             style={{ left: `${open.row.right + 4}px`, top: `${open.row.top - 4.5}px` }}
             role="menu"
           >
-            <Items items={open.item.items} close={props.close} />
+            <Items items={open.item.items} close={props.close} leftward={props.leftward} />
           </div>
         )}
       </Show>
@@ -154,10 +164,11 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
 
 // The right-click menu, at the pointer and kept on screen. A popover: a click elsewhere or Escape closes it.
 export function ContextMenu(): JSX.Element {
-  const show = (el: HTMLDivElement, at: { x: number; y: number }): void => {
+  const show = (el: HTMLDivElement, at: { x: number; y: number; end?: boolean }): void => {
     el.showPopover();
     const { width, height } = el.getBoundingClientRect();
-    el.style.left = `${Math.max(4, Math.min(at.x, innerWidth - width - 4))}px`;
+    const left = at.end ? at.x - width : at.x;
+    el.style.left = `${Math.max(4, Math.min(left, innerWidth - width - 4))}px`;
     el.style.top = `${at.y + height > innerHeight - 4 ? Math.max(4, at.y - height) : at.y}px`;
   };
   return (
@@ -172,7 +183,7 @@ export function ContextMenu(): JSX.Element {
           style={{ left: `${shown.x}px`, top: `${shown.y}px` }}
           role="menu"
         >
-          <Items items={shown.items} close={() => setMenu(null)} />
+          <Items items={shown.items} close={() => setMenu(null)} leftward={shown.end} />
         </div>
       )}
     </Show>

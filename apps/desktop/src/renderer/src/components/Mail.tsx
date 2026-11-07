@@ -10,11 +10,10 @@ import {
   itemFor,
   edit,
   markAllRead,
-  markDone,
+  menuFrom,
   me,
   myBuckets,
   open,
-  placeIn,
   save,
   saved,
   setDialog,
@@ -474,7 +473,7 @@ export function MailSidebar(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
-      <div class={sx(topbar.bar, s.sidebarBar)}>
+      <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
         <AppButtons />
         <span class={sx(topbar.end)}>
           <button
@@ -918,7 +917,7 @@ export function MessageList(): JSX.Element {
       style={{ width: `${listColumn.width()}px` }}
       aria-label={mailboxTitle(mailbox())}
     >
-      <div class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
+      <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
         <Show when={!sidebarOpen()}>
           <AppButtons />
         </Show>
@@ -1066,57 +1065,15 @@ export function MessageList(): JSX.Element {
 // ── The reading pane's toolbar: what you can do with the open thread ──
 
 export function ThreadActions(props: { thread: Thread }): JSX.Element {
-  const item = () => (inbox().order.includes(props.thread) ? itemFor(props.thread) : undefined);
-  const moveMenu = (event: MouseEvent): void => {
-    const it = itemFor(props.thread);
-    if (!it) return;
-    showMenu(event, [
-      ...myBuckets().map((bucket) => ({
-        label: bucket.name,
-        icon: it.bucketId === bucket.id ? icon(i.Tick02Icon, 13) : undefined,
-        run: () => placeIn(it, bucket),
-      })),
-      "separator" as const,
-      {
-        label: "Sort It for Me",
-        icon: icon(i.SparklesIcon, 13),
-        run: () => placeIn(it, undefined),
-      },
-    ]);
-  };
   return (
-    <>
-      <Show when={item()}>
-        {(it) => (
-          <>
-            <button
-              class={sx(topbar.button)}
-              aria-label="Done"
-              title="Done (⌘E)"
-              onClick={() => markDone(it())}
-            >
-              <Icon icon={i.Tick02Icon} {...ICON} />
-            </button>
-            <button
-              class={sx(topbar.button)}
-              aria-label="Move to"
-              title="Move to a bucket"
-              onClick={moveMenu}
-            >
-              <Icon icon={i.Folder01Icon} {...ICON} />
-            </button>
-          </>
-        )}
-      </Show>
-      <button
-        class={sx(topbar.button)}
-        aria-label="More"
-        title="More"
-        onClick={(e) => showMenu(e, threadMenu(props.thread))}
-      >
-        <Icon icon={i.MoreHorizontalIcon} {...ICON} />
-      </button>
-    </>
+    <button
+      class={sx(topbar.button)}
+      aria-label="More"
+      title="More"
+      onClick={(e) => menuFrom(e.currentTarget, threadMenu(props.thread))}
+    >
+      <Icon icon={i.MoreHorizontalIcon} {...ICON} />
+    </button>
   );
 }
 

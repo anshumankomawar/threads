@@ -174,9 +174,19 @@ export function peekForward(): void {
   setPeeked(forward[0]);
 }
 export const [dialog, setDialog] = createSignal<Dialog | null>(null);
-export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(
-  null,
-);
+// The open context menu: at the pointer, or (`end`) hanging left from a button's corner, as a menu from the right end
+// of a toolbar does.
+export const [menu, setMenu] = createSignal<{
+  x: number;
+  y: number;
+  items: MenuItem[];
+  end?: boolean;
+} | null>(null);
+// A button's menu, under it, its right edge on the button's.
+export function menuFrom(button: Element, items: MenuItem[]): void {
+  const at = button.getBoundingClientRect();
+  setMenu({ x: at.right, y: at.bottom + 4, items, end: true });
+}
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
 // A toast at the bottom: what just happened, and undoing it if it can be.
 export const [undo, setUndo] = createSignal<{ text: string; run?: () => void } | null>(null);
@@ -427,24 +437,31 @@ export function sortAllForMe(): void {
 export function threadMenu(thread: Thread): MenuItem[] {
   const item = inbox().order.includes(thread) ? itemFor(thread) : undefined;
   const shown = active();
-  return [
-    {
-      label: "Open",
-      icon: icon(i.SquareArrowUpRightIcon, 13),
-      run: () => open({ thread: thread.id }),
-    },
-    ...(shown && shown !== thread
-      ? [
+  // Opening it, unless it's the one open (its own toolbar's menu).
+  const opening: MenuItem[] =
+    shown === thread
+      ? []
+      : [
           {
-            label: "Open Beside",
-            icon: icon(i.LayoutTwoColumnIcon, 13),
-            run: () => setSplit(thread.id),
+            label: "Open",
+            icon: icon(i.SquareArrowUpRightIcon, 13),
+            run: () => open({ thread: thread.id }),
           },
-        ]
-      : []),
+          ...(shown
+            ? [
+                {
+                  label: "Open Beside",
+                  icon: icon(i.LayoutTwoColumnIcon, 13),
+                  run: () => setSplit(thread.id),
+                },
+              ]
+            : []),
+          "separator",
+        ];
+  return [
+    ...opening,
     ...(item
       ? [
-          "separator" as const,
           { label: "Done", icon: icon(i.InboxCheckIcon, 13), run: () => markDone(item) },
           {
             label: "Move to",
@@ -469,8 +486,6 @@ export function threadMenu(thread: Thread): MenuItem[] {
           },
         ]
       : []),
-    // With Done and Move to when it's in your inbox: what you do with the thread, apart from opening it.
-    ...(item ? [] : ["separator" as const]),
     {
       label: thread.isOpen ? "Resolve" : "Reopen",
       icon: icon(thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon, 13),

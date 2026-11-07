@@ -245,7 +245,7 @@ export function Peek(): JSX.Element {
                 />
               )}
             </For>
-            <div class={sx(topbar.bar, styles.bar)} onPointerDown={grab("move")}>
+            <div data-bar class={sx(topbar.bar, styles.bar)} onPointerDown={grab("move")}>
               <button
                 class={sx(topbar.button)}
                 aria-label="Back"

@@ -160,7 +160,7 @@ export default function App(): JSX.Element {
               </div>
             )}
           </Show>
-          <div class={sx(topbar.bar, styles.topbarBesideList)}>
+          <div data-bar class={sx(topbar.bar, styles.topbarBesideList)}>
             <HistoryButtons />
             <span class={sx(base.ellipsis, topbar.title)}>
               {active()?.title ??
@@ -211,7 +211,7 @@ export default function App(): JSX.Element {
                   <Show when={store.findById(Thread, split() ?? "")} keyed>
                     {(beside) => (
                       <section class={sx(styles.splitPane)} aria-label={beside.title}>
-                        <div class={sx(topbar.bar, styles.splitPaneBar)}>
+                        <div data-bar class={sx(topbar.bar, styles.splitPaneBar)}>
                           <span class={sx(base.ellipsis, topbar.title, styles.splitTitle)}>
                             {beside.title}
                           </span>

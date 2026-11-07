@@ -202,7 +202,11 @@ const LEFT_PANE =
   "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
 const sidebarIcon = (open: boolean): IconSvgElement =>
   open
-    ? [...i.PanelLeftIcon, ["path", { d: LEFT_PANE, fill: "currentColor", key: "pane" }]]
+    ? [
+        ...i.PanelLeftIcon,
+        // A tint, not a solid block: the pane reads as open without being the darkest thing in the bar.
+        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
+      ]
     : i.PanelLeftIcon;
 
 const dueLabel = (c: Thread): string | undefined => c.dueAt && shortDate(c.dueAt);
@@ -758,7 +762,7 @@ export function Sidebar(): JSX.Element {
   const profile = (): boolean => (view() as { person?: string }).person === me().id;
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${width()}px` }}>
-      <div class={sx(topbar.bar, s.topbar)}>
+      <div data-bar class={sx(topbar.bar, s.topbar)}>
         <AppButtons />
         <span class={sx(topbar.end)}>
           <TopButton
