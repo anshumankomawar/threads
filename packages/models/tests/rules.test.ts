@@ -398,7 +398,7 @@ test("the sample seed: admin members, subspaces, labelled threads in inboxes, a 
   const server = threadsServer(memoryStorage(), () => []);
   expect(() => server.action(anshu, "seed", "sample")).toThrow("Only the admin");
   server.action(admin, "seed", "sample");
-  expect(rows(server, "WorkspaceMember").map((m) => m.role)).toEqual(Array(7).fill("admin"));
+  expect(rows(server, "WorkspaceMember").map((m) => m.role)).toEqual(Array(9).fill("admin"));
   expect(row(server, "Thread", "headcount-plan")?.labelIds).toEqual(["q4-planning"]);
   expect(inboxOf(server, "you").length).toBeGreaterThan(3);
   expect(row(server, "Thread", "soc2-evidence")?.state).toBe("blocked");

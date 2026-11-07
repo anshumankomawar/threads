@@ -41,18 +41,21 @@ const LOCAL_PEOPLE: [string, string][] = [
   ["zoe", "Zoe Martin"],
 ];
 
-// The sample workspace's people, with "you" (whoever runs the app) among them.
+// The sample workspace's people. "you" is whoever runs the app, with a name of their own so the demo reads as a team.
 const SAMPLE_PEOPLE: [string, string][] = [
-  ["you", "You"],
+  ["you", "Jamie Lin"],
   ["elena", "Elena Park"],
   ["priya", "Priya Shah"],
   ["jordan", "Jordan Lee"],
   ["maya", "Maya Chen"],
   ["daniel", "Daniel Okafor"],
   ["sam", "Sam Rivera"],
+  ["noah", "Noah Fischer"],
+  ["ava", "Ava Thompson"],
 ];
 
-const HOUR = 3_600_000;
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 type Sample = {
@@ -65,8 +68,8 @@ type Sample = {
   state?: string;
   dueIn?: number;
   blocks?: string;
-  // [author, body, sent to]
-  messages: [string, string, string[]][];
+  // [author, body, sent to, how long ago it was sent]; without a time, the thread's messages are a few minutes apart.
+  messages: [string, string, string[], number?][];
 };
 
 // An open subspace, and a private one only its members see.
@@ -93,12 +96,30 @@ const SAMPLE_SUBSPACES: {
     visibility: "private",
     members: ["you", "priya", "elena"],
   },
+  {
+    id: "design",
+    name: "Design",
+    description:
+      "Product and brand design: reviews, research and the design system. Bring work in progress early; nothing here has to be finished.",
+    visibility: "open",
+    members: ["you", "noah", "maya"],
+  },
+  {
+    id: "gtm",
+    name: "Go-to-market",
+    description:
+      "Launches, pricing, sales and the customers we're working with. Anything that changes what a customer sees or pays starts here.",
+    visibility: "open",
+    members: ["you", "daniel", "ava", "maya"],
+  },
 ];
 
 const SAMPLE_LABELS = {
   "q4-planning": "Q4 Planning",
   customers: "Customers",
   compliance: "Compliance",
+  launch: "Launch",
+  bug: "Bug",
 };
 
 // The sample's work: asks waiting on you, things you asked of others, a blocked one and a resolved one.
@@ -116,6 +137,7 @@ const SAMPLE_THREADS: Sample[] = [
         "priya",
         "Finance needs our Q4 headcount plan approved by end of day. The draft adds two engineers and a designer. Can you check it against the roadmap and sign off or flag what's off?",
         ["you"],
+        3 * HOUR,
       ],
     ],
   },
@@ -132,11 +154,13 @@ const SAMPLE_THREADS: Sample[] = [
         "maya",
         "Northwind's IT admin says every SSO login has failed since Tuesday's deploy with \"invalid audience\". 140 seats are locked out and their renewal is in two weeks. Can you take a look today?",
         ["you"],
+        52 * MINUTE,
       ],
       [
         "sam",
         "Tuesday's deploy changed the SAML audience to the new domain. Their Okta app still has the old one.",
         ["you", "maya"],
+        24 * MINUTE,
       ],
     ],
   },
@@ -152,6 +176,7 @@ const SAMPLE_THREADS: Sample[] = [
         "sam",
         "PR is up: indexing moves off the request path into a queue consumer, with retries and a dead-letter queue. Mostly worried about ordering when the same doc is edited twice quickly.",
         ["you"],
+        5 * HOUR,
       ],
     ],
   },
@@ -166,6 +191,13 @@ const SAMPLE_THREADS: Sample[] = [
         "you",
         "Can we get the Q4 pricing page copy finalized before Thursday's launch review? Legal flagged the annual discount wording last time.",
         ["daniel"],
+        DAY + 2 * HOUR,
+      ],
+      [
+        "daniel",
+        "On it. I'll send a draft with two options for the discount line so legal can pick.",
+        ["you"],
+        DAY + HOUR,
       ],
     ],
   },
@@ -181,6 +213,7 @@ const SAMPLE_THREADS: Sample[] = [
         "elena",
         "The auditors need quarterly access review evidence for every production system by next week.",
         ["you"],
+        2 * DAY,
       ],
     ],
   },
@@ -196,6 +229,7 @@ const SAMPLE_THREADS: Sample[] = [
         "you",
         "I need last quarter's Okta group membership export for the SOC 2 access review. Only admins can pull it.",
         ["jordan"],
+        2 * DAY - HOUR,
       ],
     ],
   },
@@ -206,8 +240,137 @@ const SAMPLE_THREADS: Sample[] = [
     state: "resolved",
     priority: "high",
     messages: [
-      ["jordan", "Can you post the incident summary on the status page?", ["you"]],
-      ["you", "Posted, with the timeline and what we changed.", ["jordan"]],
+      ["jordan", "Can you post the incident summary on the status page?", ["you"], 3 * DAY],
+      ["you", "Posted, with the timeline and what we changed.", ["jordan"], 3 * DAY - 2 * HOUR],
+    ],
+  },
+  {
+    id: "launch-checklist",
+    subspace: "gtm",
+    title: "Launch checklist for Threads 2.0",
+    owner: "daniel",
+    labels: ["launch"],
+    priority: "high",
+    dueIn: 2 * DAY,
+    messages: [
+      [
+        "daniel",
+        "Launch is Thursday. Docs, changelog and the announcement post are ready; what's left is the pricing page and a final pass on the onboarding flow. Can you own the go/no-go on Wednesday?",
+        ["you"],
+        2 * HOUR + 10 * MINUTE,
+      ],
+      [
+        "you",
+        "Yes. Let's do go/no-go at 4pm Wednesday with design and support in the room.",
+        ["daniel"],
+        HOUR + 45 * MINUTE,
+      ],
+      [
+        "daniel",
+        "Booked. I'll bring the launch metrics dashboard so we can agree on what success looks like for week one.",
+        ["you"],
+        HOUR + 30 * MINUTE,
+      ],
+      [
+        "daniel",
+        "Also: support wants a heads-up email the day before. Drafting it now.",
+        [],
+        HOUR + 28 * MINUTE,
+      ],
+    ],
+  },
+  {
+    id: "onboarding-redesign",
+    subspace: "design",
+    title: "Onboarding redesign: first-run flow",
+    owner: "noah",
+    priority: "medium",
+    dueIn: 3 * DAY,
+    messages: [
+      [
+        "noah",
+        "New first-run flow is in Figma: three steps instead of seven, and we import your first threads from Slack before asking anything else. Would love your eyes on step two before Thursday.",
+        ["you"],
+        4 * HOUR,
+      ],
+      [
+        "you",
+        "Love the import-first idea. Step two asks for buckets before people have seen their inbox; could we show a sorted preview there instead?",
+        ["noah"],
+        3 * HOUR + 20 * MINUTE,
+      ],
+      [
+        "noah",
+        "Good call. I'll mock a preview with their real imported threads and send it over this afternoon.",
+        ["you"],
+        14 * MINUTE,
+      ],
+    ],
+  },
+  {
+    id: "acme-renewal",
+    subspace: "gtm",
+    title: "Acme renewal: questions on seat pricing",
+    owner: "ava",
+    labels: ["customers"],
+    priority: "high",
+    dueIn: DAY,
+    messages: [
+      [
+        "ava",
+        "Acme wants to go from 80 to 140 seats at renewal but is asking for the volume tier we only list for 200+. Are we okay offering it for a two-year term?",
+        ["you"],
+        38 * MINUTE,
+      ],
+    ],
+  },
+  {
+    id: "staging-deploys",
+    subspace: "engineering",
+    title: "Staging deploys failing about one in five",
+    owner: "sam",
+    labels: ["bug"],
+    priority: "medium",
+    messages: [
+      [
+        "sam",
+        "Roughly one in five staging deploys fails at the migration step with a lock timeout. Looks like the old preview environments are still holding connections.",
+        ["you", "jordan"],
+        6 * HOUR,
+      ],
+      [
+        "jordan",
+        "Confirmed, 40-odd preview databases never got torn down. I'll add a nightly cleanup job.",
+        ["sam", "you"],
+        5 * HOUR,
+      ],
+    ],
+  },
+  {
+    id: "weekly-update",
+    title: "Weekly product update",
+    owner: "priya",
+    messages: [
+      [
+        "priya",
+        "This week: Threads 2.0 is on track for Thursday, inbox sorting accuracy is up to 94%, and we closed three of the four Q4 hires. Full notes and metrics are in the doc. Nothing needed from anyone, just keeping you in the loop.",
+        ["you"],
+        7 * HOUR,
+      ],
+    ],
+  },
+  {
+    id: "design-hire",
+    subspace: "design",
+    title: "Senior designer loop: final round on Monday",
+    owner: "noah",
+    messages: [
+      [
+        "noah",
+        "Our last senior designer candidate is in Monday. Their portfolio review is at 11; can you take the product sense interview at 2?",
+        ["you"],
+        DAY + 5 * HOUR,
+      ],
     ],
   },
 ];
@@ -248,8 +411,12 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
     writes.push(create("Label", id, { name, workspaceId: workspace }));
   for (const t of SAMPLE_THREADS) {
     const subspaceIds = t.subspace ? [t.subspace] : [];
+    // When each message was sent: its own time, or a few minutes after the one before.
+    const sentAt = (index: number): number =>
+      nowMs - (t.messages[index][3] ?? (t.messages.length - index) * 4 * MINUTE);
     writes.push(
       create("Thread", t.id, {
+        createdAt: sentAt(0),
         title: t.title,
         state: t.state ?? "open",
         priority: t.priority ?? "none",
@@ -263,6 +430,7 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
       }),
       ...t.messages.map(([authorId, body, toIds], index) =>
         create("Message", `${t.id}-${index}`, {
+          createdAt: sentAt(index),
           threadId: t.id,
           authorId,
           body: [...toIds.map(mention), body].join(" "),

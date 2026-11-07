@@ -31,7 +31,11 @@ export const useSource = (next: Source): Promise<void> => window.threads.useSour
 export const source = await window.threads.source();
 export const otherSources = (Object.keys(SOURCES) as Source[]).filter((s) => s !== source);
 export const server = {
-  url: source === "cloudflare" ? HOSTED_URL! : "http://127.0.0.1:3030",
+  // VITE_LOCAL_API_URL points Local and Sample at another local API (a second one, on its own port).
+  url:
+    source === "cloudflare"
+      ? HOSTED_URL!
+      : (import.meta.env.VITE_LOCAL_API_URL ?? "http://127.0.0.1:3030"),
   workspace: source === "cloudflare" ? "local" : source,
 };
 

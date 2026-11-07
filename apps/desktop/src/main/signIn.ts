@@ -27,7 +27,10 @@ const source = ((): string => {
   }
 })();
 // The API's BETTER_AUTH_URL must name this very origin, since Google's round trip depends on it.
-const API_URL = source === "cloudflare" && HOSTED_URL ? HOSTED_URL : "http://127.0.0.1:3030";
+const API_URL =
+  source === "cloudflare" && HOSTED_URL
+    ? HOSTED_URL
+    : (process.env.VITE_LOCAL_API_URL ?? "http://127.0.0.1:3030");
 
 const auth = createAuthClient({
   baseURL: API_URL,

@@ -7,5 +7,10 @@ export default defineConfig(({ mode }) => ({
   plugins: mode === "test" ? [] : [cloudflare()],
   oxc: { decorator: { legacy: true } },
   // The desktop app expects the local API here.
-  server: { host: "127.0.0.1", port: 3030, strictPort: true },
+  // THREADS_API_PORT runs a second API beside the usual one (its own data), as for a fresh sample.
+  server: {
+    host: "127.0.0.1",
+    port: Number(process.env.THREADS_API_PORT ?? 3030),
+    strictPort: true,
+  },
 }));

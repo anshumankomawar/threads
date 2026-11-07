@@ -107,7 +107,7 @@ test("the prompt numbers buckets and items, says who sent it and what; answers m
   expect(northwind.from).toBe("Sam Rivera");
   expect(northwind.text).toContain("Tuesday's deploy changed the SAML audience");
   const prompt = triagePrompt(request);
-  expect(prompt).toContain("Inbox of You.");
+  expect(prompt).toContain("Inbox of Jamie Lin.");
   expect(prompt).toContain("1. Messages that require action:");
   const index = request.items.indexOf(northwind) + 1;
   expect(
