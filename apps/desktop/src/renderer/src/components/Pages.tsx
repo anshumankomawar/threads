@@ -1,7 +1,7 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createSignal, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
+import { Subspace, SubspaceMember, User, View } from "models";
 import { me, memberOf, open, setDialog, store, edit, memberIn } from "../session";
 import { base } from "../styles/base";
 import { chip, chipTone } from "../styles/controls";
@@ -273,13 +273,11 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   );
 }
 
-// Someone and their role here (the threads they own or are assigned are listed beside). Yours also has the workspace's
-// members.
+// Someone and their role here; the threads they own or are assigned are listed beside.
 export function PersonView(props: { user: User }): JSX.Element {
   const u = (): User => props.user;
   const summary = (user: User): string =>
     [user.email, ROLE[memberOf(user)?.role ?? "member"]].filter(Boolean).join(" · ");
-  const people = members({ users: () => store.all(WorkspaceMember).flatMap((m) => m.user ?? []) });
   return (
     <div class={sx(page.page)}>
       <header class={sx(page.header)}>
@@ -289,9 +287,6 @@ export function PersonView(props: { user: User }): JSX.Element {
           <p class={sx(page.summary)}>{summary(u())}</p>
         </div>
       </header>
-      <Show when={u().id === me().id}>
-        <PageTabs pages={[people]} />
-      </Show>
     </div>
   );
 }

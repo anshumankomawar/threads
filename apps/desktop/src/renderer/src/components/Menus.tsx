@@ -62,6 +62,11 @@ export function OptionButton(props: {
 // A menu's rows, as macOS lays them out: an icon column (a toggle's check goes there too), titles in one column after it,
 // and a chevron on a row with `items`, whose submenu opens beside it while you're on it.
 function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
+  // A menu where no row has an icon (or a check) has no icon column at all.
+  const gutter = (): boolean =>
+    props.items.some(
+      (item) => item !== "separator" && (item.icon !== undefined || "checked" in item),
+    );
   const [sub, setSub] = createSignal<{
     item: MenuItem & { items: MenuItem[] };
     row: DOMRect;
@@ -92,7 +97,9 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
             : run?.()
         }
       >
-        <span class={sx(look.entryIcon)}>{checked ? icon(i.Tick02Icon, 13) : item.icon}</span>
+        <Show when={gutter()}>
+          <span class={sx(look.entryIcon)}>{checked ? icon(i.Tick02Icon, 13) : item.icon}</span>
+        </Show>
         <span class={sx(base.ellipsis, look.entryLabel)}>{item.label}</span>
         <Show when={opens}>
           <span class={sx(look.entryChevron)}>{icon(i.ArrowRight01Icon, 11)}</span>

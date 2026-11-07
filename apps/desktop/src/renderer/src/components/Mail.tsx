@@ -51,7 +51,7 @@ import { icon, Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
-import { plain } from "./ThreadView";
+import { dot, plain } from "./ThreadView";
 
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
@@ -755,6 +755,25 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
   );
 }
 
+// The filter menu's icons: each field's, and each value's where it has one of its own (a status's dot, a person's
+// avatar, a space's or label's mark).
+const FIELD_ICONS: Record<string, IconSvgElement> = {
+  state: i.Loading03Icon,
+  priority: i.Flag01Icon,
+  subspaceIds: i.Layers01Icon,
+  labelIds: i.Tag01Icon,
+  assigneeIds: i.UserMultipleIcon,
+  ownerId: i.UserIcon,
+};
+function valueIcon(field: string, value: string): JSX.Element | undefined {
+  if (field === "state") return dot(value as Thread["state"]);
+  if (field === "assigneeIds" || field === "ownerId")
+    return <Identicon seed={value === "$me" ? me().id : value} size={13} />;
+  if (field === "subspaceIds") return icon(i.Layers01Icon, 13);
+  if (field === "labelIds") return icon(i.Tag01Icon, 13);
+  return undefined;
+}
+
 // What a mailbox's page shows beside its list: a space's description, members and settings, a saved view's settings,
 // or someone's profile.
 const pageOf = (box: Mailbox) =>
@@ -847,8 +866,10 @@ export function MessageList(): JSX.Element {
               label={<Icon icon={i.FilterIcon} {...ICON} />}
               items={Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
                 label,
+                icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
                 items: values().map(([value, name]) => ({
                   label: name,
+                  icon: valueIcon(field, value),
                   run: () => setConditions([...conditions(), { [field]: { [compare]: value } }]),
                 })),
               }))}
