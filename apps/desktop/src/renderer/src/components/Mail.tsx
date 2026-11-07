@@ -147,13 +147,19 @@ function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
     };
     following = requestAnimationFrame(step);
   };
+  // While a menu (or a form grown out of one) is open, it stays where it was: on the row you right-clicked, not
+  // chasing the pointer on its way to the menu.
+  const menuOpen = (): boolean =>
+    document.querySelector("[role=menu]:popover-open, [data-holds-keys]:popover-open") !== null;
   const onLeave = (): void => {
+    if (menuOpen()) return;
     over = null;
     place();
   };
   // Under the pointer, the row it's on. Between rows (a gap, a heading) it stays where it was; past the first or last
   // row, in the column's empty space, it goes back to the selection.
   const onOver = (event: Event): void => {
+    if (menuOpen()) return;
     const row = (event.target as Element).closest<HTMLElement>("[data-pill]");
     if (row && container.contains(row)) {
       if (row !== over) {
@@ -171,6 +177,13 @@ function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
     if (event.clientY < top || event.clientY > bottom) onLeave();
   };
   const onScroll = (): void => place(false);
+  // Once the menu's gone, to wherever the pointer is now: the row under it, or off the list, the selection.
+  const onMenuClosed = (event: Event): void => {
+    if ((event as ToggleEvent).newState !== "closed" || menuOpen()) return;
+    over = container.querySelector<HTMLElement>("[data-pill]:hover");
+    place();
+  };
+  document.addEventListener("toggle", onMenuClosed, { capture: true });
   container.addEventListener("pointerover", onOver);
   container.addEventListener("focusin", onOver);
   container.addEventListener("pointerleave", onLeave);
@@ -191,6 +204,7 @@ function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
     container.removeEventListener("focusin", onOver);
     container.removeEventListener("pointerleave", onLeave);
     container.removeEventListener("scroll", onScroll, { capture: true });
+    document.removeEventListener("toggle", onMenuClosed, { capture: true });
     container.removeEventListener("transitionrun", follow);
     mutations.disconnect();
     sizes.disconnect();
