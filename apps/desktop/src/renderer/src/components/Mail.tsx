@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createSignal, createUniqueId, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
@@ -24,6 +24,7 @@ import {
   threadMenu,
   unread,
   view,
+  workspace,
   type MenuItem,
 } from "../session";
 import {
@@ -41,7 +42,7 @@ import {
 import { bucketIcons } from "../bucketIcons";
 import { describe, FIELDS, subspacesIn } from "../filters";
 import { base } from "../styles/base";
-import { topbar } from "../styles/controls";
+import { chip, menu as look, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
@@ -49,11 +50,14 @@ import { AppButtons } from "./Sidebar";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
+import { makeSubspace } from "./Palettes";
 import { plain } from "./ThreadView";
 
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
 const ICON = { size: 14, "aria-hidden": "true" } as const;
+// Under its anchor and growing leftward (StyleX's types only know the plain areas).
+const UNDER_LEFT = "bottom span-left" as "bottom";
 
 // A column the edge on its right resizes, remembering its width.
 function resizable(key: string, range: { initial: number; min: number; max: number }) {
@@ -243,20 +247,32 @@ const toggleFold = (key: string): void =>
   });
 
 // A sidebar section: a heading that folds it (as Mail's do), with an add button that shows on hover.
-function Section(props: {
-  title: string;
-  add?: { label: string; run: () => void };
-  children: JSX.Element;
-}): JSX.Element {
+// A section's + : a small field under it, the size of a context menu, for the new one's name. Enter makes it and selects
+// it; Escape or a click elsewhere closes it, and the focus stays in the sidebar.
+type Add = { label: string; placeholder: string; make: (name: string) => Mailbox };
+
+function Section(props: { title: string; add?: Add; children: JSX.Element }): JSX.Element {
   const shut = (): boolean => folded().includes(props.title);
+  const id = createUniqueId();
+  let plus: HTMLButtonElement | undefined;
+  let field!: HTMLDivElement;
+  let input!: HTMLInputElement;
+  const [name, setName] = createSignal("");
+  const ask = (): void => field.showPopover({ source: plus } as ShowPopoverOptions);
+  const make = (): void => {
+    const add = props.add;
+    const typed = name().trim();
+    if (!add || !typed) return;
+    field.hidePopover();
+    chooseMailbox(add.make(typed));
+  };
   return (
     <section class={sx(s.section)}>
       <div
         class={sx(s.sectionHeader, stylex.defaultMarker())}
         onContextMenu={(e) => {
           const add = props.add;
-          if (add)
-            showMenu(e, [{ label: `${add.label}…`, icon: icon(i.Add01Icon, 13), run: add.run }]);
+          if (add) showMenu(e, [{ label: `${add.label}…`, icon: icon(i.Add01Icon, 13), run: ask }]);
         }}
       >
         <button
@@ -271,14 +287,45 @@ function Section(props: {
         </button>
         <Show when={props.add}>
           {(add) => (
-            <button
-              class={sx(base.bare, s.sectionAdd)}
-              aria-label={add().label}
-              title={add().label}
-              onClick={() => add().run()}
-            >
-              <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
-            </button>
+            <>
+              <button
+                ref={plus}
+                popovertarget={id}
+                class={sx(base.bare, s.sectionAdd)}
+                aria-label={add().label}
+                title={add().label}
+              >
+                <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
+              </button>
+              <div
+                id={id}
+                ref={field}
+                popover="auto"
+                class={sx(base.panel, look.menu, look.compact, look.popover, chip.menu, s.addPanel)}
+                onToggle={(event) => {
+                  if (event.newState !== "open") return;
+                  setName("");
+                  input.focus();
+                }}
+              >
+                <label class={sx(s.addRow)}>
+                  <input
+                    ref={input}
+                    class={sx(base.bare, s.addInput)}
+                    aria-label={add().label}
+                    placeholder={add().placeholder}
+                    value={name()}
+                    onInput={(e) => setName(e.currentTarget.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" || e.isComposing) return;
+                      e.preventDefault();
+                      make();
+                    }}
+                  />
+                  <span class={sx(s.addHint)}>↵</span>
+                </label>
+              </div>
+            </>
           )}
         </Show>
       </div>
@@ -455,7 +502,11 @@ export function MailSidebar(): JSX.Element {
         </ul>
         <Section
           title="Spaces"
-          add={{ label: "New Subspace", run: () => setDialog({ kind: "newSubspace" }) }}
+          add={{
+            label: "New Subspace",
+            placeholder: "Name the space",
+            make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
+          }}
         >
           <For each={byName(store.all(Subspace))}>
             {(sub) => (
@@ -469,7 +520,14 @@ export function MailSidebar(): JSX.Element {
         </Section>
         <Section
           title="Labels"
-          add={{ label: "New Label", run: () => setDialog({ kind: "newLabel" }) }}
+          add={{
+            label: "New Label",
+            placeholder: "Name the label",
+            make: (name) => ({
+              kind: "label",
+              id: store.create(Label, { name, workspace: workspace() }).id,
+            }),
+          }}
         >
           <For each={byName(store.all(Label))}>
             {(label) => (
@@ -1101,6 +1159,34 @@ const s = stylex.create({
     transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
   sectionChevronOpen: { transform: "rotate(90deg)" },
+  // The + 's field: as wide as Mail's context menu (227pt), one 24pt row inset as a menu's are.
+  // Under the +, growing leftward from it so it stays over the sidebar.
+  addPanel: {
+    width: 206,
+    minWidth: 0,
+    positionArea: UNDER_LEFT,
+    positionTryFallbacks: "flip-block",
+  },
+  addRow: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 21.8,
+    margin: "0 4.5px",
+    padding: "0 7px 0 7.5px",
+    borderRadius: 5,
+    backgroundColor: colors.panelSelected,
+    cursor: "text",
+  },
+  addInput: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    outline: "none",
+    "::placeholder": { color: colors.textTertiary },
+  },
+  addHint: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   sectionAdd: {
     display: "flex",
     color: { default: colors.textTertiary, ":hover": colors.textPrimary },
