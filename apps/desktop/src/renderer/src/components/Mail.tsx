@@ -982,8 +982,6 @@ export function NothingOpen(): JSX.Element {
   );
 }
 
-const EDGE = `linear-gradient(to right, transparent 2px, ${colors.resizeEdge} 2px, ${colors.resizeEdge} 3px, transparent 3px)`;
-
 const s = stylex.create({
   // The resize edge on a column's right.
   edge: {
@@ -995,7 +993,8 @@ const s = stylex.create({
     width: 5,
     margin: 0,
     borderStyle: "none",
-    backgroundImage: { default: null, ":hover": EDGE },
+    // Invisible: only the cursor says it's there; the column's own border is the line.
+    backgroundColor: "transparent",
     cursor: "col-resize",
   },
 
