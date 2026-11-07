@@ -24,7 +24,11 @@ All AI-written code must go on the `prototype` branch. Before writing or editing
 
 - electron-vite only hot-reloads the renderer. After changing `src/main` or `src/preload`, restart the desktop dev task. API changes need an API restart.
 - Test with `vp test` in `packages/sync` (unit tests), `packages/testing` (the deterministic simulation), `packages/server`, `packages/models` and `apps/api`.
-- In the app, ⌘K opens search (people, labels, threads, the data source, dark or light mode), ⌘N starts a thread, ⌘⇧N writes one as a message the model drafts, ⌘U switches who you view the app as, ⌘[ / ⌘] (or the mouse's back and forward buttons) go back and forward through the pages you've opened, and ⌘+ / ⌘- / ⌘0 zoom the main content. In the inbox: J/K (or ↑/↓ in the list) next and previous, ⌘E done, R reply.
+- In the app, ⌘K opens the command menu (everything: the open thread's actions, every mailbox, people, threads, creating things, settings), ⌘N starts a thread, ⌘⇧N writes one as a message the model drafts, ⌘U switches who you view the app as, ⌘[ / ⌘] (or the mouse's back and forward buttons) go back and forward through the pages you've opened, and ⌘+ / ⌘- / ⌘0 zoom the main content. In the inbox: J/K (or ↑/↓ in the list) next and previous, ⌘E done, R reply.
+
+# Building UI
+
+- **Everything is reachable from ⌘K.** Whenever you add or change something you can do or go to in the desktop app (a button, a menu item, a page, a setting, a hotkey, a new kind of record), add it to or update it in the command registry, `apps/desktop/src/renderer/src/commands.ts`, in the same change. An action with a hotkey goes through `hotkey(...)` there so ⌘K runs exactly what the key does and shows its keys; one with choices of its own gets a `page`; a place to go is a `place(...)`; and anything that only makes sense in a context (the open thread) is listed only then. If a feature can't sensibly be in ⌘K, say why in its comment.
 
 # Using Vite+, the Unified Toolchain for the Web
 

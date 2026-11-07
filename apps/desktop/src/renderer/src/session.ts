@@ -300,6 +300,11 @@ function markSeen(thread: Thread | undefined): void {
   item.save();
 }
 
+// The threads you've opened lately, newest first, for ⌘K to offer before you've typed anything.
+const [recentIds, setRecentIds] = createSignal<string[]>(saved("recent-threads", []));
+export const recentThreads = (): Thread[] =>
+  recentIds().flatMap((id) => store.findById(Thread, id) ?? []);
+
 // Opening a thread, or leaving one, marks it seen.
 function show(next: View): void {
   markSeen(active());
@@ -308,6 +313,12 @@ function show(next: View): void {
   if (!("thread" in next) || next.thread === null) return;
   if (next.thread === split()) setSplit(null);
   markSeen(store.findById(Thread, next.thread));
+  const id = next.thread;
+  setRecentIds((ids) => {
+    const recent = [id, ...ids.filter((other) => other !== id)].slice(0, 8);
+    save("recent-threads", recent);
+    return recent;
+  });
 }
 
 // Where you've been and where you came back from, as in a browser: going somewhere new clears the way forward.
@@ -528,29 +539,12 @@ const showGroup = (at: number) => (): void => {
   chooseGroup(at);
 };
 
-// What each hotkey does (hotkeys.ts has their keys, which Settings rebinds). Plain keys only when you're not typing, and
-// none of the reading ones with a dialog or menu open.
-window.addEventListener("keydown", (event) => {
-  if (!signedIn()) return;
-  const target = event.target as HTMLElement;
-  // A form grown out of the sidebar or a menu keeps its keys (InlineForm).
-  if (target.closest("[data-holds-keys]")) return;
-  const typing = target.closest("input, textarea, [contenteditable='true']") !== null;
-  const free = !document.querySelector("dialog[open], :popover-open");
-  // Escape leaves the reply, unless it just closed one of the reply's menus.
-  if (
-    event.key === "Escape" &&
-    typing &&
-    free &&
-    !event.defaultPrevented &&
-    target.closest(".reply")
-  ) {
-    event.preventDefault();
-    return target.blur();
-  }
-  const keys = keysOf(event);
-  const id = keys && commandFor(keys);
-  if (!id || (typing && !/[⌘⌃]/.test(keys))) return;
+// What each hotkey does (hotkeys.ts has their keys, which Settings rebinds), given whether you're typing and whether a
+// dialog or menu is open: plain keys only when you're not typing, and none of the reading ones over a dialog or menu.
+function hotkeyActions(
+  free: boolean,
+  typing: boolean,
+): Record<HotkeyId, (() => void) | false | undefined> {
   const order = listOrder();
   const current = active();
   const at = current ? order.indexOf(current) : -1;
@@ -563,7 +557,7 @@ window.addEventListener("keydown", (event) => {
         ? markUndone(item)
         : markDone(item);
   const reading = free && !typing;
-  const run: Record<HotkeyId, (() => void) | false | undefined> = {
+  return {
     search: () => setDialog({ kind: "search" }),
     settings: () => (setDialog(null), open({ settings: null })),
     hotkeys: free && (() => open({ settings: null })),
@@ -595,7 +589,34 @@ window.addEventListener("keydown", (event) => {
     // Signed in, you're who you signed in as.
     viewAs: !account && (() => setDialog({ kind: "viewAs" })),
   };
-  const action = run[id];
+}
+
+// A hotkey's action as ⌘K runs it, once it's closed: undefined when it can't run now (Done with no thread open).
+export const hotkeyAction = (id: HotkeyId): (() => void) | undefined =>
+  hotkeyActions(true, false)[id] || undefined;
+
+window.addEventListener("keydown", (event) => {
+  if (!signedIn()) return;
+  const target = event.target as HTMLElement;
+  // A form grown out of the sidebar or a menu keeps its keys (InlineForm).
+  if (target.closest("[data-holds-keys]")) return;
+  const typing = target.closest("input, textarea, [contenteditable='true']") !== null;
+  const free = !document.querySelector("dialog[open], :popover-open");
+  // Escape leaves the reply, unless it just closed one of the reply's menus.
+  if (
+    event.key === "Escape" &&
+    typing &&
+    free &&
+    !event.defaultPrevented &&
+    target.closest(".reply")
+  ) {
+    event.preventDefault();
+    return target.blur();
+  }
+  const keys = keysOf(event);
+  const id = keys && commandFor(keys);
+  if (!id || (typing && !/[⌘⌃]/.test(keys))) return;
+  const action = hotkeyActions(free, typing)[id];
   if (!action) return;
   event.preventDefault();
   action();

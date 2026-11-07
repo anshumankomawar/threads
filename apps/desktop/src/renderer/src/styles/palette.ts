@@ -20,9 +20,9 @@ const backdropIn = stylex.keyframes({ from: { opacity: 0 } });
 export const palette = stylex.create({
   dialog: {
     flexDirection: "column",
-    width: 560,
+    width: 640,
     maxWidth: "calc(100vw - 32px)",
-    maxHeight: "min(474px, calc(100vh * 0.82 - 24px))",
+    maxHeight: "min(560px, calc(100vh * 0.82 - 24px))",
     // Pinned to the viewport's edges so the auto margins center it.
     top: 0,
     right: 0,
@@ -48,7 +48,8 @@ export const palette = stylex.create({
   },
   // `display: flex` only while open, so a closed dialog stays hidden.
   open: { display: { default: "none", ":is([open])": "flex" } },
-  inputRow: { ...below, ...row, height: 37, padding: "0 10px" },
+  // No rules between its parts: the input, the tabs and the results are set apart by space alone.
+  inputRow: { ...row, height: 44, padding: "0 14px" },
   input: {
     flex: 1,
     minWidth: 0,
@@ -64,7 +65,7 @@ export const palette = stylex.create({
     overflowY: "auto",
   },
   // The tabs under ⌘K's input that narrow what it finds (⌘1–⌘4).
-  filters: { ...below, ...row, gap: 4, height: 35, padding: "0 8px" },
+  filters: { ...row, gap: 4, height: 30, padding: "0 10px 4px" },
   filter: {
     display: "flex",
     gap: 6,
@@ -79,14 +80,9 @@ export const palette = stylex.create({
   filterChosen: { color: colors.accent, backgroundColor: colors.accentFill },
   filterKey: { opacity: 0.7, wordSpacing: "1px" },
   section: { display: "flex", flexDirection: "column", paddingBottom: 4 },
-  // A section after another gets a divider.
+  // A section after another is set apart by a little space, not a rule.
   divided: {
-    borderTopWidth: 1,
-    borderTopStyle: {
-      default: null,
-      [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: "solid",
-    },
-    borderTopColor: colors.panelBorder,
+    marginTop: { default: 0, [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: 6 },
   },
   sectionLabel: { ...row, gap: 4, height: 28, padding: "0 14px 0 10px" },
   labelText: { color: colors.textSecondary, fontSize: fontSizes.label },

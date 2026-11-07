@@ -20,6 +20,8 @@ export type Option = {
   icon?: IconSvgElement;
   accent?: boolean;
   section?: string;
+  // It opens a list of its own (a chevron on the right).
+  more?: boolean;
   run: () => void;
 };
 
@@ -56,6 +58,9 @@ export function OptionButton(props: {
       <span class={sx(base.ellipsis, look.label)}>{o().label}</span>
       <Show when={o().hint}>
         <span class={sx(look.hint, o().accent && look.accent)}>{o().hint}</span>
+      </Show>
+      <Show when={o().more}>
+        <span class={sx(look.hint)}>{icon(i.ArrowRight01Icon, 11)}</span>
       </Show>
     </button>
   );

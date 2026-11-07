@@ -2,19 +2,16 @@ import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Label, Subspace, Thread, User, View } from "models";
+import { Thread } from "models";
 import {
-  account,
-  applyTheme,
-  open,
-  otherSources,
-  setDialog,
-  signOut,
-  SOURCES,
-  store,
-  switchTo,
-  theme,
-} from "../session";
+  commands,
+  suggestions,
+  threadCommand,
+  type Command,
+  type Kind,
+  type Page,
+} from "../commands";
+import { lastActive, setDialog, store } from "../session";
 import {
   choicesFor,
   isKey,
@@ -30,18 +27,19 @@ import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
-import { keysFor } from "../hotkeys";
 import { moved, OptionButton, type Option } from "./Menus";
 import { Modal } from "./Palettes";
 
-// ⌘K: search everything, or narrow it to threads with filters typed into the search as in Slack or Discord. Typing a
-// key (`from:`) suggests its values; picking one, or finishing one and typing a space, makes it a chip before the
-// text, and Backspace at the start takes the last one back. With any chip, it finds the threads that pass them all
-// and say the rest of what's typed.
+// ⌘K: everything in the app, from one field (commands.ts lists it). Before you type: the open thread's actions,
+// threads you've opened lately, and where to go. As you type: the best matches of every kind, each under its heading.
+// A command with choices of its own (Move to Bucket, Set Priority) opens them in its place; Backspace or Escape goes
+// back. Tabs (⌘1–⌘5) or a first character narrow it to one kind: `>` commands, `#` threads, `@` people, `/` places.
+// Threads filter as in Slack or Discord: typing a key (`from:`) suggests its values, and a finished one becomes a chip.
+// ↵ runs the row; ⌘↵ peeks at a thread or person instead of leaving where you are.
 
 const styles = stylex.create({
   // The chips sit in the input's row, before what's typed, and wrap if there are many.
-  inputRow: { flexWrap: "wrap", gap: 4, height: "auto", minHeight: 37, padding: "6px 10px" },
+  inputRow: { flexWrap: "wrap", gap: 4, height: "auto", minHeight: 44, padding: "8px 14px" },
   chip: {
     display: "flex",
     gap: 4,
@@ -54,6 +52,8 @@ const styles = stylex.create({
     backgroundColor: colors.accentFill,
     cursor: "default",
   },
+  // The page you're in: what it's for, before what you type.
+  pageChip: { padding: "0 7px", color: colors.textSecondary, backgroundColor: colors.bgTertiary },
   chipKey: { opacity: 0.75 },
   chipRemove: {
     display: "flex",
@@ -67,41 +67,171 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   input: { minWidth: 120 },
+  empty: { padding: "18px 14px", color: colors.textTertiary },
+  // What the keys do, quietly, along the bottom.
+  footer: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 14,
+    alignItems: "center",
+    height: 30,
+    padding: "0 14px",
+    color: colors.textTertiary,
+    fontSize: fontSizes.label,
+  },
+  key: { marginRight: 5, color: colors.textSecondary },
 });
 
-const done = (run: () => unknown) => (): void => {
-  setDialog(null);
-  run();
-};
+const close = (): void => void setDialog(null);
 
-const CATEGORIES = ["All", "Threads", "Spaces", "People"];
+// The kinds each tab shows, and the character that picks it as you start typing.
+const CATEGORIES: { label: string; kinds: Kind[]; prefix?: string }[] = [
+  { label: "All", kinds: ["action", "place", "person", "thread"] },
+  { label: "Commands", kinds: ["action"], prefix: ">" },
+  { label: "Threads", kinds: ["thread"], prefix: "#" },
+  { label: "People", kinds: ["person"], prefix: "@" },
+  { label: "Places", kinds: ["place"], prefix: "/" },
+];
+
+// How well `text` matches a typed word, 0 for not at all: the whole of it, its start, a word's start, anywhere in it,
+// then its letters in order ("mkdn" finds Mark Done).
+function scoreOne(text: string, q: string): number {
+  if (text === q) return 100;
+  if (text.startsWith(q)) return 80;
+  if (text.split(/[\s\-_/(]+/).some((w) => w.startsWith(q))) return 60;
+  const at = text.indexOf(q);
+  if (at >= 0) return 40 - Math.min(at, 20) / 2;
+  let k = 0;
+  for (const ch of text) if (ch === q[k]) k++;
+  return k === q.length ? 12 : 0;
+}
+// A command's match: every word typed has to match its title or the other words it's found by.
+function score(c: Command, query: string): number {
+  const words = query.split(/\s+/).filter(Boolean);
+  const title = c.title.toLowerCase();
+  const also = (c.keywords ?? "").toLowerCase();
+  let total = 0;
+  for (const w of words) {
+    const s = Math.max(scoreOne(title, w), scoreOne(also, w) * 0.6);
+    if (s === 0) return 0;
+    total += s;
+  }
+  return total / words.length;
+}
+
+// Most per kind while searching, so one kind can't bury the rest.
+const LIMIT: Record<Kind, number> = { action: 8, place: 8, person: 6, thread: 20 };
 
 export function Search(): JSX.Element {
   const [tokens, setTokens] = createSignal<Token[]>([]);
   const [text, setText] = createSignal("");
-  const [category, setCategory] = createSignal(0);
+  const [tab, setTab] = createSignal(0);
+  const [pages, setPages] = createSignal<Page[]>([]);
   const [at, setAt] = createSignal(0);
   let input!: HTMLInputElement;
+  const page = (): Page | undefined => pages().at(-1);
 
-  // The word being typed: a filter's key and the start of its value, the start of a key, or plain text.
+  // A first `>`, `#`, `@` or `/` picks a kind, as its tab does (-1: none).
+  const prefixed = (): number =>
+    page() || tokens().length > 0
+      ? -1
+      : CATEGORIES.findIndex((c) => c.prefix !== undefined && text().startsWith(c.prefix));
+  const category = (): number => (prefixed() > 0 ? prefixed() : tab());
+  const query = (): string => (prefixed() > 0 ? text().slice(1) : text()).trim().toLowerCase();
+  const chooseTab = (n: number): void => {
+    setTab(n);
+    if (prefixed() > 0) setText(text().slice(1));
+  };
+
+  // The word being typed: a filter's key and the start of its value, or plain text.
   const typing = createMemo(() => {
     const { before, word } = lastWord(text());
     const keyed = /^(\w+):(.*)$/.exec(word);
-    if (keyed && isKey(keyed[1]))
+    if (!page() && keyed && isKey(keyed[1]))
       return { before, word, key: keyed[1] as FilterKey, partial: keyed[2] };
     return { before, word, key: undefined, partial: "" };
   });
-  // What's typed, less a filter being typed at its end.
-  const free = (): string => (typing().key ? typing().before : text()).trim();
 
   const chooseToken = (token: Token): void => {
     setTokens([...tokens(), token]);
     setText(typing().before);
     input.focus();
   };
+  const enter = (next: Page): void => {
+    setPages([...pages(), next]);
+    setText("");
+    input.focus();
+  };
+  const back = (): void => {
+    setPages(pages().slice(0, -1));
+    setText("");
+  };
 
-  // A filter's values, once its key is typed (`from:`).
-  const suggestions = (): Option[] => {
+  const toOption = (c: Command): Option => ({
+    label: c.title,
+    icon: c.seed ? undefined : c.icon,
+    seed: c.seed,
+    hint: c.keys,
+    section: c.section,
+    more: c.page !== undefined,
+    run: () => {
+      if (c.page) return enter(c.page());
+      close();
+      c.run?.();
+    },
+  });
+
+  // The commands listed: a page's choices; the threads that pass the chips; what's suggested; or the best matches of
+  // every kind the tab allows, each kind under its heading, the heading with the best match first.
+  const found = createMemo((): Command[] => {
+    const q = query();
+    const current = page();
+    if (current) {
+      const all = current.commands();
+      return q ? all.filter((c) => score(c, q) > 0).sort((a, b) => score(b, q) - score(a, q)) : all;
+    }
+    if (tokens().length > 0) {
+      const free = (typing().key ? typing().before : text()).trim().toLowerCase();
+      return store
+        .all(Thread)
+        .filter((t) => tokens().every((token) => passes(t, token)) && says(t, free))
+        .sort((a, b) => lastActive(b) - lastActive(a))
+        .slice(0, 50)
+        .map((t) => threadCommand(t));
+    }
+    const kinds = CATEGORIES[category()].kinds;
+    if (!q) {
+      if (category() === 0) return suggestions();
+      if (kinds.includes("thread"))
+        return [...store.all(Thread)]
+          .sort((a, b) => Number(b.isOpen) - Number(a.isOpen) || lastActive(b) - lastActive(a))
+          .slice(0, 30)
+          .map((t) => threadCommand(t));
+      return commands().filter((c) => kinds.includes(c.kind));
+    }
+    // Threads by their title, then by what's said in them.
+    const threads = kinds.includes("thread")
+      ? store.all(Thread).flatMap((t) => {
+          const c = threadCommand(t);
+          const s = score(c, q) || (says(t, q) ? 10 : 0);
+          return s ? [{ c, s }] : [];
+        })
+      : [];
+    const scored = [
+      ...commands()
+        .filter((c) => kinds.includes(c.kind))
+        .map((c) => ({ c, s: score(c, q) }))
+        .filter((r) => r.s > 0),
+      ...threads,
+    ].sort((a, b) => b.s - a.s);
+    const taken: Record<Kind, number> = { action: 0, place: 0, person: 0, thread: 0 };
+    const kept = scored.filter((r) => taken[r.c.kind]++ < LIMIT[r.c.kind]);
+    const order = [...new Set(kept.map((r) => r.c.section))];
+    return order.flatMap((section) => kept.filter((r) => r.c.section === section).map((r) => r.c));
+  });
+
+  // The rows: a filter's values while its key is typed (`from:`), otherwise the commands found.
+  const rows = createMemo((): Option[] => {
     const { key, partial } = typing();
     if (key)
       return choicesFor(key, partial)
@@ -114,143 +244,7 @@ export function Search(): JSX.Element {
           section: `${key[0].toUpperCase()}${key.slice(1)}`,
           run: () => chooseToken({ key, value: c.value, text: c.text }),
         }));
-    // Otherwise none: the menu is the results for what's typed (filters are there for whoever types one).
-    return [];
-  };
-
-  const commands = (): Option[] => [
-    {
-      label: "New thread",
-      icon: i.PencilEdit02Icon,
-      hint: keysFor("newThread"),
-      section: "Quick actions",
-      run: () => setDialog({ kind: "newThread" }),
-    },
-    {
-      label: "New label",
-      icon: i.Tag01Icon,
-      section: "Quick actions",
-      run: () => setDialog({ kind: "newLabel" }),
-    },
-    {
-      label: "New subspace",
-      icon: i.Layers01Icon,
-      section: "Quick actions",
-      run: () => setDialog({ kind: "newSubspace" }),
-    },
-    {
-      label: "Personal",
-      icon: i.UserIcon,
-      section: "Views",
-      run: done(() => open({ personal: null })),
-    },
-    {
-      label: "Workspace",
-      icon: i.DashboardSquare01Icon,
-      section: "Views",
-      run: done(() => open({ view: null })),
-    },
-    {
-      label: "Settings",
-      icon: i.Settings02Icon,
-      hint: keysFor("settings"),
-      section: "Views",
-      run: done(() => open({ settings: null })),
-    },
-    {
-      label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-      icon: theme() === "dark" ? i.Sun03Icon : i.Moon02Icon,
-      section: "Views",
-      run: done(() => applyTheme(theme() === "dark" ? "light" : "dark")),
-    },
-    // Signed in, you're who you signed in as; only Sample is viewed as anyone.
-    ...(account
-      ? [
-          {
-            label: `Sign out (${account.email})`,
-            icon: i.Logout01Icon,
-            section: "Account",
-            run: done(() => void signOut()),
-          },
-        ]
-      : []),
-    ...(account
-      ? []
-      : [
-          {
-            label: "View as",
-            icon: i.UserSwitchIcon,
-            hint: keysFor("viewAs"),
-            section: "Data",
-            run: () => setDialog({ kind: "viewAs" }),
-          },
-        ]),
-    ...otherSources.map((s) => ({
-      label: `Use ${SOURCES[s]} data`,
-      icon: i.DatabaseIcon,
-      section: "Data",
-      run: () => switchTo({ source: s }),
-    })),
-  ];
-
-  const threadRow = (t: Thread): Option => ({
-    label: t.title,
-    icon: i.Comment01Icon,
-    section: "Threads",
-    run: done(() => open({ thread: t.id })),
-  });
-
-  // With filters, the threads that pass them all and say what's typed; without, everything that matches by name.
-  const results = (): Option[] => {
-    const query = free().toLowerCase();
-    if (tokens().length > 0)
-      return store
-        .all(Thread)
-        .filter((t) => tokens().every((token) => passes(t, token)) && says(t, query))
-        .slice(0, 50)
-        .map(threadRow);
-    const c = category();
-    const named = <T extends { name?: string; title?: string }>(r: T): boolean =>
-      (r.name ?? r.title ?? "").toLowerCase().includes(query);
-    return [
-      ...(c === 0 ? commands().filter((o) => o.label.toLowerCase().includes(query)) : []),
-      ...(c === 0 || c === 3 ? store.all(User).filter(named) : []).map((u) => ({
-        label: u.name,
-        section: "People",
-        seed: u.id,
-        run: done(() => open({ person: u.id })),
-      })),
-      ...(c === 0 || c === 2 ? store.all(Subspace).filter(named) : []).map((sub) => ({
-        label: sub.name,
-        icon: sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon,
-        section: "Subspaces",
-        run: done(() => open({ subspace: sub.id })),
-      })),
-      ...(c === 0 || c === 2 ? store.all(View).filter(named) : []).map((v) => ({
-        label: v.name,
-        icon: i.FilterIcon,
-        section: "Views",
-        run: done(() => open({ view: v.id })),
-      })),
-      ...(c === 0 || c === 2 ? store.all(Label).filter(named) : []).map((l) => ({
-        label: l.name,
-        icon: i.Tag01Icon,
-        section: "Labels",
-        run: done(() => open({ label: l.id })),
-      })),
-      ...(c === 0 || c === 1
-        ? store
-            .all(Thread)
-            .filter((t) => (query ? says(t, query) : true))
-            .map(threadRow)
-        : []),
-    ];
-  };
-
-  const rows = createMemo((): Option[] => {
-    const offered = suggestions();
-    // While a filter's value is being typed, only its values.
-    return typing().key ? offered : [...offered, ...results()];
+    return found().map(toOption);
   });
   createEffect(rows, () => {
     setAt(0);
@@ -264,23 +258,33 @@ export function Search(): JSX.Element {
       return out;
     }, []),
   );
+  // The highlighted command, if it's one (not a filter's value).
+  const highlighted = (): Command | undefined => (typing().key ? undefined : found()[index()]);
 
   const onKeyDown = (event: KeyboardEvent): void => {
+    const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
     const next = moved(event.key, index(), rows().length);
     if (next !== undefined) setAt(next);
-    else if (event.key === "Enter") rows()[index()]?.run();
+    // ⌘↵ peeks at a thread or person instead of opening it.
+    else if (event.key === "Enter" && event.metaKey) {
+      const c = highlighted();
+      if (!c?.peek) return;
+      close();
+      c.peek();
+    } else if (event.key === "Enter") rows()[index()]?.run();
     // Tab takes the highlighted value, as a shell completes.
     else if (event.key === "Tab" && typing().key) rows()[index()]?.run();
     // A finished `key:value` becomes a chip as you type the space after it.
-    else if (event.key === " " && tokenOf(typing().word)) chooseToken(tokenOf(typing().word)!);
-    else if (
-      event.key === "Backspace" &&
-      input.selectionStart === 0 &&
-      input.selectionEnd === 0 &&
-      tokens().length > 0
-    )
+    else if (event.key === " " && !page() && tokenOf(typing().word))
+      chooseToken(tokenOf(typing().word)!);
+    // Backspace at the start takes back the last chip, or leaves the page you're in.
+    else if (event.key === "Backspace" && atStart && tokens().length > 0)
       setTokens(tokens().slice(0, -1));
-    else if (event.metaKey && CATEGORIES[Number(event.key) - 1]) setCategory(Number(event.key) - 1);
+    else if (event.key === "Backspace" && atStart && text() === "" && page()) back();
+    // Escape leaves a page before it closes ⌘K.
+    else if (event.key === "Escape" && page()) back();
+    else if (event.metaKey && !page() && CATEGORIES[Number(event.key) - 1])
+      chooseTab(Number(event.key) - 1);
     else return;
     event.preventDefault();
   };
@@ -288,6 +292,9 @@ export function Search(): JSX.Element {
   return (
     <Modal>
       <div class={sx(palette.inputRow, styles.inputRow)} onClick={() => input.focus()}>
+        <Show when={page()}>
+          {(current) => <span class={sx(styles.chip, styles.pageChip)}>{current().title}</span>}
+        </Show>
         <For each={tokens()}>
           {(token) => (
             <span class={sx(styles.chip)}>
@@ -308,32 +315,32 @@ export function Search(): JSX.Element {
           ref={input}
           autofocus
           class={sx(base.bare, palette.input, styles.input)}
-          placeholder={tokens().length > 0 ? "" : "Search"}
+          placeholder={page()?.placeholder ?? (tokens().length > 0 ? "" : "Search")}
           spellcheck={false}
           value={text()}
           onInput={(event) => setText(event.currentTarget.value)}
           onKeyDown={onKeyDown}
         />
       </div>
-      <Show when={tokens().length === 0}>
+      <Show when={!page() && tokens().length === 0}>
         <div class={sx(palette.filters)} role="tablist">
           <For each={CATEGORIES}>
-            {(label, n) => (
+            {(c, n) => (
               <button
                 class={sx(base.bare, palette.filter, category() === n() && palette.filterChosen)}
                 role="tab"
                 aria-selected={category() === n() ? "true" : "false"}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => setCategory(n())}
+                onClick={() => chooseTab(n())}
               >
-                {label}
+                {c.label}
                 <span class={sx(palette.filterKey)}>⌘ {n() + 1}</span>
               </button>
             )}
           </For>
         </div>
       </Show>
-      <Show when={rows().length > 0}>
+      <Show when={rows().length > 0} fallback={<div class={sx(styles.empty)}>Nothing matches</div>}>
         <div class={sx(palette.results)} role="listbox">
           <For each={sections()}>
             {(section) => (
@@ -353,6 +360,27 @@ export function Search(): JSX.Element {
           </For>
         </div>
       </Show>
+      <div class={sx(styles.footer)}>
+        <span>
+          <span class={sx(styles.key)}>↵</span>
+          {highlighted()?.page ? "Open" : "Run"}
+        </span>
+        <Show when={highlighted()?.peek}>
+          <span>
+            <span class={sx(styles.key)}>⌘↵</span>Peek
+          </span>
+        </Show>
+        <Show when={page()}>
+          <span>
+            <span class={sx(styles.key)}>esc</span>Back
+          </span>
+        </Show>
+        <Show when={!page() && tokens().length === 0 && !text()}>
+          <span>
+            <span class={sx(styles.key)}>&gt; # @ /</span>Commands, threads, people, places
+          </span>
+        </Show>
+      </div>
     </Modal>
   );
 }
