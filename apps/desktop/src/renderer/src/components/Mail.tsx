@@ -767,31 +767,32 @@ function Row(props: { thread: Thread }): JSX.Element {
           </Show>
         </span>
         <span class={sx(s.rowBody)}>
+          {/* What it's about first, then who wrote last: the topic is what you scan a list for. */}
           <span class={sx(s.rowTop)}>
-            <span class={sx(s.who)}>
-              <Identicon seed={from()?.id ?? t().ownerId ?? ""} size={16} class={sx(s.whoAvatar)} />
-              <span class={sx(base.ellipsis, s.from)}>{from()?.name ?? ""}</span>
+            <span class={sx(s.subjectLine)}>
+              <Show when={t().priority === "urgent" || t().priority === "high"}>
+                <span class={sx(s.priority, t().priority === "urgent" && s.urgent)}>
+                  {t().priority === "urgent" ? "!!" : "!"}
+                </span>
+              </Show>
+              <Show when={t().state !== "open"}>
+                <span class={sx(s.stateMark)}>
+                  <Icon
+                    icon={t().state === "resolved" ? i.CheckmarkCircle02Icon : i.Clock01Icon}
+                    size={11}
+                    aria-hidden="true"
+                  />
+                </span>
+              </Show>
+              <span class={sx(base.ellipsis, s.subject, isUnread() && s.subjectUnread)}>
+                {t().title}
+              </span>
             </span>
             <span class={sx(s.stamp)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
           </span>
-          <span class={sx(s.subjectLine)}>
-            <Show when={t().priority === "urgent" || t().priority === "high"}>
-              <span class={sx(s.priority, t().priority === "urgent" && s.urgent)}>
-                {t().priority === "urgent" ? "!!" : "!"}
-              </span>
-            </Show>
-            <Show when={t().state !== "open"}>
-              <span class={sx(s.stateMark)}>
-                <Icon
-                  icon={t().state === "resolved" ? i.CheckmarkCircle02Icon : i.Clock01Icon}
-                  size={11}
-                  aria-hidden="true"
-                />
-              </span>
-            </Show>
-            <span class={sx(base.ellipsis, s.subject, isUnread() && s.subjectUnread)}>
-              {t().title}
-            </span>
+          <span class={sx(s.who)}>
+            <Identicon seed={from()?.id ?? t().ownerId ?? ""} size={14} class={sx(s.whoAvatar)} />
+            <span class={sx(base.ellipsis, s.from)}>{from()?.name ?? ""}</span>
           </span>
           <Show when={last()}>
             {(message) => <span class={sx(s.preview)}>{preview(message().body)}</span>}
@@ -1377,20 +1378,26 @@ const s = stylex.create({
   unreadDot: { width: 8, height: 8, borderRadius: "50%", backgroundColor: colors.systemBlue },
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
   // The first line, with a little room under it (as much as above a row's due date and labels).
+  // The title and when, on the first line.
   rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 3 },
-  // Who wrote last: a small avatar before their name, on the first line, clear of the unread dot's column.
-  who: { display: "flex", flex: 1, gap: 6, alignItems: "center", minWidth: 0 },
+  // Who wrote last, under the title: a small avatar before their name, quieter than what it's about.
+  who: { display: "flex", gap: 5, alignItems: "center", minWidth: 0, marginBottom: 2 },
   whoAvatar: { flexShrink: 0 },
   // A line as tall as the avatar beside it, so the name sits centred on it.
-  from: { flex: 1, fontSize: fontSizes.name, fontWeight: 600, lineHeight: "16px" },
+  from: {
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    fontWeight: 500,
+    lineHeight: "14px",
+  },
   stamp: {
     flexShrink: 0,
     color: colors.textTertiary,
     fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
   },
-  subjectLine: { display: "flex", gap: 4, alignItems: "center", minWidth: 0 },
-  subject: { fontSize: fontSizes.body },
+  subjectLine: { display: "flex", flex: 1, gap: 4, alignItems: "center", minWidth: 0 },
+  subject: { fontSize: fontSizes.name, fontWeight: 500, lineHeight: "18px" },
   subjectUnread: { fontWeight: 600 },
   priority: { flexShrink: 0, color: "#ff9f0a", fontSize: fontSizes.body, fontWeight: 700 },
   urgent: { color: colors.urgent },
