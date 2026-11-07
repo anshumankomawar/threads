@@ -6,11 +6,8 @@ import { Draft, Label, Subspace, Thread, User, View } from "models";
 import {
   active,
   itemFor,
-  account,
-  me,
   open,
   server,
-  setDialog,
   peek,
   setSplit,
   sidebarOpen,
@@ -30,11 +27,10 @@ import {
 import { base } from "./styles/base";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
-import { colors, fontSizes, radii } from "./styles/tokens.stylex";
+import { colors, fontSizes } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
 import { Icon } from "./components/Icon";
-import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
@@ -70,22 +66,8 @@ const styles = stylex.create({
   },
   // Beside the list, which has the window's buttons when the sidebar's hidden.
   topbarBesideList: { paddingLeft: 8 },
-  viewAs: {
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    height: 22,
-    padding: "0 6px",
-    borderStyle: "none",
-    borderRadius: radii.row,
-    color: { default: colors.textSecondary, ":hover": colors.textPrimary },
-    font: "inherit",
-    fontSize: fontSizes.body,
-    backgroundColor: "transparent",
-    cursor: "pointer",
-    WebkitAppRegion: "no-drag",
-  },
-  viewAsSource: { marginRight: 4, color: colors.textTertiary },
+  // Only when the connection's down: viewing as someone else and the data source are in ⌘K (and ⌘U).
+  offline: { color: colors.textTertiary, fontSize: fontSizes.body },
   panes: { display: "flex", flex: 1, minHeight: 0 },
   splitPane: {
     display: "flex",
@@ -186,19 +168,9 @@ export default function App(): JSX.Element {
               <Show when={active()} keyed>
                 {(thread) => <ThreadActions thread={thread} />}
               </Show>
-              <button
-                class={sx(styles.viewAs)}
-                disabled={account !== null}
-                aria-label={`Viewing as ${me().name}. Switch user`}
-                onClick={() => setDialog({ kind: "viewAs" })}
-              >
-                <span class={sx(styles.viewAsSource)}>
-                  {SOURCES[source]}
-                  {store.connection() === "offline" && " · Offline"}
-                </span>
-                <Identicon seed={me().id} size={14} />
-                <span>{me().name}</span>
-              </button>
+              <Show when={store.connection() === "offline"}>
+                <span class={sx(styles.offline)}>Offline</span>
+              </Show>
             </span>
           </div>
           <Switch fallback={<NothingOpen />}>
