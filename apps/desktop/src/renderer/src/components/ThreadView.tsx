@@ -17,7 +17,6 @@ import {
   STATES,
   User,
   Message,
-  mentionsIn,
 } from "models";
 import {
   byName,
@@ -68,8 +67,10 @@ const styles = stylex.create({
   },
   // An activity's mark on the spine, and the one that says it's your turn.
   eventDot: { width: 6, height: 6, borderRadius: "50%", backgroundColor: colors.iconTertiary },
-  yourTurn: { backgroundColor: colors.systemBlue },
-  waitingOn: { color: colors.textPrimary, fontWeight: 500 },
+  // Yours, on the right: avatar and byline at the far edge, the text in a column that leaves the left open.
+  mine: { flexDirection: "row-reverse" },
+  mineBody: { alignItems: "flex-end" },
+  mineText: { maxWidth: "80%", textAlign: "right" },
   to: { color: colors.textSecondary, fontSize: fontSizes.body },
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
@@ -119,7 +120,7 @@ export const dot = (state: Thread["state"]): JSX.Element => (
 
 // ── The conversation ──
 
-// How a turn sits: someone speaking (an avatar), a line of activity or whose turn it is (a dot), or a message that
+// How a turn sits: someone speaking (an avatar), a line of activity (a dot), or a message that
 // carries on the one before it, with neither. Each is pulled up toward the turn before by its own amount.
 type Turn = "avatar" | "dot" | "grouped";
 const PULL: Record<Turn, number> = { avatar: 0, dot: -(TURN_GAP - 12), grouped: -(TURN_GAP - 6) };
@@ -187,7 +188,7 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
               onClick={() => setSplit(part.thread)}
             >
               {icon(i.GitBranchIcon, 11)}
-              {titleOf(part.thread) ?? "Thread"}
+              <span class={sx(base.ellipsis)}>{titleOf(part.thread) ?? "Thread"}</span>
             </button>
           </Show>
         ) : "date" in part ? (
@@ -344,9 +345,10 @@ function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Elemen
 function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): JSX.Element {
   const m = (): Message => props.message;
   const said = (): { to: string[]; rest: string } => addressed(m().body);
+  const mine = (): boolean => m().authorId === me().id;
   return (
     <div
-      class={sx(thread.block)}
+      class={sx(thread.block, mine() && styles.mine)}
       style={pulled(props.turn)}
       onContextMenu={(event) =>
         showMenu(event, [
@@ -373,7 +375,7 @@ function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): 
           <Identicon seed={m().authorId} size={AVATAR} />
         </Show>
       </span>
-      <div class={sx(thread.body)}>
+      <div class={sx(thread.body, mine() && styles.mineBody)}>
         <Show when={props.turn === "avatar"}>
           <Meta user={m().author} at={m().createdAt}>
             <Show when={said().to.length > 0}>
@@ -381,42 +383,9 @@ function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): 
             </Show>
           </Meta>
         </Show>
-        <div class={sx(thread.text)}>
+        <div class={sx(thread.text, mine() && styles.mineText)}>
           <LinkedText text={said().rest} current={props.thread.id} />
         </div>
-      </div>
-    </div>
-  );
-}
-
-// Whose turn it is, just above the reply: yours when the last message asked you, else whoever your last one asked.
-type Waiting = { you: boolean; on: string; since?: string };
-function waitingIn(c: Thread): Waiting | undefined {
-  const last = c.messages.sorted("createdAt").at(-1);
-  if (!c.isOpen || !last) return undefined;
-  const asked = mentionsIn(last.body);
-  if (last.authorId !== me().id)
-    return asked.includes(me().id) || (asked.length === 0 && c.assigneeIds.includes(me().id))
-      ? {
-          you: true,
-          on: "you",
-          since: `${last.author ? firstName(last.author) : "Someone"} asked ${ago(last.createdAt)}`,
-        }
-      : undefined;
-  const on = (asked.length > 0 ? asked : c.assigneeIds)
-    .filter((id) => id !== me().id)
-    .flatMap((id) => store.findById(User, id) ?? []);
-  return on.length > 0 ? { you: false, on: LIST.format(on.map(firstName)) } : undefined;
-}
-function WaitingLine(props: { waiting: Waiting }): JSX.Element {
-  return (
-    <div class={sx(thread.block)} style={pulled("dot")}>
-      <span class={sx(thread.avatar, styles.eventMarker)} aria-hidden="true">
-        <span class={sx(styles.eventDot, props.waiting.you && styles.yourTurn)} />
-      </span>
-      <div class={sx(styles.quiet, styles.eventText)}>
-        <span class={sx(props.waiting.you && styles.waitingOn)}>Waiting on {props.waiting.on}</span>
-        <Show when={props.waiting.since}>{(since) => <span> · {since()}</span>}</Show>
       </div>
     </div>
   );
@@ -733,7 +702,6 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
         : "avatar";
     });
   });
-  const waiting = createMemo(() => waitingIn(props.thread));
   // To the end on opening to reply, and whenever you send something.
   let opened = false;
   createEffect(
@@ -761,7 +729,6 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
               )
             }
           </For>
-          <Show when={waiting()}>{(w) => <WaitingLine waiting={w()} />}</Show>
           <Show when={props.thread.isOpen}>
             <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
           </Show>
