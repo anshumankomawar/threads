@@ -16,10 +16,9 @@ const INSET = 8;
 const panelIn = stylex.keyframes({
   from: { opacity: 0, transform: "scale(0.985)" },
 });
-const backdropIn = stylex.keyframes({ from: { opacity: 0 } });
 
 // Palettes (Palettes.tsx `Modal`) are a modal <dialog>: a `base.panel`, 560px wide, centered, a little under a fifth of
-// the way down (and never running off the bottom). It's there at once: a quick fade, over a light dim.
+// the way down (and never running off the bottom). It's there at once: a quick fade, its shadow setting it off.
 export const palette = stylex.create({
   dialog: {
     flexDirection: "column",
@@ -37,17 +36,13 @@ export const palette = stylex.create({
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     lineHeight: "16px",
-    boxShadow: colors.shadowPanel,
+    // No dimming behind it: its shadow alone lifts it off the app.
+    boxShadow: colors.shadowFloat,
     outline: "none",
     animationName: { default: panelIn, [motion.reduced]: "none" },
     animationDuration: "70ms",
     animationTimingFunction: "cubic-bezier(0.2, 0.9, 0.3, 1)",
-    "::backdrop": {
-      backgroundColor: colors.overlay,
-      animationName: backdropIn,
-      animationDuration: "70ms",
-      animationTimingFunction: "linear",
-    },
+    "::backdrop": { backgroundColor: "transparent" },
   },
   // `display: flex` only while open, so a closed dialog stays hidden.
   open: { display: { default: "none", ":is([open])": "flex" } },
