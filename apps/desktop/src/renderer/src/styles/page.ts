@@ -10,7 +10,8 @@ export const page = stylex.create({
     flex: 1,
     flexDirection: "column",
     minHeight: 0,
-    padding: "52px 52px 48px",
+    // In the reading pane, just under its toolbar, as a thread starts.
+    padding: "16px 52px 48px",
     overflowY: "auto",
     zoom: contentZoom["--content-zoom"],
   },
