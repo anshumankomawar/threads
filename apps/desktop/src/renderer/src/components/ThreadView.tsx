@@ -65,7 +65,7 @@ const styles = stylex.create({
     height: 18,
     marginTop: 0,
   },
-  // An activity's mark on the spine, and the one that says it's your turn.
+  // An activity's mark, in the avatar's column.
   eventDot: { width: 6, height: 6, borderRadius: "50%", backgroundColor: colors.iconTertiary },
   // Yours, on the right: avatar and byline at the far edge, the text in a column that leaves the left open.
   mine: { flexDirection: "row-reverse" },
@@ -73,7 +73,6 @@ const styles = stylex.create({
   noAvatar: { height: 0, marginTop: 0 },
   mineBody: { alignItems: "flex-end" },
   mineText: { maxWidth: "80%", textAlign: "right" },
-  to: { color: colors.textSecondary, fontSize: fontSizes.body },
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
   // Pulled out by a value's padding, so the first one's icon lines up with the title.
@@ -131,23 +130,6 @@ const PULL: Record<Turn, number> = { avatar: 0, dot: -(TURN_GAP - 12), grouped: 
 const pulled = (turn: Turn): JSX.CSSProperties | undefined =>
   PULL[turn] ? { "margin-top": `${PULL[turn]}px` } : undefined;
 
-// Who a message is to: the @mentions it opens with, which its byline shows ("→ You, Sam") instead of its text.
-const LEADING = /^(?:\s*\[\[(?:person|subspace):[^\]\s]+\]\])+[\s,:]*/;
-function addressed(body: string): { to: string[]; rest: string } {
-  const lead = LEADING.exec(body)?.[0];
-  const rest = lead ? body.slice(lead.length) : body;
-  if (!lead || !rest.trim()) return { to: [], rest: body };
-  const to = splitText(lead).flatMap((part) =>
-    "person" in part
-      ? part.person === me().id
-        ? ["You"]
-        : [firstName(store.findById(User, part.person) ?? { name: "Someone" })]
-      : "subspace" in part
-        ? [store.findById(Subspace, part.subspace)?.name ?? "a space"]
-        : [],
-  );
-  return { to, rest };
-}
 const LIST = new Intl.ListFormat(undefined, { type: "conjunction" });
 // Others in a thread, by first name: whoever started it, is on it, or has written in it.
 const peopleIn = (c: Thread): User[] =>
@@ -348,7 +330,6 @@ function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Elemen
 
 function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): JSX.Element {
   const m = (): Message => props.message;
-  const said = (): { to: string[]; rest: string } => addressed(m().body);
   const mine = (): boolean => m().authorId === me().id;
   return (
     <div
@@ -381,14 +362,10 @@ function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): 
       </span>
       <div class={sx(thread.body, mine() && styles.mineBody)}>
         <Show when={props.turn === "avatar"}>
-          <Meta user={m().author} at={m().createdAt}>
-            <Show when={said().to.length > 0}>
-              <span class={sx(styles.to)}>→ {said().to.join(", ")}</span>
-            </Show>
-          </Meta>
+          <Meta user={m().author} at={m().createdAt} />
         </Show>
         <div class={sx(thread.text, mine() && styles.mineText)}>
-          <LinkedText text={said().rest} current={props.thread.id} />
+          <LinkedText text={m().body} current={props.thread.id} />
         </div>
       </div>
     </div>
@@ -692,8 +669,7 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
     [...messages(), ...props.thread.activity.sorted("createdAt")].sort(
       (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
     );
-  // Each entry's place on the spine: a message carries on the one before when it's the same person's, soon after, and
-  // not addressed anew.
+  // How each entry sits: a message carries on the one before when it's the same person's, soon after.
   const turns = createMemo(() => {
     const list = entries();
     return list.map((entry, at): Turn => {
@@ -701,8 +677,7 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
       const prev = list[at - 1];
       return prev instanceof Message &&
         prev.authorId === entry.authorId &&
-        entry.createdAt.getTime() - prev.createdAt.getTime() < 60 * 60_000 &&
-        addressed(entry.body).to.length === 0
+        entry.createdAt.getTime() - prev.createdAt.getTime() < 60 * 60_000
         ? "grouped"
         : "avatar";
     });
