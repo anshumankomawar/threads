@@ -1413,7 +1413,8 @@ const s = stylex.create({
     paddingTop: 5,
   },
   unreadDot: { width: 8, height: 8, borderRadius: "50%", backgroundColor: colors.systemBlue },
-  avatar: { flexShrink: 0, marginTop: 1 },
+  // Centred on the first two lines (who and what: 9px to 43px down the row), not the whole row.
+  avatar: { flexShrink: 0, marginTop: 5 },
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
   rowTop: { display: "flex", gap: 8, alignItems: "baseline" },
   from: { flex: 1, fontSize: fontSizes.name, fontWeight: 600 },
