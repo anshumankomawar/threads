@@ -303,6 +303,7 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
             showMenu(e, [
               {
                 label: add.label,
+                form: true,
                 icon: icon(i.Add01Icon, 13),
                 run: (from) => ask(from, add.label),
               },
@@ -460,10 +461,16 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   return [
     {
       label: "Edit Bucket",
+      form: true,
       icon: icon(i.PencilEdit01Icon, 13),
       run: (from) => askBucket(from, bucket),
     },
-    { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: (from) => askBucket(from) },
+    {
+      label: "New Bucket",
+      icon: icon(i.Add01Icon, 13),
+      form: true,
+      run: (from) => askBucket(from),
+    },
     "separator",
     { label: "Move Up", icon: icon(i.ArrowUp01Icon, 13), run: move(-1) },
     { label: "Move Down", icon: icon(i.ArrowDown01Icon, 13), run: move(1) },
@@ -473,6 +480,7 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
           "separator" as const,
           {
             label: "Delete Bucket",
+            form: true,
             icon: icon(i.Delete02Icon, 13),
             run: (from) => askDeleteBucket(from, bucket),
           },
@@ -509,7 +517,12 @@ export function MailSidebar(): JSX.Element {
             icon={i.InboxIcon}
             count={inbox().order.length}
             menu={() => [
-              { label: "New Bucket", icon: icon(i.Add01Icon, 13), run: (from) => askBucket(from) },
+              {
+                label: "New Bucket",
+                icon: icon(i.Add01Icon, 13),
+                form: true,
+                run: (from) => askBucket(from),
+              },
               "separator",
               {
                 label: "Mark All as Read",

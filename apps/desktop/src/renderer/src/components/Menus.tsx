@@ -9,7 +9,7 @@ import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { holdFocus, menuLeaving } from "./InlineForm";
+import { holdFocus, openFrom } from "./InlineForm";
 
 // One choice in a list you move through with the arrow keys: a palette's rows, the reply's @ # / menus, ⌘⇧N's @ menu.
 // `section` heads a run of a palette's rows; `hint` sits on the right; `accent` makes it stand out ("New thread").
@@ -97,10 +97,13 @@ function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean
         onClick={(event) => {
           const entry = event.currentTarget as HTMLElement;
           if (opens) return openSub(item, event);
-          // Kept a moment, in case what it runs grows a form out of it (InlineForm), which then fades in over it.
-          const menu = entry.closest<HTMLElement>("[role=menu]");
-          if (menu) menuLeaving(menu);
-          run?.((entry.querySelector("svg") ?? entry).getBoundingClientRect());
+          const from = (entry.querySelector("svg") ?? entry).getBoundingClientRect();
+          // One that asks for a form (InlineForm) opens it over the menu, which stays open under it.
+          if ("form" in item && item.form) {
+            openFrom(entry, props.close);
+            return item.run(from);
+          }
+          run?.(from);
         }}
       >
         <Show when={gutter()}>
