@@ -7,8 +7,8 @@ import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { Icon, type IconSvgElement } from "./Icon";
 
-// A small form grown out of what asked for it (a sidebar +, or the row a context menu was opened on): a panel the size
-// of a context menu laid over it, its icon carried into the panel exactly where it was, and the fields beside it. Enter
+// A small form grown out of what asked for it, the size of a context menu: from a sidebar +, a panel laid over it with
+// its icon carried in exactly where it was and the fields beside it; from a row's context menu, beside the row. Enter
 // moves to the next field and, on the last, submits; Escape or a click elsewhere closes it. Until then it keeps the
 // focus and the keys (Tab goes round its fields), so nothing behind it moves while you type.
 
@@ -34,8 +34,10 @@ export function holdFocus(panel: HTMLElement): void {
 }
 
 export type InlineAsk = {
-  // The icon it grows out of; the panel's own icon lands on it.
+  // The icon it grows out of, whose place the panel's own icon takes; or, `beside`, the row it opens to the right of,
+  // as a submenu does, level with it.
   at: Element;
+  beside?: boolean;
   icon: IconSvgElement;
   fields: { label: string; placeholder: string; value?: string }[];
   submit: (values: string[]) => void;
@@ -95,12 +97,12 @@ export function InlineForm(): JSX.Element {
     <Show when={asked()} keyed>
       {(ask) => {
         const inputs: HTMLInputElement[] = [];
-        const size = Math.round(ask.at.getBoundingClientRect().width) || 13;
+        const size = ask.beside ? 13 : Math.round(ask.at.getBoundingClientRect().width) || 13;
         const open = (panel: HTMLDivElement): void => {
           holdFocus(panel);
           queueMicrotask(() => {
             const at = ask.at.getBoundingClientRect();
-            panel.style.left = `${at.left - LEAD}px`;
+            panel.style.left = `${ask.beside ? at.right + 6 : at.left - LEAD}px`;
             panel.style.top = `${at.top + at.height / 2 - TO_FIRST_ROW}px`;
             panel.showPopover();
             inputs[0]?.focus();

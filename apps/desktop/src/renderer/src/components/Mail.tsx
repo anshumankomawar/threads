@@ -208,7 +208,7 @@ function Mailbox(props: {
   icon: IconSvgElement;
   count?: number;
   indent?: boolean;
-  // What right-clicking it offers; `at` is its icon, for a form to grow out of.
+  // What right-clicking it offers; `at` is its row, for a form to open beside.
   menu?: (at: Element) => MenuItem[];
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
@@ -222,7 +222,7 @@ function Mailbox(props: {
         class={sx(s.mailbox, props.indent && s.indent)}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
-          const items = props.menu?.(e.currentTarget.querySelector("svg") ?? e.currentTarget);
+          const items = props.menu?.(e.currentTarget);
           if (items) showMenu(e, items);
         }}
         onKeyDown={(e) => {
@@ -386,10 +386,11 @@ function SpaceOrLabel(props: {
   );
 }
 
-// A bucket's name and what goes in it (which the model sorts by), asked for in a form grown out of `at`.
+// A bucket's name and what goes in it (which the model sorts by), asked for in a form beside the row `at`.
 function askBucket(at: Element, bucket?: Bucket): void {
   askInline({
     at,
+    beside: true,
     icon: bucket ? i.PencilEdit01Icon : i.Add01Icon,
     fields: [
       { label: "Name", placeholder: "Name the bucket", value: bucket?.name },
