@@ -2,14 +2,14 @@ import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Label, Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
-import { me, memberOf, open, setDialog, store, edit, memberIn, workspace } from "../session";
+import { me, memberOf, open, store, edit, memberIn, workspace } from "../session";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
-import { MenuChip } from "./Menus";
+import { ComboButton, MenuChip } from "./Menus";
 import { Table, Toolbar, type Column } from "./Table";
 import {
   bind,
@@ -233,15 +233,30 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
       s()
         .members.sorted("createdAt")
         .flatMap((m) => m.user ?? []),
+    // Members add people from a list under the button; anyone else can join.
     action: (
-      <button
-        class={sx(base.bare, button.solid)}
-        onClick={() =>
-          isMember() ? setDialog({ kind: "addMember", subspace: s() }) : toggle(me())
+      <Show
+        when={isMember()}
+        fallback={
+          <button class={sx(base.bare, button.solid)} onClick={() => toggle(me())}>
+            Join
+          </button>
         }
       >
-        {isMember() ? "Add member" : "Join"}
-      </button>
+        <ComboButton
+          label="Add member"
+          class={sx(base.bare, button.solid)}
+          placeholder="Add someone…"
+          empty="Everyone's in it."
+          options={(query) =>
+            store
+              .all(User)
+              .filter((u) => !memberIn(s(), u.id) && u.name.toLowerCase().includes(query))
+              .sort((a, b) => a.name.localeCompare(b.name))
+              .map((u) => ({ label: u.name, seed: u.id, run: () => toggle(u) }))
+          }
+        />
+      </Show>
     ),
     end: (u) => (
       <Show when={isMember()}>

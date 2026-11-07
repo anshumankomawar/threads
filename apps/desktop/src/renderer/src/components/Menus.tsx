@@ -6,6 +6,7 @@ import { menu, setMenu, type MenuItem } from "../session";
 import { base } from "../styles/base";
 import { chip, chipTone, menu as look } from "../styles/controls";
 import { sx } from "../styles/sx";
+import { colors, fontSizes } from "../styles/tokens.stylex";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 
@@ -214,6 +215,120 @@ export function MenuChip(props: {
         <Show when={open()}>
           <Items items={props.items} close={() => popover.hidePopover()} />
         </Show>
+      </div>
+    </>
+  );
+}
+
+// Under its button, the right edges level, growing left over the page (StyleX's types only know the plain areas).
+const UNDER_END = "bottom span-left" as "bottom";
+const combo = stylex.create({
+  panel: {
+    width: 220,
+    minWidth: 0,
+    marginTop: 4,
+    positionArea: UNDER_END,
+    positionTryFallbacks: "flip-block",
+  },
+  // What you type, as a row of the menu itself: a field in the first entry's place.
+  field: { cursor: "text" },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    outline: "none",
+    "::placeholder": { color: colors.textTertiary },
+  },
+  list: { display: "flex", flexDirection: "column" },
+  empty: { color: colors.textTertiary, cursor: "default" },
+});
+
+// A button that opens a combo box under it, the size of a context menu: a field to narrow the choices, then the choices,
+// which the arrow keys move through and Enter (or a click) picks. It stays open to pick another, as adding several
+// people at once does; Escape or a click elsewhere closes it.
+export function ComboButton(props: {
+  label: JSX.Element;
+  class: string;
+  placeholder: string;
+  empty: string;
+  options: (query: string) => Option[];
+}): JSX.Element {
+  const id = createUniqueId();
+  const [query, setQuery] = createSignal("");
+  const [at, setAt] = createSignal(0);
+  let input!: HTMLInputElement;
+  const shown = (): Option[] => props.options(query().trim().toLowerCase());
+  const index = (): number => Math.min(at(), shown().length - 1);
+  const pick = (option: Option | undefined): void => {
+    if (!option) return;
+    option.run();
+    setQuery("");
+    input.focus();
+  };
+  return (
+    <>
+      <button popovertarget={id} class={props.class}>
+        {props.label}
+      </button>
+      <div
+        id={id}
+        popover="auto"
+        class={sx(base.panel, look.menu, look.compact, look.popover, combo.panel)}
+        role="dialog"
+        onToggle={(event) => {
+          if (event.newState !== "open") return;
+          setQuery("");
+          setAt(0);
+          input.focus();
+        }}
+      >
+        <label class={sx(look.entry, look.entryOpen, combo.field)}>
+          <span class={sx(look.entryIcon)}>{icon(i.Search01Icon, 12)}</span>
+          <input
+            ref={input}
+            class={sx(base.bare, combo.input)}
+            role="combobox"
+            aria-expanded="true"
+            aria-controls={`${id}-list`}
+            placeholder={props.placeholder}
+            spellcheck={false}
+            value={query()}
+            onInput={(event) => (setQuery(event.currentTarget.value), setAt(0))}
+            onKeyDown={(event) => {
+              const next = moved(event.key, index(), shown().length);
+              if (next !== undefined) setAt(next);
+              else if (event.key === "Enter" && !event.isComposing) pick(shown()[index()]);
+              else return;
+              event.preventDefault();
+            }}
+          />
+        </label>
+        <hr class={sx(look.entrySeparator)} />
+        <div id={`${id}-list`} class={sx(combo.list)} role="listbox">
+          <For
+            each={shown()}
+            fallback={<div class={sx(look.entry, combo.empty)}>{props.empty}</div>}
+          >
+            {(option, n) => (
+              <button
+                class={sx(base.bare, look.entry, n() === index() && look.entryOpen)}
+                role="option"
+                aria-selected={n() === index() ? "true" : "false"}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseMove={() => setAt(n())}
+                onClick={() => pick(option)}
+              >
+                <span class={sx(look.entryIcon)}>
+                  <Show when={option.seed} fallback={option.icon && icon(option.icon, 13)}>
+                    {(seed) => <Identicon seed={seed()} size={14} />}
+                  </Show>
+                </span>
+                <span class={sx(base.ellipsis, look.entryLabel)}>{option.label}</span>
+              </button>
+            )}
+          </For>
+        </div>
       </div>
     </>
   );
