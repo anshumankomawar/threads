@@ -37,7 +37,9 @@ const styles = stylex.create({
     "::placeholder": { color: colors.textTertiary },
   },
   quiet: { color: colors.textTertiary, fontSize: fontSizes.body },
-  properties: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 4 },
+  // Its own line under the title, a little apart from it, rather than tucked up as a thread's description is.
+  description: { marginTop: 2 },
+  properties: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 8 },
   // Not a menu: a draft's status and who it asks follow from what's written.
   staticChip: { cursor: "default" },
   // Floating at the bottom of the pane, the width of the document: that it isn't sent, and sending it.
@@ -142,10 +144,10 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
                 onInput={(e) => change({ title: e.currentTarget.value.replaceAll("\n", " ") })}
               />
               <textarea
-                class={sx(thread.text, thread.description, thread.headerDescription, styles.field)}
+                class={sx(thread.text, thread.description, styles.field, styles.description)}
                 rows={1}
-                aria-label="Context"
-                placeholder="Add context…"
+                aria-label="Description"
+                placeholder="Add a description…"
                 value={doc().context}
                 onInput={(e) => change({ context: e.currentTarget.value })}
               />
