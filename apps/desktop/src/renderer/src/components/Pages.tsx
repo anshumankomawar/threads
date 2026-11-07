@@ -256,10 +256,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   };
   return (
     <div class={sx(page.page)}>
-      <Title
-        name={s().name}
-        locked={isPrivate() ? "Private: only its members see it" : undefined}
-      />
+      <Title name={s().name} />
       <Show
         when={isMember()}
         fallback={
