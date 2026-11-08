@@ -40,7 +40,7 @@ import { focusOnShow } from "./Palettes";
 const styles = stylex.create({
   // The chips sit in the input's row, before what's typed, and wrap if there are many.
   // Chips and the input wrap here, on the palette's edge.
-  inputRow: { flexWrap: "wrap", gap: 4, height: "auto", minHeight: 44, padding: "8px 14px" },
+  inputRow: { flexWrap: "wrap", gap: 4, height: "auto", minHeight: 38, padding: "5px 14px" },
   chip: {
     display: "flex",
     gap: 4,

@@ -49,7 +49,7 @@ export const palette = stylex.create({
   // One edge for everything in a palette: what's typed, the tabs' names, headings, rows' icons and the footer all start
   // EDGE in from its side (rows' hints end EDGE from the other), and a highlighted tab or row's wash sits INSET in.
   // No rules between its parts: the input, the tabs and the results are set apart by space alone.
-  inputRow: { ...row, height: 44, padding: `0 ${EDGE}px` },
+  inputRow: { ...row, height: 38, padding: `0 ${EDGE}px` },
   input: {
     flex: 1,
     minWidth: 0,
@@ -79,11 +79,11 @@ export const palette = stylex.create({
   },
   filterChosen: { color: colors.accent, backgroundColor: colors.accentFill },
   filterKey: { opacity: 0.7, wordSpacing: "1px" },
-  // Its rows and headings as the sidebar's (Mail.tsx): 26px rows 2px apart, 22px headings, sections 14px apart.
+  // Its rows and headings as the sidebar's (Mail.tsx): 26px rows 2px apart, 22px headings; sections a little apart.
   section: { display: "flex", flexDirection: "column", gap: 2 },
   // A section after another is set apart by a little space, not a rule.
   divided: {
-    marginTop: { default: 0, [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: 14 },
+    marginTop: { default: 0, [stylex.when.siblingBefore(":is(*)", paletteSectionMarker)]: 6 },
   },
   sectionLabel: { ...row, gap: 4, height: 22, padding: `0 ${EDGE}px` },
   // A palette's row (OptionButton's `inset`): its wash INSET in from the sides, its icon and hint on the EDGE, its
