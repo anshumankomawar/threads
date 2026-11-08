@@ -11,6 +11,8 @@ import { BUCKET, icon, MessageList, Sidebar } from "./Inbox";
 // sharp on any screen and costing no image; the landing page cuts it off at the bottom of the screen.
 
 const WIDE = "@media (min-width: 1800px)";
+// On a phone the window shows only the open thread, the app's point, at a size that fits the screen.
+const PHONE = "@media (max-width: 767px)";
 const center = { display: "flex", alignItems: "center" } as const;
 const column = { display: "flex", flexDirection: "column" } as const;
 
@@ -19,9 +21,10 @@ const s = stylex.create({
     position: "relative",
     display: "grid",
     // The app's columns (Mail.tsx): 220 and 340, the thread taking the rest of 1440 ÷ 1.1.
-    gridTemplateColumns: "220px 340px 749px",
-    height: 818,
-    zoom: { default: 1.1, [WIDE]: 1.35 },
+    gridTemplateColumns: { default: "220px 340px 749px", [PHONE]: "440px" },
+    height: { default: 818, [PHONE]: 900 },
+    // A phone's 390px, less the page's 16px gutters, over the pane's 440px.
+    zoom: { default: 1.1, [WIDE]: 1.35, [PHONE]: 0.815 },
     overflow: "hidden",
     borderWidth: 1,
     borderStyle: "solid",
@@ -42,8 +45,18 @@ const s = stylex.create({
   lights: { position: "absolute", top: 10.9, left: 10.9, display: "flex", gap: 8.64 },
   light: { width: 12.27, height: 12.27, borderRadius: "50%" },
 
+  // The sidebar and the list, in their grid columns; gone on a phone.
+  aside: { display: { default: "contents", [PHONE]: "none" } },
   pane: { ...column, minWidth: 0, overflow: "hidden" },
-  bar: { ...center, flexShrink: 0, gap: 2.5, height: 34, paddingLeft: 8, paddingRight: 8 },
+  // On a phone the thread's bar is the window's top, so it starts after the lights (sidebarSpace.afterLights).
+  bar: {
+    ...center,
+    flexShrink: 0,
+    gap: 2.5,
+    height: 34,
+    paddingLeft: { default: 8, [PHONE]: 69 },
+    paddingRight: 8,
+  },
   barButton: {
     ...center,
     justifyContent: "center",
@@ -140,8 +153,12 @@ export function AppWindow(): JSX.Element {
         <span class={sx(s.light)} style={{ "background-color": "#febc2e" }} />
         <span class={sx(s.light)} style={{ "background-color": "#28c840" }} />
       </span>
-      <Sidebar />
-      <MessageList />
+      <div class={sx(s.aside)}>
+        <Sidebar />
+      </div>
+      <div class={sx(s.aside)}>
+        <MessageList />
+      </div>
       <section class={sx(s.pane)}>
         <div class={sx(s.bar)}>
           <span class={sx(s.barButton)}>{icon(i.ArrowLeft01Icon)}</span>

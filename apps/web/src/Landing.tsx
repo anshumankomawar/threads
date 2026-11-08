@@ -89,12 +89,12 @@ const s = stylex.create({
     textAlign: "center",
   },
   // The app at its real size; `page` clips what doesn't fit. On a phone it starts at the left, so the inbox shows.
-  // The app, at its real size (AppWindow.tsx); `page` clips what the screen can't fit. On a phone it's wider than
-  // the screen and starts at the left, so the sidebar and inbox show.
+  // The app, at its real size (AppWindow.tsx); `page` clips what the screen can't fit. On a phone it's just the open
+  // thread, sized to the screen.
   preview: {
     flexShrink: 0,
-    alignSelf: { default: "center", [PHONE]: "flex-start" },
-    marginTop: { default: "clamp(48px, 9vh, 88px)", [PHONE]: 48 },
+    alignSelf: "center",
+    marginTop: { default: "clamp(48px, 9vh, 88px)", [PHONE]: 40 },
   },
   pitch: { ...column, position: "relative", alignItems: "center", width: "100%", maxWidth: 860 },
   // The headline's words, one after another (each delay set inline).
