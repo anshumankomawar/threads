@@ -28,6 +28,7 @@ export const tab = stylex.create({
 
 const s = stylex.create({
   tabs: { display: "flex", gap: 2 },
+  onGlass: { backgroundColor: "transparent" },
   // The chosen tab grows to its name's measured width (`--label-width`) as the old one shrinks.
   label: {
     width: 0,
@@ -50,6 +51,8 @@ export function Tabs<T extends Tab>(props: {
   tabs: T[];
   chosen: T;
   onChoose: (tab: T) => void;
+  // On glass (which shows the chosen one): no ground of its own, and no hover.
+  glass?: boolean;
 }): JSX.Element {
   const labels: HTMLElement[] = [];
   // Each name's own width, so the chosen tab grows to exactly fit it; again once the font has loaded.
@@ -63,7 +66,13 @@ export function Tabs<T extends Tab>(props: {
       <For each={props.tabs}>
         {(t) => (
           <button
-            class={sx(base.bare, base.hover, tab.tab, props.chosen === t && tab.on)}
+            class={sx(
+              base.bare,
+              !props.glass && base.hover,
+              tab.tab,
+              props.chosen === t && tab.on,
+              props.glass && s.onGlass,
+            )}
             role="tab"
             aria-selected={props.chosen === t ? "true" : "false"}
             aria-label={t.label}
