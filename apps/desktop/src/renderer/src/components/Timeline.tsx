@@ -5,26 +5,17 @@ import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
 import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
-import {
-  edit,
-  menuFrom,
-  peek,
-  peeked,
-  save,
-  saved,
-  showMenu,
-  threadMenu,
-  type MenuItem,
-} from "../session";
+import { edit, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
 import { chip } from "../styles/controls";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
-import { icon, Icon } from "./Icon";
+import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { Tabs, type Tab } from "./Tabs";
 import { dot } from "./ThreadView";
+import { describeWhen, parseWhen, type When } from "../when";
 
 // The list as a timeline, after TeamGantt: the threads named down the left, and beside each its bar, a slim card with
 // its status's dot, from its start to its due date, its owner just past its end. A thread with branches fills its
@@ -168,37 +159,8 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   };
   // Those without a date: in a list from the toolbar, to be dragged onto a day or given one from their menu.
   const undated = (): Thread[] => [...new Set(listed().order)].filter((t) => !dated(t));
-  const place = (thread: Thread, date: Date, label: string): void =>
-    edit(thread, { startAt: date, dueAt: date }, label);
-  const from = (days: number): Date => new Date(addDays(today(), days));
-  const dateMenu = (thread: Thread): MenuItem[] => [
-    {
-      label: "Today",
-      icon: icon(i.Calendar03Icon, 13),
-      run: () => place(thread, from(0), "Schedule"),
-    },
-    {
-      label: "Tomorrow",
-      icon: icon(i.Calendar03Icon, 13),
-      run: () => place(thread, from(1), "Schedule"),
-    },
-    {
-      label: "Next Week",
-      icon: icon(i.Calendar03Icon, 13),
-      run: () => place(thread, from(7), "Schedule"),
-    },
-    {
-      label: "Pick a Date",
-      icon: icon(i.Calendar01Icon, 13),
-      run: () => pickDate((date) => place(thread, date, "Schedule")),
-    },
-    "separator",
-    {
-      label: "Open",
-      icon: icon(i.SquareArrowUpRightIcon, 13),
-      run: () => peek({ thread: thread.id }),
-    },
-  ];
+  const place = (thread: Thread, when: When, label: string): void =>
+    edit(thread, { startAt: when.start, dueAt: when.end }, label);
   // The timeline, or those without dates: tabs on its toolbar, the one chosen kept.
   const tabs: Tab[] = [
     { label: "Timeline", icon: i.ChartBarDecreasingIcon },
@@ -616,13 +578,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
                   </Show>
                   <span class={sx(base.ellipsis)}>{thread.title}</span>
                 </button>
-                <button
-                  class={sx(base.bare, base.hover, chip.chip)}
-                  onClick={(e) => menuFrom(e.currentTarget, dateMenu(thread))}
-                >
-                  <Icon icon={i.Calendar03Icon} size={12} aria-hidden="true" />
-                  Schedule
-                </button>
+                <DateField onDate={(when) => place(thread, when, "Schedule")} />
               </div>
             )}
           </For>
@@ -632,18 +588,46 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   );
 }
 
-// The system's date picker, opened from a menu, and the day chosen (at midnight, local).
-function pickDate(pick: (date: Date) => void): void {
-  const input = Object.assign(document.createElement("input"), { type: "date" });
-  Object.assign(input.style, { position: "fixed", opacity: "0", pointerEvents: "none" });
-  document.body.append(input);
-  input.addEventListener("change", () => {
-    const [y, m, d] = input.value.split("-").map(Number);
-    if (y) pick(new Date(y, m - 1, d));
-    input.remove();
-  });
-  input.addEventListener("blur", () => setTimeout(() => input.remove(), 1000));
-  input.showPicker();
+// Where a day's typed, as Linear's: "fri", "next week", "mar 14", "mon to fri". What it's understood as shows as
+// it's typed; Enter gives it, and the next row's field takes over (this one's row has gone to the timeline).
+function DateField(props: { onDate: (when: When) => void }): JSX.Element {
+  const [text, setText] = createSignal("");
+  const when = (): When | null => parseWhen(text());
+  const give = (input: HTMLInputElement): void => {
+    const chosen = when();
+    if (!chosen) return;
+    const fields = [...document.querySelectorAll<HTMLInputElement>("[data-date-field]")];
+    const at = fields.indexOf(input);
+    props.onDate(chosen);
+    setText("");
+    queueMicrotask(() => {
+      const left = [...document.querySelectorAll<HTMLInputElement>("[data-date-field]")];
+      left[Math.min(at, left.length - 1)]?.focus();
+    });
+  };
+  return (
+    <label class={sx(styles.dateField)}>
+      <Show when={text().trim()}>
+        <span class={sx(styles.dateSeen, !when() && styles.dateUnseen)}>
+          {when() ? describeWhen(when()!) : "Not a date"}
+        </span>
+      </Show>
+      <input
+        data-date-field
+        class={sx(styles.dateInput)}
+        placeholder="Add a date"
+        value={text()}
+        onInput={(e) => setText(e.currentTarget.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") give(e.currentTarget);
+          if (e.key === "Escape") {
+            setText("");
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </label>
+  );
 }
 
 const styles = stylex.create({
@@ -670,6 +654,28 @@ const styles = stylex.create({
     textAlign: "left",
     cursor: "pointer",
   },
+  // A field with nothing in it: just its words, quiet, until it's pointed at or typed in.
+  dateField: { display: "flex", flexShrink: 0, gap: 8, alignItems: "center" },
+  dateInput: {
+    width: 120,
+    height: 22,
+    padding: "0 7.27px",
+    borderStyle: "none",
+    borderRadius: 6,
+    outline: "none",
+    backgroundColor: {
+      default: "transparent",
+      ":hover": colors.bgTertiary,
+      ":focus": colors.bgTertiary,
+    },
+    color: colors.textPrimary,
+    fontFamily: "inherit",
+    fontSize: 11.82,
+    textAlign: "right",
+    "::placeholder": { color: colors.textTertiary },
+  },
+  dateSeen: { color: colors.textSecondary, fontSize: fontSizes.small, whiteSpace: "nowrap" },
+  dateUnseen: { color: colors.textTertiary },
   backlogEmpty: { padding: "24px 7.27px", color: colors.textTertiary },
   toolbar: {
     display: "flex",
@@ -719,9 +725,6 @@ const styles = stylex.create({
     zIndex: 2,
     flexShrink: 0,
     backgroundColor: colors.chrome,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
   },
   scale: { position: "relative", flexShrink: 0 },
   // Linear's: each month's name, small and spaced, from its first day.
@@ -758,7 +761,7 @@ const styles = stylex.create({
   tickToday: { color: colors.textPrimary, fontWeight: 600 },
 
   body: { position: "relative", display: "flex" },
-  // The names' resize edge: invisible, only its cursor says it's there (the column's border is the line).
+  // The names' resize edge: invisible, only its cursor says it's there.
   resize: {
     position: "absolute",
     top: 0,
@@ -777,9 +780,6 @@ const styles = stylex.create({
     zIndex: 3,
     flexShrink: 0,
     backgroundColor: colors.chrome,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
   },
   // As the sidebar's rows: inset, rounded, the chosen one shaded, nothing under the pointer.
   name: {
