@@ -128,14 +128,16 @@ const s = stylex.create({
     lineHeight: 1.02,
     letterSpacing: "-0.02em",
     textWrap: "balance",
+    textShadow: colors.textHalo,
   },
   lede: {
     maxWidth: 540,
     margin: "16px 0 0",
-    color: `color-mix(in srgb, ${colors.textPrimary} 90%, transparent)`,
+    color: colors.textPrimary,
     fontSize: { default: 18, [PHONE]: 16 },
     lineHeight: 1.5,
     textWrap: "pretty",
+    textShadow: colors.textHalo,
   },
   line: { display: { default: "block", [PHONE]: "inline" } },
   waitlist: { width: "100%", maxWidth: 440, marginTop: 28 },
@@ -200,6 +202,7 @@ const s = stylex.create({
     margin: "14px 0 0",
     color: colors.textSecondary,
     fontSize: 13,
+    textShadow: colors.textHalo,
   },
   // The confirmation, over the pill once you've joined, so nothing moves: a check that draws itself, then the line.
   joined: {

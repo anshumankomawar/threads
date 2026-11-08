@@ -34,6 +34,8 @@ const DARK = {
   // How much of the page's colour veils the field behind the text (Landing.tsx): the dark page needs more, the light
   // page's field is faint enough to show through.
   veil: "78%",
+  // A halo on the page's text, in the page's colour, so every letter carries its own contrast over the field.
+  textHalo: "0 1px 2px rgb(0 0 0 / 70%), 0 0 14px rgb(0 0 0 / 55%)",
   // The toggle shows what it switches to: a sun in the dark, a moon in the light.
   showSun: "flex",
   showMoon: "none",
@@ -60,7 +62,8 @@ const LIGHT_VALUES = {
   systemBlue: "#007aff",
   windowShadow: "0 40px 100px -20px rgb(0 0 0 / 18%)",
   field: 'url("/field-light.webp")',
-  veil: "66%",
+  veil: "72%",
+  textHalo: "0 0 2px rgb(255 255 255 / 90%), 0 0 12px rgb(255 255 255 / 80%)",
   showSun: "none",
   showMoon: "flex",
 };
@@ -88,6 +91,7 @@ export const colors = stylex.defineVars({
   windowShadow: { default: DARK.windowShadow, [LIGHT]: LIGHT_VALUES.windowShadow },
   field: { default: DARK.field, [LIGHT]: LIGHT_VALUES.field },
   veil: { default: DARK.veil, [LIGHT]: LIGHT_VALUES.veil },
+  textHalo: { default: DARK.textHalo, [LIGHT]: LIGHT_VALUES.textHalo },
   showSun: { default: DARK.showSun, [LIGHT]: LIGHT_VALUES.showSun },
   showMoon: { default: DARK.showMoon, [LIGHT]: LIGHT_VALUES.showMoon },
 });
