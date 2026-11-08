@@ -284,7 +284,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     return out;
   };
 
-  const area = (): JSX.CSSProperties => ({ width: `${width()}px`, height: `${height()}px` });
+  const area = (): JSX.CSSProperties => ({ width: `${width()}px`, "min-height": `${height()}px` });
 
   const Bar = (props: { thread: Thread; y: number }): JSX.Element => {
     const t = (): Thread => props.thread;
@@ -485,7 +485,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
             {/* The names, stuck at the left as the days scroll under them. */}
             <div
               class={sx(styles.names)}
-              style={{ width: `${names()}px`, height: `${height()}px` }}
+              style={{ width: `${names()}px`, "min-height": `${height()}px` }}
             >
               <hr
                 class={sx(styles.resize)}
@@ -718,7 +718,8 @@ const styles = stylex.create({
 
   // On the window's own ground, so what's stuck to its edges covers what scrolls under it.
   timeline: { flex: 1, minHeight: 0, overflow: "auto", backgroundColor: colors.chrome },
-  content: { position: "relative", minHeight: "100%" },
+  // To the bottom however few rows there are, so the names' line and today's run the whole way down.
+  content: { position: "relative", display: "flex", flexDirection: "column", minHeight: "100%" },
   head: {
     position: "sticky",
     top: 0,
@@ -775,7 +776,7 @@ const styles = stylex.create({
   // Today: its date, darker and bold.
   tickToday: { color: colors.textPrimary, fontWeight: 600 },
 
-  body: { position: "relative", display: "flex" },
+  body: { position: "relative", display: "flex", flex: 1 },
   // The names' resize edge: invisible, only its cursor says it's there (the column's border is the line).
   resize: {
     position: "absolute",
