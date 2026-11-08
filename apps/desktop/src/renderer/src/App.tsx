@@ -186,7 +186,7 @@ export default function App(): JSX.Element {
                   bucket()?.name ??
                   subspace()?.name ??
                   savedView()?.name ??
-                  (allThreads() ? "Workspace" : undefined) ??
+                  (allThreads() ? "Everything" : undefined) ??
                   (shown("draft") !== undefined ? "Draft" : undefined) ??
                   ("settings" in view() ? "Settings" : undefined) ??
                   person()?.name}

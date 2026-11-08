@@ -19,7 +19,7 @@ import {
   setDialog,
   shortDate,
   shown,
-  onChooseGroup,
+  onGoTo,
   showMenu,
   sidebarOpen,
   sortAllForMe,
@@ -27,7 +27,6 @@ import {
   threadMenu,
   unread,
   view,
-  workspace,
   undoable,
   type MenuItem,
 } from "../session";
@@ -61,7 +60,6 @@ import { AppButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
-import { Tabs, type Tab } from "./Tabs";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
@@ -393,32 +391,21 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   ];
 }
 
-// The sidebar's segments, each one group of mailboxes: your inbox (with its buckets, sent and drafts), the
-// workspace's spaces and labels, and views across it. The one shown follows the mailbox you choose, wherever from.
-type SidebarGroup = "mail" | "spaces" | "views";
-const GROUPS: (Tab & { key: SidebarGroup })[] = [
-  { key: "mail", label: "Inbox", icon: i.InboxIcon },
-  { key: "spaces", label: "Spaces", icon: i.Layers01Icon },
-  { key: "views", label: "Views", icon: i.ViewIcon },
+// The sidebar's first places, which ⌘1, ⌘2… go to.
+const PLACES: Mailbox[] = [
+  { kind: "inbox" },
+  { kind: "personal" },
+  { kind: "all" },
+  { kind: "drafts" },
 ];
-const groupOf = (box: Mailbox): SidebarGroup =>
-  box.kind === "subspace" || box.kind === "label"
-    ? "spaces"
-    : box.kind === "personal" || box.kind === "all" || box.kind === "view" || box.kind === "person"
-      ? "views"
-      : "mail";
-const [group, setGroup] = createSignal<SidebarGroup>(groupOf(mailbox()));
-const chooseGroup = (next: SidebarGroup): void => void setGroup(next);
-// ⌘1, ⌘2… show the segments in order.
-onChooseGroup((at) => {
-  const chosen = GROUPS[at];
-  if (chosen) chooseGroup(chosen.key);
+onGoTo((at) => {
+  const place = PLACES[at];
+  if (place) chooseMailbox(place);
 });
 
 export function MailSidebar(): JSX.Element {
-  // Choosing a mailbox from elsewhere (⌘4, a space's page) shows its group.
-  createEffect(mailbox, (box) => void setGroup(groupOf(box)));
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
+  const pinned = (): View[] =>
+    byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id));
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
       <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
@@ -434,144 +421,95 @@ export function MailSidebar(): JSX.Element {
           </button>
         </span>
       </div>
-      <div class={sx(s.groups)}>
-        <Tabs
-          label="Sidebar"
-          tabs={GROUPS}
-          chosen={GROUPS.find((g) => g.key === group()) ?? GROUPS[0]}
-          onChoose={(g) => chooseGroup(g.key)}
-        />
-      </div>
+      {/* One list, nothing behind a tab: where your mail is, your threads and everyone's, then the spaces, then
+          what you've pinned. */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
-        <Show when={group() === "mail"}>
-          <ul class={sx(s.mailboxes)}>
+        <ul class={sx(s.mailboxes)}>
+          <Mailbox
+            box={{ kind: "inbox" }}
+            label="Inbox"
+            icon={i.InboxIcon}
+            count={inbox().order.length}
+            menu={() => [
+              {
+                label: "New Bucket",
+                icon: icon(i.Add01Icon, 13),
+                form: true,
+                run: (from) => askBucket(from),
+              },
+              "separator",
+              {
+                label: "Mark All as Read",
+                icon: icon(i.MailOpen01Icon, 13),
+                run: markAllRead,
+              },
+              {
+                label: "Sort All for Me",
+                icon: icon(i.SparklesIcon, 13),
+                run: sortAllForMe,
+              },
+            ]}
+          />
+          <Show when={inbox().unsorted.length > 0}>
             <Mailbox
-              box={{ kind: "inbox" }}
-              label="Buckets"
-              icon={i.InboxIcon}
-              count={inbox().order.length}
-              menu={() => [
-                {
-                  label: "New Bucket",
-                  icon: icon(i.Add01Icon, 13),
-                  form: true,
-                  run: (from) => askBucket(from),
-                },
-                "separator",
-                {
-                  label: "Mark All as Read",
-                  icon: icon(i.MailOpen01Icon, 13),
-                  run: markAllRead,
-                },
-                {
-                  label: "Sort All for Me",
-                  icon: icon(i.SparklesIcon, 13),
-                  run: sortAllForMe,
-                },
-              ]}
+              box={{ kind: "unsorted" }}
+              label="Sorting"
+              icon={i.Clock01Icon}
+              count={inbox().unsorted.length}
+              indent
             />
-
-            <Show when={inbox().unsorted.length > 0}>
-              <Mailbox
-                box={{ kind: "unsorted" }}
-                label="Sorting"
-                icon={i.Clock01Icon}
-                count={inbox().unsorted.length}
-                indent
-              />
-            </Show>
-            <For each={inbox().sections}>
-              {(section) => (
-                <Mailbox
-                  box={{ kind: "bucket", id: section.bucket.id }}
-                  label={section.bucket.name}
-                  icon={icons().get(section.bucket.id) ?? i.InboxIcon}
-                  count={section.items.length}
-                  indent
-                  menu={() => bucketMenu(section.bucket)}
-                />
-              )}
-            </For>
-            <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
+          </Show>
+          <Mailbox box={{ kind: "personal" }} label="My Threads" icon={i.UserIcon} />
+          <Mailbox box={{ kind: "all" }} label="Everything" icon={i.DashboardSquare01Icon} />
+          <Show when={drafts().length > 0}>
             <Mailbox
               box={{ kind: "drafts" }}
               label="Drafts"
               icon={i.NoteEditIcon}
               count={drafts().length}
             />
-          </ul>
-        </Show>
-        <Show when={group() === "spaces"}>
-          <Section
-            title="Spaces"
-            add={{
-              label: "New Subspace",
-              placeholder: "Name the space",
-              make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
-            }}
-          >
-            <For each={byName(store.all(Subspace))}>
-              {(sub) => (
-                <SpaceOrLabel
-                  box={{ kind: "subspace", id: sub.id }}
-                  label={sub.name}
-                  icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
-                />
-              )}
-            </For>
-          </Section>
-          <Section
-            title="Labels"
-            add={{
-              label: "New Label",
-              placeholder: "Name the label",
-              make: (name) => {
-                let id = "";
-                undoable("New Label", () => {
-                  id = store.create(Label, { name, workspace: workspace() }).id;
-                });
-                return { kind: "label", id };
-              },
-            }}
-          >
-            <For each={byName(store.all(Label))}>
-              {(label) => (
-                <SpaceOrLabel
-                  box={{ kind: "label", id: label.id }}
-                  label={label.name}
-                  icon={i.Tag01Icon}
-                />
-              )}
-            </For>
-          </Section>
-        </Show>
-        <Show when={group() === "views"}>
-          <ul class={sx(s.mailboxes)}>
-            <Mailbox box={{ kind: "personal" }} label="Personal" icon={i.UserIcon} />
-            <Mailbox box={{ kind: "all" }} label="Workspace" icon={i.DashboardSquare01Icon} />
-            <For each={byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id))}>
+          </Show>
+        </ul>
+        <Section
+          title="Spaces"
+          add={{
+            label: "New Space",
+            placeholder: "Name the space",
+            make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
+          }}
+        >
+          <For each={byName(store.all(Subspace))}>
+            {(sub) => (
+              <SpaceOrLabel
+                box={{ kind: "subspace", id: sub.id }}
+                label={sub.name}
+                icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
+              />
+            )}
+          </For>
+        </Section>
+        {/* Lists pinned from the filter bar (a filtered list, a label's, a person's): here once there's one. */}
+        <Show when={pinned().length > 0}>
+          <Section title="Pinned">
+            <For each={pinned()}>
               {(saved) => (
                 <Mailbox
                   box={{ kind: "view", id: saved.id }}
                   label={saved.name}
-                  icon={i.FilterIcon}
+                  icon={i.PinIcon}
                   menu={() =>
                     saved.ownerId === me().id
                       ? [
                           {
-                            label: "View Settings",
+                            label: "Edit",
                             icon: icon(i.Settings02Icon, 13),
                             run: () => open({ view: saved.id }),
                           },
                           "separator" as const,
                           {
-                            label: "Delete View",
-                            icon: icon(i.Delete02Icon, 13),
-                            run: () => {
-                              if (sameMailbox(mailbox(), { kind: "view", id: saved.id }))
-                                chooseMailbox({ kind: "all" });
-                              undoable("Delete View", () => void saved.delete());
-                            },
+                            label: "Unpin",
+                            icon: icon(i.PinOffIcon, 13),
+                            run: () => unpin(saved),
                           },
                         ]
                       : []
@@ -579,7 +517,7 @@ export function MailSidebar(): JSX.Element {
                 />
               )}
             </For>
-          </ul>
+          </Section>
         </Show>
       </nav>
       <InlineForm />
@@ -926,19 +864,6 @@ function QueryFilters(): JSX.Element {
         label="Filter"
         items={filterItems()}
       />
-      <Show when={conditions().length > 0 && mailbox().kind !== "view"}>
-        <button
-          class={sx(base.bare, base.dim, page.filterPill)}
-          onClick={() =>
-            setDialog({
-              kind: "newView",
-              filter: { and: [...baseFilter(mailbox()), ...conditions()] },
-            })
-          }
-        >
-          Save view
-        </button>
-      </Show>
     </>
   );
 }
@@ -971,6 +896,19 @@ function QueryBar(): JSX.Element {
     </div>
   );
 }
+
+// Pinning: a filtered list, or one the sidebar doesn't have (a label's, a person's), kept in the sidebar's Pinned.
+// A pinned list unpins.
+const pinnable = (): boolean =>
+  (conditions().length > 0 && mailbox().kind !== "view") ||
+  mailbox().kind === "label" ||
+  mailbox().kind === "person";
+const pinList = (): void =>
+  setDialog({ kind: "newView", filter: { and: [...baseFilter(mailbox()), ...conditions()] } });
+const unpin = (saved: View): void => {
+  if (sameMailbox(mailbox(), { kind: "view", id: saved.id })) chooseMailbox({ kind: "all" });
+  undoable("Unpin", () => void saved.delete());
+};
 
 // `alone`: nothing's open beside it, so it takes the room.
 export function MessageList(props: { alone?: boolean }): JSX.Element {
@@ -1081,6 +1019,34 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               />
             </Show>
           </Show>
+          <Show when={pinnable()}>
+            <button
+              class={sx(topbar.button)}
+              aria-label="Pin to the sidebar"
+              title="Pin to the sidebar"
+              onClick={pinList}
+            >
+              <Icon icon={i.PinIcon} {...ICON} />
+            </button>
+          </Show>
+          <Show
+            when={(() => {
+              const box = mailbox();
+              const saved = box.kind === "view" ? store.findById(View, box.id) : undefined;
+              return saved?.ownerId === me().id ? saved : undefined;
+            })()}
+          >
+            {(saved) => (
+              <button
+                class={sx(topbar.button)}
+                aria-label="Unpin from the sidebar"
+                title="Unpin from the sidebar"
+                onClick={() => unpin(saved())}
+              >
+                <Icon icon={i.PinOffIcon} {...ICON} />
+              </button>
+            )}
+          </Show>
           <Show when={pageOf(mailbox())}>
             {(page) => (
               <button
@@ -1129,7 +1095,12 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               {(group) => (
                 <>
                   <Show when={mailbox().kind === "inbox" || display().group}>
-                    <div class={sx(s.groupHeader)}>
+                    <div
+                      class={sx(s.groupHeader)}
+                      onContextMenu={(e) => {
+                        if (group.bucket && !display().group) showMenu(e, bucketMenu(group.bucket));
+                      }}
+                    >
                       <Show when={!display().group}>
                         <Icon
                           icon={
@@ -1240,11 +1211,11 @@ const s = stylex.create({
   // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
   // points ÷ 1.1, for the 110% scale).
   // Level with the list's first heading beside them (their middles on one line); the rows stay where they were.
-  groups: { flexShrink: 0, padding: "14.29px 9.09px 6.07px" },
+  // Its first row level with the list's first heading beside it.
   nav: {
     flex: 1,
     minHeight: 0,
-    padding: "2px 7.27px 12px",
+    padding: "8.27px 7.27px 12px",
     overflowY: "auto",
   },
   // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
@@ -1301,7 +1272,8 @@ const s = stylex.create({
   },
   // Apart from the one before it; the first in its group sits right under the segments.
   // 14pt above, its title at 12pt medium, 8pt in, 4pt over its rows.
-  section: { marginTop: { default: 12.73, ":first-of-type": 0 } },
+  // Apart from the places above and from each other.
+  section: { marginTop: 18.18 },
   sectionHeader: {
     display: "flex",
     alignItems: "center",

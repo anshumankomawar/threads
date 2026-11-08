@@ -568,14 +568,14 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 }
 
 // ── Keys ──
-// Which of the sidebar's segments ⌘1, ⌘2… show (by position): Mail.tsx says how, as it owns them.
-let chooseGroup: (at: number) => void = () => {};
-export const onChooseGroup = (choose: typeof chooseGroup): void => {
-  chooseGroup = choose;
+// Which of the sidebar's first places ⌘1, ⌘2… go to (by position): Mail.tsx says how, as it owns them.
+let goTo: (at: number) => void = () => {};
+export const onGoTo = (go: typeof goTo): void => {
+  goTo = go;
 };
-const showGroup = (at: number) => (): void => {
+const goToPlace = (at: number) => (): void => {
   setSidebarOpen(true);
-  chooseGroup(at);
+  goTo(at);
 };
 
 // What each hotkey does (hotkeys.ts has their keys, which Settings rebinds), given whether you're typing and whether a
@@ -608,9 +608,10 @@ function hotkeyActions(
     forward: free && goForward,
     sidebar: () => setSidebarOpen(!sidebarOpen()),
     // Not in a dialog, where ⌘1… choose its own tabs.
-    mailGroup: free && showGroup(0),
-    spacesGroup: free && showGroup(1),
-    viewsGroup: free && showGroup(2),
+    goInbox: free && goToPlace(0),
+    goMine: free && goToPlace(1),
+    goEverything: free && goToPlace(2),
+    goDrafts: free && goToPlace(3),
     newThread: () => {
       const shown = view();
       setDialog({

@@ -35,6 +35,7 @@ import {
   myBuckets,
   open,
   otherSources,
+  undoable,
   peek,
   placeIn,
   setDialog,
@@ -443,7 +444,7 @@ const place = (
 function places(): Command[] {
   const icons = bucketIcons(myBuckets());
   return [
-    place("inbox", "Buckets", i.InboxIcon, { kind: "inbox" }, "inbox mail all"),
+    place("inbox", "Inbox", i.InboxIcon, { kind: "inbox" }, "mail buckets all"),
     ...inbox().sections.map((s) =>
       place(
         s.bucket.id,
@@ -458,10 +459,10 @@ function places(): Command[] {
     ),
     place("sent", "Sent", i.SentIcon, { kind: "sent" }),
     place("drafts", "Drafts", i.NoteEditIcon, { kind: "drafts" }),
-    place("personal", "Personal", i.UserIcon, { kind: "personal" }, "mine"),
-    place("all", "Workspace", i.DashboardSquare01Icon, { kind: "all" }, "everything all threads"),
+    place("personal", "My Threads", i.UserIcon, { kind: "personal" }, "mine personal"),
+    place("all", "Everything", i.DashboardSquare01Icon, { kind: "all" }, "workspace all threads"),
     ...byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id)).map((v) =>
-      place(v.id, v.name, i.FilterIcon, { kind: "view", id: v.id }, "view"),
+      place(v.id, v.name, i.PinIcon, { kind: "view", id: v.id }, "pinned view"),
     ),
     ...byName(store.all(Subspace)).map((sub) =>
       place(
@@ -617,15 +618,17 @@ function creating(): Command[] {
       run: () => setDialog({ kind: "bucket" }),
     },
     // The list's filter, kept as a view of its own.
-    ...(narrowed.length > 0 && mailbox().kind !== "view"
+    ...((narrowed.length > 0 && mailbox().kind !== "view") ||
+    mailbox().kind === "label" ||
+    mailbox().kind === "person"
       ? [
           {
             id: "save-view",
-            title: "Save this filter as a view",
+            title: "Pin this list to the sidebar",
             kind: "action" as const,
             section,
-            icon: i.FilterIcon,
-            keywords: "new save view saved query",
+            icon: i.PinIcon,
+            keywords: "pin save view saved filter query",
             run: () =>
               setDialog({
                 kind: "newView",
@@ -634,6 +637,26 @@ function creating(): Command[] {
           },
         ]
       : []),
+    // A pinned list of yours, taken out of the sidebar.
+    ...(() => {
+      const box = mailbox();
+      const saved = box.kind === "view" ? store.findById(View, box.id) : undefined;
+      if (saved?.ownerId !== me().id) return [];
+      return [
+        {
+          id: "unpin",
+          title: "Unpin this list from the sidebar",
+          kind: "action" as const,
+          section,
+          icon: i.PinOffIcon,
+          keywords: "unpin remove delete view saved",
+          run: () => {
+            chooseMailbox({ kind: "all" });
+            undoable("Unpin", () => void saved.delete());
+          },
+        },
+      ];
+    })(),
   ];
 }
 
@@ -657,9 +680,6 @@ function app(): Command[] {
       : []),
     ...hotkey("settings", "Open settings", section, i.Settings02Icon, "preferences hotkeys"),
     ...hotkey("sidebar", "Show or hide the sidebar", section, i.PanelLeftIcon, "toggle"),
-    ...hotkey("mailGroup", "Show the Inbox tab", section, i.InboxIcon, "sidebar tab"),
-    ...hotkey("spacesGroup", "Show the Spaces tab", section, i.Layers01Icon, "sidebar tab"),
-    ...hotkey("viewsGroup", "Show the Views tab", section, i.ViewIcon, "sidebar tab"),
     ...hotkey("back", "Go back", section, i.ArrowLeft01Icon, "history previous"),
     ...hotkey("forward", "Go forward", section, i.ArrowRight01Icon, "history next"),
     {

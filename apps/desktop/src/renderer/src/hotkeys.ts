@@ -16,10 +16,11 @@ export const HOTKEYS = [
   { id: "back", label: "Back", section: "General", keys: "⌘[" },
   { id: "forward", label: "Forward", section: "General", keys: "⌘]" },
   { id: "sidebar", label: "Show or hide the sidebar", section: "General", keys: "⌘\\" },
-  // The sidebar's segments, in order.
-  { id: "mailGroup", label: "Inbox", section: "Sidebar", keys: "⌘1" },
-  { id: "spacesGroup", label: "Spaces", section: "Sidebar", keys: "⌘2" },
-  { id: "viewsGroup", label: "Views", section: "Sidebar", keys: "⌘3" },
+  // The sidebar's first places, in order.
+  { id: "goInbox", label: "Inbox", section: "Sidebar", keys: "⌘1" },
+  { id: "goMine", label: "My Threads", section: "Sidebar", keys: "⌘2" },
+  { id: "goEverything", label: "Everything", section: "Sidebar", keys: "⌘3" },
+  { id: "goDrafts", label: "Drafts", section: "Sidebar", keys: "⌘4" },
   { id: "newThread", label: "New thread", section: "Create", keys: "⌘N" },
   { id: "compose", label: "Write a thread as a message", section: "Create", keys: "⇧⌘N" },
   { id: "next", label: "Next thread", section: "Inbox", keys: "J" },

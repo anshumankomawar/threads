@@ -182,7 +182,7 @@ export function SavedView(props: { view: View }): JSX.Element {
     tab: SETTINGS,
     body: (
       <Settings>
-        <Setting name="Shared" hint="Everyone in the workspace sees it in their sidebar.">
+        <Setting name="Shared" hint="Everyone in the workspace sees it pinned in their sidebar.">
           <MenuChip
             label={v().shared ? "Workspace" : "Only you"}
             items={[
@@ -191,13 +191,13 @@ export function SavedView(props: { view: View }): JSX.Element {
             ]}
           />
         </Setting>
-        <Setting name="Delete view" hint="Its threads stay as they are.">
-          <Delete
-            onClick={() => (
-              open({ thread: null }),
-              undoable("Delete View", () => void v().delete())
-            )}
-          />
+        <Setting name="Unpin" hint="It comes out of the sidebar; its threads stay as they are.">
+          <button
+            class={sx(base.hover, chip.chip)}
+            onClick={() => (open({ thread: null }), undoable("Unpin", () => void v().delete()))}
+          >
+            Unpin
+          </button>
         </Setting>
       </Settings>
     ),
