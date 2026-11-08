@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, systemPreference
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
+import iconDark from "../../resources/icon-dark.png?asset";
 import { setupSignIn } from "./signIn";
 
 // A second copy for development, run beside the usual one (THREADS_SIDE_BY_SIDE=<folder>): its own data folder and
@@ -29,9 +30,12 @@ if (is.dev)
     process.env["THREADS_DEBUG_PORT"] ?? "9333",
   );
 
-// In development the Dock shows Electron's icon unless told otherwise; a packaged app has its own (build/icon.icns).
-function setDockIcon(): void {
-  if (process.platform === "darwin" && !app.isPackaged) app.dock?.setIcon(icon);
+// The Dock icon in the app's theme. A packaged app on macOS 26 has the Icon Composer bundle, which macOS switches
+// itself (with Liquid Glass, clear and tinted); in development, and on older macOS, the Dock shows this instead.
+function syncDockIcon(): void {
+  if (process.platform !== "darwin") return;
+  if (app.isPackaged && Number(process.getSystemVersion().split(".")[0]) >= 26) return;
+  app.dock?.setIcon(nativeTheme.shouldUseDarkColors ? iconDark : icon);
 }
 
 // The app keeps running when its window is closed: closing only hides the window, so the data stays loaded and synced,
@@ -119,7 +123,8 @@ void app.whenReady().then(() => {
 
   // Dark until the renderer says otherwise (it sends its saved theme as it starts), so the vibrancy material matches.
   nativeTheme.themeSource = "dark";
-  setDockIcon();
+  syncDockIcon();
+  nativeTheme.on("updated", syncDockIcon);
   // The renderer's theme (⌘K): the vibrancy material follows it, under a black tint in dark mode and none in light.
   ipcMain.on("set-theme", (event, theme: unknown) => {
     const light = theme === "light";
