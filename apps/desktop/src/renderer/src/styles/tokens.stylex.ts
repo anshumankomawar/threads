@@ -26,6 +26,14 @@ const DARK = {
   // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
   raised: "#2b2b2b",
   raisedBorder: "#383838",
+  // Glass, as macOS 26's toolbar buttons but opaque: its fill, its rim (bright where light catches it, faint
+  // between), the highlight along its top inside, its lift, and how it lightens under the pointer.
+  glassFill: "#2c2c2e",
+  glassRim: "rgb(255 255 255 / 16%)",
+  glassRimFaint: "rgb(255 255 255 / 3%)",
+  glassTop: "rgb(255 255 255 / 7%)",
+  glassShadow: "0 0.5px 1px rgb(0 0 0 / 45%), 0 6px 14px -6px rgb(0 0 0 / 55%)",
+  glassHover: "brightness(1.15)",
   accent: "#78aee7",
   accentFill: "#1f252c",
   // Solid buttons (a table view's New): Notion's blue, in both themes.
@@ -61,6 +69,12 @@ export const lightTheme = stylex.createTheme(colors, {
   panelSelected: "#f3f3f1",
   raised: "#ffffff",
   raisedBorder: "#dcdcd9",
+  glassFill: "#ffffff",
+  glassRim: "rgb(255 255 255 / 95%)",
+  glassRimFaint: "rgb(0 0 0 / 7%)",
+  glassTop: "#ffffff",
+  glassShadow: "0 0.5px 1px rgb(0 0 0 / 12%), 0 6px 14px -6px rgb(0 0 0 / 14%)",
+  glassHover: "brightness(0.97)",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
   primary: "rgb(35 131 226)",

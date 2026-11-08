@@ -5,25 +5,42 @@ import { colors, fontSizes, layers, motion, radii } from "./tokens.stylex";
 // Below, starting at the anchor's left edge (StyleX's types only know single keywords).
 const UNDER = "bottom span-right" as "bottom";
 
+// Glass, as macOS 26's toolbar buttons, without what's behind showing through: an opaque fill, a 1px rim lit at the
+// top-left and bottom-right, a highlight along the top inside, and a soft lift. Lighter under the pointer, and pressed
+// in a little.
+const GLASS = {
+  borderWidth: 1,
+  borderStyle: "solid",
+  borderColor: "transparent",
+  borderRadius: 999,
+  backgroundColor: "transparent",
+  backgroundImage: `linear-gradient(${colors.glassFill}, ${colors.glassFill}), linear-gradient(135deg, ${colors.glassRim}, ${colors.glassRimFaint} 35%, ${colors.glassRimFaint} 65%, ${colors.glassRim})`,
+  backgroundOrigin: "border-box",
+  // The fill inside the rim, the rim under the border (StyleX's types only know one box).
+  backgroundClip: "padding-box, border-box" as "padding-box",
+  boxShadow: `inset 0 1px 0.5px ${colors.glassTop}, ${colors.glassShadow}`,
+  filter: { default: null, ":hover:not(:disabled)": colors.glassHover },
+  transform: { default: null, ":active:not(:disabled)": "scale(0.96)" },
+  transitionProperty: "filter, transform",
+  transitionDuration: "120ms",
+} as const;
+
 // Each style here goes after the `base` styles it names, as in `sx(base.hover, chip.chip)`.
 export const chip = stylex.create({
   chip: {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    height: 22,
-    padding: "0 7px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.strokeTertiary,
-    borderRadius: radii.control,
+    height: 26,
+    padding: "0 10px",
+    ...GLASS,
     color: colors.textSecondary,
     font: "inherit",
     fontSize: fontSizes.body,
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  open: { backgroundColor: colors.bgQuaternary },
+  open: { filter: colors.glassHover },
   // A chip's menu: a popover in the top layer, under the chip that opened it (its implicit anchor), flipped above
   // when there's no room below.
   menu: {
@@ -136,24 +153,22 @@ export const menu = stylex.create({
 });
 
 export const topbar = stylex.create({
-  bar: { display: "flex", flexShrink: 0, alignItems: "center", gap: 2.5, height: 34 },
+  bar: { display: "flex", flexShrink: 0, alignItems: "center", gap: 6, height: 34 },
   button: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 22,
-    height: 22,
+    width: 28,
+    height: 28,
     padding: 0,
-    borderStyle: "none",
-    borderRadius: radii.row,
+    ...GLASS,
     color: colors.textPrimary,
-    backgroundColor: { default: "transparent", ":hover:not(:disabled)": colors.bgTertiary },
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { default: 1, ":disabled": 0.35 },
     WebkitAppRegion: "no-drag",
   },
   title: { color: colors.textSecondary },
-  end: { display: "flex", flexShrink: 0, gap: 2.5, marginLeft: "auto", paddingRight: 8 },
+  end: { display: "flex", flexShrink: 0, gap: 6, marginLeft: "auto", paddingRight: 8 },
 });
 
 export const link = stylex.create({

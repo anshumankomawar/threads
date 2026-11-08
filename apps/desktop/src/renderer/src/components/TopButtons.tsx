@@ -18,9 +18,7 @@ import { Icon, type IconSvgElement } from "./Icon";
 // before the reading pane's title.
 
 const s = stylex.create({
-  history: { display: "flex", marginRight: 6 },
-  // Narrower, to sit tight against its neighbour.
-  tight: { width: 18 },
+  history: { display: "flex", gap: 6, marginRight: 6 },
 });
 
 // Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
@@ -39,11 +37,10 @@ const TopButton = (props: {
   label: string;
   icon: IconSvgElement;
   disabled?: boolean;
-  tight?: boolean;
   onClick: () => void;
 }): JSX.Element => (
   <button
-    class={sx(topbar.button, props.tight && s.tight)}
+    class={sx(topbar.button)}
     aria-label={props.label}
     title={props.label}
     disabled={props.disabled}
@@ -71,14 +68,12 @@ export const HistoryButtons = (): JSX.Element => (
     <TopButton
       label="Back (⌘[)"
       icon={i.ArrowLeft01Icon}
-      tight
       disabled={!canGoBack()}
       onClick={goBack}
     />
     <TopButton
       label="Forward (⌘])"
       icon={i.ArrowRight01Icon}
-      tight
       disabled={!canGoForward()}
       onClick={goForward}
     />
