@@ -25,7 +25,7 @@ const styles = stylex.create({
     display: "grid",
     flex: 1,
     placeItems: "center",
-    backgroundColor: colors.frosted,
+    backgroundColor: colors.chrome,
   },
   column: { display: "flex", flexDirection: "column", gap: 12, alignItems: "center", width: 320 },
   logo: { width: 52, height: 52, marginBottom: 14 },

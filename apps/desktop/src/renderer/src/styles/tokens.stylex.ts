@@ -7,9 +7,8 @@ const mix = (base: string, percent: number): string =>
   `color-mix(in srgb, ${base} ${percent}%, transparent)`;
 
 const DARK = {
-  chrome: "oklch(0.191 0 0)",
-  // The main area's ground: `chrome`, frosted over the window's vibrancy. The sidebar has `chrome` itself.
-  frosted: mix("oklch(0.191 0 0)", 72),
+  // The window's ground, opaque, as the macOS app's.
+  chrome: "#141414",
   textPrimary: DARK_BASE,
   textSecondary: mix(DARK_BASE, 74),
   textTertiary: mix(DARK_BASE, 60),
@@ -44,8 +43,7 @@ const DARK = {
 export const colors = stylex.defineVars(DARK);
 
 export const lightTheme = stylex.createTheme(colors, {
-  chrome: "oklch(0.985 0 0)",
-  frosted: mix("oklch(0.985 0 0)", 72),
+  chrome: "#fafafa",
   textPrimary: LIGHT_BASE,
   textSecondary: mix(LIGHT_BASE, 72),
   textTertiary: mix(LIGHT_BASE, 55),
