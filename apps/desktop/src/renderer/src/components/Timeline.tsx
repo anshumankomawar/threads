@@ -740,9 +740,6 @@ const styles = stylex.create({
     zIndex: 2,
     flexShrink: 0,
     backgroundColor: colors.chrome,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
   },
   scale: { position: "relative", flexShrink: 0 },
   // Linear's: each month's name, small and spaced, from its first day.
