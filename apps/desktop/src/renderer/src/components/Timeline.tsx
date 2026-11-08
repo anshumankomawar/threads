@@ -4,28 +4,31 @@ import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Zoom } from "../mail";
-import { active, edit, lastActive, open, showMenu, threadMenu } from "../session";
+import { edit, lastActive, peek, peeked, setDialog, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
 import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
 import { MenuChip } from "./Menus";
 
-// The list as a timeline, as Notion draws one: each thread's bar, from when it was started to when it's due, its title
-// on it. Nothing new is kept for it: a thread starts when it was created and ends on its due date; without one, it
-// runs on to today (or, resolved, to its last activity) and fades out. Dragging a bar's end sets the due date. A click
-// opens the thread beside it.
+// The list as a timeline, as Notion draws one: each thread a card from its start to its due date, its title on it (a
+// short card's runs on past its end). Without a start a card starts when the thread was created; without a due date it
+// runs on to today (or, resolved, to its last activity) and fades out. A card drags along the days (both dates move)
+// and either edge resizes it, its dates shown beside it as it goes; a click opens the thread in the floating view. A
+// row whose card is out of view has an arrow at the edge that brings it in.
 
 const DAY_MS = 86_400_000;
 // A day's width at each scale.
 const DAY: Record<Zoom, number> = { weeks: 36, months: 12, quarters: 4 };
-// A row, its bar, and the days' heading.
+// A row, its card, and the days' heading.
 const ROW = 36;
 const BAR = 32;
 const HEAD = 30;
-// Where a bar's title starts in it (a short bar's runs on past its end), and the gap before its due date.
+// Where a card's title starts in it, and the gap before what follows it.
 const PAD = 8;
 const GAP = 8;
+// How far the pointer moves before a press on a card is a drag rather than a click.
+const SLOP = 3;
 
 const startOfDay = (date: Date | number): number => new Date(date).setHours(0, 0, 0, 0);
 const addDays = (time: number, days: number): number => {
@@ -36,26 +39,22 @@ const addDays = (time: number, days: number): number => {
 // Whole days from one midnight to another (an hour's daylight saving rounded away).
 const daysBetween = (from: number, to: number): number => Math.round((to - from) / DAY_MS);
 
-// Where a thread's bar runs, in midnights: to the end of its due day, or (without one) to now.
+// Where a thread's card runs, in midnights: from its start (or creation) to the end of its due day, or to now.
 function span(thread: Thread): { from: number; to: number; open: boolean } {
-  const created = startOfDay(thread.createdAt);
+  const from = startOfDay(thread.startAt ?? thread.createdAt);
   if (thread.dueAt) {
-    const due = addDays(startOfDay(thread.dueAt), 1);
-    return {
-      from: Math.min(created, due - DAY_MS),
-      to: Math.max(due, created + DAY_MS),
-      open: false,
-    };
+    const to = addDays(startOfDay(thread.dueAt), 1);
+    return { from: Math.min(from, to - DAY_MS), to: Math.max(to, from + DAY_MS), open: false };
   }
   const end = thread.isOpen ? Date.now() : lastActive(thread);
-  return { from: created, to: Math.max(end, created + DAY_MS), open: true };
+  return { from, to: Math.max(end, from + DAY_MS), open: true };
 }
 
 const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
 const LONG_MONTH_YEAR = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
-// How wide a title is on a bar (its font: the name size, semibold), so its due date can follow it.
+// How wide a title is on a card (its font: the name size, semibold), so what follows it can.
 const measure = document.createElement("canvas").getContext("2d")!;
 const titleWidth = (title: string): number => {
   measure.font = `600 13px ${getComputedStyle(document.body).fontFamily}`;
@@ -65,6 +64,9 @@ const titleWidth = (title: string): number => {
 // Scrolls the timeline to today (⌘K's "Go to today"); the shown timeline sets it.
 let toToday: (() => void) | undefined;
 export const showToday = (): void => toToday?.();
+
+// A card being dragged: along the days (both its dates), or by an edge (one of them), and by how many days.
+type Drag = { thread: Thread; kind: "move" | "start" | "end"; days: number };
 
 export function Timeline(): JSX.Element {
   const zoom = (): Zoom => display().zoom ?? "weeks";
@@ -112,40 +114,56 @@ export function Timeline(): JSX.Element {
   // The groups to head, when it's grouped (by the mailbox, as the inbox's buckets, or by a field).
   const headed = (): boolean => listed().groups.length > 1 || groupedBy() !== undefined;
 
-  // A due date being dragged: the thread and how many days it's moved.
-  const [dragging, setDragging] = createSignal<{ thread: Thread; days: number } | null>(null);
-  const moved = (t: Thread): number => (dragging()?.thread === t ? dragging()!.days : 0);
-  // Where a bar runs as shown: dragged, its end moves by whole days (an open-ended one's from today).
+  const [drag, setDrag] = createSignal<Drag | null>(null);
+  const [hovered, setHovered] = createSignal<Thread | null>(null);
+  // Where a card runs as shown: dragged, by whole days (an open-ended one as if due today), never under a day long.
   const shown = (t: Thread): { from: number; to: number; open: boolean } => {
     const { from, to, open: ongoing } = span(t);
-    const by = moved(t);
-    if (by === 0) return { from, to, open: ongoing };
-    const end = addDays(startOfDay(to), ongoing ? by + 1 : by);
-    return { from, to: Math.max(from + DAY_MS, end), open: false };
+    const d = drag();
+    if (d?.thread !== t || d.days === 0) return { from, to, open: ongoing };
+    const end = ongoing ? addDays(startOfDay(to), 1) : to;
+    if (d.kind === "move")
+      return { from: addDays(from, d.days), to: addDays(end, d.days), open: false };
+    if (d.kind === "start")
+      return { from: Math.min(addDays(from, d.days), end - DAY_MS), to: end, open: false };
+    return { from, to: Math.max(addDays(end, d.days), from + DAY_MS), open: false };
   };
   // Its due day (as it's dragged, where it'll land), and whether it's passed with the thread still open.
   const dueDay = (t: Thread): number | undefined =>
-    t.dueAt || moved(t) ? addDays(shown(t).to, -1) : undefined;
+    t.dueAt || drag()?.thread === t ? addDays(shown(t).to, -1) : undefined;
   const overdue = (t: Thread): boolean => t.isOpen && (dueDay(t) ?? Infinity) < today();
 
-  const resize = (thread: Thread, event: PointerEvent): void => {
+  // A press on a card (or one of its edges): a drag once the pointer has moved, otherwise a click that opens it.
+  const press = (thread: Thread, kind: Drag["kind"], event: PointerEvent): void => {
+    if (event.button !== 0) return;
     event.stopPropagation();
-    const handle = event.currentTarget as HTMLElement;
-    handle.setPointerCapture(event.pointerId);
+    const target = event.currentTarget as HTMLElement;
+    target.setPointerCapture(event.pointerId);
     const start = event.clientX;
-    setDragging({ thread, days: 0 });
-    const move = (e: PointerEvent): void =>
-      void setDragging({ thread, days: Math.round((e.clientX - start) / day()) });
-    const up = (): void => {
-      handle.removeEventListener("pointermove", move);
-      const by = dragging()?.days ?? 0;
-      const due = dueDay(thread);
-      setDragging(null);
-      if (by !== 0 && due !== undefined)
-        edit(thread, { dueAt: new Date(Math.max(due, startOfDay(thread.createdAt))) });
+    let dragged = false;
+    const move = (e: PointerEvent): void => {
+      if (!dragged && Math.abs(e.clientX - start) < SLOP) return;
+      dragged = true;
+      setDrag({ thread, kind, days: Math.round((e.clientX - start) / day()) });
     };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", up, { once: true });
+    const up = (): void => {
+      target.removeEventListener("pointermove", move);
+      const d = drag();
+      if (!dragged || !d) {
+        setDrag(null);
+        if (kind === "move") peek({ thread: thread.id });
+        return;
+      }
+      const { from, to } = shown(thread);
+      setDrag(null);
+      if (d.days === 0) return;
+      const due = new Date(addDays(to, -1));
+      if (d.kind === "move") edit(thread, { startAt: new Date(from), dueAt: due });
+      else if (d.kind === "start") edit(thread, { startAt: new Date(from) });
+      else edit(thread, { dueAt: due });
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up, { once: true });
   };
 
   // The month in the middle of what's shown, named over it as it scrolls.
@@ -171,7 +189,6 @@ export function Timeline(): JSX.Element {
       if (toToday === scrollToToday) toToday = undefined;
     };
   });
-
   // Back or on by a step of the scale: a week, four weeks, a quarter.
   const step = (by: -1 | 1): void => {
     const days = zoom() === "weeks" ? 7 : zoom() === "months" ? 28 : 91;
@@ -180,59 +197,100 @@ export function Timeline(): JSX.Element {
 
   const Row = (props: { thread: Thread }): JSX.Element => {
     const t = (): Thread => props.thread;
-    const bar = (): { left: number; width: number; open: boolean } => {
+    const card = (): { left: number; width: number; open: boolean } => {
       const { from, to, open: ongoing } = shown(t());
       const left = x(from);
       return { left, width: Math.max(day(), x(to) - left), open: ongoing };
     };
-    // The due date after the bar, or after its title when that runs on further.
-    const dueAt = (): number =>
-      Math.max(bar().left + bar().width, bar().left + PAD + titleWidth(t().title)) + GAP;
+    // Past the card, or past its title when that runs on further.
+    const after = (): number =>
+      Math.max(card().left + card().width, card().left + PAD + titleWidth(t().title)) + GAP;
+    const dragged = (): boolean => drag()?.thread === t();
     const due = (): string | undefined => {
       const d = dueDay(t());
-      return d === undefined || !(overdue(t()) || dragging()?.thread === t())
-        ? undefined
-        : SHORT_DATE.format(d);
+      return d === undefined || !(overdue(t()) || dragged()) ? undefined : SHORT_DATE.format(d);
     };
+    // Which way it is when it's out of view.
+    const away = (): "before" | "after" | undefined => {
+      if (card().left + card().width < scrolled()) return "before";
+      if (card().left > scrolled() + shownWidth()) return "after";
+      return undefined;
+    };
+    const selected = (): boolean => {
+      const p = peeked();
+      return p !== null && "thread" in p && p.thread === t().id;
+    };
+    const grip = (): boolean => hovered() === t() || dragged();
     return (
-      <div
-        class={sx(styles.row, active() === t() && styles.rowOpen)}
-        onClick={() => open({ thread: t().id })}
-        onContextMenu={(e) => showMenu(e, threadMenu(t()))}
-      >
-        <div class={sx(styles.track)} style={{ width: `${width()}px` }}>
-          <div
-            class={sx(
-              styles.bar,
-              t().state === "resolved" && styles.barResolved,
-              bar().open && styles.barOpenEnded,
-            )}
-            style={{ left: `${bar().left}px`, width: `${bar().width}px` }}
-          >
-            <span
-              class={sx(styles.handle)}
-              aria-label="Change the due date"
-              onPointerDown={(e) => resize(t(), e)}
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-          {/* Its title, starting on the bar and running on past a short one's end. */}
+      <div class={sx(styles.row)} style={{ width: `${width()}px` }}>
+        <div
+          class={sx(
+            styles.card,
+            t().state === "resolved" && styles.cardResolved,
+            card().open && styles.cardOpenEnded,
+            selected() && styles.cardSelected,
+            dragged() && styles.cardDragged,
+          )}
+          style={{ left: `${card().left}px`, width: `${card().width}px` }}
+          onPointerDown={(e) => press(t(), "move", e)}
+          onPointerEnter={() => setHovered(t())}
+          onPointerLeave={() => hovered() === t() && setHovered(null)}
+          onContextMenu={(e) => showMenu(e, threadMenu(t()))}
+        >
           <span
-            class={sx(styles.title, t().state === "resolved" && styles.titleResolved)}
-            style={{ left: `${bar().left + PAD}px` }}
-          >
-            {t().title}
-          </span>
-          {/* Its due date, when it's passed (or the end's being dragged). */}
-          <Show when={due()}>
-            <span
-              class={sx(styles.beside, overdue(t()) && styles.overdue)}
-              style={{ left: `${dueAt()}px` }}
-            >
-              {due()}
-            </span>
-          </Show>
+            class={sx(styles.edge, styles.edgeStart, grip() && styles.edgeShown)}
+            aria-label="Change the start date"
+            onPointerDown={(e) => press(t(), "start", e)}
+          />
+          <span
+            class={sx(styles.edge, styles.edgeEnd, grip() && styles.edgeShown)}
+            aria-label="Change the due date"
+            onPointerDown={(e) => press(t(), "end", e)}
+          />
         </div>
+        <span
+          class={sx(styles.title, t().state === "resolved" && styles.titleResolved)}
+          style={{ left: `${card().left + PAD}px` }}
+        >
+          {t().title}
+        </span>
+        {/* As it's dragged, its start before it; its due date after it then, or when it's passed. */}
+        <Show when={dragged()}>
+          <span
+            class={sx(styles.date, styles.dateBefore)}
+            style={{ left: `${card().left - GAP}px` }}
+          >
+            {SHORT_DATE.format(shown(t()).from)}
+          </span>
+        </Show>
+        <Show when={due()}>
+          <span
+            class={sx(styles.date, overdue(t()) && styles.overdue)}
+            style={{ left: `${after()}px` }}
+          >
+            {due()}
+          </span>
+        </Show>
+        <Show when={away()}>
+          {(side) => (
+            <button
+              class={sx(base.bare, base.hover, styles.away)}
+              style={{
+                left: `${side() === "before" ? scrolled() + 8 : scrolled() + shownWidth() - 32}px`,
+              }}
+              aria-label={`Show ${t().title}`}
+              onClick={() =>
+                scroller.scrollTo({ left: card().left - shownWidth() / 3, behavior: "smooth" })
+              }
+            >
+              <Icon
+                icon={side() === "before" ? i.ArrowLeft01Icon : i.ArrowRight01Icon}
+                size={14}
+                aria-hidden="true"
+              />
+            </button>
+          )}
+        </Show>
       </div>
     );
   };
@@ -277,20 +335,18 @@ export function Timeline(): JSX.Element {
       >
         <div class={sx(styles.content)} style={{ width: `${width()}px` }}>
           <div class={sx(styles.head)}>
-            <div class={sx(styles.days)} style={{ width: `${width()}px` }}>
-              <For each={ticks()}>
-                {(tick) => (
-                  <span
-                    class={sx(styles.tick)}
-                    style={{ left: `${x(tick.at)}px`, width: `${tick.width}px` }}
-                  >
-                    <span class={sx(styles.tickLabel, tick.at === today() && styles.tickToday)}>
-                      {tick.label}
-                    </span>
+            <For each={ticks()}>
+              {(tick) => (
+                <span
+                  class={sx(styles.tick)}
+                  style={{ left: `${x(tick.at)}px`, width: `${tick.width}px` }}
+                >
+                  <span class={sx(styles.tickLabel, tick.at === today() && styles.tickToday)}>
+                    {tick.label}
                   </span>
-                )}
-              </For>
-            </div>
+                </span>
+              )}
+            </For>
           </div>
           <div class={sx(styles.rows)}>
             <span
@@ -318,6 +374,16 @@ export function Timeline(): JSX.Element {
                 </>
               )}
             </For>
+            {/* A new thread, at the foot as Notion's New is. */}
+            <div class={sx(styles.newRow)}>
+              <button
+                class={sx(base.bare, base.hover, styles.new)}
+                onClick={() => setDialog({ kind: "newThread" })}
+              >
+                <Icon icon={i.Add01Icon} size={14} aria-hidden="true" />
+                New
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -361,15 +427,12 @@ const styles = stylex.create({
     position: "sticky",
     top: 0,
     zIndex: 3,
-    display: "flex",
     height: HEAD,
     backgroundColor: colors.chrome,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
   },
-
-  days: { position: "relative", flexShrink: 0 },
   tick: {
     position: "absolute",
     top: 0,
@@ -389,8 +452,7 @@ const styles = stylex.create({
   },
   // Today in a red circle, as its line through the rows is red.
   tickToday: { color: "#fff", fontWeight: 600, backgroundColor: colors.urgent },
-  rows: { position: "relative", minHeight: `calc(100% - ${HEAD}px)`, paddingBottom: 24 },
-
+  rows: { position: "relative", minHeight: `calc(100% - ${HEAD}px)`, paddingTop: 4 },
   // Where today's line starts, at the top of the rows.
   todayDot: {
     position: "absolute",
@@ -416,28 +478,19 @@ const styles = stylex.create({
   groupTitle: {
     position: "sticky",
     left: 0,
-    zIndex: 3,
     display: "flex",
-    flexShrink: 0,
     gap: 6,
     alignItems: "center",
-    height: 32,
+    height: 28,
     paddingLeft: 16,
     color: colors.textSecondary,
     fontSize: fontSizes.small,
     fontWeight: 600,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
   },
   count: { fontWeight: 400, color: colors.textTertiary },
-  row: { display: "flex", height: ROW, cursor: "pointer" },
-  rowOpen: { backgroundColor: colors.bgQuaternary },
-  // The table's cell: its status, title and owner, stuck at the left as the days scroll under it.
-
-  track: { position: "relative", flexShrink: 0 },
+  row: { position: "relative", height: ROW },
   // A card filling its row, a shade off the ground with a hairline edge, as Notion's are.
-  bar: {
+  card: {
     position: "absolute",
     top: (ROW - BAR) / 2,
     zIndex: 1,
@@ -447,13 +500,18 @@ const styles = stylex.create({
     borderColor: colors.raisedBorder,
     borderRadius: 8,
     backgroundColor: colors.raised,
+    cursor: "pointer",
+    filter: { default: "none", ":hover": "brightness(1.08)" },
   },
-  barResolved: { opacity: 0.55 },
+  cardResolved: { opacity: 0.55 },
   // No due date: it runs on, fading, to now.
-  barOpenEnded: {
+  cardOpenEnded: {
     borderRightWidth: 0,
     maskImage: "linear-gradient(to right, black 70%, transparent)",
   },
+  // Open in the floating view.
+  cardSelected: { boxShadow: `0 0 0 2px ${colors.accent}` },
+  cardDragged: { cursor: "grabbing", boxShadow: "0 4px 12px rgba(0, 0, 0, 0.25)" },
   title: {
     position: "absolute",
     top: 0,
@@ -468,22 +526,33 @@ const styles = stylex.create({
     pointerEvents: "none",
   },
   titleResolved: { color: colors.textTertiary },
-
-  // The bar's end, to drag its due date by.
-  handle: {
+  // A card's edges, to resize it by: a grip shown while it's hovered.
+  edge: {
     position: "absolute",
     top: 0,
-    right: 0,
     bottom: 0,
+    zIndex: 2,
     width: 10,
     cursor: "ew-resize",
+    "::after": {
+      content: '""',
+      position: "absolute",
+      top: 8,
+      bottom: 8,
+      width: 3,
+      borderRadius: 2,
+      backgroundColor: colors.textTertiary,
+      opacity: 0,
+    },
   },
-  beside: {
+  edgeStart: { left: 0, "::after": { left: 4 } },
+  edgeEnd: { right: 0, "::after": { right: 4 } },
+  edgeShown: { "::after": { opacity: 0.6 } },
+  date: {
     position: "absolute",
     top: 0,
     zIndex: 1,
     display: "flex",
-    gap: 8,
     alignItems: "center",
     height: ROW,
     color: colors.textSecondary,
@@ -491,5 +560,41 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
     pointerEvents: "none",
   },
+  dateBefore: { transform: "translateX(-100%)" },
   overdue: { color: colors.urgent },
+  // At the edge of what's shown, for a card that's out of view.
+  away: {
+    position: "absolute",
+    top: (ROW - 24) / 2,
+    zIndex: 2,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    color: colors.textSecondary,
+    backgroundColor: colors.raised,
+    cursor: "pointer",
+  },
+  newRow: {
+    position: "sticky",
+    left: 0,
+    display: "flex",
+    width: "max-content",
+    height: ROW,
+    alignItems: "center",
+  },
+  new: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 26,
+    marginLeft: 10,
+    padding: "0 8px",
+    borderRadius: 6,
+    color: colors.textTertiary,
+    fontSize: fontSizes.body,
+    cursor: "pointer",
+  },
 });

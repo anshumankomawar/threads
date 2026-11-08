@@ -66,6 +66,7 @@ type Sample = {
   subspace?: string;
   priority?: string;
   state?: string;
+  startIn?: number;
   dueIn?: number;
   blocks?: string;
   // [author, body, sent to, how long ago it was sent]; without a time, the thread's messages are a few minutes apart.
@@ -207,6 +208,7 @@ const SAMPLE_THREADS: Sample[] = [
     owner: "elena",
     labels: ["compliance"],
     priority: "high",
+    startIn: -3 * DAY,
     dueIn: 7 * DAY,
     messages: [
       [
@@ -251,7 +253,8 @@ const SAMPLE_THREADS: Sample[] = [
     owner: "daniel",
     labels: ["launch"],
     priority: "high",
-    dueIn: 2 * DAY,
+    startIn: -6 * DAY,
+    dueIn: 12 * DAY,
     messages: [
       [
         "daniel",
@@ -285,7 +288,8 @@ const SAMPLE_THREADS: Sample[] = [
     title: "Onboarding redesign: first-run flow",
     owner: "noah",
     priority: "medium",
-    dueIn: 3 * DAY,
+    startIn: 2 * DAY,
+    dueIn: 16 * DAY,
     messages: [
       [
         "noah",
@@ -425,6 +429,7 @@ export function seed(workspace: string, nowMs = Date.now()): Write[] {
         labelIds: t.labels ?? [],
         subspaceIds,
         assigneeIds: [],
+        startAt: t.startIn === undefined ? null : nowMs + t.startIn,
         dueAt: t.dueIn === undefined ? null : nowMs + t.dueIn,
         blocksId: t.blocks ?? null,
       }),

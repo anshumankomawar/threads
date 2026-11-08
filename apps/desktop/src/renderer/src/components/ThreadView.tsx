@@ -774,6 +774,21 @@ function Properties(props: { thread: Thread }): JSX.Element {
           run: change({ priority }),
         }))}
       />
+      <Show when={c().startAt}>
+        {(start) => (
+          <MenuChip
+            look={value}
+            icon={icon(i.Calendar03Icon, 13)}
+            label={<span class={sx(base.ellipsis)}>{`Starts ${shortDate(start())}`}</span>}
+            items={[
+              { label: "Today", run: change({ startAt: dueAt(0) }) },
+              { label: "Tomorrow", run: change({ startAt: dueAt(1) }) },
+              { label: "Next week", run: change({ startAt: dueAt(7) }) },
+              { label: "When it was created", run: change({ startAt: undefined }) },
+            ]}
+          />
+        )}
+      </Show>
       <MenuChip
         look={value}
         icon={icon(i.Calendar01Icon, 13)}

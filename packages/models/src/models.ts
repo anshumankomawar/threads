@@ -109,6 +109,8 @@ export class Thread extends Model {
   @Property({ enum: STATES, indexed: true }) state!: State;
   @Reference(() => User, "ownedThreads", { nullable: true }) owner?: User;
   @Reference(() => Workspace, "threads") workspace!: Workspace;
+  // When work on it starts and when it's due: a timeline's bar runs between them (from its creation, without a start).
+  @Property({ nullable: true, serializer: date }) startAt?: Date;
   @Property({ nullable: true, serializer: date }) dueAt?: Date;
   @Property({ enum: PRIORITIES }) priority!: Priority;
   @Property() labelIds!: string[];

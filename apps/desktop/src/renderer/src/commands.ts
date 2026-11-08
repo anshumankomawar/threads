@@ -355,6 +355,41 @@ function threadCommands(thread: Thread): Command[] {
         ),
     },
     {
+      id: "start",
+      title: "Set a start date",
+      kind: "action",
+      section,
+      icon: i.Calendar03Icon,
+      keywords: "begin when date timeline",
+      page: () =>
+        choices(thread, "Start date", i.Calendar03Icon, [
+          {
+            id: "today",
+            title: "Today",
+            on: false,
+            run: () => edit(thread, { startAt: dueAt(0) }),
+          },
+          {
+            id: "tomorrow",
+            title: "Tomorrow",
+            on: false,
+            run: () => edit(thread, { startAt: dueAt(1) }),
+          },
+          {
+            id: "week",
+            title: "Next week",
+            on: false,
+            run: () => edit(thread, { startAt: dueAt(7) }),
+          },
+          {
+            id: "none",
+            title: "When it was created",
+            on: !thread.startAt,
+            run: () => edit(thread, { startAt: undefined }),
+          },
+        ]),
+    },
+    {
       id: "due",
       title: "Set a due date",
       kind: "action",

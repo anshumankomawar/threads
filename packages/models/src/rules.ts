@@ -153,6 +153,12 @@ function describeChanges(before: Row, after: Row, db: Reader): string[] {
         ? "removed the priority"
         : `set priority to ${capital(after.priority)}`,
     );
+  if ((after.startAt ?? null) !== (before.startAt ?? null))
+    lines.push(
+      after.startAt == null
+        ? "removed the start date"
+        : `set the start date to ${dateToken(after.startAt as number)}`,
+    );
   if ((after.dueAt ?? null) !== (before.dueAt ?? null))
     lines.push(
       after.dueAt == null
