@@ -1,26 +1,35 @@
 import * as i from "@hugeicons/core-free-icons";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import {
-  canGoBack,
-  canGoForward,
-  goBack,
-  goForward,
-  setDialog,
-  setSidebarOpen,
-  sidebarOpen,
-} from "../session";
+import { setDialog, setSidebarOpen, sidebarOpen } from "../session";
+import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
+import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { sx } from "../styles/sx";
 import { Icon, type IconSvgElement } from "./Icon";
 
-// The buttons in the top bars: showing the sidebar and searching, beside the window's buttons; and back and forward,
-// before the reading pane's title.
+// The top bars' shared controls, laid out as the macOS app's toolbar: the sidebar's button beside the window's
+// buttons, and a search field at the far end.
 
 const s = stylex.create({
-  history: { display: "flex", marginRight: 6 },
-  // Narrower, to sit tight against its neighbour.
-  tight: { width: 18 },
+  // A field that opens search (⌘K): rounded, its magnifier and placeholder quiet, its key at the end.
+  search: {
+    display: "flex",
+    flexShrink: 1,
+    gap: 6,
+    alignItems: "center",
+    width: 220,
+    minWidth: 120,
+    height: 24,
+    padding: "0 10px",
+    borderRadius: radii.pill,
+    color: colors.textTertiary,
+    fontSize: fontSizes.body,
+    backgroundColor: { default: colors.bgQuaternary, ":hover": colors.bgTertiary },
+    cursor: "text",
+    WebkitAppRegion: "no-drag",
+  },
+  searchKey: { marginLeft: "auto" },
 });
 
 // Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
@@ -38,15 +47,12 @@ const sidebarIcon = (open: boolean): IconSvgElement =>
 const TopButton = (props: {
   label: string;
   icon: IconSvgElement;
-  disabled?: boolean;
-  tight?: boolean;
   onClick: () => void;
 }): JSX.Element => (
   <button
-    class={sx(topbar.button, props.tight && s.tight)}
+    class={sx(topbar.button)}
     aria-label={props.label}
     title={props.label}
-    disabled={props.disabled}
     onClick={() => props.onClick()}
   >
     <Icon icon={props.icon} size={14} aria-hidden="true" />
@@ -55,32 +61,23 @@ const TopButton = (props: {
 
 // Beside the window's buttons: on the sidebar's top row, or the list's while it's hidden.
 export const AppButtons = (): JSX.Element => (
-  <>
-    <TopButton
-      label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
-      icon={sidebarIcon(sidebarOpen())}
-      onClick={() => setSidebarOpen(!sidebarOpen())}
-    />
-    <TopButton label="Search" icon={i.Search01Icon} onClick={() => setDialog({ kind: "search" })} />
-  </>
+  <TopButton
+    label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
+    icon={sidebarIcon(sidebarOpen())}
+    onClick={() => setSidebarOpen(!sidebarOpen())}
+  />
 );
 
-// Back and forward through the pages you've opened, side by side before the reading pane's title.
-export const HistoryButtons = (): JSX.Element => (
-  <span class={sx(s.history)}>
-    <TopButton
-      label="Back (⌘[)"
-      icon={i.ArrowLeft01Icon}
-      tight
-      disabled={!canGoBack()}
-      onClick={goBack}
-    />
-    <TopButton
-      label="Forward (⌘])"
-      icon={i.ArrowRight01Icon}
-      tight
-      disabled={!canGoForward()}
-      onClick={goForward}
-    />
-  </span>
+// At the far end of the top bar: a field that opens search.
+export const SearchField = (): JSX.Element => (
+  <button
+    class={sx(base.bare, s.search)}
+    aria-label="Search"
+    title="Search (⌘K)"
+    onClick={() => setDialog({ kind: "search" })}
+  >
+    <Icon icon={i.Search01Icon} size={13} aria-hidden="true" />
+    Search
+    <span class={sx(s.searchKey)}>⌘K</span>
+  </button>
 );

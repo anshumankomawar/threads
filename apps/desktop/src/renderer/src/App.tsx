@@ -19,7 +19,6 @@ import {
   switchTo,
   undo,
   setUndo,
-  allThreads,
   view,
   otherSources,
   shown,
@@ -42,7 +41,7 @@ import {
   SettingsView,
   SubspaceView,
 } from "./components/Pages";
-import { HistoryButtons } from "./components/TopButtons";
+import { SearchField } from "./components/TopButtons";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
@@ -166,26 +165,16 @@ export default function App(): JSX.Element {
                 </div>
               )}
             </Show>
+            {/* As the macOS app's toolbar: the thread's ⋯ first, the search field at the far end. */}
             <div data-bar class={sx(topbar.bar, styles.topbarBesideList)}>
-              <HistoryButtons />
-              <span class={sx(base.ellipsis, topbar.title)}>
-                {active()?.title ??
-                  label()?.name ??
-                  bucket()?.name ??
-                  subspace()?.name ??
-                  savedView()?.name ??
-                  (allThreads() ? "Workspace" : undefined) ??
-                  (shown("draft") !== undefined ? "Draft" : undefined) ??
-                  ("settings" in view() ? "Settings" : undefined) ??
-                  person()?.name}
-              </span>
+              <Show when={active()} keyed>
+                {(thread) => <ThreadActions thread={thread} />}
+              </Show>
               <span class={sx(topbar.end)}>
-                <Show when={active()} keyed>
-                  {(thread) => <ThreadActions thread={thread} />}
-                </Show>
                 <Show when={store.connection() === "offline"}>
                   <span class={sx(styles.offline)}>Offline</span>
                 </Show>
+                <SearchField />
               </span>
             </div>
             <Switch fallback={<NothingOpen />}>

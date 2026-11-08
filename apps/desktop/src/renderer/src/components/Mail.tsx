@@ -57,7 +57,7 @@ import { base } from "../styles/base";
 import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, motion, sidebarSpace } from "../styles/tokens.stylex";
+import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
@@ -419,16 +419,6 @@ export function MailSidebar(): JSX.Element {
     <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
       <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
         <AppButtons />
-        <span class={sx(topbar.end)}>
-          <button
-            class={sx(topbar.button)}
-            aria-label="New thread"
-            title="New thread (⌘N)"
-            onClick={() => setDialog({ kind: "newThread" })}
-          >
-            <Icon icon={i.PencilEdit02Icon} {...ICON} />
-          </button>
-        </span>
       </div>
       <div class={sx(s.groups)}>
         <Tabs
@@ -835,7 +825,27 @@ export const LAYOUTS: {
     keywords: "gantt roadmap schedule dates",
   },
 ];
-const layoutIcon = (): IconSvgElement => LAYOUTS.find((l) => l.layout === display().layout)!.icon;
+// List or timeline, side by side in one rounded control, as the macOS app's toolbar has them.
+function LayoutSwitch(): JSX.Element {
+  return (
+    <span class={sx(s.switch)} role="radiogroup" aria-label="Layout">
+      <For each={LAYOUTS}>
+        {(option) => (
+          <button
+            class={sx(base.bare, s.switchOption, display().layout === option.layout && s.switchOn)}
+            role="radio"
+            aria-checked={display().layout === option.layout ? "true" : "false"}
+            aria-label={option.label}
+            title={option.title}
+            onClick={() => setDisplay({ layout: option.layout })}
+          >
+            <Icon icon={option.icon} {...ICON} />
+          </button>
+        )}
+      </For>
+    </span>
+  );
+}
 
 // The ways to group and order a list, and a timeline's scales: in the Display menu, the query bar and ⌘K. Grouping
 // toggles: choosing the one it's grouped by ungroups it.
@@ -1068,10 +1078,11 @@ export function MessageList(): JSX.Element {
         </span>
         <span class={sx(topbar.end)}>
           <Show when={filterable()}>
+            <LayoutSwitch />
             <MenuChip
               look={topbar.button}
               title="Display"
-              label={<Icon icon={layoutIcon()} {...ICON} />}
+              label={<Icon icon={i.SlidersHorizontalIcon} {...ICON} />}
               items={displayMenu()}
             />
           </Show>
@@ -1098,16 +1109,14 @@ export function MessageList(): JSX.Element {
               </button>
             )}
           </Show>
-          <Show when={!sidebarOpen()}>
-            <button
-              class={sx(topbar.button)}
-              aria-label="New thread"
-              title="New thread (⌘N)"
-              onClick={() => setDialog({ kind: "newThread" })}
-            >
-              <Icon icon={i.PencilEdit02Icon} {...ICON} />
-            </button>
-          </Show>
+          <button
+            class={sx(topbar.button)}
+            aria-label="New thread"
+            title="New thread (⌘N)"
+            onClick={() => setDialog({ kind: "newThread" })}
+          >
+            <Icon icon={i.PencilEdit02Icon} {...ICON} />
+          </button>
         </span>
       </div>
       <Show
@@ -1371,6 +1380,26 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
+  switch: {
+    display: "flex",
+    gap: 2,
+    padding: 2,
+    marginRight: 4,
+    borderRadius: radii.pill,
+    backgroundColor: colors.bgQuaternary,
+    WebkitAppRegion: "no-drag",
+  },
+  switchOption: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 20,
+    borderRadius: radii.pill,
+    color: colors.iconTertiary,
+    cursor: "pointer",
+  },
+  switchOn: { color: colors.textPrimary, backgroundColor: colors.bgTertiary },
   listBar: { paddingLeft: 16 },
   // A timeline alone (no thread open beside it) takes the room, with no edge to divide.
   listAlone: { flex: 1, borderRightWidth: 0 },
