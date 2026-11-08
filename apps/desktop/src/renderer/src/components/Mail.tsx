@@ -63,8 +63,6 @@ import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
 import { Tabs, type Tab } from "./Tabs";
-import { glassUnder } from "../glass";
-import { theme } from "../startup";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
@@ -134,7 +132,7 @@ function Mailbox(props: {
         role="button"
         tabindex={0}
         aria-current={on() ? "true" : undefined}
-        class={sx(s.mailbox, props.indent && s.indent)}
+        class={sx(s.mailbox, props.indent && s.indent, on() && s.selected)}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
           const items = props.menu?.();
@@ -417,23 +415,8 @@ export function MailSidebar(): JSX.Element {
   // Choosing a mailbox from elsewhere (⌘4, a space's page) shows its group.
   createEffect(mailbox, (box) => void setGroup(groupOf(box)));
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
-  let aside!: HTMLElement;
-  let ground!: HTMLDivElement;
-  // Glass under the chosen tab and the chosen place, in the theme's appearance.
-  createEffect(theme, (appearance) =>
-    glassUnder(
-      aside,
-      ground,
-      [
-        { selector: '[role="tab"][aria-selected="true"]', radius: 6 },
-        { selector: 'nav [aria-current="true"]', radius: 7.27 },
-      ],
-      appearance,
-    ),
-  );
   return (
-    <aside ref={aside} class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
-      <div ref={ground} class={sx(s.ground)} aria-hidden="true" />
+    <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
       <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
         <AppButtons />
         <span class={sx(topbar.end)}>
@@ -453,7 +436,6 @@ export function MailSidebar(): JSX.Element {
           tabs={GROUPS}
           chosen={GROUPS.find((g) => g.key === group()) ?? GROUPS[0]}
           onChoose={(g) => chooseGroup(g.key)}
-          glass
         />
       </div>
       <nav class={sx(s.nav)} aria-label="Mailboxes">
@@ -1264,15 +1246,11 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  sidebarBar: { position: "relative", zIndex: 1, paddingLeft: sidebarSpace.afterLights },
-  // What the sidebar's glass refracts: its own ground, under everything in it.
-  ground: { position: "absolute", inset: 0, backgroundColor: colors.chrome },
+  sidebarBar: { paddingLeft: sidebarSpace.afterLights },
   // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
   // points ÷ 1.1, for the 110% scale).
-  groups: { position: "relative", zIndex: 1, flexShrink: 0, padding: "2px 9.09px 9.09px" },
+  groups: { flexShrink: 0, padding: "2px 9.09px 9.09px" },
   nav: {
-    position: "relative",
-    zIndex: 1,
     flex: 1,
     minHeight: 0,
     padding: "2px 7.27px 12px",
@@ -1366,8 +1344,6 @@ const s = stylex.create({
   },
   // You 16pt in and 12pt up from the corner, at 20pt, 8pt before your 13pt name.
   footer: {
-    position: "relative",
-    zIndex: 1,
     display: "flex",
     flexShrink: 0,
     gap: 4,
