@@ -20,6 +20,7 @@ import {
   shortDate,
   shown,
   onChooseGroup,
+  peek,
   showMenu,
   sidebarOpen,
   sortAllForMe,
@@ -42,6 +43,8 @@ import {
   mailboxTitle,
   sameMailbox,
   type Mailbox,
+  display,
+  setDisplay,
 } from "../mail";
 import { bucketIcons } from "../bucketIcons";
 import { describe, FIELDS, subspacesIn } from "../filters";
@@ -923,6 +926,113 @@ const pageOf = (box: Mailbox) =>
           ? { person: box.id }
           : undefined;
 
+// How the list is shown (mail.ts' display, kept on this Mac): rows or a board, and grouped by any field a filter can
+// test. In ⌘K too.
+export const displayMenu = (): MenuItem[] => [
+  {
+    label: "List",
+    icon: icon(i.LeftToRightListBulletIcon, 13),
+    checked: !display().board,
+    run: () => setDisplay({ board: false }),
+  },
+  {
+    label: "Board",
+    icon: icon(i.Layout3ColumnIcon, 13),
+    checked: display().board,
+    run: () => setDisplay({ board: true }),
+  },
+  "separator",
+  {
+    label: "Group By",
+    icon: icon(i.LayerIcon, 13),
+    items: [
+      ...(display().board
+        ? []
+        : [
+            {
+              label: "Nothing",
+              checked: !display().group,
+              run: () => setDisplay({ group: undefined }),
+            },
+          ]),
+      ...Object.entries(FIELDS).map(([field, { label }]) => ({
+        label,
+        icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
+        checked: (display().group ?? (display().board ? "state" : undefined)) === field,
+        run: () => setDisplay({ group: field }),
+      })),
+    ],
+  },
+];
+
+// The list as a board: a column a group, each thread a card that peeks open, so you can look without leaving it.
+function Board(): JSX.Element {
+  return (
+    <div class={sx(s.board)}>
+      <For each={listed().groups}>
+        {(group) => (
+          <section class={sx(s.column)} aria-label={group.title}>
+            <div class={sx(s.columnHead)}>
+              <span class={sx(base.ellipsis)}>{group.bucket?.name ?? group.title}</span>
+              <span class={sx(s.groupCount)}>{group.threads.length}</span>
+            </div>
+            <div class={sx(s.cards)}>
+              <For each={group.threads}>
+                {(t) => {
+                  const last = () => t.messages.sorted("createdAt").at(-1);
+                  const from = () => last()?.author ?? t.owner;
+                  return (
+                    <button
+                      class={sx(base.bare, s.card)}
+                      onClick={() => peek({ thread: t.id })}
+                      onContextMenu={(e) => showMenu(e, threadMenu(t))}
+                    >
+                      <span class={sx(s.cardTitle)}>
+                        <Show when={t.priority === "urgent" || t.priority === "high"}>
+                          <span class={sx(s.priority, t.priority === "urgent" && s.urgent)}>
+                            {t.priority === "urgent" ? "!! " : "! "}
+                          </span>
+                        </Show>
+                        {t.title}
+                      </span>
+                      <span class={sx(s.cardMeta)}>
+                        <Identicon seed={from()?.id ?? ""} size={14} />
+                        <span class={sx(base.ellipsis)}>{from()?.name ?? ""}</span>
+                        <span class={sx(s.cardWhen)}>
+                          {stamp(last()?.createdAt ?? t.createdAt)}
+                        </span>
+                      </span>
+                      <Show when={(t.isOpen && t.dueAt) || t.labelIds.length > 0}>
+                        <span class={sx(s.cardChips)}>
+                          <Show when={t.isOpen && t.dueAt}>
+                            {(due) => (
+                              <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
+                                <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
+                                {shortDate(due())}
+                              </span>
+                            )}
+                          </Show>
+                          <For
+                            each={t.labelIds
+                              .map((id) => store.findById(Label, id))
+                              .filter((l) => l !== undefined)}
+                          >
+                            {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
+                          </For>
+                        </span>
+                      </Show>
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </section>
+        )}
+      </For>
+    </div>
+  );
+}
+
 export function MessageList(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   // Opening a space's, label's, person's or view's page (from ⌘K, say) lists its threads here too.
@@ -988,8 +1098,8 @@ export function MessageList(): JSX.Element {
   };
   return (
     <section
-      class={sx(s.list)}
-      style={{ width: `${listColumn.width()}px` }}
+      class={sx(s.list, display().board && s.listWide)}
+      style={{ width: display().board ? undefined : `${listColumn.width()}px` }}
       aria-label={mailboxTitle(mailbox())}
     >
       <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
@@ -1001,6 +1111,19 @@ export function MessageList(): JSX.Element {
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>
         </span>
         <span class={sx(topbar.end)}>
+          <Show when={filterable()}>
+            <MenuChip
+              look={topbar.button}
+              title="Display"
+              label={
+                <Icon
+                  icon={display().board ? i.Layout3ColumnIcon : i.LeftToRightListBulletIcon}
+                  {...ICON}
+                />
+              }
+              items={displayMenu()}
+            />
+          </Show>
           <Show when={filterable()}>
             <MenuChip
               look={topbar.button}
@@ -1074,9 +1197,12 @@ export function MessageList(): JSX.Element {
           </Show>
         </div>
       </Show>
+      <Show when={display().board}>
+        <Board />
+      </Show>
       <div
         ref={list}
-        class={sx(s.listScroll)}
+        class={sx(s.listScroll, display().board && s.hidden)}
         onMouseDown={() =>
           queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
         }
@@ -1089,17 +1215,19 @@ export function MessageList(): JSX.Element {
             <For each={listed().groups}>
               {(group) => (
                 <>
-                  <Show when={mailbox().kind === "inbox"}>
+                  <Show when={mailbox().kind === "inbox" || display().group}>
                     <div class={sx(s.groupHeader)}>
-                      <Icon
-                        icon={
-                          group.bucket
-                            ? (icons().get(group.bucket.id) ?? i.InboxIcon)
-                            : i.Clock01Icon
-                        }
-                        size={11}
-                        aria-hidden="true"
-                      />
+                      <Show when={!display().group}>
+                        <Icon
+                          icon={
+                            group.bucket
+                              ? (icons().get(group.bucket.id) ?? i.InboxIcon)
+                              : i.Clock01Icon
+                          }
+                          size={11}
+                          aria-hidden="true"
+                        />
+                      </Show>
                       {group.bucket?.name ?? group.title}
                       <span class={sx(s.groupCount)}>{group.threads.length}</span>
                     </div>
@@ -1132,7 +1260,9 @@ export function MessageList(): JSX.Element {
           </div>
         </Show>
       </div>
-      <listColumn.Edge label="Resize list" />
+      <Show when={!display().board}>
+        <listColumn.Edge label="Resize list" />
+      </Show>
     </section>
   );
 }
@@ -1319,6 +1449,9 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   listBar: { paddingLeft: 16 },
+  // A board takes the reading pane's room too.
+  listWide: { flex: 1, borderRightWidth: 0 },
+  hidden: { display: "none" },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
   listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
@@ -1453,4 +1586,49 @@ const s = stylex.create({
     color: colors.textTertiary,
   },
   nothingTitle: { color: colors.textSecondary, fontSize: fontSizes.pageTitle, fontWeight: 600 },
+  // A board: columns side by side, scrolling across; each scrolls down on its own.
+  board: {
+    display: "flex",
+    flex: 1,
+    gap: 12,
+    minHeight: 0,
+    padding: "4px 16px 16px",
+    overflowX: "auto",
+  },
+  column: { display: "flex", flexDirection: "column", flexShrink: 0, width: 280, minHeight: 0 },
+  columnHead: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 30,
+    padding: "0 4px",
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    fontWeight: 500,
+  },
+  cards: { display: "flex", flexDirection: "column", gap: 6, minHeight: 0, overflowY: "auto" },
+  card: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    padding: "10px 12px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.panelBorder,
+    borderRadius: radii.row,
+    color: colors.textPrimary,
+    textAlign: "left",
+    backgroundColor: { default: colors.panel, ":hover": colors.panelSelected },
+    cursor: "pointer",
+  },
+  cardTitle: { fontSize: fontSizes.name, fontWeight: 500, lineHeight: "18px" },
+  cardMeta: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+  },
+  cardWhen: { marginLeft: "auto", flexShrink: 0 },
+  cardChips: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
 });

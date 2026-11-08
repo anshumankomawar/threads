@@ -5,7 +5,16 @@ import { branchesOf, isUnder } from "./links";
 import type { IconSvgElement } from "./components/Icon";
 import { LABELS } from "./components/ThreadView";
 import { keysFor, type HotkeyId } from "./hotkeys";
-import { baseFilter, chooseMailbox, conditions, mailbox, type Mailbox } from "./mail";
+import {
+  baseFilter,
+  chooseMailbox,
+  conditions,
+  display,
+  mailbox,
+  setDisplay,
+  type Mailbox,
+} from "./mail";
+import { FIELDS } from "./filters";
 import {
   account,
   active,
@@ -427,6 +436,58 @@ function places(): Command[] {
   ];
 }
 
+// ── How the list is shown ──
+
+function listing(): Command[] {
+  const section = "This list";
+  const grouped = display().group ?? (display().board ? "state" : undefined);
+  return [
+    display().board
+      ? {
+          id: "as-list",
+          title: "Show as a list",
+          kind: "action",
+          section,
+          icon: i.LeftToRightListBulletIcon,
+          keywords: "rows layout display view",
+          run: () => setDisplay({ board: false }),
+        }
+      : {
+          id: "as-board",
+          title: "Show as a board",
+          kind: "action",
+          section,
+          icon: i.Layout3ColumnIcon,
+          keywords: "columns kanban layout display view",
+          run: () => setDisplay({ board: true }),
+        },
+    {
+      id: "group-by",
+      title: "Group by",
+      kind: "action",
+      section,
+      icon: i.LayerIcon,
+      keywords: "sections columns display",
+      page: () => ({
+        title: "Group by",
+        placeholder: "Search",
+        commands: () =>
+          [
+            ...(display().board ? [] : [{ field: undefined, label: "Nothing" }]),
+            ...Object.entries(FIELDS).map(([field, { label }]) => ({ field, label })),
+          ].map(({ field, label }): Command => ({
+            id: `group:${field ?? "none"}`,
+            title: label,
+            kind: "action",
+            section: "Group by",
+            icon: grouped === field ? i.Tick02Icon : i.LayerIcon,
+            run: () => setDisplay({ group: field }),
+          })),
+      }),
+    },
+  ];
+}
+
 // ── Making things ──
 
 function creating(): Command[] {
@@ -583,6 +644,7 @@ export function commands(): Command[] {
   return [
     ...(thread ? threadCommands(thread) : []),
     ...places(),
+    ...listing(),
     ...creating(),
     ...app(),
     ...store.all(User).map(personCommand),
