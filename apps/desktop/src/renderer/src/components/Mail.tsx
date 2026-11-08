@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
@@ -113,121 +113,6 @@ const timelineColumn = resizable("mail-timeline-width", { initial: 600, min: 300
 // A timeline takes the room a list leaves the reading pane.
 const wide = (): boolean => display().layout !== "list";
 
-// ── One pill for hover and selection ──
-
-// Rows marked `data-pill` share one pill that slides to whichever you're over (or have focused), and rests on the
-// selected one (`aria-current`) otherwise: hover and selection are one shape, never two. The pill sits behind the rows in
-// `container`, which scrolls it with them.
-function slidingPill(container: HTMLElement, pill: HTMLElement): () => void {
-  let over: HTMLElement | null = null;
-  let shown = false;
-  const target = (): HTMLElement | null => {
-    if (over?.isConnected && !over.closest("[inert]")) return over;
-    const current = [
-      ...container.querySelectorAll<HTMLElement>('[data-pill][aria-current="true"]'),
-    ];
-    // The most specific selection: a space's open thread rather than the space.
-    return current.filter((el) => !el.closest("[inert]")).at(-1) ?? null;
-  };
-  const place = (slide = true): void => {
-    const t = target();
-    if (!t) {
-      pill.style.opacity = "0";
-      shown = false;
-      return;
-    }
-    const box = container.getBoundingClientRect();
-    const row = t.getBoundingClientRect();
-    const instant = !shown || !slide;
-    if (instant) pill.style.transition = "none";
-    pill.style.transform = `translate(${row.left - box.left + container.scrollLeft}px, ${row.top - box.top + container.scrollTop}px)`;
-    pill.style.width = `${row.width}px`;
-    pill.style.height = `${row.height}px`;
-    pill.style.opacity = "1";
-    if (instant) {
-      void pill.offsetWidth;
-      pill.style.transition = "";
-    }
-    shown = true;
-  };
-  // While rows move (a section folding open or shut), follow them frame by frame. Only for that: the pill's own slide
-  // and the list's fading hairlines are transitions too, and following them would snap the pill instead of sliding it.
-  let following = 0;
-  const follow = (event?: TransitionEvent): void => {
-    if (event && (event.target === pill || event.propertyName !== "grid-template-rows")) return;
-    if (following) return;
-    const until = performance.now() + 320;
-    const step = (): void => {
-      place(false);
-      following = performance.now() < until ? requestAnimationFrame(step) : 0;
-    };
-    following = requestAnimationFrame(step);
-  };
-  // While a menu (or a form grown out of one) is open, it stays where it was: on the row you right-clicked, not
-  // chasing the pointer on its way to the menu.
-  const menuOpen = (): boolean =>
-    document.querySelector("[role=menu]:popover-open, [data-holds-keys]:popover-open") !== null;
-  const onLeave = (): void => {
-    if (menuOpen()) return;
-    over = null;
-    place();
-  };
-  // Under the pointer, the row it's on. Between rows (a gap, a heading) it stays where it was; past the first or last
-  // row, in the column's empty space, it goes back to the selection.
-  const onOver = (event: Event): void => {
-    if (menuOpen()) return;
-    const row = (event.target as Element).closest<HTMLElement>("[data-pill]");
-    if (row && container.contains(row)) {
-      if (row !== over) {
-        over = row;
-        place();
-      }
-      return;
-    }
-    if (!over || !(event instanceof PointerEvent)) return;
-    const rows = [...container.querySelectorAll<HTMLElement>("[data-pill]")].filter(
-      (el) => !el.closest("[inert]"),
-    );
-    const top = rows[0]?.getBoundingClientRect().top ?? 0;
-    const bottom = rows.at(-1)?.getBoundingClientRect().bottom ?? 0;
-    if (event.clientY < top || event.clientY > bottom) onLeave();
-  };
-  const onScroll = (): void => place(false);
-  // Once the menu's gone, to wherever the pointer is now: the row under it, or off the list, the selection.
-  const onMenuClosed = (event: Event): void => {
-    if ((event as ToggleEvent).newState !== "closed" || menuOpen()) return;
-    over = container.querySelector<HTMLElement>("[data-pill]:hover");
-    place();
-  };
-  document.addEventListener("toggle", onMenuClosed, { capture: true });
-  container.addEventListener("pointerover", onOver);
-  container.addEventListener("focusin", onOver);
-  container.addEventListener("pointerleave", onLeave);
-  container.addEventListener("scroll", onScroll, { capture: true, passive: true });
-  container.addEventListener("transitionrun", follow);
-  const mutations = new MutationObserver(() => place());
-  mutations.observe(container, {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    attributeFilter: ["aria-current", "inert"],
-  });
-  const sizes = new ResizeObserver(() => place(false));
-  sizes.observe(container);
-  place(false);
-  return () => {
-    container.removeEventListener("pointerover", onOver);
-    container.removeEventListener("focusin", onOver);
-    container.removeEventListener("pointerleave", onLeave);
-    container.removeEventListener("scroll", onScroll, { capture: true });
-    document.removeEventListener("toggle", onMenuClosed, { capture: true });
-    container.removeEventListener("transitionrun", follow);
-    mutations.disconnect();
-    sizes.disconnect();
-    cancelAnimationFrame(following);
-  };
-}
-
 // ── The sidebar: mailboxes ──
 
 // A mailbox in the sidebar: its icon, name and count.
@@ -246,9 +131,8 @@ function Mailbox(props: {
       <div
         role="button"
         tabindex={0}
-        data-pill
         aria-current={on() ? "true" : undefined}
-        class={sx(s.mailbox, props.indent && s.indent)}
+        class={sx(s.mailbox, props.indent && s.indent, on() && s.selected)}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
           const items = props.menu?.();
@@ -528,10 +412,8 @@ onChooseGroup((at) => {
 });
 
 export function MailSidebar(): JSX.Element {
-  let nav!: HTMLElement;
   // Choosing a mailbox from elsewhere (⌘4, a space's page) shows its group.
   createEffect(mailbox, (box) => void setGroup(groupOf(box)));
-  onSettled(() => slidingPill(nav, nav.firstElementChild as HTMLElement));
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
@@ -556,8 +438,7 @@ export function MailSidebar(): JSX.Element {
           onChoose={(g) => chooseGroup(g.key)}
         />
       </div>
-      <nav ref={nav} class={sx(s.nav)} aria-label="Mailboxes">
-        <div class={sx(s.pill)} aria-hidden="true" />
+      <nav class={sx(s.nav)} aria-label="Mailboxes">
         <Show when={group() === "mail"}>
           <ul class={sx(s.mailboxes)}>
             <Mailbox
@@ -769,9 +650,8 @@ function Row(props: { thread: Thread }): JSX.Element {
         role="button"
         tabindex={on() ? 0 : -1}
         data-active={on() ? "" : undefined}
-        data-pill
         aria-current={on() ? "true" : undefined}
-        class={sx(s.row)}
+        class={sx(s.row, on() && s.selected)}
         onClick={() => open({ thread: t().id })}
         onContextMenu={(e) => showMenu(e, threadMenu(t()))}
       >
@@ -859,10 +739,9 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
       <div
         role="button"
         tabindex={0}
-        data-pill
         data-active={shown("draft") === props.draft.id ? "" : undefined}
         aria-current={shown("draft") === props.draft.id ? "true" : undefined}
-        class={sx(s.row)}
+        class={sx(s.row, shown("draft") === props.draft.id && s.selected)}
         onClick={() => open({ draft: props.draft.id })}
         onContextMenu={(e) =>
           showMenu(e, [
@@ -1156,7 +1035,6 @@ export function MessageList(): JSX.Element {
     return `${count} ${noun}${count === 1 ? "" : "s"}`;
   };
   let list!: HTMLDivElement;
-  onSettled(() => slidingPill(list, list.firstElementChild as HTMLElement));
   // ↑ and ↓ move through the list, as in Mail (J and K do too, anywhere).
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -1254,7 +1132,6 @@ export function MessageList(): JSX.Element {
         }
         onKeyDown={onKeyDown}
       >
-        <div class={sx(s.pill)} aria-hidden="true" />
         <Show
           when={mailbox().kind === "drafts"}
           fallback={
@@ -1374,29 +1251,13 @@ const s = stylex.create({
   // points ÷ 1.1, for the 110% scale).
   groups: { flexShrink: 0, padding: "2px 9.09px 9.09px" },
   nav: {
-    position: "relative",
-    // Its own stacking context, so the pill (behind the rows) stays above the sidebar's background.
-    isolation: "isolate",
     flex: 1,
     minHeight: 0,
     padding: "2px 7.27px 12px",
     overflowY: "auto",
   },
-  pill: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    zIndex: -1,
-    width: 0,
-    height: 0,
-    borderRadius: 7.27,
-    backgroundColor: colors.bgTertiary,
-    opacity: 0,
-    pointerEvents: "none",
-    transitionProperty: "transform, width, height, opacity",
-    transitionDuration: { default: "180ms", [motion.reduced]: "0s" },
-    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
-  },
+  // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
+  selected: { backgroundColor: colors.bgTertiary },
   // A little space between rows, so neighbouring fills (a space and its open thread) don't run together.
   mailboxes: {
     display: "flex",
@@ -1421,7 +1282,7 @@ const s = stylex.create({
     cursor: "default",
     outline: "none",
   },
-  // A bucket under Inbox: indented by a margin, not padding, so the pill starts just before its icon.
+  // A bucket under Inbox: indented by a margin, not padding, so its ground starts just before its icon.
   indent: { marginLeft: 14 },
   collapse: {
     display: "grid",
