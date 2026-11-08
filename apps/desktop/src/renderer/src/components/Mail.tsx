@@ -1246,7 +1246,8 @@ const s = stylex.create({
   sidebarBar: { paddingLeft: sidebarSpace.afterLights },
   // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
   // points ÷ 1.1, for the 110% scale).
-  groups: { flexShrink: 0, padding: "2px 9.09px 9.09px" },
+  // Level with the list's first heading beside them (their middles on one line); the rows stay where they were.
+  groups: { flexShrink: 0, padding: "5.11px 9.09px 6.07px" },
   nav: {
     flex: 1,
     minHeight: 0,
