@@ -1,4 +1,13 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, systemPreferences } from "electron";
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  nativeImage,
+  nativeTheme,
+  systemPreferences,
+} from "electron";
 import { join } from "path";
 import { electronApp, optimizer, is } from "@electron-toolkit/utils";
 import icon from "../../resources/icon.png?asset";
@@ -129,6 +138,20 @@ void app.whenReady().then(() => {
   nativeTheme.themeSource = "dark";
   syncDockIcon();
   nativeTheme.on("updated", syncDockIcon);
+  // SF Symbols for the renderer's icons, drawn by the system: each name's image (or null if it has none), large, for
+  // the renderer to scale down and fill with its text's colour.
+  ipcMain.handle("sf-symbols", (_event, names: unknown) =>
+    Object.fromEntries(
+      (Array.isArray(names) ? names : []).map((name) => {
+        const image = nativeImage.createFromNamedImage(String(name), {
+          pointSize: 32,
+          weight: "regular",
+        });
+        return [name, image.isEmpty() ? null : image.toDataURL()];
+      }),
+    ),
+  );
+
   // The renderer's theme (⌘K): the window's ground and its controls follow it.
   ipcMain.on("set-theme", (_event, theme: unknown) => {
     const light = theme === "light";

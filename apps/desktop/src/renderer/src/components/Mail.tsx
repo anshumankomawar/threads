@@ -1074,7 +1074,15 @@ export function MessageList(): JSX.Element {
       }}
       aria-label={mailboxTitle(mailbox())}
     >
-      <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
+      {/* As wide as the list's column in either layout, so switching to the timeline (a wider column) leaves its
+          controls where they were. */}
+      <div
+        data-bar
+        class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}
+        style={{
+          width: `${listColumn.width() + (sidebarOpen() ? 0 : BESIDE_LIGHTS)}px`,
+        }}
+      >
         <Show when={!sidebarOpen()}>
           <AppButtons />
         </Show>

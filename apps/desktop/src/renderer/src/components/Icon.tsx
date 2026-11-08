@@ -1,4 +1,5 @@
 import type { JSX } from "@solidjs/web";
+import { symbolFor } from "../symbols";
 
 // A Hugeicons icon (`@hugeicons/core-free-icons`): `[tag, attributes]` pairs on a 24×24 grid.
 export type IconSvgElement = readonly (readonly [
@@ -27,6 +28,26 @@ export const icon = (svg: IconSvgElement, size = 12): JSX.Element => (
 );
 
 export function Icon(props: IconProps): JSX.Element {
+  // On macOS, the system's SF Symbol for it, filled with the text's colour (as the macOS app's icons).
+  const symbol = symbolFor(props.icon);
+  if (symbol)
+    return (
+      <span
+        class={props.class}
+        aria-hidden={props["aria-hidden"]}
+        style={{
+          display: "inline-block",
+          "flex-shrink": 0,
+          width: `${props.size ?? 16}px`,
+          height: `${props.size ?? 16}px`,
+          "background-color": "currentColor",
+          "mask-image": `url(${symbol})`,
+          "mask-size": "contain",
+          "mask-repeat": "no-repeat",
+          "mask-position": "center",
+        }}
+      />
+    );
   return (
     <svg
       {...props}
