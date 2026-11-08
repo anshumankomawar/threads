@@ -609,14 +609,8 @@ const styles = stylex.create({
   },
 
   // Today, solid, as TeamGantt marks it.
-  // Today, as the app marks what's chosen: shaded, rounded as its rows.
-  tickToday: {
-    padding: "0 7px",
-    borderRadius: radii.row,
-    color: colors.textPrimary,
-    fontWeight: 600,
-    backgroundColor: colors.bgTertiary,
-  },
+  // Today: its date, darker and bold.
+  tickToday: { color: colors.textPrimary, fontWeight: 600 },
 
   body: { position: "relative", display: "flex" },
   // The names' resize edge: invisible, only its cursor says it's there (the column's border is the line).
@@ -720,6 +714,7 @@ const styles = stylex.create({
     borderColor: colors.raisedBorder,
     borderRadius: radii.control,
     backgroundColor: colors.raised,
+    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.08)",
     cursor: "pointer",
     filter: { default: "none", ":hover": "brightness(0.98)" },
   },
@@ -727,7 +722,9 @@ const styles = stylex.create({
 
   // No due date: it runs on, fading, to now.
   barOpenEnded: { maskImage: "linear-gradient(to right, black 60%, transparent)" },
-  barSelected: { boxShadow: `0 0 0 2px ${colors.chrome}, 0 0 0 3.5px ${colors.textSecondary}` },
+  barSelected: {
+    boxShadow: `0 0 0 2px ${colors.chrome}, 0 0 0 3.5px ${colors.textSecondary}, 0 1px 2px rgba(0, 0, 0, 0.08)`,
+  },
   barDragged: { cursor: "grabbing", boxShadow: "0 3px 10px rgba(0, 0, 0, 0.25)" },
   progress: {
     position: "absolute",
