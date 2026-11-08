@@ -57,7 +57,7 @@ import { base } from "../styles/base";
 import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
+import { colors, fontSizes, motion, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
@@ -664,16 +664,12 @@ function Row(props: { thread: Thread }): JSX.Element {
                   {t().priority === "urgent" ? "!!" : "!"}
                 </span>
               </Show>
-              <Show when={t().state !== "open"}>
+              <Show when={t().state === "blocked"}>
                 <span class={sx(s.stateMark)}>
-                  <Icon
-                    icon={t().state === "resolved" ? i.CheckmarkCircle02Icon : i.Clock01Icon}
-                    size={11}
-                    aria-hidden="true"
-                  />
+                  <Icon icon={i.Clock01Icon} size={11} aria-hidden="true" />
                 </span>
               </Show>
-              <span class={sx(base.ellipsis, s.subject, isUnread() && s.subjectUnread)}>
+              <span class={sx(base.ellipsis, s.subject, !t().isOpen && s.subjectResolved)}>
                 {t().title}
               </span>
             </span>
@@ -685,38 +681,37 @@ function Row(props: { thread: Thread }): JSX.Element {
               {stamp(last()?.createdAt ?? t().createdAt)}
             </span>
           </span>
-          {/* Three lines, every row: the title, then two of who wrote last leading into what they wrote. The due date
-              and labels float to the end of the second, the words running round them. */}
-          <span class={sx(s.preview)}>
-            <span class={sx(s.chipsSpacer)} aria-hidden="true" />
-            <span class={sx(s.chips)}>
-              {/* What it's made of: how many of its branches are resolved. */}
-              <Show when={progressOf(t())}>
-                {(p) => (
-                  <span class={sx(s.due)} title="Branches resolved">
-                    <Icon icon={i.GitBranchIcon} size={10} aria-hidden="true" />
-                    {p().done}/{p().total}
-                  </span>
-                )}
-              </Show>
-              <Show when={t().isOpen && t().dueAt}>
-                {(due) => (
-                  <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
-                    <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
-                    {shortDate(due())}
-                  </span>
-                )}
-              </Show>
-              <For
-                each={t()
-                  .labelIds.map((id) => store.findById(Label, id))
-                  .filter((l) => l !== undefined)}
-              >
-                {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
-              </For>
+          {/* Then who wrote last and what, up to two lines, in a column of its own; its due date and label beside it,
+              on its last line. */}
+          <span class={sx(s.second)}>
+            <span class={sx(s.preview)}>
+              <span class={sx(s.from)}>{from()?.name ?? ""}</span>
+              <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
             </span>
-            <span class={sx(s.from)}>{from()?.name ?? ""}</span>
-            <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
+            {/* What it's made of: how many of its branches are resolved. */}
+            <Show when={progressOf(t())}>
+              {(p) => (
+                <span class={sx(s.due)} title="Branches resolved">
+                  <Icon icon={i.GitBranchIcon} size={10} aria-hidden="true" />
+                  {p().done}/{p().total}
+                </span>
+              )}
+            </Show>
+            <Show when={t().dueAt}>
+              {(due) => (
+                <span class={sx(s.due, t().isOpen && dueSoon(due()) && s.dueSoon)}>
+                  <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
+                  {shortDate(due())}
+                </span>
+              )}
+            </Show>
+            <Show
+              when={t()
+                .labelIds.map((id) => store.findById(Label, id))
+                .find((l) => l)}
+            >
+              {(label) => <span class={sx(s.labelChip)}>{label().name}</span>}
+            </Show>
           </span>
         </span>
       </div>
@@ -765,7 +760,9 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
             <span class={sx(s.stamp)}>{stamp(props.draft.updatedAt)}</span>
           </span>
           <Show when={rest()}>
-            <span class={sx(s.preview)}>{rest()}</span>
+            <span class={sx(s.second)}>
+              <span class={sx(s.preview)}>{rest()}</span>
+            </span>
           </Show>
         </span>
       </div>
@@ -1402,112 +1399,107 @@ const s = stylex.create({
   querySpacer: { flex: 1 },
   // As tall as the chips beside it.
   queryNew: { height: 22, marginLeft: 4, padding: "0 10px" },
+  // Sized as the macOS app's list: each size here is its points ÷ 1.1, for the renderer's 110% scale. Cards 8pt in
+  // from the column's sides and 2pt apart.
   listScroll: {
     position: "relative",
     isolation: "isolate",
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "0 6px 12px",
+    padding: "0 7.27px 10.91px",
     outline: "none",
   },
+  // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.
   groupHeader: {
     display: "flex",
     gap: 6,
     alignItems: "center",
-    height: 26,
-    padding: "0 10px",
+    padding: "9.09px 10.91px 1.82px",
     color: colors.textTertiary,
-    fontSize: fontSizes.small,
+    fontSize: 10.91,
     fontWeight: 500,
   },
   groupCount: { fontWeight: 400 },
-  // No hairlines between rows: compact rows (as the sidebar's are), set apart by the space between them.
+  // No hairlines between rows: compact cards, set apart by the space between them.
   rows: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: 1.82,
     margin: 0,
     padding: 0,
     listStyle: "none",
   },
   rowItem: { listStyle: "none" },
+  // A card: 12pt in from its sides and 10pt from its top and bottom, rounded 10pt, its two parts 5pt apart.
   row: {
     display: "flex",
-    gap: 8,
     alignItems: "flex-start",
-    padding: "9px 10px 10px",
-    borderRadius: radii.row,
+    padding: "9.09px 10.91px",
+    borderRadius: 9.09,
     color: colors.textPrimary,
     cursor: "default",
     outline: "none",
   },
   unreadDot: {
     flexShrink: 0,
-    width: 7,
-    height: 7,
+    width: 6.36,
+    height: 6.36,
     borderRadius: "50%",
     backgroundColor: colors.systemBlue,
   },
-  rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
-  // The first line, with a little room under it (as much as above a row's due date and labels).
-  // The title and when, on the first line.
-  rowTop: { display: "flex", gap: 8, alignItems: "center", marginBottom: 3 },
+  rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 4.55, minWidth: 0 },
+  // The first line, at 14pt: the title (after its priority's marks), then at least 8pt on, the unread dot and when.
+  rowTop: { display: "flex", gap: 7.27, alignItems: "center", fontSize: 12.73 },
   // Who wrote last, at the start of the preview: a little stronger than their words.
   from: { color: colors.textSecondary, fontWeight: 500 },
   stamp: {
     display: "flex",
     flexShrink: 0,
-    gap: 6,
+    gap: 4.55,
     alignItems: "center",
     color: colors.textTertiary,
-    fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
   },
-  subjectLine: { display: "flex", flex: 1, gap: 4, alignItems: "center", minWidth: 0 },
-  subject: { fontSize: fontSizes.name, fontWeight: 500, lineHeight: "18px" },
-  subjectUnread: { fontWeight: 600 },
-  priority: { flexShrink: 0, color: "#ff9f0a", fontSize: fontSizes.body, fontWeight: 700 },
+  subjectLine: { display: "flex", flex: 1, gap: 4.55, alignItems: "center", minWidth: 0 },
+  subject: { fontWeight: 600, lineHeight: "17.27px" },
+  subjectResolved: { color: colors.textTertiary },
+  priority: { flexShrink: 0, color: "#ff9f0a", fontWeight: 700 },
   urgent: { color: colors.urgent },
   stateMark: { display: "flex", flexShrink: 0, color: colors.textTertiary },
-  // Always two lines tall, whatever's in it, and never more.
+  // The rest at 13pt: the preview's column, then its due date and label, 8pt apart, on its last line.
+  second: {
+    display: "flex",
+    gap: 7.27,
+    alignItems: "last baseline",
+    fontSize: 11.82,
+    lineHeight: "14.55px",
+  },
   preview: {
-    display: "block",
-    height: 32,
+    display: "-webkit-box",
+    flex: 1,
+    minWidth: 0,
     overflow: "hidden",
     color: colors.textTertiary,
-    fontSize: fontSizes.body,
-    lineHeight: "16px",
-  },
-  // Pushes the due date and labels (floated after it) down to the preview's second line. A hair over a line, since
-  // a first line a fraction over 16px would otherwise count as beside them and wrap early.
-  chipsSpacer: { float: "right", width: 0, height: 16.5 },
-  chips: {
-    float: "right",
-    clear: "right",
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    height: 15.5,
-    marginLeft: 8,
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: 2,
   },
   due: {
     display: "flex",
     flexShrink: 0,
-    gap: 3,
+    gap: 2.73,
     alignItems: "center",
     color: colors.textTertiary,
-    fontSize: fontSizes.small,
   },
   dueSoon: { color: colors.urgent },
+  // A label: 6pt in, 1pt above and below, rounded 6pt.
   labelChip: {
     flexShrink: 0,
     whiteSpace: "nowrap",
-    padding: "0 6px",
-    borderRadius: radii.pill,
+    padding: "0.91px 5.45px",
+    borderRadius: 5.45,
     color: colors.textSecondary,
-    fontSize: fontSizes.small,
-    lineHeight: "16px",
+    lineHeight: "14.55px",
     backgroundColor: colors.bgTertiary,
   },
   empty: {
