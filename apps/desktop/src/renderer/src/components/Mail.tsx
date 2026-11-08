@@ -20,7 +20,6 @@ import {
   shortDate,
   shown,
   onChooseGroup,
-  peek,
   showMenu,
   sidebarOpen,
   sortAllForMe,
@@ -44,6 +43,8 @@ import {
   sameMailbox,
   type Mailbox,
   display,
+  moveToGroup,
+  type Group,
   setDisplay,
 } from "../mail";
 import { bucketIcons } from "../bucketIcons";
@@ -55,6 +56,10 @@ import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
+import {
+  draggable,
+  dropTargetForElements,
+} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
 import { Tabs, type Tab } from "./Tabs";
@@ -965,70 +970,111 @@ export const displayMenu = (): MenuItem[] => [
   },
 ];
 
-// The list as a board: a column a group, each thread a card that peeks open, so you can look without leaving it.
+// The list as a board: a column a group, each thread a card. A click opens it beside the board; dragging it to another
+// column changes what it's grouped by to that column's (moveToGroup), by Atlassian's pragmatic-drag-and-drop.
+const [dragging, setDragging] = createSignal<Thread | null>(null);
+
+function BoardCard(props: { thread: Thread; group: string }): JSX.Element {
+  const t = (): Thread => props.thread;
+  const last = () => t().messages.sorted("createdAt").at(-1);
+  const from = () => last()?.author ?? t().owner;
+  let card!: HTMLButtonElement;
+  onSettled(() =>
+    draggable({
+      element: card,
+      getInitialData: () => ({ thread: t().id, from: props.group }),
+      onDragStart: () => setDragging(t()),
+      onDrop: () => setDragging(null),
+    }),
+  );
+  return (
+    <button
+      ref={card}
+      class={sx(
+        base.bare,
+        s.card,
+        active() === t() && s.cardOpen,
+        dragging() === t() && s.cardDragging,
+      )}
+      onClick={() => open({ thread: t().id })}
+      onContextMenu={(e) => showMenu(e, threadMenu(t()))}
+    >
+      <span class={sx(s.cardTitle)}>
+        <Show when={t().priority === "urgent" || t().priority === "high"}>
+          <span class={sx(s.priority, t().priority === "urgent" && s.urgent)}>
+            {t().priority === "urgent" ? "!! " : "! "}
+          </span>
+        </Show>
+        {t().title}
+      </span>
+      <span class={sx(s.cardMeta)}>
+        <Identicon seed={from()?.id ?? ""} size={14} />
+        <span class={sx(base.ellipsis)}>{from()?.name ?? ""}</span>
+        <span class={sx(s.cardWhen)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
+      </span>
+      <Show when={(t().isOpen && t().dueAt) || t().labelIds.length > 0}>
+        <span class={sx(s.cardChips)}>
+          <Show when={t().isOpen && t().dueAt}>
+            {(due) => (
+              <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
+                <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
+                {shortDate(due())}
+              </span>
+            )}
+          </Show>
+          <For
+            each={t()
+              .labelIds.map((id) => store.findById(Label, id))
+              .filter((l) => l !== undefined)}
+          >
+            {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
+          </For>
+        </span>
+      </Show>
+    </button>
+  );
+}
+
+function BoardColumn(props: { group: Group }): JSX.Element {
+  const [over, setOver] = createSignal(false);
+  let column!: HTMLElement;
+  onSettled(() =>
+    dropTargetForElements({
+      element: column,
+      getData: () => ({ to: props.group.key }),
+      canDrop: ({ source }) => source.data.from !== props.group.key,
+      onDragEnter: () => setOver(true),
+      onDragLeave: () => setOver(false),
+      onDrop: ({ source }) => {
+        setOver(false);
+        const thread = store.findById(Thread, String(source.data.thread));
+        if (thread) moveToGroup(thread, String(source.data.from), props.group.key);
+      },
+    }),
+  );
+  return (
+    <section
+      ref={column}
+      class={sx(s.column, over() && s.columnOver)}
+      aria-label={props.group.title}
+    >
+      <div class={sx(s.columnHead)}>
+        <span class={sx(base.ellipsis)}>{props.group.bucket?.name ?? props.group.title}</span>
+        <span class={sx(s.groupCount)}>{props.group.threads.length}</span>
+      </div>
+      <div class={sx(s.cards)}>
+        <For each={props.group.threads}>
+          {(t) => <BoardCard thread={t} group={props.group.key} />}
+        </For>
+      </div>
+    </section>
+  );
+}
+
 function Board(): JSX.Element {
   return (
     <div class={sx(s.board)}>
-      <For each={listed().groups}>
-        {(group) => (
-          <section class={sx(s.column)} aria-label={group.title}>
-            <div class={sx(s.columnHead)}>
-              <span class={sx(base.ellipsis)}>{group.bucket?.name ?? group.title}</span>
-              <span class={sx(s.groupCount)}>{group.threads.length}</span>
-            </div>
-            <div class={sx(s.cards)}>
-              <For each={group.threads}>
-                {(t) => {
-                  const last = () => t.messages.sorted("createdAt").at(-1);
-                  const from = () => last()?.author ?? t.owner;
-                  return (
-                    <button
-                      class={sx(base.bare, s.card)}
-                      onClick={() => peek({ thread: t.id })}
-                      onContextMenu={(e) => showMenu(e, threadMenu(t))}
-                    >
-                      <span class={sx(s.cardTitle)}>
-                        <Show when={t.priority === "urgent" || t.priority === "high"}>
-                          <span class={sx(s.priority, t.priority === "urgent" && s.urgent)}>
-                            {t.priority === "urgent" ? "!! " : "! "}
-                          </span>
-                        </Show>
-                        {t.title}
-                      </span>
-                      <span class={sx(s.cardMeta)}>
-                        <Identicon seed={from()?.id ?? ""} size={14} />
-                        <span class={sx(base.ellipsis)}>{from()?.name ?? ""}</span>
-                        <span class={sx(s.cardWhen)}>
-                          {stamp(last()?.createdAt ?? t.createdAt)}
-                        </span>
-                      </span>
-                      <Show when={(t.isOpen && t.dueAt) || t.labelIds.length > 0}>
-                        <span class={sx(s.cardChips)}>
-                          <Show when={t.isOpen && t.dueAt}>
-                            {(due) => (
-                              <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
-                                <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
-                                {shortDate(due())}
-                              </span>
-                            )}
-                          </Show>
-                          <For
-                            each={t.labelIds
-                              .map((id) => store.findById(Label, id))
-                              .filter((l) => l !== undefined)}
-                          >
-                            {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
-                          </For>
-                        </span>
-                      </Show>
-                    </button>
-                  );
-                }}
-              </For>
-            </div>
-          </section>
-        )}
-      </For>
+      <For each={listed().groups}>{(group) => <BoardColumn group={group} />}</For>
     </div>
   );
 }
@@ -1631,4 +1677,8 @@ const s = stylex.create({
   },
   cardWhen: { marginLeft: "auto", flexShrink: 0 },
   cardChips: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
+  // The column a card's over, the card on its way, and the one that's open.
+  columnOver: { borderRadius: radii.row, backgroundColor: colors.bgQuaternary },
+  cardDragging: { opacity: 0.4 },
+  cardOpen: { borderColor: colors.strokeFocused, backgroundColor: colors.panelSelected },
 });

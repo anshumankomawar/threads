@@ -12,6 +12,7 @@ import {
   save,
   saved,
   sent,
+  setState,
   step,
   store,
   trackMailbox,
@@ -104,7 +105,7 @@ export function setDisplay(change: Partial<Display>): void {
     return next;
   });
 }
-const groupedBy = (): string | undefined =>
+export const groupedBy = (): string | undefined =>
   display().group ?? (display().board ? "state" : undefined);
 
 // Threads in groups by a field's values, in the field's own order: one group a value, a thread in every group it has
@@ -133,8 +134,26 @@ function regroup(threads: Thread[], field: string): Group[] {
   ];
 }
 
+// A thread moved from one group to another (a card dragged across a board): the field it's grouped by takes the new
+// group's value. A field with one value is set to it ("none": cleared); a list (labels, spaces, assignees) swaps the
+// group it left for the one it joined.
+export function moveToGroup(thread: Thread, from: string, to: string): void {
+  const field = groupedBy();
+  if (!field || from === to) return;
+  const now = (thread as unknown as Record<string, unknown>)[field];
+  if (Array.isArray(now)) {
+    const next = now.filter((v) => v !== from);
+    if (to !== "none" && !next.includes(to)) next.push(to);
+    return edit(thread, { [field]: next } as Partial<Thread>);
+  }
+  if (field === "state") return setState(thread, to as Thread["state"]);
+  if (field === "ownerId")
+    return edit(thread, { owner: to === "none" ? undefined : store.findById(User, to) });
+  edit(thread, { [field]: to } as Partial<Thread>);
+}
+
 // A group of rows under a heading: the inbox lists each bucket apart.
-type Group = { key: string; bucket?: Bucket; title?: string; threads: Thread[] };
+export type Group = { key: string; bucket?: Bucket; title?: string; threads: Thread[] };
 
 const newestFirst = (threads: Thread[]): Thread[] =>
   [...threads].sort((a, b) => Number(b.isOpen) - Number(a.isOpen) || lastActive(b) - lastActive(a));

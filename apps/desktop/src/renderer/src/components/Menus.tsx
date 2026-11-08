@@ -119,10 +119,16 @@ function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean
           run?.(from);
         }}
       >
+        {/* A chosen option keeps its icon; its check goes at the end. One with no icon has its check in the column. */}
         <Show when={gutter()}>
-          <span class={sx(look.entryIcon)}>{checked ? icon(i.Tick02Icon, 13) : item.icon}</span>
+          <span class={sx(look.entryIcon)}>
+            {item.icon ?? (checked ? icon(i.Tick02Icon, 13) : undefined)}
+          </span>
         </Show>
         <span class={sx(base.ellipsis, look.entryLabel)}>{item.label}</span>
+        <Show when={checked && item.icon}>
+          <span class={sx(look.entryKeys)}>{icon(i.Tick02Icon, 12)}</span>
+        </Show>
         <Show when={"keys" in item && item.keys}>
           {(keys) => <span class={sx(look.entryKeys)}>{keys()}</span>}
         </Show>
