@@ -178,7 +178,7 @@ export default function App(): JSX.Element {
                   disabled={!canGoBack()}
                   onClick={goBack}
                 >
-                  <Icon icon={i.ArrowLeft01Icon} size={15} aria-hidden="true" />
+                  <Icon icon={i.ArrowLeft01Icon} size={15.4} aria-hidden="true" />
                 </button>
               </Show>
               <span class={sx(topbar.end)}>

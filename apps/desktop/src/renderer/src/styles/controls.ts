@@ -162,9 +162,6 @@ export const topbar = stylex.create({
     boxShadow: colors.barRim,
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { default: 1, ":disabled": 0.35 },
-    transform: { default: null, ":active:not(:disabled)": "scale(0.92)" },
-    transitionProperty: "transform",
-    transitionDuration: "120ms",
     WebkitAppRegion: "no-drag",
   },
   // Buttons that belong together, in one pill that springs to fit what's in it.
@@ -210,7 +207,7 @@ export const topbar = stylex.create({
     color: colors.textPrimary,
     backgroundColor: "transparent",
     cursor: { default: "pointer", ":disabled": "default" },
-    opacity: { default: 1, ":active:not(:disabled)": 0.6, ":disabled": 0.35 },
+    opacity: { default: 1, ":disabled": 0.35 },
   },
   title: { color: colors.textSecondary },
   // At the bar's end, 8.5pt in from the window's edge.

@@ -95,13 +95,15 @@ const SYMBOLS = new Map<IconSvgElement, string>([
   [i.ZoomOutAreaIcon, "minus.magnifyingglass"],
 ]);
 
-const images = new Map<string, string>();
+// Each symbol drawn at 32pt: its image, and its size in pixels (twice its points).
+type Drawn = { url: string; width: number; height: number };
+const images = new Map<string, Drawn>();
 
 // Each symbol's image, from the main process, before the app first draws (so nothing swaps in after).
 export async function loadSymbols(): Promise<void> {
   if (window.electron?.process.platform !== "darwin") return;
   const names = [...new Set(SYMBOLS.values())];
-  const drawn: Record<string, string | null> = await window.electron.ipcRenderer.invoke(
+  const drawn: Record<string, Drawn | null> = await window.electron.ipcRenderer.invoke(
     "sf-symbols",
     names,
   );
@@ -109,7 +111,7 @@ export async function loadSymbols(): Promise<void> {
 }
 
 // The SF Symbol drawn for a Hugeicons icon, if there is one here.
-export const symbolFor = (icon: IconSvgElement): string | undefined => {
+export const symbolFor = (icon: IconSvgElement): Drawn | undefined => {
   const name = SYMBOLS.get(icon);
   return name === undefined ? undefined : images.get(name);
 };

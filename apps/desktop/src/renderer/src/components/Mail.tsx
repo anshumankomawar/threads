@@ -74,6 +74,8 @@ import { Timeline } from "./Timeline";
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
 const ICON = { size: 14, "aria-hidden": "true" } as const;
+// A top bar item's symbol, a step larger, as the macOS app's toolbar draws them (17pt).
+const BAR_ICON = { size: 15.4, "aria-hidden": "true" } as const;
 
 // A column the edge on its right resizes, remembering its width.
 function resizable(key: string, range: { initial: number; min: number; max: number }) {
@@ -147,7 +149,8 @@ function Mailbox(props: {
         }}
       >
         <span class={sx(s.mailboxIcon)}>
-          <Icon icon={props.icon} {...ICON} />
+          {/* At 13pt, as the macOS app's sidebar draws its symbols. */}
+          <Icon icon={props.icon} size={11.82} aria-hidden="true" />
         </span>
         <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
         <Show when={props.count}>
@@ -845,7 +848,7 @@ function LayoutSwitch(): JSX.Element {
             title={option.title}
             onClick={() => setDisplay({ layout: option.layout })}
           >
-            <Icon icon={option.icon} {...ICON} />
+            <Icon icon={option.icon} {...BAR_ICON} />
           </button>
         )}
       </For>
@@ -1101,13 +1104,13 @@ export function MessageList(): JSX.Element {
                   <MenuChip
                     look={topbar.groupButton}
                     title="Display"
-                    label={<Icon icon={i.SlidersHorizontalIcon} {...ICON} />}
+                    label={<Icon icon={i.SlidersHorizontalIcon} {...BAR_ICON} />}
                     items={displayMenu()}
                   />
                   <MenuChip
                     look={topbar.groupButton}
                     title="Filter"
-                    label={<Icon icon={i.FilterIcon} {...ICON} />}
+                    label={<Icon icon={i.FilterIcon} {...BAR_ICON} />}
                     items={filterItems()}
                   />
                 </Show>
@@ -1123,7 +1126,7 @@ export function MessageList(): JSX.Element {
                         icon={
                           mailbox().kind === "person" ? i.InformationCircleIcon : i.Settings02Icon
                         }
-                        {...ICON}
+                        {...BAR_ICON}
                       />
                     </button>
                   )}
@@ -1137,7 +1140,7 @@ export function MessageList(): JSX.Element {
             title="New thread (⌘N)"
             onClick={() => setDialog({ kind: "newThread" })}
           >
-            <Icon icon={i.PencilEdit02Icon} {...ICON} />
+            <Icon icon={i.PencilEdit02Icon} {...BAR_ICON} />
           </button>
         </span>
       </div>
@@ -1246,7 +1249,7 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
             title="Mark Done"
             onClick={() => markDone(it())}
           >
-            <Icon icon={i.InboxCheckIcon} {...ICON} />
+            <Icon icon={i.InboxCheckIcon} {...BAR_ICON} />
           </button>
         )}
       </Show>
@@ -1258,7 +1261,7 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
       >
         <Icon
           icon={props.thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon}
-          {...ICON}
+          {...BAR_ICON}
         />
       </button>
       <button
@@ -1267,7 +1270,7 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
         title="More"
         onClick={(e) => menuFrom(e.currentTarget, threadMenu(props.thread))}
       >
-        <Icon icon={i.MoreHorizontalIcon} {...ICON} />
+        <Icon icon={i.MoreHorizontalIcon} {...BAR_ICON} />
       </button>
     </>
   );

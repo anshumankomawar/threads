@@ -67,6 +67,6 @@ export const SearchButton = (): JSX.Element => (
     title="Search (⌘K)"
     onClick={() => setDialog({ kind: "search" })}
   >
-    <Icon icon={i.Search01Icon} size={15} aria-hidden="true" />
+    <Icon icon={i.Search01Icon} size={15.4} aria-hidden="true" />
   </button>
 );

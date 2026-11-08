@@ -28,9 +28,13 @@ export const icon = (svg: IconSvgElement, size = 12): JSX.Element => (
 );
 
 export function Icon(props: IconProps): JSX.Element {
-  // On macOS, the system's SF Symbol for it, filled with the text's colour (as the macOS app's icons).
+  // On macOS, the system's SF Symbol for it, filled with the text's colour (as the macOS app's icons): at the point
+  // size `size` makes at the 110% scale, each as wide as it is at that size (as SwiftUI draws them), not squeezed
+  // into a square.
   const symbol = symbolFor(props.icon);
-  if (symbol)
+  if (symbol) {
+    // Drawn at 32pt, twice over: halved to points, scaled to `size`'s, then back to CSS pixels.
+    const scale = (props.size ?? 16) / 32 / 2;
     return (
       <span
         class={props.class}
@@ -38,16 +42,15 @@ export function Icon(props: IconProps): JSX.Element {
         style={{
           display: "inline-block",
           "flex-shrink": 0,
-          width: `${props.size ?? 16}px`,
-          height: `${props.size ?? 16}px`,
+          width: `${symbol.width * scale}px`,
+          height: `${symbol.height * scale}px`,
           "background-color": "currentColor",
-          "mask-image": `url(${symbol})`,
-          "mask-size": "contain",
-          "mask-repeat": "no-repeat",
-          "mask-position": "center",
+          "mask-image": `url(${symbol.url})`,
+          "mask-size": "100% 100%",
         }}
       />
     );
+  }
   return (
     <svg
       {...props}
