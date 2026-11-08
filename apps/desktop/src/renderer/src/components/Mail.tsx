@@ -1033,7 +1033,6 @@ export const displayMenu = (): MenuItem[] => [
 // them as a view, how it's grouped and ordered, and on a timeline its scale and today. Always over a timeline; over a
 // list while it's filtered.
 function QueryBar(): JSX.Element {
-  const timeline = (): boolean => display().layout === "timeline";
   return (
     <div class={sx(s.query)}>
       <For each={conditions()}>
@@ -1092,21 +1091,16 @@ function QueryBar(): JSX.Element {
         label={ORDERS[display().order ?? "updated"]}
         items={orderItems()}
       />
-      <Show when={timeline()}>
-        <span class={sx(s.zooms)} role="radiogroup" aria-label="Zoom">
-          <For each={Object.keys(ZOOMS) as Zoom[]}>
-            {(zoom) => (
-              <button
-                class={sx(base.bare, s.zoom, (display().zoom ?? "weeks") === zoom && s.zoomOn)}
-                role="radio"
-                aria-checked={(display().zoom ?? "weeks") === zoom ? "true" : "false"}
-                onClick={() => setDisplay({ zoom })}
-              >
-                {ZOOMS[zoom]}
-              </button>
-            )}
-          </For>
-        </span>
+      <Show when={display().layout === "timeline"}>
+        <MenuChip
+          title="Zoom"
+          label={ZOOMS[display().zoom ?? "weeks"]}
+          items={(Object.keys(ZOOMS) as Zoom[]).map((zoom) => ({
+            label: ZOOMS[zoom],
+            checked: (display().zoom ?? "weeks") === zoom,
+            run: () => setDisplay({ zoom }),
+          }))}
+        />
         <button class={sx(base.bare, base.hover, chip.chip)} onClick={showToday}>
           Today
         </button>
@@ -1516,7 +1510,7 @@ const s = stylex.create({
   listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
   listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
   listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
-  // The query bar: filters at the start, grouping, order and (on a timeline) its scale at the end.
+  // The query bar: filters at the start, grouping and order at the end.
   query: {
     display: "flex",
     flexShrink: 0,
@@ -1530,25 +1524,6 @@ const s = stylex.create({
     borderBottomColor: colors.strokeTertiary,
   },
   querySpacer: { flex: 1 },
-  zooms: {
-    display: "inline-flex",
-    padding: 2,
-    borderRadius: radii.control,
-    backgroundColor: colors.bgQuaternary,
-  },
-  zoom: {
-    height: 20,
-    padding: "0 8px",
-    borderRadius: 5,
-    color: colors.textTertiary,
-    fontSize: fontSizes.small,
-    cursor: "pointer",
-  },
-  zoomOn: {
-    color: colors.textPrimary,
-    backgroundColor: colors.panel,
-    boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
-  },
   listScroll: {
     position: "relative",
     isolation: "isolate",
