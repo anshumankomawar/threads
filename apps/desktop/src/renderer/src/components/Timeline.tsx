@@ -1,25 +1,25 @@
+import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
-import { display, groupedBy, listed, type Zoom } from "../mail";
+import { display, groupedBy, listed, setDisplay, ZOOMS, type Zoom } from "../mail";
 import { active, edit, lastActive, open, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
 import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
-import { Identicon } from "./Identicon";
-import { dot } from "./ThreadView";
+import { Icon } from "./Icon";
+import { MenuChip } from "./Menus";
 
-// The list as a timeline, as Notion draws one: a table of the threads on the left, and beside it each one's bar, from
-// when it was started to when it's due, its title on it. Nothing new is kept for it: a thread starts when it was created
-// and ends on its due date; without one, it runs on to today (or, resolved, to its last activity) and fades out.
-// Dragging a bar's end sets the due date. A click opens the thread beside it.
+// The list as a timeline, as Notion draws one: each thread's bar, from when it was started to when it's due, its title
+// on it. Nothing new is kept for it: a thread starts when it was created and ends on its due date; without one, it
+// runs on to today (or, resolved, to its last activity) and fades out. Dragging a bar's end sets the due date. A click
+// opens the thread beside it.
 
 const DAY_MS = 86_400_000;
 // A day's width at each scale.
 const DAY: Record<Zoom, number> = { weeks: 36, months: 12, quarters: 4 };
-// The table's width, a row, its bar, and the days' heading.
-const TABLE = 260;
+// A row, its bar, and the days' heading.
 const ROW = 36;
 const BAR = 32;
 const HEAD = 30;
@@ -155,14 +155,13 @@ export function Timeline(): JSX.Element {
 
   let scroller!: HTMLDivElement;
   const scrollToToday = (): void => {
-    const room = scroller.clientWidth - TABLE;
-    scroller.scrollTo({ left: Math.max(0, x(today()) - room / 3) });
+    scroller.scrollTo({ left: Math.max(0, x(today()) - scroller.clientWidth / 3) });
   };
   // Today a third of the way in, at first, whenever it's resized (a thread opened beside it), and at a new scale.
   createEffect(day, () => void requestAnimationFrame(scrollToToday));
   onSettled(() => {
     const resized = new ResizeObserver(() => {
-      setShownWidth(scroller.clientWidth - TABLE);
+      setShownWidth(scroller.clientWidth);
       scrollToToday();
     });
     resized.observe(scroller);
@@ -172,6 +171,12 @@ export function Timeline(): JSX.Element {
       if (toToday === scrollToToday) toToday = undefined;
     };
   });
+
+  // Back or on by a step of the scale: a week, four weeks, a quarter.
+  const step = (by: -1 | 1): void => {
+    const days = zoom() === "weeks" ? 7 : zoom() === "months" ? 28 : 91;
+    scroller.scrollBy({ left: by * days * day(), behavior: "smooth" });
+  };
 
   const Row = (props: { thread: Thread }): JSX.Element => {
     const t = (): Thread => props.thread;
@@ -195,11 +200,6 @@ export function Timeline(): JSX.Element {
         onClick={() => open({ thread: t().id })}
         onContextMenu={(e) => showMenu(e, threadMenu(t()))}
       >
-        <div class={sx(styles.cell, active() === t() && styles.cellOpen)}>
-          {dot(t().state)}
-          <span class={sx(base.ellipsis, styles.name)}>{t().title}</span>
-          <Show when={t().owner}>{(owner) => <Identicon seed={owner().id} size={16} />}</Show>
-        </div>
         <div class={sx(styles.track)} style={{ width: `${width()}px` }}>
           <div
             class={sx(
@@ -239,14 +239,44 @@ export function Timeline(): JSX.Element {
 
   return (
     <div class={sx(styles.frame)}>
+      {/* As Notion's: the month in view, and its scale, today and a step either way. */}
+      <div class={sx(styles.toolbar)}>
+        <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
+        <MenuChip
+          title="Zoom"
+          tone="muted"
+          label={ZOOMS[zoom()]}
+          items={(Object.keys(ZOOMS) as Zoom[]).map((z) => ({
+            label: ZOOMS[z],
+            checked: zoom() === z,
+            run: () => setDisplay({ zoom: z }),
+          }))}
+        />
+        <button
+          class={sx(base.bare, base.hover, styles.step)}
+          aria-label="Back"
+          onClick={() => step(-1)}
+        >
+          <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
+        </button>
+        <button class={sx(base.bare, base.hover, styles.today)} onClick={scrollToToday}>
+          Today
+        </button>
+        <button
+          class={sx(base.bare, base.hover, styles.step)}
+          aria-label="On"
+          onClick={() => step(1)}
+        >
+          <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
+        </button>
+      </div>
       <div
         ref={scroller}
         class={sx(styles.timeline)}
         onScroll={() => setScrolled(scroller.scrollLeft)}
       >
-        <div class={sx(styles.content)} style={{ width: `${TABLE + width()}px` }}>
+        <div class={sx(styles.content)} style={{ width: `${width()}px` }}>
           <div class={sx(styles.head)}>
-            <div class={sx(styles.cornerCell)}>{shownMonth()}</div>
             <div class={sx(styles.days)} style={{ width: `${width()}px` }}>
               <For each={ticks()}>
                 {(tick) => (
@@ -263,20 +293,14 @@ export function Timeline(): JSX.Element {
             </div>
           </div>
           <div class={sx(styles.rows)}>
-            {/* The table's column, down past its last row, over what scrolls under it. */}
-            <div
-              class={sx(styles.tableColumn)}
-              style={{ left: `${scrolled()}px` }}
-              aria-hidden="true"
-            />
             <span
               class={sx(styles.todayDot)}
-              style={{ left: `${TABLE + x(Date.now())}px` }}
+              style={{ left: `${x(Date.now())}px` }}
               aria-hidden="true"
             />
             <span
               class={sx(styles.todayLine)}
-              style={{ left: `${TABLE + x(Date.now())}px` }}
+              style={{ left: `${x(Date.now())}px` }}
               aria-hidden="true"
             />
             <For each={listed().groups}>
@@ -303,7 +327,34 @@ export function Timeline(): JSX.Element {
 
 const styles = stylex.create({
   frame: { display: "flex", flex: 1, flexDirection: "column", minHeight: 0 },
-  // On the window's own ground, so the table and heading stuck to its edges cover what scrolls under them.
+  toolbar: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 2,
+    alignItems: "center",
+    height: 40,
+    padding: "0 12px 0 16px",
+  },
+  shownMonth: { flex: 1, color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 600 },
+  step: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    color: colors.textSecondary,
+    cursor: "pointer",
+  },
+  today: {
+    height: 24,
+    padding: "0 6px",
+    borderRadius: 6,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    cursor: "pointer",
+  },
+  // On the window's own ground, so the heading stuck at its top covers what scrolls under it.
   timeline: { flex: 1, minHeight: 0, overflow: "auto", backgroundColor: colors.chrome },
   content: { position: "relative", minHeight: "100%" },
   head: {
@@ -317,23 +368,7 @@ const styles = stylex.create({
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
   },
-  cornerCell: {
-    position: "sticky",
-    left: 0,
-    zIndex: 1,
-    display: "flex",
-    flexShrink: 0,
-    alignItems: "center",
-    width: TABLE,
-    paddingLeft: 16,
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    fontWeight: 600,
-    backgroundColor: colors.chrome,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
-  },
+
   days: { position: "relative", flexShrink: 0 },
   tick: {
     position: "absolute",
@@ -355,18 +390,7 @@ const styles = stylex.create({
   // Today in a red circle, as its line through the rows is red.
   tickToday: { color: "#fff", fontWeight: 600, backgroundColor: colors.urgent },
   rows: { position: "relative", minHeight: `calc(100% - ${HEAD}px)`, paddingBottom: 24 },
-  tableColumn: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    zIndex: 3,
-    width: TABLE,
-    backgroundColor: colors.chrome,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
-    pointerEvents: "none",
-  },
+
   // Where today's line starts, at the top of the rows.
   todayDot: {
     position: "absolute",
@@ -397,13 +421,11 @@ const styles = stylex.create({
     flexShrink: 0,
     gap: 6,
     alignItems: "center",
-    width: TABLE,
     height: 32,
     paddingLeft: 16,
     color: colors.textSecondary,
     fontSize: fontSizes.small,
     fontWeight: 600,
-    backgroundColor: colors.chrome,
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
@@ -412,25 +434,7 @@ const styles = stylex.create({
   row: { display: "flex", height: ROW, cursor: "pointer" },
   rowOpen: { backgroundColor: colors.bgQuaternary },
   // The table's cell: its status, title and owner, stuck at the left as the days scroll under it.
-  cell: {
-    position: "sticky",
-    left: 0,
-    zIndex: 3,
-    display: "flex",
-    flexShrink: 0,
-    gap: 8,
-    alignItems: "center",
-    width: TABLE,
-    padding: "0 12px 0 16px",
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    backgroundColor: colors.chrome,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
-  },
-  cellOpen: { backgroundColor: colors.panelSelected },
-  name: { flex: 1 },
+
   track: { position: "relative", flexShrink: 0 },
   // A card filling its row, a shade off the ground with a hairline edge, as Notion's are.
   bar: {

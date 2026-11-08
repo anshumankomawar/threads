@@ -54,7 +54,7 @@ import {
 import { bucketIcons } from "../bucketIcons";
 import { describe, FIELDS, subspacesIn } from "../filters";
 import { base } from "../styles/base";
-import { chip, topbar } from "../styles/controls";
+import { topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
@@ -67,7 +67,7 @@ import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
 import { dot, plain } from "./ThreadView";
-import { showToday, Timeline } from "./Timeline";
+import { Timeline } from "./Timeline";
 
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
@@ -1030,8 +1030,7 @@ export const displayMenu = (): MenuItem[] => [
 ];
 
 // The query over the list, in a bar above it: its filters (each a pill that removes itself; more from Filter), saving
-// them as a view, how it's grouped and ordered, and on a timeline its scale and today. Always over a timeline; over a
-// list while it's filtered.
+// them as a view, and how it's grouped and ordered. Always over a timeline; over a list while it's filtered.
 function QueryBar(): JSX.Element {
   return (
     <div class={sx(s.query)}>
@@ -1091,20 +1090,6 @@ function QueryBar(): JSX.Element {
         label={ORDERS[display().order ?? "updated"]}
         items={orderItems()}
       />
-      <Show when={display().layout === "timeline"}>
-        <MenuChip
-          title="Zoom"
-          label={ZOOMS[display().zoom ?? "weeks"]}
-          items={(Object.keys(ZOOMS) as Zoom[]).map((zoom) => ({
-            label: ZOOMS[zoom],
-            checked: (display().zoom ?? "weeks") === zoom,
-            run: () => setDisplay({ zoom }),
-          }))}
-        />
-        <button class={sx(base.bare, base.hover, chip.chip)} onClick={showToday}>
-          Today
-        </button>
-      </Show>
     </div>
   );
 }
