@@ -1250,7 +1250,7 @@ const s = stylex.create({
   // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
   // points ÷ 1.1, for the 110% scale).
   // Level with the list's first heading beside them (their middles on one line); the rows stay where they were.
-  groups: { flexShrink: 0, padding: "5.11px 9.09px 6.07px" },
+  groups: { flexShrink: 0, padding: "12.38px 9.09px 6.07px" },
   nav: {
     flex: 1,
     minHeight: 0,
@@ -1411,7 +1411,8 @@ const s = stylex.create({
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    padding: "0 7.27px 10.91px",
+    // 8pt clear of the top bar.
+    padding: "7.27px 7.27px 10.91px",
     outline: "none",
   },
   // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.
