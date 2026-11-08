@@ -494,15 +494,6 @@ function creating(): Command[] {
 function app(): Command[] {
   const section = "App";
   return [
-    {
-      id: "home",
-      title: "Go home",
-      kind: "action",
-      section,
-      icon: i.Home01Icon,
-      keywords: "dashboard welcome start overview",
-      run: () => chooseMailbox({ kind: "inbox" }),
-    },
     ...hotkey("settings", "Open settings", section, i.Settings02Icon, "preferences hotkeys"),
     ...hotkey("sidebar", "Show or hide the sidebar", section, i.PanelLeftIcon, "toggle"),
     ...hotkey("mailGroup", "Show the Inbox tab", section, i.InboxIcon, "sidebar tab"),

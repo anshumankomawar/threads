@@ -27,7 +27,7 @@ import {
 import { base } from "./styles/base";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
-import { colors, darkTheme, fontSizes } from "./styles/tokens.stylex";
+import { colors, fontSizes } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
 import { Icon } from "./components/Icon";
@@ -45,9 +45,7 @@ import {
 import { HistoryButtons } from "./components/TopButtons";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
-import { SceneBackdrop } from "./components/Scene";
-import { MailSidebar, MessageList, ThreadActions } from "./components/Mail";
-import { Home } from "./components/Home";
+import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
 import { mailbox } from "./mail";
 
 const styles = stylex.create({
@@ -67,14 +65,12 @@ const styles = stylex.create({
   saveErrorDismiss: { display: "flex", flexShrink: 0, cursor: "pointer" },
   main: {
     position: "relative",
-    isolation: "isolate",
     display: "flex",
     flex: 1,
     flexDirection: "column",
     minWidth: 0,
     backgroundColor: colors.frosted,
   },
-  mainOnScene: { backgroundColor: "transparent" },
   // Beside the list, which has the window's buttons when the sidebar's hidden.
   topbarBesideList: { paddingLeft: 8 },
   // Only when the connection's down: viewing as someone else and the data source are in ⌘K (and ⌘U).
@@ -138,16 +134,6 @@ export default function App(): JSX.Element {
   const subspace = () => store.findById(Subspace, shown("subspace") ?? chosenId("subspace") ?? "");
   const savedView = () => store.findById(View, shown("view") ?? chosenId("view") ?? "");
   const person = () => store.findById(User, shown("person") ?? "");
-  // The empty pane, and only that, sits on the scene: no thread, draft, page, settings or profile open.
-  const onScene = (): boolean =>
-    !active() &&
-    !person() &&
-    !subspace() &&
-    !savedView() &&
-    !bucket() &&
-    !label() &&
-    !("settings" in view()) &&
-    shown("draft") === undefined;
   return (
     <>
       <Titlebar />
@@ -158,11 +144,7 @@ export default function App(): JSX.Element {
           <MailSidebar />
         </Show>
         <MessageList />
-        {/* With nothing open, the pane sits on the scene, in dark colours. */}
-        <main
-          {...stylex.attrs(styles.main, onScene() && darkTheme, onScene() && styles.mainOnScene)}
-        >
-          <SceneBackdrop shown={onScene()} />
+        <main class={sx(styles.main)}>
           {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
           <Show when={store.rejection()}>
             {(reason) => (
@@ -200,7 +182,7 @@ export default function App(): JSX.Element {
               </Show>
             </span>
           </div>
-          <Switch fallback={<Home />}>
+          <Switch fallback={<NothingOpen />}>
             <Match when={subspace()} keyed>
               {(subspace) => <SubspaceView subspace={subspace} />}
             </Match>

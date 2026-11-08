@@ -39,8 +39,6 @@ const DARK = {
   shadowFloat: "0 8px 24px rgb(0 0 0 / 35%)",
 };
 export const colors = stylex.defineVars(DARK);
-// Dark on any part of the app, whatever the theme: what sits on the empty pane's scene, which is dark either way.
-export const darkTheme = stylex.createTheme(colors, DARK);
 
 export const lightTheme = stylex.createTheme(colors, {
   chrome: "oklch(0.985 0 0)",

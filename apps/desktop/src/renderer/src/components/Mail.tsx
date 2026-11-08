@@ -1137,6 +1137,16 @@ export function MessageList(): JSX.Element {
   );
 }
 
+// With nothing open: say so, and where to look.
+export function NothingOpen(): JSX.Element {
+  return (
+    <div class={sx(s.nothing)}>
+      <span class={sx(s.nothingTitle)}>No thread selected</span>
+      <span>{listed().order.length > 0 ? "Choose one from the list to read it here." : ""}</span>
+    </div>
+  );
+}
+
 // ── The reading pane's toolbar: what you can do with the open thread ──
 
 export function ThreadActions(props: { thread: Thread }): JSX.Element {
@@ -1433,4 +1443,14 @@ const s = stylex.create({
     textAlign: "center",
   },
   emptyTitle: { color: colors.textSecondary, fontSize: fontSizes.input, fontWeight: 600 },
+  nothing: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    gap: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    color: colors.textTertiary,
+  },
+  nothingTitle: { color: colors.textSecondary, fontSize: fontSizes.pageTitle, fontWeight: 600 },
 });
