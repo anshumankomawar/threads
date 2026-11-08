@@ -27,8 +27,9 @@
     font-family:
       -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue",
       sans-serif;
-    font-size: 12px;
-    line-height: 16px;
+    /* 13pt on 16pt lines, as the macOS app's body (its points ÷ 1.1, for the 110% scale). */
+    font-size: 11.82px;
+    line-height: 14.55px;
     -webkit-font-smoothing: antialiased;
   }
 

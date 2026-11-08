@@ -627,7 +627,7 @@ const styles = stylex.create({
     paddingLeft: 4,
     overflow: "hidden",
     color: colors.textTertiary,
-    fontSize: 10,
+    fontSize: 9.09,
     fontWeight: 600,
     letterSpacing: "0.06em",
     lineHeight: "14px",

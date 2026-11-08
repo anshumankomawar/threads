@@ -100,14 +100,15 @@ export const radii = stylex.defineConsts({
   pill: "999px",
 });
 
+// The macOS app's text sizes (SF Pro, the system font, in both): each its points ÷ 1.1, for the renderer's 110% scale.
 export const fontSizes = stylex.defineConsts({
-  label: "10px",
-  small: "11px",
-  body: "12px",
-  name: "13px",
-  input: "14px",
-  message: "15px",
-  pageTitle: "20px",
+  label: "9.09px", // 10pt
+  small: "10px", // 11pt
+  body: "11.82px", // 13pt, the body
+  name: "12.73px", // 14pt, a row's title
+  input: "12.73px", // 14pt
+  message: "14.55px", // 16pt, a message
+  pageTitle: "18.18px", // 20pt, a title
 });
 
 // Animations stop for anyone who asks the system for less motion.
