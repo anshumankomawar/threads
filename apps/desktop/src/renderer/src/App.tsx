@@ -46,7 +46,8 @@ import { HistoryButtons } from "./components/TopButtons";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
 import { SceneBackdrop } from "./components/Scene";
-import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
+import { MailSidebar, MessageList, ThreadActions } from "./components/Mail";
+import { Home } from "./components/Home";
 import { mailbox } from "./mail";
 
 const styles = stylex.create({
@@ -199,7 +200,7 @@ export default function App(): JSX.Element {
               </Show>
             </span>
           </div>
-          <Switch fallback={<NothingOpen />}>
+          <Switch fallback={<Home />}>
             <Match when={subspace()} keyed>
               {(subspace) => <SubspaceView subspace={subspace} />}
             </Match>

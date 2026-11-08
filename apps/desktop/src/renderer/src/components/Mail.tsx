@@ -1153,10 +1153,6 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
 }
 
 // No thread open: as Mail says.
-// With nothing open, a word on the scene (App puts it behind the pane) rather than an empty pane.
-export function NothingOpen(): JSX.Element {
-  return <span class={sx(s.nothingTitle)}>No thread selected</span>;
-}
 
 const s = stylex.create({
   // The resize edge on a column's right.
@@ -1437,14 +1433,4 @@ const s = stylex.create({
     textAlign: "center",
   },
   emptyTitle: { color: colors.textSecondary, fontSize: fontSizes.input, fontWeight: 600 },
-
-  // Light on the scene, whatever the theme, with a soft dark shadow so it reads on the bright band too.
-  nothingTitle: {
-    position: "relative",
-    margin: "auto",
-    color: "rgb(255 255 255 / 92%)",
-    fontSize: fontSizes.pageTitle,
-    fontWeight: 600,
-    textShadow: "0 0 6px rgb(0 0 0 / 85%), 0 0 22px rgb(0 0 0 / 75%)",
-  },
 });
