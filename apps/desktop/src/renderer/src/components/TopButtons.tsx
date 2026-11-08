@@ -4,24 +4,10 @@ import { createSignal, For, onSettled } from "solid-js";
 import { setDialog, setSidebarOpen, sidebarOpen } from "../session";
 import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { symbolFor } from "../symbols";
 import { Icon, type IconSvgElement } from "./Icon";
 
 // The top bars' shared controls, as an iOS app's toolbar: the sidebar's round beside the window's buttons, and pills
 // of buttons that spring to fit what's in them.
-
-// Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
-// darkest thing in the bar.
-const LEFT_PANE =
-  "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
-// (With the system's symbols, its own `sidebar.left` either way.)
-const sidebarIcon = (open: boolean): IconSvgElement =>
-  open && !symbolFor(i.PanelLeftIcon)
-    ? [
-        ...i.PanelLeftIcon,
-        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
-      ]
-    : i.PanelLeftIcon;
 
 const TopButton = (props: {
   label: string;
@@ -42,7 +28,7 @@ const TopButton = (props: {
 export const AppButtons = (): JSX.Element => (
   <TopButton
     label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
-    icon={sidebarIcon(sidebarOpen())}
+    icon={i.PanelLeftIcon}
     onClick={() => setSidebarOpen(!sidebarOpen())}
   />
 );
