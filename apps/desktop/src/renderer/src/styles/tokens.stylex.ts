@@ -25,12 +25,9 @@ const DARK = {
   // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
   raised: "#2b2b2b",
   raisedBorder: "#383838",
-  // The top bar's buttons and their pills: a hint of glass, just off the ground. A step lighter, a faint sheen from the
-  // top, a rim lit along the top and round the edge, and the softest lift.
+  // The top bar's buttons and their pills: flat, a step lighter than the ground, with an even hairline round the edge.
   barFill: "#1c1c1c",
-  barSheen: "linear-gradient(rgb(255 255 255 / 4%), rgb(255 255 255 / 0%))",
-  barRim:
-    "inset 0 0.5px 0 rgb(255 255 255 / 12%), inset 0 0 0 0.5px rgb(255 255 255 / 7%), 0 1px 3px rgb(0 0 0 / 35%)",
+  barRim: "inset 0 0 0 0.5px rgb(255 255 255 / 7%)",
   accent: "#78aee7",
   accentFill: "#1f252c",
   // Solid buttons (a table view's New): Notion's blue, in both themes.
@@ -66,8 +63,7 @@ export const lightTheme = stylex.createTheme(colors, {
   raised: "#ffffff",
   raisedBorder: "#dcdcd9",
   barFill: "#ffffff",
-  barSheen: "linear-gradient(rgb(255 255 255 / 0%), rgb(0 0 0 / 2%))",
-  barRim: "inset 0 0.5px 0 #ffffff, 0 0 0 0.5px rgb(0 0 0 / 9%), 0 1px 3px rgb(0 0 0 / 7%)",
+  barRim: "inset 0 0 0 0.5px rgb(0 0 0 / 9%)",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
   primary: "rgb(35 131 226)",
