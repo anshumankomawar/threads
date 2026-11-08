@@ -43,7 +43,7 @@ import {
   SettingsView,
   SubspaceView,
 } from "./components/Pages";
-import { Pill, SearchButton } from "./components/TopButtons";
+import { Pill, SearchField } from "./components/TopButtons";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
@@ -167,8 +167,8 @@ export default function App(): JSX.Element {
                 </div>
               )}
             </Show>
-            {/* As an iOS app's toolbar: back on the left while a thread's open; on the right one pill, search alone or
-                the thread's actions before it, springing between them as a thread opens. */}
+            {/* As the macOS app's toolbar: back on the left while a thread's open; on the right the thread's actions in a
+                pill that springs in as one opens, then the search field. */}
             <div data-bar class={sx(topbar.bar, styles.topbarBesideList)}>
               <Show when={active()}>
                 <button
@@ -185,12 +185,14 @@ export default function App(): JSX.Element {
                 <Show when={store.connection() === "offline"}>
                   <span class={sx(styles.offline)}>Offline</span>
                 </Show>
-                <Pill content={active()?.id ?? "none"}>
-                  <Show when={active()} keyed>
-                    {(thread) => <ThreadActions thread={thread} />}
-                  </Show>
-                  <SearchButton />
-                </Pill>
+                <Show when={active()}>
+                  <Pill content={active()?.id ?? ""}>
+                    <Show when={active()} keyed>
+                      {(thread) => <ThreadActions thread={thread} />}
+                    </Show>
+                  </Pill>
+                </Show>
+                <SearchField />
               </span>
             </div>
             <Switch fallback={<NothingOpen />}>

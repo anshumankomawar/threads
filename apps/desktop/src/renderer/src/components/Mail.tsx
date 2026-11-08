@@ -424,6 +424,7 @@ export function MailSidebar(): JSX.Element {
     <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
       <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
         <AppButtons />
+        <ListHeading />
       </div>
       <div class={sx(s.groups)}>
         <Tabs
@@ -830,6 +831,28 @@ export const LAYOUTS: {
     keywords: "gantt roadmap schedule dates",
   },
 ];
+// The chosen mailbox's name over how many are unread (or how many there are), as the macOS app's toolbar title and
+// subtitle: right after the sidebar's button, on the sidebar's bar while it's shown (running on over the list's,
+// as one toolbar), or the list's while it's hidden.
+const listSubtitle = (): string => {
+  const unreadCount = listed().order.filter((t) => {
+    const it = itemFor(t);
+    return it !== undefined && !it.doneAt && unread(it);
+  }).length;
+  if (unreadCount > 0) return `${unreadCount} unread`;
+  const count = mailbox().kind === "drafts" ? drafts().length : listed().order.length;
+  const noun = mailbox().kind === "drafts" ? "draft" : "thread";
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+};
+function ListHeading(): JSX.Element {
+  return (
+    <span class={sx(s.listHeading)}>
+      <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
+      <span class={sx(base.ellipsis, s.listSubtitle)}>{listSubtitle()}</span>
+    </span>
+  );
+}
+
 // With the sidebar hidden, the list's bar also has the window's buttons and the sidebar's (the room before its first
 // button, that button and the gap after it), so it's wider by them and its own controls keep their room.
 const BESIDE_LIGHTS = 88.18 + 35.91 + 9.55;
@@ -1038,18 +1061,6 @@ export function MessageList(): JSX.Element {
   const filterable = (): boolean => mailbox().kind !== "drafts";
   const total = (): number =>
     mailbox().kind === "drafts" ? drafts().length : listed().order.length;
-  const unreadCount = (): number =>
-    listed().order.filter((t) => {
-      const it = itemFor(t);
-      return it !== undefined && !it.doneAt && unread(it);
-    }).length;
-  const subtitle = (): string => {
-    const n = unreadCount();
-    if (n > 0) return `${n} unread`;
-    const count = total();
-    const noun = mailbox().kind === "drafts" ? "draft" : "thread";
-    return `${count} ${noun}${count === 1 ? "" : "s"}`;
-  };
   let list!: HTMLDivElement;
   // ↑ and ↓ move through the list, as in Mail (J and K do too, anywhere).
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -1088,11 +1099,8 @@ export function MessageList(): JSX.Element {
       >
         <Show when={!sidebarOpen()}>
           <AppButtons />
+          <ListHeading />
         </Show>
-        <span class={sx(s.listHeading)}>
-          <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
-          <span class={sx(s.listSubtitle)}>{subtitle()}</span>
-        </span>
         <span class={sx(topbar.end)}>
           <Show when={filterable()}>
             <LayoutSwitch />
@@ -1304,7 +1312,8 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  sidebarBar: { paddingLeft: sidebarSpace.afterLights },
+  // Above the list's column, which the title runs on over.
+  sidebarBar: { position: "relative", zIndex: 2, paddingLeft: sidebarSpace.afterLights },
   // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
   // points ÷ 1.1, for the 110% scale).
   groups: { flexShrink: 0, padding: "2px 9.09px 9.09px" },
@@ -1474,10 +1483,18 @@ const s = stylex.create({
   hidden: { display: "none" },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
-  // Its name over how many are unread, as a macOS toolbar's title and subtitle: the name gets the width.
-  listHeading: { display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.2 },
-  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 600 },
-  listSubtitle: { color: colors.textTertiary, fontSize: fontSizes.small },
+  // As the macOS app's toolbar title (13pt bold) over its subtitle (11pt), 13pt after the sidebar's button. On the
+  // sidebar's bar it runs on over the list's (its left end is empty), so it doesn't stop at the sidebar's edge.
+  listHeading: {
+    display: "flex",
+    flexShrink: 0,
+    flexDirection: "column",
+    maxWidth: 320,
+    marginLeft: 0.91,
+    whiteSpace: "nowrap",
+  },
+  listTitle: { color: colors.textPrimary, fontSize: 11.82, fontWeight: 700, lineHeight: "14px" },
+  listSubtitle: { color: colors.textTertiary, fontSize: 10, lineHeight: "12px" },
   // The query bar: filters at the start, grouping and order at the end.
   query: {
     display: "flex",

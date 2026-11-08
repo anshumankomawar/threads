@@ -59,14 +59,16 @@ export function Pill(props: { content: string; children: JSX.Element }): JSX.Ele
   );
 }
 
-// Search (⌘K), as a button in a pill.
-export const SearchButton = (): JSX.Element => (
+// Search (⌘K), as the macOS app's toolbar field: a 36pt capsule 325pt wide (narrower if there's no room), its 13pt
+// magnifying glass 11.5pt in and "Search" 9pt after it.
+export const SearchField = (): JSX.Element => (
   <button
-    class={sx(topbar.groupButton)}
+    class={sx(topbar.search)}
     aria-label="Search"
     title="Search (⌘K)"
     onClick={() => setDialog({ kind: "search" })}
   >
-    <Icon icon={i.Search01Icon} size={15.4} aria-hidden="true" />
+    <Icon icon={i.Search01Icon} size={11.82} aria-hidden="true" />
+    Search
   </button>
 );
