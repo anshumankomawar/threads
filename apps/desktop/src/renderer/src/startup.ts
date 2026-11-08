@@ -61,3 +61,7 @@ export function applyTheme(next: Theme): void {
   window.electron?.ipcRenderer.send("set-theme", next);
 }
 applyTheme(theme());
+// The window's corners go square in full screen (the main process says when).
+window.electron?.ipcRenderer.on("full-screen", (_event, on: boolean) =>
+  document.documentElement.toggleAttribute("data-full-screen", on),
+);

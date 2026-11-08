@@ -59,7 +59,8 @@ function createWindow(): void {
     height: 670,
     show: false,
     autoHideMenuBar: true,
-    // An opaque ground, as the macOS app's (no vibrancy): the renderer's `chrome`, in its theme.
+    // Transparent: the renderer draws the window, rounded as macOS 26 rounds one with a toolbar (Electron's are
+    // rounded as plain windows are, and giving one a native toolbar crashes it).
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hidden",
@@ -67,7 +68,8 @@ function createWindow(): void {
           // toolbar's height), so their centres (y + 6.75) sit at 26pt, level with its buttons; and as far from the
           // window's left edge as from its top, so they sit square in the corner.
           trafficLightPosition: { x: 19, y: 19 },
-          backgroundColor: "#141414",
+          transparent: true,
+          backgroundColor: "#00000000",
         }
       : {}),
     ...(process.platform === "linux" ? { icon } : {}),
@@ -92,6 +94,10 @@ function createWindow(): void {
     mainWindow.webContents.setZoomFactor(UI_SCALE);
   });
 
+  // The window's shape is the page's, so its shadow is redrawn as it changes size; in full screen it's square.
+  mainWindow.on("resize", () => mainWindow.invalidateShadow());
+  mainWindow.on("enter-full-screen", () => mainWindow.webContents.send("full-screen", true));
+  mainWindow.on("leave-full-screen", () => mainWindow.webContents.send("full-screen", false));
   mainWindow.on("ready-to-show", () => {
     if (hidden) return;
     // In dev, open without stealing focus so the window manager doesn't jump workspaces.
@@ -124,14 +130,9 @@ void app.whenReady().then(() => {
   syncDockIcon();
   nativeTheme.on("updated", syncDockIcon);
   // The renderer's theme (⌘K): the window's ground and its controls follow it.
-  ipcMain.on("set-theme", (event, theme: unknown) => {
+  ipcMain.on("set-theme", (_event, theme: unknown) => {
     const light = theme === "light";
     nativeTheme.themeSource = light ? "light" : "dark";
-    if (process.platform === "darwin") {
-      BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(
-        light ? "#fafafa" : "#141414",
-      );
-    }
   });
 
   // Stop the text caret blinking: Chromium reads these macOS defaults and treats an "on" period

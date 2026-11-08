@@ -25,8 +25,8 @@ const DARK = {
   // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
   raised: "#2b2b2b",
   raisedBorder: "#383838",
-  // The top bar's buttons and their pills: a flat fill a step above the ground, its top edge just lit.
-  barFill: "#222224",
+  // The top bar's buttons and their pills: the ground itself, only their rim drawing them.
+  barFill: "#141414",
   barRim: "inset 0 0.5px 0 rgb(255 255 255 / 8%), inset 0 0 0 0.5px rgb(255 255 255 / 4%)",
   accent: "#78aee7",
   accentFill: "#1f252c",
@@ -62,7 +62,7 @@ export const lightTheme = stylex.createTheme(colors, {
   panelSelected: "#f3f3f1",
   raised: "#ffffff",
   raisedBorder: "#dcdcd9",
-  barFill: "#ffffff",
+  barFill: "#fafafa",
   barRim: "0 0 0 0.5px rgb(0 0 0 / 8%), 0 1px 2px rgb(0 0 0 / 5%)",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",

@@ -22,7 +22,8 @@
     overflow: hidden;
     user-select: none;
     color: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
-    background: light-dark(rgb(255 255 255 / 72%), rgb(0 0 0 / 62%));
+    /* The window is transparent: #root draws it. */
+    background: transparent;
     /* The system's San Francisco, as Mail is set: its optical sizes (Text, Display) follow the size by themselves. */
     font-family:
       -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue",
@@ -54,9 +55,33 @@
     font-family: "SFMono-Regular", ui-monospace, Consolas, "Liberation Mono", Menlo, monospace;
   }
 
+  /* The window itself, as macOS 26 draws one with a toolbar: rounded 26pt (here 26 ÷ 1.1, for the 110% scale), on
+     its ground, with a hairline rim over everything at its edge. Square in full screen. */
   #root {
+    position: relative;
     display: flex;
     height: 100%;
+    overflow: hidden;
+    border-radius: 23.64px;
+    background: light-dark(#fafafa, #141414);
+  }
+
+  #root::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1000;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 0.5px light-dark(rgb(0 0 0 / 14%), rgb(255 255 255 / 14%));
+    pointer-events: none;
+  }
+
+  :root[data-full-screen] #root {
+    border-radius: 0;
+  }
+
+  :root[data-full-screen] #root::after {
+    content: none;
   }
 
   /* Popovers and dialogs lose the browser's look; StyleX places them and gives them one. */
