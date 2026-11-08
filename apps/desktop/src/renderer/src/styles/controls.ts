@@ -5,36 +5,25 @@ import { colors, fontSizes, layers, motion, radii } from "./tokens.stylex";
 // Below, starting at the anchor's left edge (StyleX's types only know single keywords).
 const UNDER = "bottom span-right" as "bottom";
 
-// Glass, as macOS 26's toolbar buttons: a tint over a strong blur, so what's behind is only faintly there, and a rim
-// of light all round (see the tokens). Lighter under the pointer, and pressed in a little.
-const GLASS = {
-  borderStyle: "none",
-  borderRadius: 999,
-  backgroundColor: colors.glassTint,
-  backdropFilter: "blur(14px) saturate(170%) brightness(1.08)",
-  boxShadow: colors.glassRim,
-  filter: { default: null, ":hover:not(:disabled)": colors.glassHover },
-  transform: { default: null, ":active:not(:disabled)": "scale(0.96)" },
-  transitionProperty: "filter, transform",
-  transitionDuration: "120ms",
-} as const;
-
 // Each style here goes after the `base` styles it names, as in `sx(base.hover, chip.chip)`.
 export const chip = stylex.create({
   chip: {
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    height: 26,
-    padding: "0 10px",
-    ...GLASS,
+    height: 22,
+    padding: "0 7px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.strokeTertiary,
+    borderRadius: radii.control,
     color: colors.textSecondary,
     font: "inherit",
     fontSize: fontSizes.body,
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  open: { filter: colors.glassHover },
+  open: { backgroundColor: colors.bgQuaternary },
   // A chip's menu: a popover in the top layer, under the chip that opened it (its implicit anchor), flipped above
   // when there's no room below.
   menu: {
@@ -147,22 +136,24 @@ export const menu = stylex.create({
 });
 
 export const topbar = stylex.create({
-  bar: { display: "flex", flexShrink: 0, alignItems: "center", gap: 6, height: 34 },
+  bar: { display: "flex", flexShrink: 0, alignItems: "center", gap: 2.5, height: 34 },
   button: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 28,
-    height: 28,
+    width: 22,
+    height: 22,
     padding: 0,
-    ...GLASS,
+    borderStyle: "none",
+    borderRadius: radii.row,
     color: colors.textPrimary,
+    backgroundColor: { default: "transparent", ":hover:not(:disabled)": colors.bgTertiary },
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { default: 1, ":disabled": 0.35 },
     WebkitAppRegion: "no-drag",
   },
   title: { color: colors.textSecondary },
-  end: { display: "flex", flexShrink: 0, gap: 6, marginLeft: "auto", paddingRight: 8 },
+  end: { display: "flex", flexShrink: 0, gap: 2.5, marginLeft: "auto", paddingRight: 8 },
 });
 
 export const link = stylex.create({
