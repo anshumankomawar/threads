@@ -701,7 +701,7 @@ export function MailSidebar(): JSX.Element {
           aria-label="Your profile"
           onClick={() => open({ person: me().id })}
         >
-          <Identicon seed={me().id} size={18} />
+          <Identicon seed={me().id} size={18.18} />
           <span class={sx(base.ellipsis)}>{me().name}</span>
         </button>
         <button
@@ -1370,15 +1370,16 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   sidebarBar: { paddingLeft: sidebarSpace.afterLights },
-  // Under the top bar, on the rows' inset.
-  groups: { flexShrink: 0, padding: "2px 8px 8px" },
+  // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
+  // points ÷ 1.1, for the 110% scale).
+  groups: { flexShrink: 0, padding: "2px 9.09px 9.09px" },
   nav: {
     position: "relative",
     // Its own stacking context, so the pill (behind the rows) stays above the sidebar's background.
     isolation: "isolate",
     flex: 1,
     minHeight: 0,
-    padding: "2px 8px 12px",
+    padding: "2px 7.27px 12px",
     overflowY: "auto",
   },
   pill: {
@@ -1388,7 +1389,7 @@ const s = stylex.create({
     zIndex: -1,
     width: 0,
     height: 0,
-    borderRadius: radii.row,
+    borderRadius: 7.27,
     backgroundColor: colors.bgTertiary,
     opacity: 0,
     pointerEvents: "none",
@@ -1400,23 +1401,23 @@ const s = stylex.create({
   mailboxes: {
     display: "flex",
     flexDirection: "column",
-    gap: 2,
+    gap: 1.82,
     margin: 0,
     padding: 0,
     listStyle: "none",
   },
   mailboxItem: { listStyle: "none" },
+  // 30pt tall, rounded 8pt, 8pt in from its ends, its icon in an 18pt column 8pt before its 13pt name.
   mailbox: {
     display: "flex",
-    gap: 6,
+    gap: 7.27,
     alignItems: "center",
-    height: 26,
-    // Room before the disclosure, so its caret isn't against the row's edge.
-    paddingLeft: 6,
-    paddingRight: 8,
-    borderRadius: radii.row,
+    height: 27.27,
+    paddingLeft: 7.27,
+    paddingRight: 7.27,
+    borderRadius: 7.27,
     color: colors.textPrimary,
-    fontSize: fontSizes.body,
+    fontSize: 11.82,
     cursor: "default",
     outline: "none",
   },
@@ -1432,7 +1433,13 @@ const s = stylex.create({
   },
   collapseOpen: { gridTemplateRows: "1fr", opacity: 1 },
   collapseInner: { minHeight: 0, overflow: "hidden" },
-  mailboxIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
+  mailboxIcon: {
+    display: "flex",
+    flexShrink: 0,
+    justifyContent: "center",
+    width: 16.36,
+    color: colors.iconTertiary,
+  },
   mailboxName: { flex: 1 },
   count: {
     flexShrink: 0,
@@ -1441,13 +1448,15 @@ const s = stylex.create({
     fontVariantNumeric: "tabular-nums",
   },
   // Apart from the one before it; the first in its group sits right under the segments.
-  section: { marginTop: { default: 14, ":first-of-type": 0 } },
+  // 14pt above, its title at 12pt medium, 8pt in, 4pt over its rows.
+  section: { marginTop: { default: 12.73, ":first-of-type": 0 } },
   sectionHeader: {
     display: "flex",
     alignItems: "center",
-    height: 22,
-    paddingLeft: 6,
-    paddingRight: 6,
+    height: 16.73,
+    paddingLeft: 7.27,
+    paddingRight: 7.27,
+    marginBottom: 3.64,
   },
   sectionTitle: {
     display: "flex",
@@ -1455,8 +1464,8 @@ const s = stylex.create({
     gap: 4,
     alignItems: "center",
     color: colors.textTertiary,
-    fontSize: fontSizes.small,
-    fontWeight: 600,
+    fontSize: 10.91,
+    fontWeight: 500,
     cursor: "default",
   },
   sectionChevron: {
@@ -1472,17 +1481,24 @@ const s = stylex.create({
     color: { default: colors.textTertiary, ":hover": colors.textPrimary },
     opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1 },
   },
-  footer: { display: "flex", flexShrink: 0, gap: 4, alignItems: "center", margin: "0 8px 8px" },
+  // You 16pt in and 12pt up from the corner, at 20pt, 8pt before your 13pt name.
+  footer: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 4,
+    alignItems: "center",
+    margin: "0 7.27px 4.55px",
+  },
   profile: {
     display: "flex",
     flex: 1,
     minWidth: 0,
-    gap: 8,
+    gap: 7.27,
     alignItems: "center",
-    padding: "6px 8px",
-    borderRadius: radii.row,
+    padding: "6.36px 7.27px",
+    borderRadius: 7.27,
     color: colors.textSecondary,
-    fontSize: fontSizes.body,
+    fontSize: 11.82,
     backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
   },
 
