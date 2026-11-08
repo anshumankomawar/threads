@@ -172,15 +172,6 @@ export function Timeline(): JSX.Element {
     };
   });
 
-  // Behind the bars, from the Monday it starts on: the weekends shaded, by the week.
-  const ground = (): JSX.CSSProperties => ({
-    width: `${width()}px`,
-    "background-image":
-      zoom() === "weeks"
-        ? `repeating-linear-gradient(to right, transparent 0 ${day() * 5}px, ${colors.bgQuaternary} ${day() * 5}px ${day() * 7}px)`
-        : "none",
-  });
-
   const Row = (props: { thread: Thread }): JSX.Element => {
     const t = (): Thread => props.thread;
     const bar = (): { left: number; width: number; open: boolean } => {
@@ -265,7 +256,6 @@ export function Timeline(): JSX.Element {
             </div>
           </div>
           <div class={sx(styles.rows)}>
-            <div class={sx(styles.ground)} style={ground()} aria-hidden="true" />
             {/* The table's column, down past its last row, over what scrolls under it. */}
             <div
               class={sx(styles.tableColumn)}
@@ -311,9 +301,6 @@ const styles = stylex.create({
     display: "flex",
     height: HEAD,
     backgroundColor: colors.chrome,
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: colors.strokeTertiary,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
@@ -356,7 +343,6 @@ const styles = stylex.create({
   // Today in a red circle, as its line through the rows is red.
   tickToday: { color: "#fff", fontWeight: 600, backgroundColor: colors.urgent },
   rows: { position: "relative", minHeight: `calc(100% - ${HEAD}px)`, paddingBottom: 24 },
-  ground: { position: "absolute", top: 0, bottom: 0, left: TABLE, pointerEvents: "none" },
   tableColumn: {
     position: "absolute",
     top: 0,
@@ -418,9 +404,6 @@ const styles = stylex.create({
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: colors.strokeTertiary,
   },
   cellOpen: { backgroundColor: colors.panelSelected },
   name: { flex: 1 },
@@ -437,10 +420,10 @@ const styles = stylex.create({
     overflow: "hidden",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: colors.panelBorder,
+    borderColor: colors.raisedBorder,
     borderRadius: 6,
-    backgroundColor: colors.panel,
-    boxShadow: "0 1px 2px rgba(15, 15, 15, 0.08)",
+    backgroundColor: colors.raised,
+    boxShadow: "0 1px 3px rgba(15, 15, 15, 0.12)",
   },
   barResolved: { opacity: 0.55 },
   // No due date: it runs on, fading, to now.

@@ -23,6 +23,9 @@ const DARK = {
   panel: "#171717",
   panelBorder: "#212121",
   panelSelected: "#222222",
+  // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
+  raised: "#2b2b2b",
+  raisedBorder: "#383838",
   accent: "#78aee7",
   accentFill: "#1f252c",
   // Solid buttons (a table view's New): Notion's blue, in both themes.
@@ -56,6 +59,8 @@ export const lightTheme = stylex.createTheme(colors, {
   panel: "#ffffff",
   panelBorder: "#e4e4e2",
   panelSelected: "#f3f3f1",
+  raised: "#ffffff",
+  raisedBorder: "#dcdcd9",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
   primary: "rgb(35 131 226)",
