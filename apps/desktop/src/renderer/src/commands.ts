@@ -47,7 +47,7 @@ export type Command = {
   seed?: string;
   // Its hotkey, shown on the right.
   keys?: string;
-  // Other words it's found by ("archive" finds Mark Done).
+  // Other words it's found by ("archive" finds Mark as done).
   keywords?: string;
   // What it does, after ⌘K closes; or `page`, its own list of choices.
   run?: () => void;
@@ -129,30 +129,30 @@ function threadCommands(thread: Thread): Command[] {
   return [
     ...hotkey(
       "done",
-      item?.doneAt ? "Move Back to Inbox" : "Mark Done",
+      item?.doneAt ? "Move back to the inbox" : "Mark as done",
       section,
       i.InboxCheckIcon,
       "archive",
     ),
     ...hotkey(
       "resolve",
-      thread.isOpen ? "Resolve for Everyone" : "Reopen",
+      thread.isOpen ? "Resolve this thread" : "Reopen this thread",
       section,
       thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon,
       "close finish",
     ),
-    ...hotkey("reply", "Reply", section, i.MailReply01Icon, "write message"),
+    ...hotkey("reply", "Reply to this thread", section, i.MailReply01Icon, "write message"),
     ...(item && thread.isOpen
       ? [
           {
             id: "bucket",
-            title: "Move to Bucket",
+            title: "Move to bucket",
             kind: "action" as const,
             section,
             icon: i.Folder01Icon,
             keywords: "sort file",
             page: () =>
-              choices(thread, "Move to Bucket", i.Folder01Icon, [
+              choices(thread, "Move to bucket", i.Folder01Icon, [
                 ...myBuckets().map((b) => ({
                   id: b.id,
                   title: b.name,
@@ -162,7 +162,7 @@ function threadCommands(thread: Thread): Command[] {
                 })),
                 {
                   id: "auto",
-                  title: "Sort It for Me",
+                  title: "Sort it for me",
                   icon: i.SparklesIcon,
                   on: false,
                   run: () => placeIn(item),
@@ -176,7 +176,7 @@ function threadCommands(thread: Thread): Command[] {
       ? [
           {
             id: "branches",
-            title: "Branches",
+            title: "Show branches",
             kind: "action" as const,
             section,
             icon: i.GitBranchIcon,
@@ -189,9 +189,22 @@ function threadCommands(thread: Thread): Command[] {
           },
         ]
       : []),
+    ...(thread.isOpen
+      ? [
+          {
+            id: "blocked",
+            title: "Mark as blocked on another thread",
+            kind: "action" as const,
+            section,
+            icon: i.UnavailableIcon,
+            keywords: "wait depends needs",
+            run: () => setDialog({ kind: "blocked", thread }),
+          },
+        ]
+      : []),
     {
       id: "add-branch",
-      title: "Add Branch",
+      title: "Add a branch",
       kind: "action",
       section,
       icon: i.GitBranchIcon,
@@ -200,14 +213,14 @@ function threadCommands(thread: Thread): Command[] {
         // Not one already, nor one it's under (that would loop).
         pickThread(
           thread,
-          "Add Branch",
+          "Add a branch",
           (t) => t.branchedFrom !== thread && !isUnder(thread, t),
           (t) => edit(t, { branchedFrom: thread }),
         ),
     },
     {
       id: "branch-of",
-      title: "Branch Of",
+      title: "Make this a branch of another thread",
       kind: "action",
       section,
       icon: i.GitBranchIcon,
@@ -216,14 +229,14 @@ function threadCommands(thread: Thread): Command[] {
         // Not where it is already, nor one of its own branches (that would loop).
         pickThread(
           thread,
-          "Branch Of",
+          "Make this a branch of",
           (t) => t !== thread.branchedFrom && !isUnder(t, thread),
           (t) => edit(thread, { branchedFrom: t }),
         ),
     },
     {
       id: "status",
-      title: "Set Status",
+      title: "Change status",
       kind: "action",
       section,
       icon: i.CircleIcon,
@@ -231,7 +244,7 @@ function threadCommands(thread: Thread): Command[] {
       page: () =>
         choices(
           thread,
-          "Set Status",
+          "Change status",
           i.CircleIcon,
           STATES.map((state) => ({
             id: state,
@@ -243,7 +256,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "priority",
-      title: "Set Priority",
+      title: "Change priority",
       kind: "action",
       section,
       icon: i.Flag02Icon,
@@ -251,7 +264,7 @@ function threadCommands(thread: Thread): Command[] {
       page: () =>
         choices(
           thread,
-          "Set Priority",
+          "Change priority",
           i.Flag02Icon,
           [...PRIORITIES].reverse().map((p) => ({
             id: p,
@@ -263,7 +276,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "labels",
-      title: "Labels",
+      title: "Add or remove labels",
       kind: "action",
       section,
       icon: i.Tag01Icon,
@@ -284,7 +297,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "assign",
-      title: "Assign",
+      title: "Assign to someone",
       kind: "action",
       section,
       icon: i.UserMultipleIcon,
@@ -292,7 +305,7 @@ function threadCommands(thread: Thread): Command[] {
       page: () =>
         choices(
           thread,
-          "Assign",
+          "Assign to",
           i.UserIcon,
           byName(store.all(User)).map((u) => ({
             id: u.id,
@@ -305,7 +318,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "spaces",
-      title: "Spaces",
+      title: "Add to a space",
       kind: "action",
       section,
       icon: i.Layers01Icon,
@@ -326,13 +339,13 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "due",
-      title: "Set Due Date",
+      title: "Set a due date",
       kind: "action",
       section,
       icon: i.Calendar01Icon,
       keywords: "deadline when date",
       page: () =>
-        choices(thread, "Set Due Date", i.Calendar01Icon, [
+        choices(thread, "Due date", i.Calendar01Icon, [
           { id: "today", title: "Today", on: false, run: () => edit(thread, { dueAt: dueAt(0) }) },
           {
             id: "tomorrow",
@@ -342,13 +355,13 @@ function threadCommands(thread: Thread): Command[] {
           },
           {
             id: "week",
-            title: "Next Week",
+            title: "Next week",
             on: false,
             run: () => edit(thread, { dueAt: dueAt(7) }),
           },
           {
             id: "none",
-            title: "No Due Date",
+            title: "No due date",
             on: !thread.dueAt,
             run: () => edit(thread, { dueAt: undefined }),
           },
@@ -367,9 +380,9 @@ const place = (
   keywords?: string,
 ): Command => ({
   id: `go:${id}`,
-  title,
+  title: `Go to ${title}`,
   kind: "place",
-  section: "Go to",
+  section: "Places",
   icon,
   keywords,
   run: () => chooseMailbox(box),
@@ -416,20 +429,20 @@ function places(): Command[] {
 // ── Making things ──
 
 function creating(): Command[] {
-  const section = "Create";
+  const section = "New";
   const narrowed = conditions();
   return [
-    ...hotkey("newThread", "Thread", section, i.PencilEdit02Icon, "new start write"),
+    ...hotkey("newThread", "Create a thread", section, i.PencilEdit02Icon, "new start write"),
     ...hotkey(
       "compose",
-      "Thread from a Message",
+      "Create a thread from a message",
       section,
       i.MessageAdd01Icon,
       "new write draft compose",
     ),
     {
       id: "new-space",
-      title: "Space",
+      title: "Create a space",
       kind: "action",
       section,
       icon: i.Layers01Icon,
@@ -438,7 +451,7 @@ function creating(): Command[] {
     },
     {
       id: "new-label",
-      title: "Label",
+      title: "Create a label",
       kind: "action",
       section,
       icon: i.Tag01Icon,
@@ -447,7 +460,7 @@ function creating(): Command[] {
     },
     {
       id: "new-bucket",
-      title: "Bucket",
+      title: "Create a bucket",
       kind: "action",
       section,
       icon: i.Folder01Icon,
@@ -459,7 +472,7 @@ function creating(): Command[] {
       ? [
           {
             id: "save-view",
-            title: "View from This Filter",
+            title: "Save this filter as a view",
             kind: "action" as const,
             section,
             icon: i.FilterIcon,
@@ -480,16 +493,16 @@ function creating(): Command[] {
 function app(): Command[] {
   const section = "App";
   return [
-    ...hotkey("settings", "Settings", section, i.Settings02Icon, "preferences hotkeys"),
-    ...hotkey("sidebar", "Show or Hide the Sidebar", section, i.PanelLeftIcon, "toggle"),
-    ...hotkey("mailGroup", "Show Inbox Tab", section, i.InboxIcon, "sidebar tab"),
-    ...hotkey("spacesGroup", "Show Spaces Tab", section, i.Layers01Icon, "sidebar tab"),
-    ...hotkey("viewsGroup", "Show Views Tab", section, i.ViewIcon, "sidebar tab"),
-    ...hotkey("back", "Back", section, i.ArrowLeft01Icon, "history previous"),
-    ...hotkey("forward", "Forward", section, i.ArrowRight01Icon, "history next"),
+    ...hotkey("settings", "Open settings", section, i.Settings02Icon, "preferences hotkeys"),
+    ...hotkey("sidebar", "Show or hide the sidebar", section, i.PanelLeftIcon, "toggle"),
+    ...hotkey("mailGroup", "Show the Inbox tab", section, i.InboxIcon, "sidebar tab"),
+    ...hotkey("spacesGroup", "Show the Spaces tab", section, i.Layers01Icon, "sidebar tab"),
+    ...hotkey("viewsGroup", "Show the Views tab", section, i.ViewIcon, "sidebar tab"),
+    ...hotkey("back", "Go back", section, i.ArrowLeft01Icon, "history previous"),
+    ...hotkey("forward", "Go forward", section, i.ArrowRight01Icon, "history next"),
     {
       id: "profile",
-      title: "Your Profile",
+      title: "Open your profile",
       kind: "action",
       section,
       icon: i.UserIcon,
@@ -498,20 +511,26 @@ function app(): Command[] {
     },
     {
       id: "theme",
-      title: theme() === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode",
+      title: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
       kind: "action",
       section,
       icon: theme() === "dark" ? i.Sun03Icon : i.Moon02Icon,
       keywords: "theme appearance dark light",
       run: () => applyTheme(theme() === "dark" ? "light" : "dark"),
     },
-    ...hotkey("zoomIn", "Zoom In", section, i.ZoomInAreaIcon, "bigger larger text"),
-    ...hotkey("zoomOut", "Zoom Out", section, i.ZoomOutAreaIcon, "smaller text"),
-    ...hotkey("zoomReset", "Actual Size", section, i.SearchAreaIcon, "zoom reset"),
-    ...hotkey("viewAs", "View As", section, i.UserSwitchIcon, "switch user impersonate"),
+    ...hotkey("zoomIn", "Zoom in", section, i.ZoomInAreaIcon, "bigger larger text"),
+    ...hotkey("zoomOut", "Zoom out", section, i.ZoomOutAreaIcon, "smaller text"),
+    ...hotkey("zoomReset", "Reset zoom", section, i.SearchAreaIcon, "zoom reset"),
+    ...hotkey(
+      "viewAs",
+      "View as someone else",
+      section,
+      i.UserSwitchIcon,
+      "switch user impersonate",
+    ),
     ...otherSources.map((s): Command => ({
       id: `source:${s}`,
-      title: `Use ${SOURCES[s]} Data`,
+      title: `Use ${SOURCES[s]} data`,
       kind: "action",
       section,
       icon: i.DatabaseIcon,
@@ -522,7 +541,7 @@ function app(): Command[] {
       ? [
           {
             id: "sign-out",
-            title: `Sign Out (${account.email})`,
+            title: `Sign out (${account.email})`,
             kind: "action" as const,
             section,
             icon: i.Logout01Icon,

@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Thread } from "models";
@@ -94,17 +94,14 @@ const CATEGORIES: { label: string; kinds: Kind[]; prefix?: string }[] = [
   { label: "Places", kinds: ["place"], prefix: "/" },
 ];
 
-// How well `text` matches a typed word, 0 for not at all: the whole of it, its start, a word's start, anywhere in it,
-// then its letters in order ("mkdn" finds Mark Done).
+// How well `text` matches a typed word, 0 for not at all: the whole of it, its start, a word's start, then anywhere in
+// it. No scattered letters: what you type reads as part of what it finds.
 function scoreOne(text: string, q: string): number {
   if (text === q) return 100;
   if (text.startsWith(q)) return 80;
   if (text.split(/[\s\-_/(]+/).some((w) => w.startsWith(q))) return 60;
   const at = text.indexOf(q);
-  if (at >= 0) return 40 - Math.min(at, 20) / 2;
-  let k = 0;
-  for (const ch of text) if (ch === q[k]) k++;
-  return k === q.length ? 12 : 0;
+  return at >= 0 ? 40 - Math.min(at, 20) / 2 : 0;
 }
 // A command's match: every word typed has to match its title or the other words it's found by.
 function score(c: Command, query: string): number {
@@ -123,11 +120,17 @@ function score(c: Command, query: string): number {
 // Most per kind while searching, so one kind can't bury the rest.
 const LIMIT: Record<Kind, number> = { action: 8, place: 8, person: 6, thread: 20 };
 
-export function Search(): JSX.Element {
+export function Search(props: { command?: string }): JSX.Element {
   const [tokens, setTokens] = createSignal<Token[]>([]);
   const [text, setText] = createSignal("");
   const [tab, setTab] = createSignal(0);
-  const [pages, setPages] = createSignal<Page[]>([]);
+  // Opened at a command (the reply's / menu): its page from the start.
+  const [pages, setPages] = createSignal<Page[]>(
+    untrack(() => {
+      const asked = props.command && commands().find((c) => c.id === props.command);
+      return asked && asked.page ? [asked.page()] : [];
+    }),
+  );
   const [at, setAt] = createSignal(0);
   let input!: HTMLInputElement;
   const page = (): Page | undefined => pages().at(-1);

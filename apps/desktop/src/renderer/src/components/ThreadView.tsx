@@ -507,18 +507,31 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     if (open === "command")
       return [
         {
-          label: "Blocked",
+          label: "Mark as blocked on another thread",
           hint: "Ask someone for what this needs",
           icon: i.UnavailableIcon,
           run: () => (menu.pick(), setDialog({ kind: "blocked", thread: c() })),
         },
         {
-          label: "Resolve",
+          label: "Resolve this thread",
           hint: "Resolve it for everyone",
           icon: i.CheckmarkCircle02Icon,
           run: () => (menu.pick(), setState(c(), "resolved")),
         },
-      ].filter((o) => o.label.toLowerCase().startsWith(query));
+        // As in ⌘K, whose pages they open.
+        {
+          label: "Add a branch",
+          hint: "Make another thread part of this one",
+          icon: i.GitBranchIcon,
+          run: () => (menu.pick(), setDialog({ kind: "search", command: "add-branch" })),
+        },
+        {
+          label: "Make this a branch of another thread",
+          hint: "Make this thread part of another",
+          icon: i.GitBranchIcon,
+          run: () => (menu.pick(), setDialog({ kind: "search", command: "branch-of" })),
+        },
+      ].filter((o) => o.label.toLowerCase().includes(query));
     if (open === "mention")
       return [
         ...others()

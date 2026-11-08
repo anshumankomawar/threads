@@ -136,20 +136,23 @@ export type MenuItem =
     }
   | { label: string; icon?: JSX.Element; items: MenuItem[] }
   | "separator";
-export type Dialog = (
-  | { kind: "search" | "viewAs" }
-  | { kind: "newThread"; labelId?: string; subspaceId?: string; to?: User }
-  | { kind: "newView"; filter: Filter }
-  | { kind: "newSubspace" }
-  | { kind: "addMember"; subspace: Subspace }
-  | { kind: "newLabel"; thread?: Thread }
-  | { kind: "compose"; draftId?: string }
-  | { kind: "bucket"; bucket?: Bucket }
-  | { kind: "blocked"; thread: Thread }
-) & {
-  // The palette it was opened from (⌘K), which going back from its first step returns to.
-  back?: Dialog;
-};
+export type Dialog =
+  // ⌘K, or (`command`) open at one command's own page, as the reply's / menu opens Branch Of.
+  (
+    | { kind: "search"; command?: string }
+    | { kind: "viewAs" }
+    | { kind: "newThread"; labelId?: string; subspaceId?: string; to?: User }
+    | { kind: "newView"; filter: Filter }
+    | { kind: "newSubspace" }
+    | { kind: "addMember"; subspace: Subspace }
+    | { kind: "newLabel"; thread?: Thread }
+    | { kind: "compose"; draftId?: string }
+    | { kind: "bucket"; bucket?: Bucket }
+    | { kind: "blocked"; thread: Thread }
+  ) & {
+    // The palette it was opened from (⌘K), which going back from its first step returns to.
+    back?: Dialog;
+  };
 
 export const [view, setView] = createSignal<View>({ thread: null });
 export const [split, setSplit] = createSignal<string | null>(null);
