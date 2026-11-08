@@ -893,11 +893,10 @@ export const displayMenu = (): MenuItem[] => [
   },
 ];
 
-// The query over the list, in a bar above it: its filters (each a pill that removes itself; more from Filter), saving
-// them as a view, how it's grouped and ordered, and New. Always over a timeline; over a list while it's filtered.
-function QueryBar(): JSX.Element {
+// What narrows the list: its filters (each a pill that removes itself; more from Filter), and saving them as a view.
+function QueryFilters(): JSX.Element {
   return (
-    <div class={sx(s.query)}>
+    <>
       <For each={conditions()}>
         {(condition) => (
           <button
@@ -940,21 +939,35 @@ function QueryBar(): JSX.Element {
           Save view
         </button>
       </Show>
+    </>
+  );
+}
+
+// The one main action here, as Notion's New: a thread in this list (its space or label).
+function NewButton(): JSX.Element {
+  return (
+    <button
+      class={sx(base.bare, button.solid, s.queryNew)}
+      onClick={() =>
+        setDialog({
+          kind: "newThread",
+          subspaceId: mailbox().kind === "subspace" ? (mailbox() as { id: string }).id : undefined,
+          labelId: mailbox().kind === "label" ? (mailbox() as { id: string }).id : undefined,
+        })
+      }
+    >
+      New
+    </button>
+  );
+}
+
+// The query over a filtered list, in a bar above it: its filters, then New. Over a timeline they're in its toolbar.
+function QueryBar(): JSX.Element {
+  return (
+    <div class={sx(s.query)}>
+      <QueryFilters />
       <span class={sx(s.querySpacer)} />
-      {/* The one main action here, as Notion's New: a thread in this list (its space or label). */}
-      <button
-        class={sx(base.bare, button.solid, s.queryNew)}
-        onClick={() =>
-          setDialog({
-            kind: "newThread",
-            subspaceId:
-              mailbox().kind === "subspace" ? (mailbox() as { id: string }).id : undefined,
-            labelId: mailbox().kind === "label" ? (mailbox() as { id: string }).id : undefined,
-          })
-        }
-      >
-        New
-      </button>
+      <NewButton />
     </div>
   );
 }
@@ -993,10 +1006,13 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
     (ids) => ids.forEach((id) => store.subscribe(`subspace:${id}`)),
   );
   const filterable = (): boolean => mailbox().kind !== "drafts";
-  // The query bar, over a timeline or a filtered list; with it shown, the top bar's Filter (its own) goes.
+  // The query bar, over a filtered list (a timeline has its filters on its own toolbar); with either showing them,
+  // the top bar's Filter goes.
   const queryShown = (): boolean =>
     filterable() &&
-    (display().layout === "timeline" || conditions().length > 0 || display().hideResolved === true);
+    display().layout !== "timeline" &&
+    (conditions().length > 0 || display().hideResolved === true);
+  const filtersShown = (): boolean => queryShown() || display().layout === "timeline";
   const total = (): number =>
     mailbox().kind === "drafts" ? drafts().length : listed().order.length;
   const unreadCount = (): number =>
@@ -1056,7 +1072,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
             />
           </Show>
           <Show when={filterable()}>
-            <Show when={!queryShown()}>
+            <Show when={!filtersShown()}>
               <MenuChip
                 look={topbar.button}
                 title="Filter"
@@ -1096,7 +1112,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
         <QueryBar />
       </Show>
       <Show when={display().layout === "timeline"}>
-        <Timeline />
+        <Timeline start={<QueryFilters />} end={<NewButton />} />
       </Show>
       <div
         ref={list}

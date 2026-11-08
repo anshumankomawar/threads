@@ -23,8 +23,8 @@ const DARK = {
   panelBorder: "#212121",
   panelSelected: "#222222",
   // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
-  raised: "#2b2b2b",
-  raisedBorder: "#383838",
+  raised: "#1e1e1e",
+  raisedBorder: "#2a2a2a",
   accent: "#78aee7",
   accentFill: "#1f252c",
   // Solid buttons (a table view's New): Notion's blue, in both themes.

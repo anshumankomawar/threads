@@ -72,7 +72,8 @@ type Drag = { thread: Thread; kind: "move" | "start" | "end"; days: number };
 // The rows, in order, each where it sits: a group's heading, or a thread.
 type Line = { y: number } & ({ group: Group } | { thread: Thread });
 
-export function Timeline(): JSX.Element {
+// `start` and `end`: what the list puts on the timeline's toolbar (its filters after the month, New at the end).
+export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX.Element {
   // The names' width, dragged by the edge on its right (a double click puts it back).
   const clamp = (px: number): number => Math.min(NAMES.max, Math.max(NAMES.min, Math.round(px)));
   const [names, setNames] = createSignal(clamp(saved("timeline-names", NAMES.initial)));
@@ -378,9 +379,11 @@ export function Timeline(): JSX.Element {
 
   return (
     <div class={sx(styles.frame)}>
-      {/* The month in view, and its scale, today and a step either way. */}
+      {/* The month in view and the list's filters; its scale, today and a step either way; then New. */}
       <div class={sx(styles.toolbar)}>
         <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
+        {props.start}
+        <span class={sx(styles.toolbarSpacer)} />
         <MenuChip
           title="Zoom"
           tone="muted"
@@ -408,6 +411,7 @@ export function Timeline(): JSX.Element {
         >
           <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
         </button>
+        {props.end}
       </div>
       <div
         ref={scroller}
@@ -631,12 +635,20 @@ const styles = stylex.create({
   toolbar: {
     display: "flex",
     flexShrink: 0,
-    gap: 2,
+    gap: 6,
     alignItems: "center",
-    height: 40,
-    padding: "0 12px 0 16px",
+    // Its first line as far below the top bar as every page's (21pt).
+    height: 46.91,
+    padding: "6.91px 12px 0 16px",
   },
-  shownMonth: { flex: 1, color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 600 },
+  shownMonth: {
+    marginRight: 10,
+    color: colors.textPrimary,
+    fontSize: fontSizes.name,
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+  },
+  toolbarSpacer: { flex: 1 },
   step: {
     display: "flex",
     alignItems: "center",
