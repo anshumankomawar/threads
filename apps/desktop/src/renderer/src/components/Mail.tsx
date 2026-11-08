@@ -1077,7 +1077,7 @@ export function MessageList(): JSX.Element {
   };
   return (
     <section
-      class={sx(s.list, wide() && !active() && s.listAlone)}
+      class={sx(s.list, wide() && s.listTimeline, wide() && !active() && s.listAlone)}
       style={{
         width: wide()
           ? active()
@@ -1434,6 +1434,9 @@ const s = stylex.create({
   listBar: { paddingLeft: 16 },
   // A timeline alone (no thread open beside it) takes the room, with no edge to divide.
   listAlone: { flex: 1, borderRightWidth: 0 },
+  // A timeline's column is on the window's own ground (as the timeline is, its stuck titles covering what scrolls), so
+  // its header matches it.
+  listTimeline: { backgroundColor: colors.chrome },
   hidden: { display: "none" },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
