@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arc</title>
+    <meta
+      name="description"
+      content="Every conversation in Arc has an owner and an end. Six months from now, you can still find what was decided and why."
+    />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta property="og:title" content="Arc" />
+    <meta property="og:description" content="Where decisions don’t get lost." />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <!-- Everything the first paint needs, in flight from the first bytes: the three faces, and the theme's field. -->
+    <link
+      rel="preload"
+      href="/fonts/fraunces-latin-wght.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/hanken-grotesk-latin-wght.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/fonts/inter-latin-wght.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/field-dark.webp"
+      as="image"
+      type="image/webp"
+      media="(prefers-color-scheme: dark)"
+    />
+    <link
+      rel="preload"
+      href="/field-light.webp"
+      as="image"
+      type="image/webp"
+      media="(prefers-color-scheme: light)"
+    />
+    <!-- Under StyleX's layers: the reset, the font and what StyleX can't reach. -->
+    <style>
+      @layer reset {
+        /* The page's face: Hanken Grotesk, warm rather than technical. Preloaded, so it's nearly always in time; if
+           not, the system font stays and nothing shifts. */
+        @font-face {
+          font-family: "Hanken Grotesk";
+          font-style: normal;
+          font-weight: 100 900;
+          font-display: optional;
+          src: url(/fonts/hanken-grotesk-latin-wght.woff2) format("woff2-variations");
+        }
+        /* The headline's: Fraunces, light. Preloaded, and swapped in if it's ever late, so it's always the one shown. */
+        @font-face {
+          font-family: "Fraunces";
+          font-style: normal;
+          font-weight: 100 900;
+          font-display: swap;
+          src: url(/fonts/fraunces-latin-wght.woff2) format("woff2-variations");
+        }
+        /* The app's, for the window into it (AppWindow.tsx). */
+        @font-face {
+          font-family: "Inter Variable";
+          font-style: normal;
+          font-weight: 100 900;
+          font-display: optional;
+          src: url(/fonts/inter-latin-wght.woff2) format("woff2-variations");
+        }
+        *,
+        *::before,
+        *::after {
+          box-sizing: border-box;
+          margin: 0;
+        }
+        /* One screen: the page doesn't scroll. */
+        html,
+        body {
+          height: 100%;
+          overflow: hidden;
+        }
+        html {
+          color-scheme: dark light;
+          -webkit-text-size-adjust: 100%;
+        }
+        body {
+          font-family:
+            "Hanken Grotesk",
+            "SF Pro Display",
+            -apple-system,
+            BlinkMacSystemFont,
+            "Segoe UI",
+            Roboto,
+            "Helvetica Neue",
+            sans-serif;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
+        }
+        img,
+        svg {
+          display: block;
+        }
+        a:focus-visible,
+        button:focus-visible {
+          outline: 2px solid #78aee7;
+          outline-offset: 2px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"><!--app--></div>
+    <script type="module" src="/src/index.tsx"></script>
+  </body>
+</html>

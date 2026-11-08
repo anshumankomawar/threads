@@ -1,0 +1,10 @@
+# The page itself is revalidated each visit (Cloudflare's default), so a deploy shows at once. Everything it loads
+# is cached for a year: the fonts and the field never change without a new name.
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+/field-dark.webp
+  Cache-Control: public, max-age=31536000, immutable
+/field-light.webp
+  Cache-Control: public, max-age=31536000, immutable
+/logo.png
+  Cache-Control: public, max-age=31536000, immutable
