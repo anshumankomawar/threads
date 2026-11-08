@@ -52,6 +52,7 @@ import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
+import horizon from "../assets/horizon.png";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
 import { Tabs, type Tab } from "./Tabs";
@@ -1153,11 +1154,18 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
 }
 
 // No thread open: as Mail says.
+// With nothing open, a scene rather than an empty pane: Earth's limb from orbit, dithered into dots
+// (scripts/horizon), drawn at exactly half its pixel size so each dot lands on whole pixels, its edges fading into the
+// dark around it.
 export function NothingOpen(): JSX.Element {
   return (
     <div class={sx(s.nothing)}>
+      <span
+        class={sx(s.scene)}
+        style={{ "background-image": `url(${horizon})` }}
+        aria-hidden="true"
+      />
       <span class={sx(s.nothingTitle)}>No thread selected</span>
-      <span>{listed().order.length > 0 ? "Choose one from the list to read it here." : ""}</span>
     </div>
   );
 }
@@ -1443,13 +1451,36 @@ const s = stylex.create({
   emptyTitle: { color: colors.textSecondary, fontSize: fontSizes.input, fontWeight: 600 },
 
   nothing: {
+    position: "relative",
     display: "flex",
     flex: 1,
     flexDirection: "column",
     gap: 6,
     alignItems: "center",
     justifyContent: "center",
-    color: colors.textTertiary,
+    overflow: "hidden",
+    // The scene's own ground, in both themes: it's a picture, not the app's colour.
+    backgroundColor: "rgb(10 10 11)",
   },
-  nothingTitle: { color: colors.textSecondary, fontSize: fontSizes.pageTitle, fontWeight: 600 },
+  scene: {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: 1200,
+    height: 900,
+    transform: "translate(-50%, -50%)",
+    backgroundSize: "1200px 900px",
+    backgroundRepeat: "no-repeat",
+    imageRendering: "pixelated",
+    maskImage: "radial-gradient(closest-side, #000 72%, transparent)",
+    pointerEvents: "none",
+  },
+  // Light on the scene, whatever the theme, with a soft dark shadow so it reads on the bright band too.
+  nothingTitle: {
+    position: "relative",
+    color: "rgb(255 255 255 / 92%)",
+    fontSize: fontSizes.pageTitle,
+    fontWeight: 600,
+    textShadow: "0 0 6px rgb(0 0 0 / 85%), 0 0 22px rgb(0 0 0 / 75%)",
+  },
 });
