@@ -1,8 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 
-// Arc's tokens (apps/desktop/src/renderer/src/styles/tokens.stylex.ts). They follow the system's theme, dark unless it
-// asks for light; the top bar's toggle forces one with `lightTheme` or `darkTheme` on the root (script.ts).
-const LIGHT = "@media (prefers-color-scheme: light)";
+// Arc's tokens (apps/desktop/src/renderer/src/styles/tokens.stylex.ts). The page is dark, whatever the system's
+// theme; the toggle puts `lightTheme` on the root for anyone who'd rather it light (script.ts).
 const DARK_BASE = "oklch(0.955 0 0)";
 const LIGHT_BASE = "oklch(0.21 0 0)";
 const mix = (base: string, percent: number): string =>
@@ -69,31 +68,31 @@ const LIGHT_VALUES = {
 };
 
 export const colors = stylex.defineVars({
-  chrome: { default: DARK.chrome, [LIGHT]: LIGHT_VALUES.chrome },
-  frosted: { default: DARK.frosted, [LIGHT]: LIGHT_VALUES.frosted },
-  page: { default: DARK.page, [LIGHT]: LIGHT_VALUES.page },
-  surface: { default: DARK.surface, [LIGHT]: LIGHT_VALUES.surface },
-  textPrimary: { default: DARK.textPrimary, [LIGHT]: LIGHT_VALUES.textPrimary },
-  textSecondary: { default: DARK.textSecondary, [LIGHT]: LIGHT_VALUES.textSecondary },
-  textTertiary: { default: DARK.textTertiary, [LIGHT]: LIGHT_VALUES.textTertiary },
-  bgTertiary: { default: DARK.bgTertiary, [LIGHT]: LIGHT_VALUES.bgTertiary },
-  bgQuaternary: { default: DARK.bgQuaternary, [LIGHT]: LIGHT_VALUES.bgQuaternary },
-  iconTertiary: { default: DARK.iconTertiary, [LIGHT]: LIGHT_VALUES.iconTertiary },
-  strokeTertiary: { default: DARK.strokeTertiary, [LIGHT]: LIGHT_VALUES.strokeTertiary },
-  strokeFocused: { default: DARK.strokeFocused, [LIGHT]: LIGHT_VALUES.strokeFocused },
-  accent: { default: DARK.accent, [LIGHT]: LIGHT_VALUES.accent },
-  accentFill: { default: DARK.accentFill, [LIGHT]: LIGHT_VALUES.accentFill },
-  statusClosed: { default: DARK.statusClosed, [LIGHT]: LIGHT_VALUES.statusClosed },
-  urgent: { default: DARK.urgent, [LIGHT]: LIGHT_VALUES.urgent },
-  avatarRing: { default: DARK.avatarRing, [LIGHT]: LIGHT_VALUES.avatarRing },
+  chrome: DARK.chrome,
+  frosted: DARK.frosted,
+  page: DARK.page,
+  surface: DARK.surface,
+  textPrimary: DARK.textPrimary,
+  textSecondary: DARK.textSecondary,
+  textTertiary: DARK.textTertiary,
+  bgTertiary: DARK.bgTertiary,
+  bgQuaternary: DARK.bgQuaternary,
+  iconTertiary: DARK.iconTertiary,
+  strokeTertiary: DARK.strokeTertiary,
+  strokeFocused: DARK.strokeFocused,
+  accent: DARK.accent,
+  accentFill: DARK.accentFill,
+  statusClosed: DARK.statusClosed,
+  urgent: DARK.urgent,
+  avatarRing: DARK.avatarRing,
   // Mail's unread dot.
-  systemBlue: { default: DARK.systemBlue, [LIGHT]: LIGHT_VALUES.systemBlue },
-  windowShadow: { default: DARK.windowShadow, [LIGHT]: LIGHT_VALUES.windowShadow },
-  field: { default: DARK.field, [LIGHT]: LIGHT_VALUES.field },
-  veil: { default: DARK.veil, [LIGHT]: LIGHT_VALUES.veil },
-  textHalo: { default: DARK.textHalo, [LIGHT]: LIGHT_VALUES.textHalo },
-  showSun: { default: DARK.showSun, [LIGHT]: LIGHT_VALUES.showSun },
-  showMoon: { default: DARK.showMoon, [LIGHT]: LIGHT_VALUES.showMoon },
+  systemBlue: DARK.systemBlue,
+  windowShadow: DARK.windowShadow,
+  field: DARK.field,
+  veil: DARK.veil,
+  textHalo: DARK.textHalo,
+  showSun: DARK.showSun,
+  showMoon: DARK.showMoon,
 });
 
 // A theme chosen with the toggle, whatever the system's.

@@ -26,8 +26,8 @@ function install(classes: Classes): void {
   apply();
   addEventListener("click", (event) => {
     if (!(event.target as Element).closest?.("[data-theme-toggle]")) return;
-    const dark = chosen ? chosen === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-    chosen = dark ? "light" : "dark";
+    // The page is dark until a theme's chosen, whatever the system's.
+    chosen = chosen === "light" ? "dark" : "light";
     apply();
     try {
       localStorage.setItem("theme", chosen);

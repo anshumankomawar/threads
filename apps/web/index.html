@@ -8,9 +8,8 @@
       name="description"
       content="Every conversation in Arc has an owner and an end. Six months from now, you can still find what was decided and why."
     />
-    <meta name="color-scheme" content="dark light" />
-    <meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)" />
-    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#1c1c1c" />
     <meta property="og:title" content="Arc" />
     <meta property="og:description" content="Where decisions don’t get lost." />
     <link rel="icon" type="image/png" href="/logo.png" />
@@ -36,20 +35,7 @@
       type="font/woff2"
       crossorigin
     />
-    <link
-      rel="preload"
-      href="/field-dark.webp"
-      as="image"
-      type="image/webp"
-      media="(prefers-color-scheme: dark)"
-    />
-    <link
-      rel="preload"
-      href="/field-light.webp"
-      as="image"
-      type="image/webp"
-      media="(prefers-color-scheme: light)"
-    />
+    <link rel="preload" href="/field-dark.webp" as="image" type="image/webp" />
     <!-- Under StyleX's layers: the reset, the font and what StyleX can't reach. -->
     <style>
       @layer reset {
@@ -91,7 +77,7 @@
           overflow: hidden;
         }
         html {
-          color-scheme: dark light;
+          color-scheme: dark;
           -webkit-text-size-adjust: 100%;
         }
         body {
