@@ -5,12 +5,22 @@ import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
 import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
-import { edit, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
+import {
+  edit,
+  menuFrom,
+  peek,
+  peeked,
+  save,
+  saved,
+  showMenu,
+  threadMenu,
+  type MenuItem,
+} from "../session";
 import { base } from "../styles/base";
 import { chip } from "../styles/controls";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
-import { Icon } from "./Icon";
+import { icon, Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { dot } from "./ThreadView";
@@ -155,8 +165,96 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     }
     return out;
   };
-  // Those without a date, listed under the timeline to be given one.
+  // Those without a date: in a list from the toolbar, to be dragged onto a day or given one from their menu.
   const undated = (): Thread[] => [...new Set(listed().order)].filter((t) => !dated(t));
+  const [undatedOpen, setUndatedOpen] = createSignal(false);
+  // One being dragged from that list: where the pointer is, and the day under it on the timeline (if it's over it).
+  const [placing, setPlacing] = createSignal<{
+    thread: Thread;
+    x: number;
+    y: number;
+    day?: number;
+    top?: number;
+  } | null>(null);
+  let daysArea!: HTMLDivElement;
+  const place = (thread: Thread, date: Date, label: string): void => {
+    edit(thread, { startAt: date, dueAt: date }, label);
+    setUndatedOpen(false);
+  };
+  const from = (days: number): Date => new Date(addDays(today(), days));
+  const dateMenu = (thread: Thread): MenuItem[] => [
+    {
+      label: "Today",
+      icon: icon(i.Calendar03Icon, 13),
+      run: () => place(thread, from(0), "Schedule"),
+    },
+    {
+      label: "Tomorrow",
+      icon: icon(i.Calendar03Icon, 13),
+      run: () => place(thread, from(1), "Schedule"),
+    },
+    {
+      label: "Next Week",
+      icon: icon(i.Calendar03Icon, 13),
+      run: () => place(thread, from(7), "Schedule"),
+    },
+    {
+      label: "Pick a Date",
+      icon: icon(i.Calendar01Icon, 13),
+      run: () => pickDate((date) => place(thread, date, "Schedule")),
+    },
+    "separator",
+    {
+      label: "Open",
+      icon: icon(i.SquareArrowUpRightIcon, 13),
+      run: () => peek({ thread: thread.id }),
+    },
+  ];
+  // A press on a row: dragged (once the pointer's moved) onto a day, it goes there; let go elsewhere, nothing; not
+  // moved, it opens.
+  const pressUndated = (thread: Thread, event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    const row = event.currentTarget as HTMLElement;
+    row.setPointerCapture(event.pointerId);
+    const start = { x: event.clientX, y: event.clientY };
+    let moved = false;
+    const move = (e: PointerEvent): void => {
+      if (!moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < SLOP) return;
+      moved = true;
+      const box = daysArea.getBoundingClientRect();
+      const over =
+        e.clientX >= box.left &&
+        e.clientX <= box.right &&
+        e.clientY >= box.top &&
+        e.clientY <= box.bottom;
+      setPlacing({
+        thread,
+        x: e.clientX,
+        y: e.clientY,
+        day: over ? dayAt(e.clientX - box.left) : undefined,
+        top: over ? e.clientY - box.top - BAR / 2 : undefined,
+      });
+    };
+    const up = (): void => {
+      row.removeEventListener("pointermove", move);
+      const shown = placing();
+      setPlacing(null);
+      if (!moved) return peek({ thread: thread.id });
+      if (shown?.day !== undefined) place(thread, new Date(shown.day), "Place on Timeline");
+    };
+    row.addEventListener("pointermove", move);
+    row.addEventListener("pointerup", up, { once: true });
+  };
+  // The list closes on a press anywhere else (a menu from it, or the picker, aside).
+  createEffect(undatedOpen, (open) => {
+    if (!open) return;
+    const away = (e: PointerEvent): void => {
+      const at = e.target as Element;
+      if (!at.closest("[data-undated], [role=menu], [data-holds-keys]")) setUndatedOpen(false);
+    };
+    window.addEventListener("pointerdown", away, true);
+    return () => window.removeEventListener("pointerdown", away, true);
+  });
   const height = (): number => (lines().at(-1)?.y ?? 0) + ROW + 24;
 
   const [drag, setDrag] = createSignal<Drag | null>(null);
@@ -383,6 +481,47 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       <div class={sx(styles.toolbar)}>
         <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
         {props.start}
+        <Show when={undated().length > 0}>
+          <span class={sx(styles.undatedAnchor)} data-undated>
+            <button
+              class={sx(base.bare, base.hover, chip.chip, undatedOpen() && chip.open)}
+              onClick={() => setUndatedOpen(!undatedOpen())}
+            >
+              {undated().length} without dates
+              <Icon icon={i.ArrowDown01Icon} size={10} aria-hidden="true" />
+            </button>
+            <Show when={undatedOpen()}>
+              <div
+                class={sx(base.panel, styles.undatedPanel, placing() && styles.undatedPanelAway)}
+                role="list"
+                aria-label="Without dates"
+              >
+                <For each={undated()}>
+                  {(thread) => (
+                    <div
+                      class={sx(base.hover, styles.undatedRow)}
+                      role="listitem"
+                      onPointerDown={(e) => pressUndated(thread, e)}
+                      onContextMenu={(e) => showMenu(e, threadMenu(thread))}
+                    >
+                      <span class={sx(base.ellipsis, styles.undatedTitle)}>{thread.title}</span>
+                      <button
+                        class={sx(base.bare, base.hover, styles.undatedMore)}
+                        aria-label="Schedule"
+                        title="Schedule"
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={(e) => menuFrom(e.currentTarget, dateMenu(thread))}
+                      >
+                        <Icon icon={i.MoreHorizontalIcon} size={13} aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
+                </For>
+                <div class={sx(styles.undatedHint)}>Drag one onto a day to place it there</div>
+              </div>
+            </Show>
+          </span>
+        </Show>
         <span class={sx(styles.toolbarSpacer)} />
         <MenuChip
           title="Zoom"
@@ -491,7 +630,16 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
                 }
               </For>
             </div>
-            <div class={sx(styles.days)} style={area()}>
+            <div ref={daysArea} class={sx(styles.days)} style={area()}>
+              {/* Where a thread dragged from those without dates would go: a day under the pointer. */}
+              <Show when={placing()?.day !== undefined && placing()}>
+                {(p) => (
+                  <span
+                    class={sx(styles.ghost)}
+                    style={{ top: `${p().top}px`, left: `${x(p().day!)}px`, width: `${day()}px` }}
+                  />
+                )}
+              </Show>
               {/* A dashed line at each month's start, and a fine one at today, as Linear's. */}
               <For each={months().slice(1)}>
                 {(month) => (
@@ -534,104 +682,84 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
           </div>
         </div>
       </div>
-      {/* Those without a date: a list under the timeline, each given a start or due date from its row (it moves onto
-          the timeline as it gets one). */}
-      <Show when={undated().length > 0}>
-        <section class={sx(styles.undated)} aria-label="No dates">
-          <div class={sx(styles.undatedHeading)}>
-            No dates <span class={sx(styles.count)}>{undated().length}</span>
-          </div>
-          <For each={undated()}>
-            {(thread) => (
-              <div class={sx(styles.undatedRow)}>
-                <button
-                  class={sx(base.bare, styles.undatedTitle)}
-                  onClick={() => peek({ thread: thread.id })}
-                  onContextMenu={(e) => showMenu(e, threadMenu(thread))}
-                >
-                  <span class={sx(base.ellipsis)}>{thread.title}</span>
-                </button>
-                <DatePick
-                  label="Start"
-                  pick={(date) => edit(thread, { startAt: date }, "Set Start Date")}
-                />
-                <DatePick
-                  label="Due"
-                  pick={(date) => edit(thread, { dueAt: date }, "Set Due Date")}
-                />
-              </div>
-            )}
-          </For>
-        </section>
+      <Show when={placing()}>
+        {(p) => (
+          <span
+            class={sx(base.panel, base.ellipsis, styles.dragged)}
+            style={{ left: `${p().x}px`, top: `${p().y}px` }}
+          >
+            {p().thread.title}
+          </span>
+        )}
       </Show>
     </div>
   );
 }
 
-// A chip that opens the system's date picker, and gives the day chosen (at midnight, local).
-function DatePick(props: { label: string; pick: (date: Date) => void }): JSX.Element {
-  let input!: HTMLInputElement;
-  return (
-    <button
-      class={sx(base.bare, base.hover, chip.chip, styles.datePick)}
-      onClick={() => input.showPicker()}
-    >
-      <Icon icon={i.Calendar03Icon} size={12} aria-hidden="true" />
-      {props.label}
-      <input
-        ref={input}
-        type="date"
-        class={sx(styles.dateInput)}
-        tabindex={-1}
-        aria-hidden="true"
-        onChange={(event) => {
-          const [y, m, d] = event.currentTarget.value.split("-").map(Number);
-          if (y) props.pick(new Date(y, m - 1, d));
-        }}
-      />
-    </button>
-  );
+// The system's date picker, opened from a menu, and the day chosen (at midnight, local).
+function pickDate(pick: (date: Date) => void): void {
+  const input = Object.assign(document.createElement("input"), { type: "date" });
+  Object.assign(input.style, { position: "fixed", opacity: "0", pointerEvents: "none" });
+  document.body.append(input);
+  input.addEventListener("change", () => {
+    const [y, m, d] = input.value.split("-").map(Number);
+    if (y) pick(new Date(y, m - 1, d));
+    input.remove();
+  });
+  input.addEventListener("blur", () => setTimeout(() => input.remove(), 1000));
+  input.showPicker();
 }
 
 const styles = stylex.create({
   frame: { display: "flex", flex: 1, flexDirection: "column", minHeight: 0 },
-  // Under the timeline, its own list (as the sidebar's rows): a heading, then each thread with its date chips.
-  undated: {
-    flexShrink: 0,
-    maxHeight: "40%",
+  // Those without dates: a chip on the toolbar, and the list it opens under it.
+  undatedAnchor: { position: "relative" },
+  undatedPanel: {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    left: 0,
+    zIndex: 10,
+    width: 280,
+    maxHeight: 320,
     overflowY: "auto",
-    padding: "0 7.27px 10.91px",
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: colors.strokeTertiary,
+    padding: 4,
   },
-  undatedHeading: {
-    display: "flex",
-    gap: 6,
-    padding: "12.73px 7.27px 3.64px",
-    color: colors.textTertiary,
-    fontSize: 10.91,
-    fontWeight: 500,
-  },
+  // Out of sight while one of its rows is dragged (it stays, holding the drag).
+  undatedPanelAway: { visibility: "hidden" },
   undatedRow: {
     display: "flex",
     gap: 6,
     alignItems: "center",
-    height: 29.09,
-    padding: `0 ${INSET}px`,
-  },
-  undatedTitle: {
-    display: "flex",
-    flex: 1,
-    minWidth: 0,
+    height: 27.27,
+    padding: "0 4px 0 7.27px",
+    borderRadius: 7.27,
     color: colors.textPrimary,
     fontSize: 11.82,
-    textAlign: "left",
+    cursor: "grab",
+    userSelect: "none",
+  },
+  undatedTitle: { flex: 1, minWidth: 0 },
+  undatedMore: {
+    display: "flex",
+    flexShrink: 0,
+    padding: 3,
+    borderRadius: 5,
+    color: colors.textTertiary,
     cursor: "pointer",
   },
-  datePick: { position: "relative", flexShrink: 0 },
-  // The picker's input: there to open, never seen.
-  dateInput: { position: "absolute", inset: 0, opacity: 0, pointerEvents: "none" },
+  undatedHint: { padding: "6px 7.27px 4px", color: colors.textTertiary, fontSize: 10 },
+  // What's dragged, by the pointer.
+  dragged: {
+    position: "fixed",
+    zIndex: 100,
+    maxWidth: 240,
+    padding: "3px 8px",
+    borderRadius: 7.27,
+    color: colors.textPrimary,
+    fontSize: 11.82,
+    pointerEvents: "none",
+    transform: "translate(10px, 10px)",
+  },
   toolbar: {
     display: "flex",
     flexShrink: 0,
