@@ -134,7 +134,7 @@ export default function App(): JSX.Element {
   const subspace = () => store.findById(Subspace, shown("subspace") ?? chosenId("subspace") ?? "");
   const savedView = () => store.findById(View, shown("view") ?? chosenId("view") ?? "");
   const person = () => store.findById(User, shown("person") ?? "");
-  const boardAlone = (): boolean => {
+  const timelineAlone = (): boolean => {
     const shownNow = view();
     return display().layout !== "list" && "thread" in shownNow && shownNow.thread === null;
   };
@@ -148,8 +148,8 @@ export default function App(): JSX.Element {
           <MailSidebar />
         </Show>
         <MessageList />
-        {/* A board has the room to itself until something's opened beside it. */}
-        <Show when={!boardAlone()}>
+        {/* A timeline has the room to itself until something's opened beside it. */}
+        <Show when={!timelineAlone()}>
           <main class={sx(styles.main)}>
             {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
             <Show when={store.rejection()}>

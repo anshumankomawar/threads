@@ -18,7 +18,6 @@
     "build:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
-    "@atlaskit/pragmatic-drag-and-drop": "^4.0.0",
     "@better-auth/electron": "1.7.17",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",

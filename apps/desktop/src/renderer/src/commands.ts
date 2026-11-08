@@ -11,7 +11,6 @@ import {
   conditions,
   display,
   groupedBy,
-  lanedBy,
   mailbox,
   ORDERS,
   type Order,
@@ -508,33 +507,6 @@ function listing(): Command[] {
           })),
       }),
     },
-    ...(display().layout === "board"
-      ? [
-          {
-            id: "rows-by",
-            title: "Split the board into rows by",
-            kind: "action",
-            section,
-            icon: i.Layout2RowIcon,
-            keywords: "swimlanes lanes rows display",
-            page: () => ({
-              title: "Rows by",
-              placeholder: "Search",
-              commands: () =>
-                Object.entries(FIELDS)
-                  .filter(([field]) => field !== grouped)
-                  .map(([field, { label }]): Command => ({
-                    id: `lanes:${field}`,
-                    title: label,
-                    kind: "action",
-                    section: "Rows by",
-                    icon: lanedBy() === field ? i.Tick02Icon : i.Layout2RowIcon,
-                    run: () => setDisplay({ lanes: lanedBy() === field ? undefined : field }),
-                  })),
-            }),
-          } satisfies Command,
-        ]
-      : []),
     {
       id: "order-by",
       title: "Order by",

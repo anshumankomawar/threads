@@ -19,7 +19,7 @@ export const FIELDS: Record<
   priority: {
     label: "Priority",
     compare: "eq",
-    // Most urgent first, as a list or board grouped by it reads.
+    // Most urgent first, as a list grouped by it reads.
     values: () => [...PRIORITIES].reverse().map((p): [string, string] => [p, LABELS[p]]),
   },
   subspaceIds: {

@@ -44,15 +44,11 @@ import {
   type Mailbox,
   display,
   groupedBy,
-  lanedBy,
   ORDERS,
   type Order,
-  regroup,
   type Layout,
   type Zoom,
   ZOOMS,
-  moveToGroup,
-  type Group,
   setDisplay,
 } from "../mail";
 import { bucketIcons } from "../bucketIcons";
@@ -64,11 +60,6 @@ import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
-import {
-  draggable,
-  dropTargetForElements,
-} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { preventUnhandled } from "@atlaskit/pragmatic-drag-and-drop/prevent-unhandled";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
 import { Tabs, type Tab } from "./Tabs";
@@ -117,9 +108,9 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
 
 const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
 const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 520 });
-// A board or timeline beside an open thread: wider than a list, so a few columns (or weeks) show.
-const boardColumn = resizable("mail-board-width", { initial: 600, min: 300, max: 1100 });
-// A board or timeline takes the room a list leaves the reading pane.
+// A timeline beside an open thread: wider than a list, so a few weeks show.
+const timelineColumn = resizable("mail-timeline-width", { initial: 600, min: 300, max: 1100 });
+// A timeline takes the room a list leaves the reading pane.
 const wide = (): boolean => display().layout !== "list";
 
 // ── One pill for hover and selection ──
@@ -961,13 +952,6 @@ export const LAYOUTS: {
     keywords: "rows",
   },
   {
-    layout: "board",
-    label: "Board",
-    title: "Show as a board",
-    icon: i.Layout3ColumnIcon,
-    keywords: "columns kanban",
-  },
-  {
     layout: "timeline",
     label: "Timeline",
     title: "Show as a timeline",
@@ -977,8 +961,8 @@ export const LAYOUTS: {
 ];
 const layoutIcon = (): IconSvgElement => LAYOUTS.find((l) => l.layout === display().layout)!.icon;
 
-// How the list is shown (mail.ts' display, kept on this Mac): rows, a board or a timeline; grouped by any field a filter
-// can test, and a board's rows by another; a timeline's scale; its order; and whether resolved threads show. In ⌘K too.
+// How the list is shown (mail.ts' display, kept on this Mac): rows or a timeline; grouped by any field a filter can test;
+// a timeline's scale; its order; and whether resolved threads show. In ⌘K too.
 export const displayMenu = (): MenuItem[] => [
   ...LAYOUTS.map(({ layout, label, icon: glyph }) => ({
     label,
@@ -989,7 +973,7 @@ export const displayMenu = (): MenuItem[] => [
   {
     label: "Group By",
     icon: icon(i.LayerIcon, 13),
-    // Each a toggle: choosing the one it's grouped by ungroups it (a board goes back to its columns by status).
+    // Each a toggle: choosing the one it's grouped by ungroups it.
     items: Object.entries(FIELDS).map(([field, { label }]) => ({
       label,
       icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
@@ -1011,23 +995,6 @@ export const displayMenu = (): MenuItem[] => [
         },
       ]
     : []),
-  // A board's rows, by another field: toggles too.
-  ...(display().layout === "board"
-    ? [
-        {
-          label: "Rows By",
-          icon: icon(i.Layout2RowIcon, 13),
-          items: Object.entries(FIELDS)
-            .filter(([field]) => field !== groupedBy())
-            .map(([field, { label }]) => ({
-              label,
-              icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
-              checked: lanedBy() === field,
-              run: () => setDisplay({ lanes: lanedBy() === field ? undefined : field }),
-            })),
-        },
-      ]
-    : []),
   {
     label: "Order By",
     icon: icon(i.Sorting01Icon, 13),
@@ -1044,154 +1011,6 @@ export const displayMenu = (): MenuItem[] => [
     run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
   },
 ];
-
-// The list as a board: a column a group, each thread a card. A click opens it beside the board; dragging it to another
-// column changes what it's grouped by to that column's (moveToGroup), by Atlassian's pragmatic-drag-and-drop.
-
-function BoardCard(props: { thread: Thread; group: string; lane?: string }): JSX.Element {
-  const t = (): Thread => props.thread;
-  const last = () => t().messages.sorted("createdAt").at(-1);
-  const from = () => last()?.author ?? t().owner;
-  let card!: HTMLButtonElement;
-  onSettled(() =>
-    draggable({
-      element: card,
-      getInitialData: () => ({ thread: t().id, from: props.group, lane: props.lane }),
-      // Let go anywhere but another column and it's simply put down, without the browser sliding it back.
-      onDragStart: () => preventUnhandled.start(),
-    }),
-  );
-  return (
-    <button
-      ref={card}
-      class={sx(base.bare, s.card, active() === t() && s.cardOpen)}
-      onClick={() => open({ thread: t().id })}
-      onContextMenu={(e) => showMenu(e, threadMenu(t()))}
-    >
-      <span class={sx(s.cardTitle)}>
-        <Show when={t().priority === "urgent" || t().priority === "high"}>
-          <span class={sx(s.priority, t().priority === "urgent" && s.urgent)}>
-            {t().priority === "urgent" ? "!! " : "! "}
-          </span>
-        </Show>
-        {t().title}
-      </span>
-      <span class={sx(s.cardMeta)}>
-        <Identicon seed={from()?.id ?? ""} size={14} />
-        <span class={sx(base.ellipsis)}>{from()?.name ?? ""}</span>
-        <span class={sx(s.cardWhen)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
-      </span>
-      <Show when={(t().isOpen && t().dueAt) || t().labelIds.length > 0}>
-        <span class={sx(s.cardChips)}>
-          <Show when={t().isOpen && t().dueAt}>
-            {(due) => (
-              <span class={sx(s.due, dueSoon(due()) && s.dueSoon)}>
-                <Icon icon={i.Calendar03Icon} size={10} aria-hidden="true" />
-                {shortDate(due())}
-              </span>
-            )}
-          </Show>
-          <For
-            each={t()
-              .labelIds.map((id) => store.findById(Label, id))
-              .filter((l) => l !== undefined)}
-          >
-            {(label) => <span class={sx(s.labelChip)}>{label.name}</span>}
-          </For>
-        </span>
-      </Show>
-    </button>
-  );
-}
-
-// A column's cards in one row (the whole column, without rows): where a card's dropped, which sets the column's field
-// and the row's.
-function BoardCell(props: { column: Group; lane?: Group; tall: boolean }): JSX.Element {
-  const [over, setOver] = createSignal(false);
-  const threads = (): Thread[] =>
-    props.lane
-      ? props.column.threads.filter((t) => props.lane!.threads.includes(t))
-      : props.column.threads;
-  let cell!: HTMLElement;
-  onSettled(() =>
-    dropTargetForElements({
-      element: cell,
-      canDrop: ({ source }) =>
-        source.data.from !== props.column.key || source.data.lane !== props.lane?.key,
-      onDragEnter: () => setOver(true),
-      onDragLeave: () => setOver(false),
-      onDrop: ({ source }) => {
-        setOver(false);
-        const thread = store.findById(Thread, String(source.data.thread));
-        if (!thread) return;
-        moveToGroup(thread, groupedBy()!, String(source.data.from), props.column.key);
-        const lanes = lanedBy();
-        if (lanes && props.lane)
-          moveToGroup(thread, lanes, String(source.data.lane), props.lane.key);
-      },
-    }),
-  );
-  return (
-    <section
-      ref={cell}
-      class={sx(s.cell, props.tall && s.cellTall)}
-      aria-label={props.column.title}
-    >
-      <div class={sx(s.cards, props.tall && s.cardsTall, over() && s.cardsOver)}>
-        <For each={threads()}>
-          {(t) => <BoardCard thread={t} group={props.column.key} lane={props.lane?.key} />}
-        </For>
-      </div>
-    </section>
-  );
-}
-
-function Board(): JSX.Element {
-  const columns = (): Group[] => listed().groups;
-  // Its rows, if it has them: by another field, the empty ones kept (as its columns are) to drop into.
-  const lanes = (): Group[] => {
-    const by = lanedBy();
-    return by ? regroup([...new Set(listed().order)], by) : [];
-  };
-  return (
-    <div class={sx(s.board)}>
-      <div class={sx(s.boardHeads)}>
-        <For each={columns()}>
-          {(column) => (
-            <div class={sx(s.columnHead)}>
-              <span class={sx(base.ellipsis)}>{column.bucket?.name ?? column.title}</span>
-              <span class={sx(s.groupCount)}>{column.threads.length}</span>
-            </div>
-          )}
-        </For>
-      </div>
-      <Show
-        when={lanedBy()}
-        fallback={
-          <div class={sx(s.boardRow, s.boardRowTall)}>
-            <For each={columns()}>{(column) => <BoardCell column={column} tall />}</For>
-          </div>
-        }
-      >
-        <For each={lanes()}>
-          {(lane) => (
-            <div class={sx(s.lane)}>
-              <div class={sx(s.laneHead)}>
-                <span>{lane.title}</span>
-                <span class={sx(s.groupCount)}>{lane.threads.length}</span>
-              </div>
-              <div class={sx(s.boardRow)}>
-                <For each={columns()}>
-                  {(column) => <BoardCell column={column} lane={lane} tall={false} />}
-                </For>
-              </div>
-            </div>
-          )}
-        </For>
-      </Show>
-    </div>
-  );
-}
 
 export function MessageList(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
@@ -1262,7 +1081,7 @@ export function MessageList(): JSX.Element {
       style={{
         width: wide()
           ? active()
-            ? `${boardColumn.width()}px`
+            ? `${timelineColumn.width()}px`
             : undefined
           : `${listColumn.width()}px`,
       }}
@@ -1358,9 +1177,6 @@ export function MessageList(): JSX.Element {
           </Show>
         </div>
       </Show>
-      <Show when={display().layout === "board"}>
-        <Board />
-      </Show>
       <Show when={display().layout === "timeline"}>
         <Timeline />
       </Show>
@@ -1428,7 +1244,7 @@ export function MessageList(): JSX.Element {
         <listColumn.Edge label="Resize list" />
       </Show>
       <Show when={wide() && active()}>
-        <boardColumn.Edge label="Resize board" />
+        <timelineColumn.Edge label="Resize timeline" />
       </Show>
     </section>
   );
@@ -1616,7 +1432,7 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   listBar: { paddingLeft: 16 },
-  // A board alone (no thread open beside it) takes the room, with no edge to divide.
+  // A timeline alone (no thread open beside it) takes the room, with no edge to divide.
   listAlone: { flex: 1, borderRightWidth: 0 },
   hidden: { display: "none" },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
@@ -1753,98 +1569,4 @@ const s = stylex.create({
     color: colors.textTertiary,
   },
   nothingTitle: { color: colors.textSecondary, fontSize: fontSizes.pageTitle, fontWeight: 600 },
-  // A board: columns side by side, scrolling across; each scrolls down on its own.
-  // Its column headings over its rows (one tall row, or a row a lane), scrolling both ways together.
-  board: {
-    display: "flex",
-    flex: 1,
-    flexDirection: "column",
-    minHeight: 0,
-    padding: "0 16px 16px",
-    overflow: "auto",
-  },
-  boardHeads: {
-    position: "sticky",
-    top: 0,
-    zIndex: 1,
-    display: "flex",
-    flexShrink: 0,
-    gap: 12,
-    width: "max-content",
-    paddingTop: 4,
-    // The list's own ground, blurring what scrolls under it.
-    backgroundColor: colors.frosted,
-    backdropFilter: "blur(20px)",
-  },
-  boardRow: { display: "flex", flexShrink: 0, gap: 12, width: "max-content" },
-  boardRowTall: { flex: 1, minHeight: 0 },
-  cell: { display: "flex", flexDirection: "column", flexShrink: 0, width: 280 },
-  cellTall: { minHeight: 0 },
-  lane: { display: "flex", flexDirection: "column", flexShrink: 0, paddingBottom: 12 },
-  laneHead: {
-    position: "sticky",
-    left: 0,
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    width: "max-content",
-    height: 30,
-    padding: "0 4px",
-    color: colors.textSecondary,
-    fontSize: fontSizes.small,
-    fontWeight: 500,
-  },
-  columnHead: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 6,
-    width: 280,
-    alignItems: "center",
-    height: 30,
-    padding: "0 4px",
-    color: colors.textSecondary,
-    fontSize: fontSizes.body,
-    fontWeight: 500,
-  },
-  // Its cards: where a card's dropped, outlined while one's over it. In one tall row, to the column's foot, scrolling.
-  cards: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    minHeight: 40,
-    margin: "0 -5px",
-    padding: 4,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderColor: "transparent",
-    borderRadius: 10,
-  },
-  cardsTall: { flex: 1, minHeight: 0, overflowY: "auto" },
-  cardsOver: { borderColor: colors.strokeFocused },
-  card: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    padding: "10px 12px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.panelBorder,
-    borderRadius: radii.row,
-    color: colors.textPrimary,
-    textAlign: "left",
-    backgroundColor: colors.panel,
-    cursor: "pointer",
-  },
-  cardTitle: { fontSize: fontSizes.name, fontWeight: 500, lineHeight: "18px" },
-  cardMeta: {
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    color: colors.textTertiary,
-    fontSize: fontSizes.small,
-  },
-  cardWhen: { marginLeft: "auto", flexShrink: 0 },
-  cardChips: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
-  // The open one.
-  cardOpen: { borderColor: colors.strokeFocused },
 });

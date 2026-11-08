@@ -12,7 +12,6 @@ import {
   save,
   saved,
   sent,
-  setState,
   step,
   store,
   trackMailbox,
@@ -89,25 +88,26 @@ export function chooseMailbox(next: Mailbox): void {
   });
 }
 
-// How a mailbox's list is shown, on this Mac only (it's how you look at it, not part of it): as rows, a board or a
-// timeline; grouped by any field it can be filtered by (filters.ts), or as the mailbox groups it (a board groups by
-// status unless told otherwise); a board's rows (swimlanes) by another; a timeline's scale; in what order; and whether
-// resolved threads show.
-export type Layout = "list" | "board" | "timeline";
+// How a mailbox's list is shown, on this Mac only (it's how you look at it, not part of it): as rows or a timeline;
+// grouped by any field it can be filtered by (filters.ts), or as the mailbox groups it; a timeline's scale; in what
+// order; and whether resolved threads show.
+export type Layout = "list" | "timeline";
 export const ZOOMS = { weeks: "Weeks", months: "Months", quarters: "Quarters" } as const;
 export type Zoom = keyof typeof ZOOMS;
 export type Display = {
   layout: Layout;
   zoom?: Zoom;
   group?: string;
-  lanes?: string;
   order?: Order;
   hideResolved?: boolean;
 };
 const keyOf = (box: Mailbox): string => box.kind + ("id" in box ? `:${box.id}` : "");
 const [displays, setDisplays] = createSignal<Record<string, Display>>(saved("layouts", {}));
-export const display = (): Display => displays()[keyOf(chosen())] ?? { layout: "list" };
-const board = (): boolean => display().layout === "board";
+// A layout that's gone (a board, before it was taken out) shows as a list.
+export const display = (): Display => {
+  const shown = displays()[keyOf(chosen())];
+  return { ...shown, layout: shown?.layout === "timeline" ? "timeline" : "list" };
+};
 // For the mailbox as last chosen (the signal reads its old one until its batch is done).
 export function setDisplay(change: Partial<Display>): void {
   const key = keyOf(chosenNow);
@@ -117,10 +117,7 @@ export function setDisplay(change: Partial<Display>): void {
     return next;
   });
 }
-export const groupedBy = (): string | undefined =>
-  display().group ?? (board() ? "state" : undefined);
-export const lanedBy = (): string | undefined =>
-  board() && display().lanes !== groupedBy() ? display().lanes : undefined;
+export const groupedBy = (): string | undefined => display().group;
 
 // The orders a list can take; without one, the mailbox's own (most recently active first, or the inbox's).
 export const ORDERS = {
@@ -142,7 +139,7 @@ const ORDERING: Record<Order, (a: Thread, b: Thread) => number> = {
 
 // Threads in groups by a field's values, in the field's own order: one group a value, a thread in every group it has
 // (a label, a space), and the threads with none last.
-export function regroup(threads: Thread[], field: string): Group[] {
+function regroup(threads: Thread[], field: string): Group[] {
   const { label, values } = FIELDS[field];
   const has = (t: Thread, value: string): boolean => {
     const v = (t as unknown as Record<string, unknown>)[field];
@@ -164,23 +161,6 @@ export function regroup(threads: Thread[], field: string): Group[] {
       ? [{ key: "none", title: `No ${label.toLowerCase()}`, threads: threads.filter(empty) }]
       : []),
   ];
-}
-
-// A thread moved from one group to another (a card dragged across a board's columns, or its rows): the field it's
-// grouped by takes the new group's value. A field with one value is set to it ("none": cleared); a list (labels,
-// spaces, assignees) swaps the group it left for the one it joined.
-export function moveToGroup(thread: Thread, field: string, from: string, to: string): void {
-  if (from === to) return;
-  const now = (thread as unknown as Record<string, unknown>)[field];
-  if (Array.isArray(now)) {
-    const next = now.filter((v) => v !== from);
-    if (to !== "none" && !next.includes(to)) next.push(to);
-    return edit(thread, { [field]: next } as Partial<Thread>);
-  }
-  if (field === "state") return setState(thread, to as Thread["state"]);
-  if (field === "ownerId")
-    return edit(thread, { owner: to === "none" ? undefined : store.findById(User, to) });
-  edit(thread, { [field]: to } as Partial<Thread>);
 }
 
 // A group of rows under a heading: the inbox lists each bucket apart.
@@ -292,11 +272,11 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
   const ordered = order
     ? narrowed.map((g) => ({ ...g, threads: [...g.threads].sort(ORDERING[order]) }))
     : narrowed;
-  // Grouped by a field instead, if the display says so; a board keeps its empty columns, a list drops them.
+  // Grouped by a field instead, if the display says so (the groups nothing's in left out).
   const by = groupedBy();
   const shown = by
     ? regroup([...new Set(ordered.flatMap((g) => g.threads))], by).filter(
-        (g) => board() || g.threads.length > 0,
+        (g) => g.threads.length > 0,
       )
     : ordered;
   return { groups: shown, order: shown.flatMap((g) => g.threads) };
