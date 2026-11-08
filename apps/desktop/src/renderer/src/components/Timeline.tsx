@@ -284,7 +284,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     return out;
   };
 
-  const area = (): JSX.CSSProperties => ({ width: `${width()}px`, "min-height": `${height()}px` });
+  const area = (): JSX.CSSProperties => ({ width: `${width()}px`, height: `${height()}px` });
 
   const Bar = (props: { thread: Thread; y: number }): JSX.Element => {
     const t = (): Thread => props.thread;
@@ -485,7 +485,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
             {/* The names, stuck at the left as the days scroll under them. */}
             <div
               class={sx(styles.names)}
-              style={{ width: `${names()}px`, "min-height": `${height()}px` }}
+              style={{ width: `${names()}px`, height: `${height()}px` }}
             >
               <hr
                 class={sx(styles.resize)}
@@ -718,8 +718,7 @@ const styles = stylex.create({
 
   // On the window's own ground, so what's stuck to its edges covers what scrolls under it.
   timeline: { flex: 1, minHeight: 0, overflow: "auto", backgroundColor: colors.chrome },
-  // To the bottom however few rows there are, so the names' line and today's run the whole way down.
-  content: { position: "relative", display: "flex", flexDirection: "column", minHeight: "100%" },
+  content: { position: "relative", minHeight: "100%" },
   head: {
     position: "sticky",
     top: 0,
@@ -727,9 +726,6 @@ const styles = stylex.create({
     display: "flex",
     height: HEAD,
     backgroundColor: colors.chrome,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: colors.strokeTertiary,
   },
   corner: {
     display: "flex",
@@ -742,7 +738,14 @@ const styles = stylex.create({
     flexShrink: 0,
     backgroundColor: colors.chrome,
   },
-  scale: { position: "relative", flexShrink: 0 },
+  // The line under the days: over the days only, meeting the names' line at its top.
+  scale: {
+    position: "relative",
+    flexShrink: 0,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
+  },
   // Linear's: each month's name, small and spaced, from its first day.
   month: {
     position: "absolute",
@@ -776,7 +779,7 @@ const styles = stylex.create({
   // Today: its date, darker and bold.
   tickToday: { color: colors.textPrimary, fontWeight: 600 },
 
-  body: { position: "relative", display: "flex", flex: 1 },
+  body: { position: "relative", display: "flex" },
   // The names' resize edge: invisible, only its cursor says it's there (the column's border is the line).
   resize: {
     position: "absolute",
