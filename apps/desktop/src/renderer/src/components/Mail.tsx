@@ -586,21 +586,15 @@ export function MailSidebar(): JSX.Element {
       </nav>
       <InlineForm />
       <div class={sx(s.footer)}>
+        {/* You: one button to your profile and settings, on one page. */}
         <button
           class={sx(base.bare, s.profile)}
-          aria-label="Your profile"
-          onClick={() => open({ person: me().id })}
+          aria-label="Profile and settings"
+          title="Profile and settings (⌘,)"
+          onClick={() => open({ settings: null })}
         >
           <Identicon seed={me().id} size={18.18} />
           <span class={sx(base.ellipsis)}>{me().name}</span>
-        </button>
-        <button
-          class={sx(topbar.button)}
-          aria-label="Settings"
-          title="Settings (⌘,)"
-          onClick={() => open({ settings: null })}
-        >
-          <Icon icon={i.Settings02Icon} {...ICON} />
         </button>
       </div>
       <sidebarColumn.Edge label="Resize sidebar" />

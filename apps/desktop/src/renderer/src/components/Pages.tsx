@@ -560,7 +560,16 @@ export function SettingsView(): JSX.Element {
   };
   return (
     <div class={sx(page.page)}>
-      <h1 class={sx(page.title)}>Settings</h1>
+      {/* You, then your settings: what the sidebar's button at its foot opens. */}
+      <header class={sx(page.header)}>
+        <Identicon seed={me().id} size={40} />
+        <div>
+          <h1 class={sx(page.title)}>{me().name}</h1>
+          <p class={sx(page.summary)}>
+            {[me().email, ROLE[memberOf(me())?.role ?? "member"]].filter(Boolean).join(" · ")}
+          </p>
+        </div>
+      </header>
       <p class={sx(page.description)}>
         How Arc works for you, and who's in {workspace().name}. To change a hotkey, click it and
         press the keys you want: Escape cancels, and ⌫ leaves it without any. Hotkeys are kept on
