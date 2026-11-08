@@ -69,7 +69,7 @@ const styles = stylex.create({
     flex: 1,
     flexDirection: "column",
     minWidth: 0,
-    backgroundColor: colors.frosted,
+    backgroundColor: colors.chrome,
   },
   // Beside the list, which has the window's buttons when the sidebar's hidden.
   topbarBesideList: { paddingLeft: 8 },

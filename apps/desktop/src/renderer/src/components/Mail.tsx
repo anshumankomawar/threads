@@ -1366,7 +1366,7 @@ const s = stylex.create({
     flexDirection: "column",
     flexShrink: 0,
     minWidth: 0,
-    backgroundColor: colors.frosted,
+    backgroundColor: colors.chrome,
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
