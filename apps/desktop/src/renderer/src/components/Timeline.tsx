@@ -401,9 +401,6 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
             save("timeline-tab", t.label);
           }}
         />
-        <Show when={!unscheduled()}>
-          <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
-        </Show>
         {props.start}
         <span class={sx(styles.toolbarSpacer)} />
         <Show when={!unscheduled()}>
@@ -445,7 +442,9 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
         <div class={sx(styles.content)} style={{ width: `${names() + width()}px` }}>
           {/* Months over days, stuck at the top. */}
           <div class={sx(styles.head)}>
-            <div class={sx(styles.corner)} style={{ width: `${names()}px` }} />
+            <div class={sx(styles.corner)} style={{ width: `${names()}px` }}>
+              <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
+            </div>
             <div class={sx(styles.scale)} style={{ width: `${width()}px` }}>
               <For each={months()}>
                 {(month) => (
@@ -607,11 +606,6 @@ function DateField(props: { onDate: (when: When) => void }): JSX.Element {
   };
   return (
     <label class={sx(styles.dateField)}>
-      <Show when={text().trim()}>
-        <span class={sx(styles.dateSeen, !when() && styles.dateUnseen)}>
-          {when() ? describeWhen(when()!) : "Not a date"}
-        </span>
-      </Show>
       <input
         data-date-field
         class={sx(styles.dateInput)}
@@ -626,6 +620,11 @@ function DateField(props: { onDate: (when: When) => void }): JSX.Element {
           }
         }}
       />
+      <Show when={text().trim()}>
+        <span class={sx(styles.dateSeen, !when() && styles.dateUnseen)}>
+          {when() ? describeWhen(when()!) : "Not a date"}
+        </span>
+      </Show>
     </label>
   );
 }
@@ -654,24 +653,18 @@ const styles = stylex.create({
     textAlign: "left",
     cursor: "pointer",
   },
-  // A field with nothing in it: just its words, quiet, until it's pointed at or typed in.
-  dateField: { display: "flex", flexShrink: 0, gap: 8, alignItems: "center" },
+  // A field as plain as the text by it: its words quiet until something's typed, what that means just after.
+  // As wide as whatever's typed, so nothing moves as it's understood.
+  dateField: { display: "flex", flexShrink: 0, gap: 8, alignItems: "center", width: 240 },
   dateInput: {
-    width: 120,
-    height: 22,
-    padding: "0 7.27px",
+    width: 110,
+    padding: 0,
     borderStyle: "none",
-    borderRadius: 6,
     outline: "none",
-    backgroundColor: {
-      default: "transparent",
-      ":hover": colors.bgTertiary,
-      ":focus": colors.bgTertiary,
-    },
+    backgroundColor: "transparent",
     color: colors.textPrimary,
     fontFamily: "inherit",
     fontSize: 11.82,
-    textAlign: "right",
     "::placeholder": { color: colors.textTertiary },
   },
   dateSeen: { color: colors.textSecondary, fontSize: fontSizes.small, whiteSpace: "nowrap" },
@@ -684,10 +677,11 @@ const styles = stylex.create({
     alignItems: "center",
     // Its first line as far below the top bar as every page's (21pt).
     height: 46.91,
-    padding: "6.91px 12px 0 16px",
+    padding: "6.91px 12px 0",
   },
+  // Over the names, level with the days.
   shownMonth: {
-    marginRight: 10,
+    lineHeight: "18px",
     color: colors.textPrimary,
     fontSize: fontSizes.name,
     fontWeight: 600,
@@ -720,6 +714,10 @@ const styles = stylex.create({
     borderBottomColor: colors.strokeTertiary,
   },
   corner: {
+    display: "flex",
+    alignItems: "flex-end",
+    paddingBottom: 6,
+    paddingLeft: 2 * INSET,
     position: "sticky",
     left: 0,
     zIndex: 2,
