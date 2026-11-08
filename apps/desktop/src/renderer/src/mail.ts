@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
+import { Bucket, Draft, Label, PRIORITIES, Subspace, Thread, User, View } from "models";
 import { matches, type Filter } from "sync";
 import { FIELDS } from "./filters";
 import {
@@ -89,10 +89,16 @@ export function chooseMailbox(next: Mailbox): void {
   });
 }
 
-// How a mailbox's list is shown, on this Mac only (it's how you look at it, not part of it): as rows or a board, and
-// grouped by any field it can be filtered by (filters.ts), or as the mailbox groups it. A board groups by status
-// unless told otherwise.
-export type Display = { board: boolean; group?: string };
+// How a mailbox's list is shown, on this Mac only (it's how you look at it, not part of it): as rows or a board;
+// grouped by any field it can be filtered by (filters.ts), or as the mailbox groups it (a board groups by status unless
+// told otherwise); a board's rows (swimlanes) by another; in what order; and whether resolved threads show.
+export type Display = {
+  board: boolean;
+  group?: string;
+  lanes?: string;
+  order?: Order;
+  hideResolved?: boolean;
+};
 const keyOf = (box: Mailbox): string => box.kind + ("id" in box ? `:${box.id}` : "");
 const [displays, setDisplays] = createSignal<Record<string, Display>>(saved("displays", {}));
 export const display = (): Display => displays()[keyOf(chosen())] ?? { board: false };
@@ -107,10 +113,30 @@ export function setDisplay(change: Partial<Display>): void {
 }
 export const groupedBy = (): string | undefined =>
   display().group ?? (display().board ? "state" : undefined);
+export const lanedBy = (): string | undefined =>
+  display().board && display().lanes !== groupedBy() ? display().lanes : undefined;
+
+// The orders a list can take; without one, the mailbox's own (most recently active first, or the inbox's).
+export const ORDERS = {
+  updated: "Last activity",
+  created: "Created",
+  due: "Due date",
+  priority: "Priority",
+} as const;
+export type Order = keyof typeof ORDERS;
+const RANK = Object.fromEntries(PRIORITIES.map((p, n) => [p, n]));
+const time = (date: Date | undefined): number => date?.getTime() ?? Infinity;
+const ORDERING: Record<Order, (a: Thread, b: Thread) => number> = {
+  updated: (a, b) => lastActive(b) - lastActive(a),
+  created: (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+  // Soonest first, the undated last.
+  due: (a, b) => time(a.dueAt) - time(b.dueAt),
+  priority: (a, b) => RANK[b.priority] - RANK[a.priority],
+};
 
 // Threads in groups by a field's values, in the field's own order: one group a value, a thread in every group it has
 // (a label, a space), and the threads with none last.
-function regroup(threads: Thread[], field: string): Group[] {
+export function regroup(threads: Thread[], field: string): Group[] {
   const { label, values } = FIELDS[field];
   const has = (t: Thread, value: string): boolean => {
     const v = (t as unknown as Record<string, unknown>)[field];
@@ -134,12 +160,11 @@ function regroup(threads: Thread[], field: string): Group[] {
   ];
 }
 
-// A thread moved from one group to another (a card dragged across a board): the field it's grouped by takes the new
-// group's value. A field with one value is set to it ("none": cleared); a list (labels, spaces, assignees) swaps the
-// group it left for the one it joined.
-export function moveToGroup(thread: Thread, from: string, to: string): void {
-  const field = groupedBy();
-  if (!field || from === to) return;
+// A thread moved from one group to another (a card dragged across a board's columns, or its rows): the field it's
+// grouped by takes the new group's value. A field with one value is set to it ("none": cleared); a list (labels,
+// spaces, assignees) swaps the group it left for the one it joined.
+export function moveToGroup(thread: Thread, field: string, from: string, to: string): void {
+  if (from === to) return;
   const now = (thread as unknown as Record<string, unknown>)[field];
   if (Array.isArray(now)) {
     const next = now.filter((v) => v !== from);
@@ -241,8 +266,11 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
       }
     }
   })();
-  // Then the filter's conditions, if any.
-  const and = box.kind === "view" ? [] : extra();
+  // Then the filter's conditions, if any, and resolved threads if they're hidden.
+  const and: Filter[] = [
+    ...(box.kind === "view" ? [] : extra()),
+    ...(display().hideResolved ? [{ state: { neq: "resolved" } }] : []),
+  ];
   const narrowed =
     and.length === 0
       ? groups
@@ -253,13 +281,18 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
           }))
           // A bucket the filter empties isn't shown at all.
           .filter((g) => g.threads.length > 0);
+  // In another order, if the display says so.
+  const order = display().order;
+  const ordered = order
+    ? narrowed.map((g) => ({ ...g, threads: [...g.threads].sort(ORDERING[order]) }))
+    : narrowed;
   // Grouped by a field instead, if the display says so; a board keeps its empty columns, a list drops them.
   const by = groupedBy();
   const shown = by
-    ? regroup([...new Set(narrowed.flatMap((g) => g.threads))], by).filter(
+    ? regroup([...new Set(ordered.flatMap((g) => g.threads))], by).filter(
         (g) => display().board || g.threads.length > 0,
       )
-    : narrowed;
+    : ordered;
   return { groups: shown, order: shown.flatMap((g) => g.threads) };
 });
 

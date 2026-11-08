@@ -44,6 +44,10 @@ import {
   type Mailbox,
   display,
   groupedBy,
+  lanedBy,
+  ORDERS,
+  type Order,
+  regroup,
   moveToGroup,
   type Group,
   setDisplay,
@@ -935,8 +939,8 @@ const pageOf = (box: Mailbox) =>
           ? { person: box.id }
           : undefined;
 
-// How the list is shown (mail.ts' display, kept on this Mac): rows or a board, and grouped by any field a filter can
-// test. In ⌘K too.
+// How the list is shown (mail.ts' display, kept on this Mac): rows or a board; grouped by any field a filter can test,
+// and a board's rows by another; its order; and whether resolved threads show. In ⌘K too.
 export const displayMenu = (): MenuItem[] => [
   {
     label: "List",
@@ -960,12 +964,44 @@ export const displayMenu = (): MenuItem[] => [
       run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
     })),
   },
+  // A board's rows, by another field: toggles too.
+  ...(display().board
+    ? [
+        {
+          label: "Rows By",
+          icon: icon(i.Layout2RowIcon, 13),
+          items: Object.entries(FIELDS)
+            .filter(([field]) => field !== groupedBy())
+            .map(([field, { label }]) => ({
+              label,
+              icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
+              checked: lanedBy() === field,
+              run: () => setDisplay({ lanes: lanedBy() === field ? undefined : field }),
+            })),
+        },
+      ]
+    : []),
+  {
+    label: "Order By",
+    icon: icon(i.Sorting01Icon, 13),
+    items: (Object.keys(ORDERS) as Order[]).map((order) => ({
+      label: ORDERS[order],
+      checked: (display().order ?? "updated") === order,
+      run: () => setDisplay({ order: order === "updated" ? undefined : order }),
+    })),
+  },
+  {
+    label: "Show Resolved",
+    icon: icon(i.CheckmarkCircle02Icon, 13),
+    checked: !display().hideResolved,
+    run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
+  },
 ];
 
 // The list as a board: a column a group, each thread a card. A click opens it beside the board; dragging it to another
 // column changes what it's grouped by to that column's (moveToGroup), by Atlassian's pragmatic-drag-and-drop.
 
-function BoardCard(props: { thread: Thread; group: string }): JSX.Element {
+function BoardCard(props: { thread: Thread; group: string; lane?: string }): JSX.Element {
   const t = (): Thread => props.thread;
   const last = () => t().messages.sorted("createdAt").at(-1);
   const from = () => last()?.author ?? t().owner;
@@ -973,7 +1009,7 @@ function BoardCard(props: { thread: Thread; group: string }): JSX.Element {
   onSettled(() =>
     draggable({
       element: card,
-      getInitialData: () => ({ thread: t().id, from: props.group }),
+      getInitialData: () => ({ thread: t().id, from: props.group, lane: props.lane }),
       // Let go anywhere but another column and it's simply put down, without the browser sliding it back.
       onDragStart: () => preventUnhandled.start(),
     }),
@@ -1021,32 +1057,42 @@ function BoardCard(props: { thread: Thread; group: string }): JSX.Element {
   );
 }
 
-function BoardColumn(props: { group: Group }): JSX.Element {
+// A column's cards in one row (the whole column, without rows): where a card's dropped, which sets the column's field
+// and the row's.
+function BoardCell(props: { column: Group; lane?: Group; tall: boolean }): JSX.Element {
   const [over, setOver] = createSignal(false);
-  let column!: HTMLElement;
+  const threads = (): Thread[] =>
+    props.lane
+      ? props.column.threads.filter((t) => props.lane!.threads.includes(t))
+      : props.column.threads;
+  let cell!: HTMLElement;
   onSettled(() =>
     dropTargetForElements({
-      element: column,
-      getData: () => ({ to: props.group.key }),
-      canDrop: ({ source }) => source.data.from !== props.group.key,
+      element: cell,
+      canDrop: ({ source }) =>
+        source.data.from !== props.column.key || source.data.lane !== props.lane?.key,
       onDragEnter: () => setOver(true),
       onDragLeave: () => setOver(false),
       onDrop: ({ source }) => {
         setOver(false);
         const thread = store.findById(Thread, String(source.data.thread));
-        if (thread) moveToGroup(thread, String(source.data.from), props.group.key);
+        if (!thread) return;
+        moveToGroup(thread, groupedBy()!, String(source.data.from), props.column.key);
+        const lanes = lanedBy();
+        if (lanes && props.lane)
+          moveToGroup(thread, lanes, String(source.data.lane), props.lane.key);
       },
     }),
   );
   return (
-    <section ref={column} class={sx(s.column)} aria-label={props.group.title}>
-      <div class={sx(s.columnHead)}>
-        <span class={sx(base.ellipsis)}>{props.group.bucket?.name ?? props.group.title}</span>
-        <span class={sx(s.groupCount)}>{props.group.threads.length}</span>
-      </div>
-      <div class={sx(s.cards, over() && s.cardsOver)}>
-        <For each={props.group.threads}>
-          {(t) => <BoardCard thread={t} group={props.group.key} />}
+    <section
+      ref={cell}
+      class={sx(s.cell, props.tall && s.cellTall)}
+      aria-label={props.column.title}
+    >
+      <div class={sx(s.cards, props.tall && s.cardsTall, over() && s.cardsOver)}>
+        <For each={threads()}>
+          {(t) => <BoardCard thread={t} group={props.column.key} lane={props.lane?.key} />}
         </For>
       </div>
     </section>
@@ -1054,9 +1100,48 @@ function BoardColumn(props: { group: Group }): JSX.Element {
 }
 
 function Board(): JSX.Element {
+  const columns = (): Group[] => listed().groups;
+  // Its rows, if it has them: by another field, the empty ones kept (as its columns are) to drop into.
+  const lanes = (): Group[] => {
+    const by = lanedBy();
+    return by ? regroup([...new Set(listed().order)], by) : [];
+  };
   return (
     <div class={sx(s.board)}>
-      <For each={listed().groups}>{(group) => <BoardColumn group={group} />}</For>
+      <div class={sx(s.boardHeads)}>
+        <For each={columns()}>
+          {(column) => (
+            <div class={sx(s.columnHead)}>
+              <span class={sx(base.ellipsis)}>{column.bucket?.name ?? column.title}</span>
+              <span class={sx(s.groupCount)}>{column.threads.length}</span>
+            </div>
+          )}
+        </For>
+      </div>
+      <Show
+        when={lanedBy()}
+        fallback={
+          <div class={sx(s.boardRow, s.boardRowTall)}>
+            <For each={columns()}>{(column) => <BoardCell column={column} tall />}</For>
+          </div>
+        }
+      >
+        <For each={lanes()}>
+          {(lane) => (
+            <div class={sx(s.lane)}>
+              <div class={sx(s.laneHead)}>
+                <span>{lane.title}</span>
+                <span class={sx(s.groupCount)}>{lane.threads.length}</span>
+              </div>
+              <div class={sx(s.boardRow)}>
+                <For each={columns()}>
+                  {(column) => <BoardCell column={column} lane={lane} tall={false} />}
+                </For>
+              </div>
+            </div>
+          )}
+        </For>
+      </Show>
     </div>
   );
 }
@@ -1624,18 +1709,51 @@ const s = stylex.create({
   },
   nothingTitle: { color: colors.textSecondary, fontSize: fontSizes.pageTitle, fontWeight: 600 },
   // A board: columns side by side, scrolling across; each scrolls down on its own.
+  // Its column headings over its rows (one tall row, or a row a lane), scrolling both ways together.
   board: {
     display: "flex",
     flex: 1,
-    gap: 12,
+    flexDirection: "column",
     minHeight: 0,
-    padding: "4px 16px 16px",
-    overflowX: "auto",
+    padding: "0 16px 16px",
+    overflow: "auto",
   },
-  column: { display: "flex", flexDirection: "column", flexShrink: 0, width: 280, minHeight: 0 },
-  columnHead: {
+  boardHeads: {
+    position: "sticky",
+    top: 0,
+    zIndex: 1,
+    display: "flex",
+    flexShrink: 0,
+    gap: 12,
+    width: "max-content",
+    paddingTop: 4,
+    // The list's own ground, blurring what scrolls under it.
+    backgroundColor: colors.frosted,
+    backdropFilter: "blur(20px)",
+  },
+  boardRow: { display: "flex", flexShrink: 0, gap: 12, width: "max-content" },
+  boardRowTall: { flex: 1, minHeight: 0 },
+  cell: { display: "flex", flexDirection: "column", flexShrink: 0, width: 280 },
+  cellTall: { minHeight: 0 },
+  lane: { display: "flex", flexDirection: "column", flexShrink: 0, paddingBottom: 12 },
+  laneHead: {
+    position: "sticky",
+    left: 0,
     display: "flex",
     gap: 6,
+    alignItems: "center",
+    width: "max-content",
+    height: 30,
+    padding: "0 4px",
+    color: colors.textSecondary,
+    fontSize: fontSizes.small,
+    fontWeight: 500,
+  },
+  columnHead: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 6,
+    width: 280,
     alignItems: "center",
     height: 30,
     padding: "0 4px",
@@ -1643,21 +1761,20 @@ const s = stylex.create({
     fontSize: fontSizes.body,
     fontWeight: 500,
   },
-  // Its cards, to the column's foot: where a card's dropped, outlined while one's over it.
+  // Its cards: where a card's dropped, outlined while one's over it. In one tall row, to the column's foot, scrolling.
   cards: {
     display: "flex",
-    flex: 1,
     flexDirection: "column",
     gap: 6,
-    minHeight: 0,
+    minHeight: 40,
     margin: "0 -5px",
     padding: 4,
     borderWidth: 1,
     borderStyle: "dashed",
     borderColor: "transparent",
     borderRadius: 10,
-    overflowY: "auto",
   },
+  cardsTall: { flex: 1, minHeight: 0, overflowY: "auto" },
   cardsOver: { borderColor: colors.strokeFocused },
   card: {
     display: "flex",

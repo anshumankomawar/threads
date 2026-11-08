@@ -11,7 +11,10 @@ import {
   conditions,
   display,
   groupedBy,
+  lanedBy,
   mailbox,
+  ORDERS,
+  type Order,
   setDisplay,
   type Mailbox,
 } from "./mail";
@@ -483,6 +486,63 @@ function listing(): Command[] {
             run: () => setDisplay({ group: grouped === field ? undefined : field }),
           })),
       }),
+    },
+    ...(display().board
+      ? [
+          {
+            id: "rows-by",
+            title: "Split the board into rows by",
+            kind: "action",
+            section,
+            icon: i.Layout2RowIcon,
+            keywords: "swimlanes lanes rows display",
+            page: () => ({
+              title: "Rows by",
+              placeholder: "Search",
+              commands: () =>
+                Object.entries(FIELDS)
+                  .filter(([field]) => field !== grouped)
+                  .map(([field, { label }]): Command => ({
+                    id: `lanes:${field}`,
+                    title: label,
+                    kind: "action",
+                    section: "Rows by",
+                    icon: lanedBy() === field ? i.Tick02Icon : i.Layout2RowIcon,
+                    run: () => setDisplay({ lanes: lanedBy() === field ? undefined : field }),
+                  })),
+            }),
+          } satisfies Command,
+        ]
+      : []),
+    {
+      id: "order-by",
+      title: "Order by",
+      kind: "action",
+      section,
+      icon: i.Sorting01Icon,
+      keywords: "sort order newest due priority created",
+      page: () => ({
+        title: "Order by",
+        placeholder: "Search",
+        commands: () =>
+          (Object.keys(ORDERS) as Order[]).map((order): Command => ({
+            id: `order:${order}`,
+            title: ORDERS[order],
+            kind: "action",
+            section: "Order by",
+            icon: (display().order ?? "updated") === order ? i.Tick02Icon : i.Sorting01Icon,
+            run: () => setDisplay({ order: order === "updated" ? undefined : order }),
+          })),
+      }),
+    },
+    {
+      id: "toggle-resolved",
+      title: display().hideResolved ? "Show resolved threads" : "Hide resolved threads",
+      kind: "action",
+      section,
+      icon: i.CheckmarkCircle02Icon,
+      keywords: "completed done closed display",
+      run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
     },
   ];
 }
