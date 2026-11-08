@@ -136,7 +136,7 @@ export default function App(): JSX.Element {
   const person = () => store.findById(User, shown("person") ?? "");
   const boardAlone = (): boolean => {
     const shownNow = view();
-    return display().board && "thread" in shownNow && shownNow.thread === null;
+    return display().layout !== "list" && "thread" in shownNow && shownNow.thread === null;
   };
   return (
     <>

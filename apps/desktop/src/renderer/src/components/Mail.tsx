@@ -48,6 +48,9 @@ import {
   ORDERS,
   type Order,
   regroup,
+  type Layout,
+  type Zoom,
+  ZOOMS,
   moveToGroup,
   type Group,
   setDisplay,
@@ -73,6 +76,7 @@ import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
 import { dot, plain } from "./ThreadView";
+import { Timeline } from "./Timeline";
 
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
@@ -113,8 +117,10 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
 
 const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
 const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 520 });
-// A board beside an open thread: wider than a list, so a few columns show.
+// A board or timeline beside an open thread: wider than a list, so a few columns (or weeks) show.
 const boardColumn = resizable("mail-board-width", { initial: 600, min: 300, max: 1100 });
+// A board or timeline takes the room a list leaves the reading pane.
+const wide = (): boolean => display().layout !== "list";
 
 // ── One pill for hover and selection ──
 
@@ -939,19 +945,46 @@ const pageOf = (box: Mailbox) =>
           ? { person: box.id }
           : undefined;
 
-// How the list is shown (mail.ts' display, kept on this Mac): rows or a board; grouped by any field a filter can test,
-// and a board's rows by another; its order; and whether resolved threads show. In ⌘K too.
-export const displayMenu = (): MenuItem[] => [
+// The ways a list can be laid out, as the Display menu and ⌘K offer them.
+export const LAYOUTS: {
+  layout: Layout;
+  label: string;
+  title: string;
+  icon: IconSvgElement;
+  keywords: string;
+}[] = [
   {
+    layout: "list",
     label: "List",
-    icon: icon(i.LeftToRightListBulletIcon, 13),
-    run: () => setDisplay({ board: false }),
+    title: "Show as a list",
+    icon: i.LeftToRightListBulletIcon,
+    keywords: "rows",
   },
   {
+    layout: "board",
     label: "Board",
-    icon: icon(i.Layout3ColumnIcon, 13),
-    run: () => setDisplay({ board: true }),
+    title: "Show as a board",
+    icon: i.Layout3ColumnIcon,
+    keywords: "columns kanban",
   },
+  {
+    layout: "timeline",
+    label: "Timeline",
+    title: "Show as a timeline",
+    icon: i.ChartBarDecreasingIcon,
+    keywords: "gantt roadmap schedule dates",
+  },
+];
+const layoutIcon = (): IconSvgElement => LAYOUTS.find((l) => l.layout === display().layout)!.icon;
+
+// How the list is shown (mail.ts' display, kept on this Mac): rows, a board or a timeline; grouped by any field a filter
+// can test, and a board's rows by another; a timeline's scale; its order; and whether resolved threads show. In ⌘K too.
+export const displayMenu = (): MenuItem[] => [
+  ...LAYOUTS.map(({ layout, label, icon: glyph }) => ({
+    label,
+    icon: icon(glyph, 13),
+    run: () => setDisplay({ layout }),
+  })),
   "separator",
   {
     label: "Group By",
@@ -964,8 +997,22 @@ export const displayMenu = (): MenuItem[] => [
       run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
     })),
   },
+  // A timeline's scale.
+  ...(display().layout === "timeline"
+    ? [
+        {
+          label: "Zoom",
+          icon: icon(i.ZoomInIcon, 13),
+          items: (Object.keys(ZOOMS) as Zoom[]).map((zoom) => ({
+            label: ZOOMS[zoom],
+            checked: (display().zoom ?? "weeks") === zoom,
+            run: () => setDisplay({ zoom }),
+          })),
+        },
+      ]
+    : []),
   // A board's rows, by another field: toggles too.
-  ...(display().board
+  ...(display().layout === "board"
     ? [
         {
           label: "Rows By",
@@ -1211,9 +1258,9 @@ export function MessageList(): JSX.Element {
   };
   return (
     <section
-      class={sx(s.list, display().board && !active() && s.listAlone)}
+      class={sx(s.list, wide() && !active() && s.listAlone)}
       style={{
-        width: display().board
+        width: wide()
           ? active()
             ? `${boardColumn.width()}px`
             : undefined
@@ -1234,12 +1281,7 @@ export function MessageList(): JSX.Element {
             <MenuChip
               look={topbar.button}
               title="Display"
-              label={
-                <Icon
-                  icon={display().board ? i.Layout3ColumnIcon : i.LeftToRightListBulletIcon}
-                  {...ICON}
-                />
-              }
+              label={<Icon icon={layoutIcon()} {...ICON} />}
               items={displayMenu()}
             />
           </Show>
@@ -1316,12 +1358,15 @@ export function MessageList(): JSX.Element {
           </Show>
         </div>
       </Show>
-      <Show when={display().board}>
+      <Show when={display().layout === "board"}>
         <Board />
+      </Show>
+      <Show when={display().layout === "timeline"}>
+        <Timeline />
       </Show>
       <div
         ref={list}
-        class={sx(s.listScroll, display().board && s.hidden)}
+        class={sx(s.listScroll, wide() && s.hidden)}
         onMouseDown={() =>
           queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
         }
@@ -1379,10 +1424,10 @@ export function MessageList(): JSX.Element {
           </div>
         </Show>
       </div>
-      <Show when={!display().board}>
+      <Show when={!wide()}>
         <listColumn.Edge label="Resize list" />
       </Show>
-      <Show when={display().board && active()}>
+      <Show when={wide() && active()}>
         <boardColumn.Edge label="Resize board" />
       </Show>
     </section>

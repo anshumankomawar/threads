@@ -89,32 +89,38 @@ export function chooseMailbox(next: Mailbox): void {
   });
 }
 
-// How a mailbox's list is shown, on this Mac only (it's how you look at it, not part of it): as rows or a board;
-// grouped by any field it can be filtered by (filters.ts), or as the mailbox groups it (a board groups by status unless
-// told otherwise); a board's rows (swimlanes) by another; in what order; and whether resolved threads show.
+// How a mailbox's list is shown, on this Mac only (it's how you look at it, not part of it): as rows, a board or a
+// timeline; grouped by any field it can be filtered by (filters.ts), or as the mailbox groups it (a board groups by
+// status unless told otherwise); a board's rows (swimlanes) by another; a timeline's scale; in what order; and whether
+// resolved threads show.
+export type Layout = "list" | "board" | "timeline";
+export const ZOOMS = { weeks: "Weeks", months: "Months", quarters: "Quarters" } as const;
+export type Zoom = keyof typeof ZOOMS;
 export type Display = {
-  board: boolean;
+  layout: Layout;
+  zoom?: Zoom;
   group?: string;
   lanes?: string;
   order?: Order;
   hideResolved?: boolean;
 };
 const keyOf = (box: Mailbox): string => box.kind + ("id" in box ? `:${box.id}` : "");
-const [displays, setDisplays] = createSignal<Record<string, Display>>(saved("displays", {}));
-export const display = (): Display => displays()[keyOf(chosen())] ?? { board: false };
+const [displays, setDisplays] = createSignal<Record<string, Display>>(saved("layouts", {}));
+export const display = (): Display => displays()[keyOf(chosen())] ?? { layout: "list" };
+const board = (): boolean => display().layout === "board";
 // For the mailbox as last chosen (the signal reads its old one until its batch is done).
 export function setDisplay(change: Partial<Display>): void {
   const key = keyOf(chosenNow);
   setDisplays((all) => {
-    const next = { ...all, [key]: { ...(all[key] ?? { board: false }), ...change } };
-    save("displays", next);
+    const next = { ...all, [key]: { ...(all[key] ?? { layout: "list" }), ...change } };
+    save("layouts", next);
     return next;
   });
 }
 export const groupedBy = (): string | undefined =>
-  display().group ?? (display().board ? "state" : undefined);
+  display().group ?? (board() ? "state" : undefined);
 export const lanedBy = (): string | undefined =>
-  display().board && display().lanes !== groupedBy() ? display().lanes : undefined;
+  board() && display().lanes !== groupedBy() ? display().lanes : undefined;
 
 // The orders a list can take; without one, the mailbox's own (most recently active first, or the inbox's).
 export const ORDERS = {
@@ -290,7 +296,7 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
   const by = groupedBy();
   const shown = by
     ? regroup([...new Set(ordered.flatMap((g) => g.threads))], by).filter(
-        (g) => display().board || g.threads.length > 0,
+        (g) => board() || g.threads.length > 0,
       )
     : ordered;
   return { groups: shown, order: shown.flatMap((g) => g.threads) };

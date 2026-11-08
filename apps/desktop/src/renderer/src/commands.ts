@@ -16,9 +16,13 @@ import {
   ORDERS,
   type Order,
   setDisplay,
+  type Zoom,
+  ZOOMS,
   type Mailbox,
 } from "./mail";
 import { FIELDS } from "./filters";
+import { LAYOUTS } from "./components/Mail";
+import { showToday } from "./components/Timeline";
 import {
   account,
   active,
@@ -446,25 +450,42 @@ function listing(): Command[] {
   const section = "This list";
   const grouped = groupedBy();
   return [
-    display().board
-      ? {
-          id: "as-list",
-          title: "Show as a list",
-          kind: "action",
-          section,
-          icon: i.LeftToRightListBulletIcon,
-          keywords: "rows layout display view",
-          run: () => setDisplay({ board: false }),
-        }
-      : {
-          id: "as-board",
-          title: "Show as a board",
-          kind: "action",
-          section,
-          icon: i.Layout3ColumnIcon,
-          keywords: "columns kanban layout display view",
-          run: () => setDisplay({ board: true }),
-        },
+    // The other layouts.
+    ...LAYOUTS.filter(({ layout }) => layout !== display().layout).map(
+      ({ layout, title, icon, keywords }): Command => ({
+        id: `as-${layout}`,
+        title,
+        kind: "action",
+        section,
+        icon,
+        keywords: `${keywords} layout display view`,
+        run: () => setDisplay({ layout }),
+      }),
+    ),
+    ...(display().layout === "timeline"
+      ? [
+          {
+            id: "timeline-today",
+            title: "Go to today on the timeline",
+            kind: "action",
+            section,
+            icon: i.Calendar03Icon,
+            keywords: "now scroll",
+            run: () => showToday(),
+          } satisfies Command,
+          ...(Object.keys(ZOOMS) as Zoom[])
+            .filter((zoom) => zoom !== (display().zoom ?? "weeks"))
+            .map((zoom): Command => ({
+              id: `zoom:${zoom}`,
+              title: `Zoom the timeline to ${ZOOMS[zoom].toLowerCase()}`,
+              kind: "action",
+              section,
+              icon: i.ZoomInIcon,
+              keywords: "scale timeline",
+              run: () => setDisplay({ zoom }),
+            })),
+        ]
+      : []),
     {
       id: "group-by",
       title: "Group by",
@@ -487,7 +508,7 @@ function listing(): Command[] {
           })),
       }),
     },
-    ...(display().board
+    ...(display().layout === "board"
       ? [
           {
             id: "rows-by",
