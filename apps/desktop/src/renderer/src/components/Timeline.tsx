@@ -21,10 +21,10 @@ const DAY: Record<Zoom, number> = { weeks: 36, months: 12, quarters: 4 };
 // The table's width, a row, its bar, and the days' heading.
 const TABLE = 260;
 const ROW = 36;
-const BAR = 26;
+const BAR = 32;
 const HEAD = 30;
 // Where a bar's title starts in it (a short bar's runs on past its end), and the gap before its due date.
-const PAD = 10;
+const PAD = 8;
 const GAP = 8;
 
 const startOfDay = (date: Date | number): number => new Date(date).setHours(0, 0, 0, 0);
@@ -55,10 +55,10 @@ const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
 const LONG_MONTH_YEAR = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
-// How wide a title is on a bar (its font: the body size, medium weight), so its due date can follow it.
+// How wide a title is on a bar (its font: the name size, semibold), so its due date can follow it.
 const measure = document.createElement("canvas").getContext("2d")!;
 const titleWidth = (title: string): number => {
-  measure.font = `500 12px ${getComputedStyle(document.body).fontFamily}`;
+  measure.font = `600 13px ${getComputedStyle(document.body).fontFamily}`;
   return measure.measureText(title).width;
 };
 
@@ -270,6 +270,11 @@ export function Timeline(): JSX.Element {
               aria-hidden="true"
             />
             <span
+              class={sx(styles.todayDot)}
+              style={{ left: `${TABLE + x(Date.now())}px` }}
+              aria-hidden="true"
+            />
+            <span
               class={sx(styles.todayLine)}
               style={{ left: `${TABLE + x(Date.now())}px` }}
               aria-hidden="true"
@@ -362,6 +367,18 @@ const styles = stylex.create({
     borderRightColor: colors.strokeTertiary,
     pointerEvents: "none",
   },
+  // Where today's line starts, at the top of the rows.
+  todayDot: {
+    position: "absolute",
+    top: -3,
+    zIndex: 1,
+    width: 7,
+    height: 7,
+    marginLeft: -3,
+    borderRadius: "50%",
+    backgroundColor: colors.urgent,
+    pointerEvents: "none",
+  },
   todayLine: {
     position: "absolute",
     top: 0,
@@ -415,7 +432,7 @@ const styles = stylex.create({
   cellOpen: { backgroundColor: colors.panelSelected },
   name: { flex: 1 },
   track: { position: "relative", flexShrink: 0 },
-  // A card: the panel's white, a hairline and a soft shadow, its title on it.
+  // A card filling its row, a shade off the ground with a hairline edge, as Notion's are.
   bar: {
     position: "absolute",
     top: (ROW - BAR) / 2,
@@ -424,9 +441,8 @@ const styles = stylex.create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.raisedBorder,
-    borderRadius: 6,
+    borderRadius: 8,
     backgroundColor: colors.raised,
-    boxShadow: "0 1px 3px rgba(15, 15, 15, 0.12)",
   },
   barResolved: { opacity: 0.55 },
   // No due date: it runs on, fading, to now.
@@ -442,8 +458,8 @@ const styles = stylex.create({
     alignItems: "center",
     height: ROW,
     color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    fontWeight: 500,
+    fontSize: fontSizes.name,
+    fontWeight: 600,
     whiteSpace: "nowrap",
     pointerEvents: "none",
   },
