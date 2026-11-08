@@ -740,6 +740,9 @@ const styles = stylex.create({
     zIndex: 2,
     flexShrink: 0,
     backgroundColor: colors.chrome,
+    borderRightWidth: 1,
+    borderRightStyle: "solid",
+    borderRightColor: colors.strokeTertiary,
   },
   scale: { position: "relative", flexShrink: 0 },
   // Linear's: each month's name, small and spaced, from its first day.
@@ -776,7 +779,7 @@ const styles = stylex.create({
   tickToday: { color: colors.textPrimary, fontWeight: 600 },
 
   body: { position: "relative", display: "flex" },
-  // The names' resize edge: invisible, only its cursor says it's there.
+  // The names' resize edge: invisible, only its cursor says it's there (the column's border is the line).
   resize: {
     position: "absolute",
     top: 0,
@@ -795,6 +798,9 @@ const styles = stylex.create({
     zIndex: 3,
     flexShrink: 0,
     backgroundColor: colors.chrome,
+    borderRightWidth: 1,
+    borderRightStyle: "solid",
+    borderRightColor: colors.strokeTertiary,
   },
   // As the sidebar's rows: inset, rounded, the chosen one shaded, nothing under the pointer.
   name: {
