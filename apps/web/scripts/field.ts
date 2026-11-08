@@ -74,15 +74,16 @@ function cells(light: boolean): Float32Array {
       const p = photo(x, y);
       for (let c = 0; c < 3; c++) {
         let v = p[c]! ** 1.4 * darken + (rand() * 2 - 1) * noise + noise * 0.35;
-        // On a light page the photo keeps its colour: space becomes paper, and the atmosphere, dim blue sky and
-        // all, is laid on it in its own hues, so the page is white with a real sunrise across it rather than a wash.
-        // Presence follows luminance on a curve that keeps the faint blue, and each hue is deepened for print.
+        // On a light page the photo is laid down at full strength, as on the dark one, and only space becomes
+        // paper: a pixel is paper to the extent it's dark, and the scene where it has any light or colour. The
+        // scene's own tones are made vivid and kept in the mid range, so they print on white with weight rather than
+        // as a wash, and the page's black text still reads over them.
         if (light) {
           const lum = 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
-          const presence = Math.min(1, (lum / 0.6) ** 0.55); // how much of the scene is here
-          const sat = (p[c]! - lum) * 2.2; // its colour, boosted
-          const ink = 0.42 + sat; // the scene's own tone: deep enough to print, in its hue
-          v = 1 - presence * (1 - Math.min(1, Math.max(0, ink))) + (rand() * 2 - 1) * noise * 0.5;
+          const paper = 1 - Math.min(1, (lum / 0.22) ** 1.2); // 1 in space, 0 anywhere lit
+          const sat = (p[c]! - lum) * 2.6; // its colour, boosted hard
+          const tone = 0.36 + lum * 0.5 + sat; // the scene: mid-dark, lifted by its own light, in its hue
+          v = paper + (1 - paper) * Math.min(1, Math.max(0, tone)) + (rand() * 2 - 1) * noise * 0.5;
         }
         a[(y * COLS + x) * 3 + c] = v;
       }
