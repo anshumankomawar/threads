@@ -7,8 +7,9 @@ import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
 import { edit, lastActive, peek, peeked, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
+import { chip } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { colors, fontSizes } from "../styles/tokens.stylex";
+import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
@@ -28,7 +29,7 @@ const NAMES = 240;
 const ROW = 34;
 const BAR = 20;
 const GROUP = 34;
-const HEAD = 46;
+const HEAD = 48;
 const TOP = 6;
 // How far the pointer moves before a press on a bar is a drag rather than a click.
 const SLOP = 3;
@@ -55,7 +56,7 @@ function span(thread: Thread): { from: number; to: number; open: boolean } {
 
 const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
 const MONTH_YEAR = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
-const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "narrow" });
+const DAY_MONTH = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 // Scrolls the timeline to today (⌘K's "Go to today"); the shown timeline sets it.
@@ -240,17 +241,7 @@ export function Timeline(): JSX.Element {
     return out;
   };
 
-  // Behind the bars: a faint line a day (a week, zoomed out), from the Monday it starts on.
-  const grid = (): JSX.CSSProperties => {
-    const every = zoom() === "weeks" ? day() : zoom() === "months" ? day() * 7 : 0;
-    return {
-      width: `${width()}px`,
-      height: `${height()}px`,
-      "background-image": every
-        ? `repeating-linear-gradient(to right, ${colors.bgQuaternary} 0 1px, transparent 1px ${every}px)`
-        : "none",
-    };
-  };
+  const area = (): JSX.CSSProperties => ({ width: `${width()}px`, height: `${height()}px` });
 
   const Bar = (props: { thread: Thread; y: number }): JSX.Element => {
     const t = (): Thread => props.thread;
@@ -265,9 +256,9 @@ export function Timeline(): JSX.Element {
     };
     const tone = (): string =>
       t().state === "resolved"
-        ? colors.barDone
+        ? colors.statusClosed
         : t().state === "blocked"
-          ? colors.barBlocked
+          ? colors.urgent
           : colors.barOpen;
     const original = (): { left: number; width: number } => {
       const { from, to } = span(t());
@@ -299,9 +290,10 @@ export function Timeline(): JSX.Element {
             top: `${props.y + (ROW - BAR) / 2}px`,
             left: `${b().left}px`,
             width: `${b().width}px`,
-            "background-color":
+            // Over the ground, so it's solid even in a translucent tone.
+            background:
               progress() === undefined
-                ? tone()
+                ? `linear-gradient(${tone()}, ${tone()}), ${colors.chrome}`
                 : `color-mix(in oklab, ${tone()} 38%, ${colors.chrome})`,
           }}
           title={t().title}
@@ -398,7 +390,7 @@ export function Timeline(): JSX.Element {
         >
           <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
         </button>
-        <button class={sx(base.bare, base.hover, styles.today)} onClick={scrollToToday}>
+        <button class={sx(base.bare, base.hover, chip.chip)} onClick={scrollToToday}>
           Today
         </button>
         <button
@@ -425,20 +417,23 @@ export function Timeline(): JSX.Element {
                     class={sx(styles.month)}
                     style={{ left: `${x(month.at)}px`, width: `${month.width}px` }}
                   >
-                    {zoom() === "quarters" ? MONTH.format(month.at) : MONTH_YEAR.format(month.at)}
+                    {new Date(month.at).getMonth() === 0 || month === months()[0]
+                      ? `${MONTH.format(month.at)} ${new Date(month.at).getFullYear()}`
+                      : MONTH.format(month.at)}
                   </span>
                 )}
               </For>
               <For each={ticks()}>
                 {(tick) => (
                   <span
-                    class={sx(styles.tick, tick.at === today() && styles.tickToday)}
+                    class={sx(styles.tick)}
                     style={{ left: `${x(tick.at)}px`, width: `${tick.width}px` }}
                   >
-                    <span>{new Date(tick.at).getDate()}</span>
-                    <Show when={zoom() === "weeks"}>
-                      <span class={sx(styles.weekday)}>{WEEKDAY.format(tick.at)}</span>
-                    </Show>
+                    <span class={sx(tick.at === today() && styles.tickToday)}>
+                      {tick.at === today()
+                        ? DAY_MONTH.format(tick.at)
+                        : new Date(tick.at).getDate()}
+                    </span>
                   </span>
                 )}
               </For>
@@ -458,6 +453,7 @@ export function Timeline(): JSX.Element {
                     <button
                       class={sx(
                         base.bare,
+                        base.hover,
                         styles.name,
                         selected(line.thread) && styles.nameSelected,
                       )}
@@ -471,11 +467,20 @@ export function Timeline(): JSX.Element {
                 }
               </For>
             </div>
-            <div class={sx(styles.days)} style={grid()}>
-              {/* Today's column. */}
+            <div class={sx(styles.days)} style={area()}>
+              {/* A dashed line at each month's start, and a fine one at today, as Linear's. */}
+              <For each={months().slice(1)}>
+                {(month) => (
+                  <span
+                    class={sx(styles.monthLine)}
+                    style={{ left: `${x(month.at)}px` }}
+                    aria-hidden="true"
+                  />
+                )}
+              </For>
               <span
-                class={sx(styles.todayColumn)}
-                style={{ left: `${x(today())}px`, width: `${day()}px` }}
+                class={sx(styles.todayLine)}
+                style={{ left: `${x(today()) + day() / 2}px` }}
                 aria-hidden="true"
               />
               <svg class={sx(styles.links)} width={width()} height={height()} aria-hidden="true">
@@ -530,14 +535,7 @@ const styles = stylex.create({
     color: colors.textSecondary,
     cursor: "pointer",
   },
-  today: {
-    height: 24,
-    padding: "0 6px",
-    borderRadius: 6,
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    cursor: "pointer",
-  },
+
   // On the window's own ground, so what's stuck to its edges covers what scrolls under it.
   timeline: { flex: 1, minHeight: 0, overflow: "auto", backgroundColor: colors.chrome },
   content: { position: "relative", minHeight: "100%" },
@@ -564,34 +562,45 @@ const styles = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   scale: { position: "relative", flexShrink: 0 },
+  // Linear's: each month's name, small and spaced, from its first day.
   month: {
     position: "absolute",
-    top: 4,
+    top: 6,
+    paddingLeft: 4,
     overflow: "hidden",
-    color: colors.textSecondary,
-    fontSize: fontSizes.small,
-    fontWeight: 500,
-    lineHeight: "16px",
-    textAlign: "center",
+    color: colors.textTertiary,
+    fontSize: 10,
+    fontWeight: 600,
+    letterSpacing: "0.06em",
+    lineHeight: "14px",
+    textTransform: "uppercase",
     whiteSpace: "nowrap",
+    borderLeftWidth: 1,
+    borderLeftStyle: "solid",
+    borderLeftColor: colors.strokeFocused,
   },
+
   tick: {
     position: "absolute",
-    bottom: 3,
+    bottom: 6,
     display: "flex",
-    flexDirection: "column",
     justifyContent: "center",
-    alignItems: "center",
-    height: 24,
-    borderRadius: 5,
     color: colors.textTertiary,
-    fontSize: 11,
-    fontWeight: 500,
-    lineHeight: "12px",
+    fontSize: fontSizes.small,
+    lineHeight: "18px",
+    whiteSpace: "nowrap",
   },
-  weekday: { fontSize: 9, fontWeight: 400 },
+
   // Today, solid, as TeamGantt marks it.
-  tickToday: { color: "#fff", backgroundColor: colors.accent },
+  // Today, its date in a pill (not a color: the ground's opposite).
+  tickToday: {
+    zIndex: 1,
+    padding: "0 6px",
+    borderRadius: radii.control,
+    color: colors.chrome,
+    fontWeight: 600,
+    backgroundColor: colors.textPrimary,
+  },
   body: { position: "relative", display: "flex" },
   names: {
     position: "sticky",
@@ -604,21 +613,24 @@ const styles = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
+  // As the app's compact rows: inset, rounded, the usual hover, the chosen one shaded.
   name: {
     position: "absolute",
-    left: 0,
+    left: 8,
     display: "flex",
     alignItems: "center",
-    width: NAMES - 1,
-    height: ROW,
-    padding: "0 14px 0 16px",
+    width: NAMES - 17,
+    height: ROW - 6,
+    marginTop: 3,
+    padding: "0 8px",
+    borderRadius: radii.row,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     textAlign: "left",
-    cursor: "pointer",
-    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
+    cursor: "default",
   },
-  nameSelected: { fontWeight: 600, backgroundColor: colors.bgQuaternary },
+
+  nameSelected: { backgroundColor: colors.bgTertiary },
   groupName: {
     position: "absolute",
     left: 16,
@@ -632,13 +644,25 @@ const styles = stylex.create({
   },
   count: { fontWeight: 400, color: colors.textTertiary },
   days: { position: "relative", flexShrink: 0 },
-  todayColumn: {
+  monthLine: {
     position: "absolute",
     top: 0,
     bottom: 0,
-    backgroundColor: `color-mix(in oklab, ${colors.accent} 9%, transparent)`,
+    borderLeftWidth: 1,
+    borderLeftStyle: "dashed",
+    borderLeftColor: colors.strokeTertiary,
     pointerEvents: "none",
   },
+  todayLine: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: colors.textTertiary,
+    opacity: 0.5,
+    pointerEvents: "none",
+  },
+
   links: {
     position: "absolute",
     top: 0,
@@ -651,7 +675,7 @@ const styles = stylex.create({
   summary: {
     position: "absolute",
     height: 8,
-    borderRadius: 4,
+    borderRadius: radii.pill,
     backgroundColor: colors.bgTertiary,
     pointerEvents: "none",
   },
@@ -661,13 +685,13 @@ const styles = stylex.create({
     zIndex: 1,
     height: BAR,
     overflow: "hidden",
-    borderRadius: 6,
+    borderRadius: radii.pill,
     cursor: "pointer",
     filter: { default: "none", ":hover": "brightness(1.08)" },
   },
   // No due date: it runs on, fading, to now.
   barOpenEnded: { maskImage: "linear-gradient(to right, black 60%, transparent)" },
-  barSelected: { boxShadow: `0 0 0 2px ${colors.chrome}, 0 0 0 3.5px ${colors.accent}` },
+  barSelected: { boxShadow: `0 0 0 2px ${colors.chrome}, 0 0 0 3.5px ${colors.textSecondary}` },
   barDragged: { cursor: "grabbing", boxShadow: "0 3px 10px rgba(0, 0, 0, 0.25)" },
   progress: { position: "absolute", top: 0, bottom: 0, left: 0 },
   ghost: {
@@ -676,7 +700,7 @@ const styles = stylex.create({
     borderWidth: 1.5,
     borderStyle: "dashed",
     borderColor: colors.strokeFocused,
-    borderRadius: 6,
+    borderRadius: radii.pill,
     pointerEvents: "none",
   },
   // A bar's edges, to resize it by: a light grip while it's hovered.
@@ -713,16 +737,21 @@ const styles = stylex.create({
   avatar: { display: "flex", borderRadius: "50%", boxShadow: `0 0 0 1.5px ${colors.chrome}` },
   overdue: { color: colors.urgent, fontSize: fontSizes.small },
   // The days a bar's moved, over it as it's dragged.
+  // The days a bar's moved, over it as it's dragged: a small floating panel.
   badge: {
     position: "absolute",
     zIndex: 5,
-    padding: "2px 8px",
-    borderRadius: 6,
-    color: "#fff",
+    padding: "1px 7px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.panelBorder,
+    borderRadius: radii.control,
+    color: colors.textPrimary,
     fontSize: fontSizes.small,
     fontWeight: 500,
     whiteSpace: "nowrap",
-    backgroundColor: "#2b2b2b",
+    backgroundColor: colors.panel,
+    boxShadow: colors.shadowFloat,
     transform: "translateX(-50%)",
     pointerEvents: "none",
   },
