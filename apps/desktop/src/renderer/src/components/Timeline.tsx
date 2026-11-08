@@ -61,7 +61,6 @@ function span(thread: Thread): { from: number; to: number } {
 }
 
 const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
-const MONTH_YEAR = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const DAY_MONTH = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
@@ -120,7 +119,6 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     return { from: monday, days: daysBetween(monday, startOfDay(last)) };
   };
   const x = (time: number): number => ((time - range().from) / DAY_MS) * day();
-  const dayAt = (px: number): number => addDays(range().from, Math.floor(px / day()));
   const width = (): number => range().days * day();
 
   // The heading: each month over its days (by the week each day with its letter, by the month each Monday).
@@ -234,11 +232,6 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     target.addEventListener("pointerup", up, { once: true });
   };
 
-  // The month in the middle of what's shown, named over it as it scrolls.
-  const [scrolled, setScrolled] = createSignal(0);
-  const [shownWidth, setShownWidth] = createSignal(0);
-  const shownMonth = (): string => MONTH_YEAR.format(dayAt(scrolled() + shownWidth() / 2));
-
   let scroller!: HTMLDivElement;
   const scrollToToday = (): void => {
     scroller.scrollTo({ left: Math.max(0, x(today()) - (scroller.clientWidth - names()) / 3) });
@@ -247,7 +240,6 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   createEffect(day, () => void requestAnimationFrame(scrollToToday));
   onSettled(() => {
     const resized = new ResizeObserver(() => {
-      setShownWidth(scroller.clientWidth - names());
       scrollToToday();
     });
     resized.observe(scroller);
@@ -441,17 +433,11 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
         </Show>
         {props.end}
       </div>
-      <div
-        ref={scroller}
-        class={sx(styles.timeline, unscheduled() && styles.away)}
-        onScroll={() => setScrolled(scroller.scrollLeft)}
-      >
+      <div ref={scroller} class={sx(styles.timeline, unscheduled() && styles.away)}>
         <div class={sx(styles.content)} style={{ width: `${names() + width()}px` }}>
           {/* Months over days, stuck at the top. */}
           <div class={sx(styles.head)}>
-            <div class={sx(styles.corner)} style={{ width: `${names()}px` }}>
-              <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
-            </div>
+            <div class={sx(styles.corner)} style={{ width: `${names()}px` }} />
             <div class={sx(styles.scale)} style={{ width: `${width()}px` }}>
               <For each={months()}>
                 {(month) => (
@@ -696,14 +682,6 @@ const styles = stylex.create({
     height: 46.91,
     padding: "6.91px 12px 0",
   },
-  // Over the names, level with the days.
-  shownMonth: {
-    lineHeight: "18px",
-    color: colors.textPrimary,
-    fontSize: fontSizes.name,
-    fontWeight: 600,
-    whiteSpace: "nowrap",
-  },
   toolbarSpacer: { flex: 1 },
   step: {
     display: "flex",
@@ -726,26 +704,19 @@ const styles = stylex.create({
     display: "flex",
     height: HEAD,
     backgroundColor: colors.chrome,
+    // The line under the days, the whole width.
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
   },
   corner: {
-    display: "flex",
-    alignItems: "flex-end",
-    paddingBottom: 6,
-    paddingLeft: 2 * INSET,
     position: "sticky",
     left: 0,
     zIndex: 2,
     flexShrink: 0,
     backgroundColor: colors.chrome,
   },
-  // The line under the days: over the days only, meeting the names' line at its top.
-  scale: {
-    position: "relative",
-    flexShrink: 0,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: colors.strokeTertiary,
-  },
+  scale: { position: "relative", flexShrink: 0 },
   // Linear's: each month's name, small and spaced, from its first day.
   month: {
     position: "absolute",
