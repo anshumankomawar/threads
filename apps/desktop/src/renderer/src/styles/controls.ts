@@ -5,20 +5,14 @@ import { colors, fontSizes, layers, motion, radii } from "./tokens.stylex";
 // Below, starting at the anchor's left edge (StyleX's types only know single keywords).
 const UNDER = "bottom span-right" as "bottom";
 
-// Glass, as macOS 26's toolbar buttons, without what's behind showing through: an opaque fill, a 1px rim lit at the
-// top-left and bottom-right, a highlight along the top inside, and a soft lift. Lighter under the pointer, and pressed
-// in a little.
+// Glass, as macOS 26's toolbar buttons: a tint over a strong blur, so what's behind is only faintly there, and a rim
+// of light all round (see the tokens). Lighter under the pointer, and pressed in a little.
 const GLASS = {
-  borderWidth: 1,
-  borderStyle: "solid",
-  borderColor: "transparent",
+  borderStyle: "none",
   borderRadius: 999,
-  backgroundColor: "transparent",
-  backgroundImage: `linear-gradient(${colors.glassFill}, ${colors.glassFill}), linear-gradient(135deg, ${colors.glassRim}, ${colors.glassRimFaint} 35%, ${colors.glassRimFaint} 65%, ${colors.glassRim})`,
-  backgroundOrigin: "border-box",
-  // The fill inside the rim, the rim under the border (StyleX's types only know one box).
-  backgroundClip: "padding-box, border-box" as "padding-box",
-  boxShadow: `inset 0 1px 0.5px ${colors.glassTop}, ${colors.glassShadow}`,
+  backgroundColor: colors.glassTint,
+  backdropFilter: "blur(14px) saturate(170%) brightness(1.08)",
+  boxShadow: colors.glassRim,
   filter: { default: null, ":hover:not(:disabled)": colors.glassHover },
   transform: { default: null, ":active:not(:disabled)": "scale(0.96)" },
   transitionProperty: "filter, transform",

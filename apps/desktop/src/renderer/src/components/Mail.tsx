@@ -1524,13 +1524,14 @@ const s = stylex.create({
   },
   querySpacer: { flex: 1 },
   // As tall as the chips beside it.
-  // A pill the chips' height, lit along its top as glass is (as SwiftUI's prominent glass button).
+  // A pill the chips' height, its rim lit as glass is (as SwiftUI's prominent glass button).
   queryNew: {
     height: 26,
     marginLeft: 4,
     padding: "0 12px",
     borderRadius: 999,
-    boxShadow: `inset 0 1px 0.5px rgb(255 255 255 / 25%), ${colors.glassShadow}`,
+    boxShadow:
+      "inset 1.5px 1.5px 1px -1px rgb(255 255 255 / 45%), inset 0 0 0 0.5px rgb(255 255 255 / 12%)",
   },
   listScroll: {
     position: "relative",

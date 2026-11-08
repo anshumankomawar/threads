@@ -26,13 +26,16 @@ const DARK = {
   // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
   raised: "#2b2b2b",
   raisedBorder: "#383838",
-  // Glass, as macOS 26's toolbar buttons but opaque: its fill, its rim (bright where light catches it, faint
-  // between), the highlight along its top inside, its lift, and how it lightens under the pointer.
-  glassFill: "#2c2c2e",
-  glassRim: "rgb(255 255 255 / 16%)",
-  glassRimFaint: "rgb(255 255 255 / 3%)",
-  glassTop: "rgb(255 255 255 / 7%)",
-  glassShadow: "0 0.5px 1px rgb(0 0 0 / 45%), 0 6px 14px -6px rgb(0 0 0 / 55%)",
+  // Glass, as macOS 26's toolbar buttons: a tint over a strong blur (what's behind only faintly there), and a rim
+  // of light all round, brightest where it's caught at the top-left, softer at the bottom-right. Barely lifted.
+  glassTint: "rgb(52 52 56 / 55%)",
+  glassRim: [
+    "inset 0 0 0 0.5px rgb(255 255 255 / 16%)",
+    "inset 1.5px 1.5px 1px -1px rgb(255 255 255 / 55%)",
+    "inset -1.5px -1.5px 1px -1px rgb(255 255 255 / 22%)",
+    "inset 0 0 10px rgb(255 255 255 / 5%)",
+    "0 1px 6px rgb(0 0 0 / 18%)",
+  ].join(", "),
   glassHover: "brightness(1.15)",
   accent: "#78aee7",
   accentFill: "#1f252c",
@@ -69,11 +72,14 @@ export const lightTheme = stylex.createTheme(colors, {
   panelSelected: "#f3f3f1",
   raised: "#ffffff",
   raisedBorder: "#dcdcd9",
-  glassFill: "#ffffff",
-  glassRim: "rgb(255 255 255 / 95%)",
-  glassRimFaint: "rgb(0 0 0 / 7%)",
-  glassTop: "#ffffff",
-  glassShadow: "0 0.5px 1px rgb(0 0 0 / 12%), 0 6px 14px -6px rgb(0 0 0 / 14%)",
+  glassTint: "rgb(255 255 255 / 60%)",
+  glassRim: [
+    "inset 0 0 0 0.5px rgb(0 0 0 / 9%)",
+    "inset 1.5px 1.5px 1px -1px rgb(255 255 255 / 100%)",
+    "inset -1.5px -1.5px 1px -1px rgb(255 255 255 / 70%)",
+    "inset 0 0 10px rgb(255 255 255 / 40%)",
+    "0 1px 6px rgb(0 0 0 / 7%)",
+  ].join(", "),
   glassHover: "brightness(0.97)",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
