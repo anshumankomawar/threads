@@ -987,7 +987,8 @@ function QueryBar(): JSX.Element {
   );
 }
 
-export function MessageList(): JSX.Element {
+// `alone`: nothing's open beside it, so it takes the room.
+export function MessageList(props: { alone?: boolean }): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   // Opening a space's, label's, person's or view's page (from ⌘K, say) lists its threads here too.
   createEffect(view, (shown) => {
@@ -1051,13 +1052,13 @@ export function MessageList(): JSX.Element {
   };
   return (
     <section
-      class={sx(s.list, wide() && s.listTimeline, wide() && !active() && s.listAlone)}
+      class={sx(s.list, wide() && s.listTimeline, props.alone && s.listAlone)}
       style={{
-        width: wide()
-          ? active()
+        width: props.alone
+          ? undefined
+          : wide()
             ? `${timelineColumn.width()}px`
-            : undefined
-          : `${listColumn.width()}px`,
+            : `${listColumn.width()}px`,
       }}
       aria-label={mailboxTitle(mailbox())}
     >

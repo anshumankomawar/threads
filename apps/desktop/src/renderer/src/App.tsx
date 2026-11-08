@@ -138,6 +138,18 @@ export default function App(): JSX.Element {
     const shownNow = view();
     return display().layout !== "list" && "thread" in shownNow && shownNow.thread === null;
   };
+  // Nothing to read beside the list (no thread, page or draft open): the reading pane closes and the list takes
+  // the room, as a timeline does.
+  const nothingOpen = (): boolean =>
+    !active() &&
+    !subspace() &&
+    !savedView() &&
+    !bucket() &&
+    !label() &&
+    !person() &&
+    !store.findById(Draft, shown("draft") ?? "") &&
+    !("settings" in view());
+  const alone = (): boolean => timelineAlone() || nothingOpen();
   return (
     <>
       <Titlebar />
@@ -147,9 +159,9 @@ export default function App(): JSX.Element {
         <Show when={sidebarOpen()}>
           <MailSidebar />
         </Show>
-        <MessageList />
+        <MessageList alone={alone()} />
         {/* A timeline has the room to itself until something's opened beside it. */}
-        <Show when={!timelineAlone()}>
+        <Show when={!alone()}>
           <main class={sx(styles.main)}>
             {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
             <Show when={store.rejection()}>
@@ -186,6 +198,15 @@ export default function App(): JSX.Element {
                 <Show when={store.connection() === "offline"}>
                   <span class={sx(styles.offline)}>Offline</span>
                 </Show>
+                {/* Closes what's open, and the reading pane with it (as Esc does). */}
+                <button
+                  class={sx(topbar.button)}
+                  aria-label="Close"
+                  title="Close (Esc)"
+                  onClick={() => open({ thread: null })}
+                >
+                  <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
+                </button>
               </span>
             </div>
             <Switch fallback={<NothingOpen />}>
