@@ -972,7 +972,6 @@ export const displayMenu = (): MenuItem[] => [
 
 // The list as a board: a column a group, each thread a card. A click opens it beside the board; dragging it to another
 // column changes what it's grouped by to that column's (moveToGroup), by Atlassian's pragmatic-drag-and-drop.
-const [dragging, setDragging] = createSignal<Thread | null>(null);
 
 function BoardCard(props: { thread: Thread; group: string }): JSX.Element {
   const t = (): Thread => props.thread;
@@ -983,19 +982,12 @@ function BoardCard(props: { thread: Thread; group: string }): JSX.Element {
     draggable({
       element: card,
       getInitialData: () => ({ thread: t().id, from: props.group }),
-      onDragStart: () => setDragging(t()),
-      onDrop: () => setDragging(null),
     }),
   );
   return (
     <button
       ref={card}
-      class={sx(
-        base.bare,
-        s.card,
-        active() === t() && s.cardOpen,
-        dragging() === t() && s.cardDragging,
-      )}
+      class={sx(base.bare, s.card, active() === t() && s.cardOpen)}
       onClick={() => open({ thread: t().id })}
       onContextMenu={(e) => showMenu(e, threadMenu(t()))}
     >
@@ -1053,16 +1045,12 @@ function BoardColumn(props: { group: Group }): JSX.Element {
     }),
   );
   return (
-    <section
-      ref={column}
-      class={sx(s.column, over() && s.columnOver)}
-      aria-label={props.group.title}
-    >
+    <section ref={column} class={sx(s.column)} aria-label={props.group.title}>
       <div class={sx(s.columnHead)}>
         <span class={sx(base.ellipsis)}>{props.group.bucket?.name ?? props.group.title}</span>
         <span class={sx(s.groupCount)}>{props.group.threads.length}</span>
       </div>
-      <div class={sx(s.cards)}>
+      <div class={sx(s.cards, over() && s.cardsOver)}>
         <For each={props.group.threads}>
           {(t) => <BoardCard thread={t} group={props.group.key} />}
         </For>
@@ -1652,7 +1640,22 @@ const s = stylex.create({
     fontSize: fontSizes.body,
     fontWeight: 500,
   },
-  cards: { display: "flex", flexDirection: "column", gap: 6, minHeight: 0, overflowY: "auto" },
+  // Its cards, to the column's foot: where a card's dropped, outlined while one's over it.
+  cards: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    gap: 6,
+    minHeight: 0,
+    margin: "0 -5px",
+    padding: 4,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "transparent",
+    borderRadius: 10,
+    overflowY: "auto",
+  },
+  cardsOver: { borderColor: colors.strokeFocused },
   card: {
     display: "flex",
     flexDirection: "column",
@@ -1664,7 +1667,7 @@ const s = stylex.create({
     borderRadius: radii.row,
     color: colors.textPrimary,
     textAlign: "left",
-    backgroundColor: { default: colors.panel, ":hover": colors.panelSelected },
+    backgroundColor: colors.panel,
     cursor: "pointer",
   },
   cardTitle: { fontSize: fontSizes.name, fontWeight: 500, lineHeight: "18px" },
@@ -1677,8 +1680,6 @@ const s = stylex.create({
   },
   cardWhen: { marginLeft: "auto", flexShrink: 0 },
   cardChips: { display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" },
-  // The column a card's over, the card on its way, and the one that's open.
-  columnOver: { borderRadius: radii.row, backgroundColor: colors.bgQuaternary },
-  cardDragging: { opacity: 0.4 },
-  cardOpen: { borderColor: colors.strokeFocused, backgroundColor: colors.panelSelected },
+  // The open one.
+  cardOpen: { borderColor: colors.strokeFocused },
 });
