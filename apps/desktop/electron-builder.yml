@@ -24,8 +24,10 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
-  # Arc's icon (apps/web/brand, made by apps/web/scripts/icon.ts): the dot-matrix sunrise in the icon shape.
-  icon: build/icon.icns
+  # The Icon Composer bundle: the dotted sunrise in a window, on a white (dark: graphite) tile; macOS 26 adds the glass
+  # and switches light, dark, clear and tinted itself. Building it needs Xcode 26; electron-builder also makes an .icns
+  # from it for older macOS.
+  icon: build/AppIcon.icon
   entitlementsInherit: build/entitlements.mac.plist
   notarize: false
 dmg:
