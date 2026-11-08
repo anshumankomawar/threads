@@ -21,16 +21,19 @@ import { dot } from "./ThreadView";
 // summary bar over all of its threads. Bars drag along the days (both dates move) and resize by either edge, a dashed
 // outline left where they were and the days moved shown over them; a click opens the thread in the floating view.
 // Without a start a bar starts when the thread was created; with a start alone it is a day long. Threads without
-// either are listed under No dates, a click on a day in their row putting them there.
+// either are listed under the timeline, each given a start or due date from its row.
 
 const DAY_MS = 86_400_000;
 // A day's width at each scale.
 const DAY: Record<Zoom, number> = { weeks: 34, months: 12, quarters: 4 };
 // The names' column (as wide as it was left, within these), a row, a bar, a group's row, and the heading.
-const NAMES = { initial: 240, min: 160, max: 480 };
-const ROW = 34;
+// The names' column and its rows as the sidebar's (its points ÷ 1.1, for the 110% scale): 220px wide (180 to 320), rows
+// 30pt tall 2pt apart, inset and padded 8pt, rounded 8pt, names at 13pt.
+const NAMES = { initial: 220, min: 180, max: 320 };
+const ROW = 29.09;
+const INSET = 7.27;
 const BAR = 22;
-const GROUP = 34;
+const GROUP = 33.1;
 const HEAD = 48;
 const TOP = 6;
 // How far the pointer moves before a press on a bar is a drag rather than a click.
@@ -46,7 +49,6 @@ const addDays = (time: number, days: number): number => {
 const daysBetween = (from: number, to: number): number => Math.round((to - from) / DAY_MS);
 
 // Only threads with a date are on the timeline; the rest are listed under it.
-const UNDATED = "undated";
 const dated = (thread: Thread): boolean =>
   thread.dueAt !== undefined || thread.startAt !== undefined;
 // Where a thread's bar runs, in midnights: from its start (or creation) to the end of its due day (or its start day).
@@ -68,7 +70,7 @@ export const showToday = (): void => toToday?.();
 // A bar being dragged: along the days (both its dates), or by an edge (one of them), and by how many days.
 type Drag = { thread: Thread; kind: "move" | "start" | "end"; days: number };
 // The rows, in order, each where it sits: a group's heading, or a thread.
-type Line = { y: number } & ({ group: Group } | { thread: Thread; placed: boolean });
+type Line = { y: number } & ({ group: Group } | { thread: Thread });
 
 export function Timeline(): JSX.Element {
   // The names' width, dragged by the edge on its right (a double click puts it back).
@@ -146,23 +148,14 @@ export function Timeline(): JSX.Element {
         y += GROUP;
       }
       for (const thread of group.threads) {
-        out.push({ y, thread, placed: true });
-        y += ROW;
-      }
-    }
-    // Then those without a date, to be put on it with a click on a day.
-    const undated = [...new Set(listed().order)].filter((t) => !dated(t));
-    if (undated.length > 0) {
-      if (out.length > 0) y += ROW / 2;
-      out.push({ y, group: { key: UNDATED, title: "No dates", threads: undated } });
-      y += GROUP;
-      for (const thread of undated) {
-        out.push({ y, thread, placed: false });
+        out.push({ y, thread });
         y += ROW;
       }
     }
     return out;
   };
+  // Those without a date, listed under the timeline to be given one.
+  const undated = (): Thread[] => [...new Set(listed().order)].filter((t) => !dated(t));
   const height = (): number => (lines().at(-1)?.y ?? 0) + ROW + 24;
 
   const [drag, setDrag] = createSignal<Drag | null>(null);
@@ -254,8 +247,7 @@ export function Timeline(): JSX.Element {
   // A thread that blocks another, joined to it: from the end of its bar, down (or up), into the start of the other's.
   const links = (): string[] => {
     const at = new Map<Thread, number>();
-    for (const line of lines())
-      if ("thread" in line && line.placed) at.set(line.thread, line.y + ROW / 2);
+    for (const line of lines()) if ("thread" in line) at.set(line.thread, line.y + ROW / 2);
     const out: string[] = [];
     for (const [t, y1] of at) {
       const blocked = t.blocks;
@@ -376,37 +368,9 @@ export function Timeline(): JSX.Element {
     );
   };
 
-  // A thread without a date: its row shows the day under the pointer, and a click puts it there.
-  const Place = (props: { thread: Thread; y: number }): JSX.Element => {
-    const [at, setAt] = createSignal<number | null>(null);
-    const pointed = (e: MouseEvent): number =>
-      dayAt(e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left);
-    return (
-      <div
-        class={sx(styles.place)}
-        style={{ top: `${props.y}px` }}
-        onPointerMove={(e) => setAt(pointed(e))}
-        onPointerLeave={() => setAt(null)}
-        onClick={(e) => {
-          const date = new Date(pointed(e));
-          edit(props.thread, { startAt: date, dueAt: date }, "Change Dates");
-        }}
-      >
-        <Show when={at()}>
-          {(d) => (
-            <span
-              class={sx(styles.ghost, styles.placeGhost)}
-              style={{ left: `${x(d())}px`, width: `${day()}px` }}
-            />
-          )}
-        </Show>
-      </div>
-    );
-  };
-
   // A group's summary bar: from its first thread's start to its last's end.
   const summary = (group: Group): { left: number; width: number } | undefined => {
-    if (group.threads.length === 0 || group.key === UNDATED) return undefined;
+    if (group.threads.length === 0) return undefined;
     const spans = group.threads.map((t) => shown(t));
     const left = x(Math.min(...spans.map((s) => s.from)));
     return { left, width: x(Math.max(...spans.map((s) => s.to))) - left };
@@ -510,11 +474,10 @@ export function Timeline(): JSX.Element {
                     <button
                       class={sx(
                         base.bare,
-                        base.hover,
                         styles.name,
                         selected(line.thread) && styles.nameSelected,
                       )}
-                      style={{ top: `${line.y}px`, width: `${names() - 17}px` }}
+                      style={{ top: `${line.y}px`, width: `${names() - 2 * INSET - 1}px` }}
                       onClick={() => peek({ thread: line.thread.id })}
                       onContextMenu={(e) => showMenu(e, threadMenu(line.thread))}
                     >
@@ -558,10 +521,8 @@ export function Timeline(): JSX.Element {
                         />
                       )}
                     </Show>
-                  ) : line.placed ? (
-                    <Bar thread={line.thread} y={line.y} />
                   ) : (
-                    <Place thread={line.thread} y={line.y} />
+                    <Bar thread={line.thread} y={line.y} />
                   )
                 }
               </For>
@@ -569,12 +530,104 @@ export function Timeline(): JSX.Element {
           </div>
         </div>
       </div>
+      {/* Those without a date: a list under the timeline, each given a start or due date from its row (it moves onto
+          the timeline as it gets one). */}
+      <Show when={undated().length > 0}>
+        <section class={sx(styles.undated)} aria-label="No dates">
+          <div class={sx(styles.undatedHeading)}>
+            No dates <span class={sx(styles.count)}>{undated().length}</span>
+          </div>
+          <For each={undated()}>
+            {(thread) => (
+              <div class={sx(styles.undatedRow)}>
+                <button
+                  class={sx(base.bare, styles.undatedTitle)}
+                  onClick={() => peek({ thread: thread.id })}
+                  onContextMenu={(e) => showMenu(e, threadMenu(thread))}
+                >
+                  <span class={sx(base.ellipsis)}>{thread.title}</span>
+                </button>
+                <DatePick
+                  label="Start"
+                  pick={(date) => edit(thread, { startAt: date }, "Set Start Date")}
+                />
+                <DatePick
+                  label="Due"
+                  pick={(date) => edit(thread, { dueAt: date }, "Set Due Date")}
+                />
+              </div>
+            )}
+          </For>
+        </section>
+      </Show>
     </div>
+  );
+}
+
+// A chip that opens the system's date picker, and gives the day chosen (at midnight, local).
+function DatePick(props: { label: string; pick: (date: Date) => void }): JSX.Element {
+  let input!: HTMLInputElement;
+  return (
+    <button
+      class={sx(base.bare, base.hover, chip.chip, styles.datePick)}
+      onClick={() => input.showPicker()}
+    >
+      <Icon icon={i.Calendar03Icon} size={12} aria-hidden="true" />
+      {props.label}
+      <input
+        ref={input}
+        type="date"
+        class={sx(styles.dateInput)}
+        tabindex={-1}
+        aria-hidden="true"
+        onChange={(event) => {
+          const [y, m, d] = event.currentTarget.value.split("-").map(Number);
+          if (y) props.pick(new Date(y, m - 1, d));
+        }}
+      />
+    </button>
   );
 }
 
 const styles = stylex.create({
   frame: { display: "flex", flex: 1, flexDirection: "column", minHeight: 0 },
+  // Under the timeline, its own list (as the sidebar's rows): a heading, then each thread with its date chips.
+  undated: {
+    flexShrink: 0,
+    maxHeight: "40%",
+    overflowY: "auto",
+    padding: "0 7.27px 10.91px",
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: colors.strokeTertiary,
+  },
+  undatedHeading: {
+    display: "flex",
+    gap: 6,
+    padding: "12.73px 7.27px 3.64px",
+    color: colors.textTertiary,
+    fontSize: 10.91,
+    fontWeight: 500,
+  },
+  undatedRow: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 29.09,
+    padding: `0 ${INSET}px`,
+  },
+  undatedTitle: {
+    display: "flex",
+    flex: 1,
+    minWidth: 0,
+    color: colors.textPrimary,
+    fontSize: 11.82,
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  datePick: { position: "relative", flexShrink: 0 },
+  // The picker's input: there to open, never seen.
+  dateInput: { position: "absolute", inset: 0, opacity: 0, pointerEvents: "none" },
   toolbar: {
     display: "flex",
     flexShrink: 0,
@@ -677,33 +730,35 @@ const styles = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  // As the app's compact rows: inset, rounded, the usual hover, the chosen one shaded.
+  // As the sidebar's rows: inset, rounded, the chosen one shaded, nothing under the pointer.
   name: {
     position: "absolute",
-    left: 8,
+    left: INSET,
     display: "flex",
     alignItems: "center",
-    height: ROW - 6,
-    marginTop: 3,
-    padding: "0 8px",
-    borderRadius: radii.row,
+    height: 27.27,
+    marginTop: 0.91,
+    padding: `0 ${INSET}px`,
+    borderRadius: 7.27,
     color: colors.textPrimary,
-    fontSize: fontSizes.body,
+    fontSize: 11.82,
     textAlign: "left",
     cursor: "default",
   },
 
   nameSelected: { backgroundColor: colors.bgTertiary },
+  // As the sidebar's headings: 12pt medium, quiet, just over their rows.
   groupName: {
     position: "absolute",
-    left: 16,
+    left: 2 * INSET,
     display: "flex",
     gap: 6,
-    alignItems: "center",
+    alignItems: "flex-end",
     height: GROUP,
-    color: colors.textSecondary,
-    fontSize: fontSizes.small,
-    fontWeight: 600,
+    paddingBottom: 3.64,
+    color: colors.textTertiary,
+    fontSize: 10.91,
+    fontWeight: 500,
   },
   count: { fontWeight: 400, color: colors.textTertiary },
   days: { position: "relative", flexShrink: 0 },
@@ -781,8 +836,6 @@ const styles = stylex.create({
     borderRadius: radii.control,
     pointerEvents: "none",
   },
-  place: { position: "absolute", left: 0, right: 0, height: ROW, cursor: "pointer" },
-  placeGhost: { top: (ROW - BAR) / 2 },
   // A bar's edges, to resize it by: a light grip while it's hovered.
   edge: {
     position: "absolute",

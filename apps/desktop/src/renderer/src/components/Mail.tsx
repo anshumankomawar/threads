@@ -48,8 +48,6 @@ import {
   ORDERS,
   type Order,
   type Layout,
-  type Zoom,
-  ZOOMS,
   setDisplay,
 } from "../mail";
 import { bucketIcons } from "../bucketIcons";
@@ -886,19 +884,6 @@ export const displayMenu = (): MenuItem[] => [
   })),
   "separator",
   { label: "Group By", icon: icon(i.LayerIcon, 13), items: groupItems() },
-  ...(display().layout === "timeline"
-    ? [
-        {
-          label: "Zoom",
-          icon: icon(i.ZoomInIcon, 13),
-          items: (Object.keys(ZOOMS) as Zoom[]).map((zoom) => ({
-            label: ZOOMS[zoom],
-            checked: (display().zoom ?? "weeks") === zoom,
-            run: () => setDisplay({ zoom }),
-          })),
-        },
-      ]
-    : []),
   { label: "Order By", icon: icon(i.Sorting01Icon, 13), items: orderItems() },
   {
     label: "Show Resolved",
@@ -956,19 +941,6 @@ function QueryBar(): JSX.Element {
         </button>
       </Show>
       <span class={sx(s.querySpacer)} />
-      <MenuChip
-        title="Group by"
-        tone={groupedBy() ? undefined : "muted"}
-        icon={<Icon icon={i.LayerIcon} size={12} aria-hidden="true" />}
-        label={groupedBy() ? FIELDS[groupedBy()!]!.label : "Group"}
-        items={groupItems()}
-      />
-      <MenuChip
-        title="Order by"
-        icon={<Icon icon={i.Sorting01Icon} size={12} aria-hidden="true" />}
-        label={ORDERS[display().order ?? "updated"]}
-        items={orderItems()}
-      />
       {/* The one main action here, as Notion's New: a thread in this list (its space or label). */}
       <button
         class={sx(base.bare, button.solid, s.queryNew)}
@@ -1021,6 +993,10 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
     (ids) => ids.forEach((id) => store.subscribe(`subspace:${id}`)),
   );
   const filterable = (): boolean => mailbox().kind !== "drafts";
+  // The query bar, over a timeline or a filtered list; with it shown, the top bar's Filter (its own) goes.
+  const queryShown = (): boolean =>
+    filterable() &&
+    (display().layout === "timeline" || conditions().length > 0 || display().hideResolved === true);
   const total = (): number =>
     mailbox().kind === "drafts" ? drafts().length : listed().order.length;
   const unreadCount = (): number =>
@@ -1080,12 +1056,14 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
             />
           </Show>
           <Show when={filterable()}>
-            <MenuChip
-              look={topbar.button}
-              title="Filter"
-              label={<Icon icon={i.FilterIcon} {...ICON} />}
-              items={filterItems()}
-            />
+            <Show when={!queryShown()}>
+              <MenuChip
+                look={topbar.button}
+                title="Filter"
+                label={<Icon icon={i.FilterIcon} {...ICON} />}
+                items={filterItems()}
+              />
+            </Show>
           </Show>
           <Show when={pageOf(mailbox())}>
             {(page) => (
@@ -1114,12 +1092,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
           </Show>
         </span>
       </div>
-      <Show
-        when={
-          filterable() &&
-          (display().layout === "timeline" || conditions().length > 0 || display().hideResolved)
-        }
-      >
+      <Show when={queryShown()}>
         <QueryBar />
       </Show>
       <Show when={display().layout === "timeline"}>
