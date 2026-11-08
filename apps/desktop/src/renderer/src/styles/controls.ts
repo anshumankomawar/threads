@@ -140,19 +140,20 @@ const barIn = stylex.keyframes({
   from: { opacity: 0, filter: "blur(6px)", transform: "scale(0.85)" },
 });
 
-// The top bar, as roomy as macOS's toolbar (52pt) with its buttons as an iOS app's: 36pt rounds and pills, flat and a
-// step above the ground. Each size is its points ÷ 1.1, for the renderer's 110% scale.
-const SLOT = 32.73;
+// The top bar, measured off macOS 26's own toolbar (the macOS app's): 52pt tall; its items 36pt capsules, a button on
+// its own 39.5pt wide and each in a pill 35pt, the pills 10.5pt apart; flat and a step above the ground, as an iOS
+// app's. Each size is its points ÷ 1.1, for the renderer's 110% scale.
+const TALL = 32.73;
 export const topbar = stylex.create({
-  bar: { display: "flex", flexShrink: 0, gap: 7.27, alignItems: "center", height: 47.27 },
-  // A button on its own: a round.
+  bar: { display: "flex", flexShrink: 0, gap: 9.55, alignItems: "center", height: 47.27 },
+  // A button on its own: a capsule, 39.5 × 36pt.
   button: {
     display: "flex",
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
-    width: SLOT,
-    height: SLOT,
+    width: 35.91,
+    height: TALL,
     padding: 0,
     borderStyle: "none",
     borderRadius: radii.pill,
@@ -171,7 +172,7 @@ export const topbar = stylex.create({
     display: "flex",
     flexShrink: 0,
     justifyContent: "flex-end",
-    height: SLOT,
+    height: TALL,
     overflow: "hidden",
     borderRadius: radii.pill,
     backgroundColor: colors.barFill,
@@ -187,7 +188,6 @@ export const topbar = stylex.create({
     alignItems: "center",
     width: "max-content",
     height: "100%",
-    padding: "0 2px",
   },
   groupContent: { display: "flex", alignItems: "center" },
   // Content that's just come into a pill.
@@ -196,14 +196,14 @@ export const topbar = stylex.create({
     animationDuration: "260ms",
     animationTimingFunction: "cubic-bezier(0.2, 0.8, 0.2, 1)",
   },
-  // A button in a pill: no fill of its own.
+  // A button in a pill: 35pt of it, no fill of its own.
   groupButton: {
     display: "flex",
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
-    width: SLOT + 2,
-    height: SLOT,
+    width: 31.82,
+    height: TALL,
     padding: 0,
     borderStyle: "none",
     borderRadius: radii.pill,
@@ -213,13 +213,14 @@ export const topbar = stylex.create({
     opacity: { default: 1, ":active:not(:disabled)": 0.6, ":disabled": 0.35 },
   },
   title: { color: colors.textSecondary },
+  // At the bar's end, 8.5pt in from the window's edge.
   end: {
     display: "flex",
     flexShrink: 0,
-    gap: 7.27,
+    gap: 9.55,
     alignItems: "center",
     marginLeft: "auto",
-    paddingRight: 10.91,
+    paddingRight: 7.73,
   },
 });
 

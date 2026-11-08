@@ -77,10 +77,10 @@ export const lightTheme = stylex.createTheme(colors, {
 });
 
 export const sidebarSpace = stylex.defineConsts({
-  // Where the top bar's first button starts, beside the traffic lights: its centre lands where a fourth light would
-  // (theirs are 23pt apart, the first's centre 25.75pt in), so it's as far from the last as they are from each other.
-  // (19 + 3 × 23 + 6.75)pt ÷ 1.1, less half the 32.73px button. In CSS pixels at the 110% scale.
-  afterLights: "69.77px",
+  // Where the top bar's first button starts, beside the traffic lights: 18pt past the last one's edge, as macOS 26's
+  // toolbar puts it (they start 19pt in, 14pt across and 23pt apart, so the last ends at 79pt). 97pt ÷ 1.1, in CSS
+  // pixels at the 110% scale.
+  afterLights: "88.18px",
 });
 
 // The main content's zoom (⌘+, ⌘-, ⌘0), set on the root by the store.

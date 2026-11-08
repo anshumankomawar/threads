@@ -827,6 +827,10 @@ export const LAYOUTS: {
     keywords: "gantt roadmap schedule dates",
   },
 ];
+// With the sidebar hidden, the list's bar also has the window's buttons and the sidebar's (the room before its first
+// button, that button and the gap after it), so it's wider by them and its own controls keep their room.
+const BESIDE_LIGHTS = 88.18 + 35.91 + 9.55;
+
 // List or timeline, side by side in one rounded control, as the macOS app's toolbar has them.
 function LayoutSwitch(): JSX.Element {
   return (
@@ -1066,7 +1070,7 @@ export function MessageList(): JSX.Element {
           ? active()
             ? `${timelineColumn.width()}px`
             : undefined
-          : `${listColumn.width()}px`,
+          : `${listColumn.width() + (sidebarOpen() ? 0 : BESIDE_LIGHTS)}px`,
       }}
       aria-label={mailboxTitle(mailbox())}
     >
@@ -1418,13 +1422,14 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   // List or timeline, in a pill as the top bar's others, the chosen one on a round of its own.
+  // 36pt tall; its segments 32 × 28pt capsules, 4pt in and 2pt apart (as macOS 26's segmented toolbar item).
   switch: {
     display: "flex",
     flexShrink: 0,
-    gap: 2,
+    gap: 1.82,
     alignItems: "center",
     height: 32.73,
-    padding: 3,
+    padding: 3.64,
     borderRadius: radii.pill,
     backgroundColor: colors.barFill,
     boxShadow: colors.barRim,
@@ -1434,8 +1439,8 @@ const s = stylex.create({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 32.73,
-    height: "100%",
+    width: 29.09,
+    height: 25.45,
     borderRadius: radii.pill,
     color: colors.iconTertiary,
     cursor: "pointer",
