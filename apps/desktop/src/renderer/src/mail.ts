@@ -118,6 +118,14 @@ export function setDisplay(change: Partial<Display>): void {
   });
 }
 export const groupedBy = (): string | undefined => display().group;
+// A new mailbox shown as the chosen one is (a view saved from it).
+export function keepDisplay(to: Mailbox): void {
+  setDisplays((all) => {
+    const next = { ...all, [keyOf(to)]: { ...display() } };
+    save("layouts", next);
+    return next;
+  });
+}
 
 // The orders a list can take; without one, the mailbox's own (most recently active first, or the inbox's).
 export const ORDERS = {

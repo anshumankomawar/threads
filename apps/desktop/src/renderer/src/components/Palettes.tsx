@@ -22,6 +22,7 @@ import {
   type Dialog,
   workspace,
 } from "../session";
+import { keepDisplay } from "../mail";
 import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
@@ -501,6 +502,8 @@ function NewView(props: { filter: Filter }): JSX.Element {
             owner: me(),
             workspace: workspace(),
           });
+          // Shown as the list it was saved from is: a timeline stays one.
+          keepDisplay({ kind: "view", id: made.id });
           open({ view: made.id });
         })
       }

@@ -54,7 +54,7 @@ import {
 import { bucketIcons } from "../bucketIcons";
 import { describe, FIELDS, subspacesIn } from "../filters";
 import { base } from "../styles/base";
-import { topbar } from "../styles/controls";
+import { chip, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
@@ -67,7 +67,7 @@ import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
 import { dot, plain } from "./ThreadView";
-import { Timeline } from "./Timeline";
+import { showToday, Timeline } from "./Timeline";
 
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
@@ -961,6 +961,42 @@ export const LAYOUTS: {
 ];
 const layoutIcon = (): IconSvgElement => LAYOUTS.find((l) => l.layout === display().layout)!.icon;
 
+// The ways to group and order a list, and a timeline's scales: in the Display menu, the query bar and ⌘K. Grouping
+// toggles: choosing the one it's grouped by ungroups it.
+const groupItems = (): MenuItem[] =>
+  Object.entries(FIELDS).map(([field, { label }]) => ({
+    label,
+    icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
+    checked: groupedBy() === field,
+    run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
+  }));
+const orderItems = (): MenuItem[] =>
+  (Object.keys(ORDERS) as Order[]).map((order) => ({
+    label: ORDERS[order],
+    checked: (display().order ?? "updated") === order,
+    run: () => setDisplay({ order: order === "updated" ? undefined : order }),
+  }));
+
+// What a list can be narrowed by: each field's values, and resolved threads (hidden, they're a pill too).
+const filterItems = (): MenuItem[] => [
+  ...Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
+    label,
+    icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
+    items: values().map(([value, name]) => ({
+      label: name,
+      icon: valueIcon(field, value),
+      run: () => setConditions([...conditions(), { [field]: { [compare]: value } }]),
+    })),
+  })),
+  "separator",
+  {
+    label: "Show Resolved",
+    icon: icon(i.CheckmarkCircle02Icon, 13),
+    checked: !display().hideResolved,
+    run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
+  },
+];
+
 // How the list is shown (mail.ts' display, kept on this Mac): rows or a timeline; grouped by any field a filter can test;
 // a timeline's scale; its order; and whether resolved threads show. In ⌘K too.
 export const displayMenu = (): MenuItem[] => [
@@ -970,18 +1006,7 @@ export const displayMenu = (): MenuItem[] => [
     run: () => setDisplay({ layout }),
   })),
   "separator",
-  {
-    label: "Group By",
-    icon: icon(i.LayerIcon, 13),
-    // Each a toggle: choosing the one it's grouped by ungroups it.
-    items: Object.entries(FIELDS).map(([field, { label }]) => ({
-      label,
-      icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
-      checked: groupedBy() === field,
-      run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
-    })),
-  },
-  // A timeline's scale.
+  { label: "Group By", icon: icon(i.LayerIcon, 13), items: groupItems() },
   ...(display().layout === "timeline"
     ? [
         {
@@ -995,15 +1020,7 @@ export const displayMenu = (): MenuItem[] => [
         },
       ]
     : []),
-  {
-    label: "Order By",
-    icon: icon(i.Sorting01Icon, 13),
-    items: (Object.keys(ORDERS) as Order[]).map((order) => ({
-      label: ORDERS[order],
-      checked: (display().order ?? "updated") === order,
-      run: () => setDisplay({ order: order === "updated" ? undefined : order }),
-    })),
-  },
+  { label: "Order By", icon: icon(i.Sorting01Icon, 13), items: orderItems() },
   {
     label: "Show Resolved",
     icon: icon(i.CheckmarkCircle02Icon, 13),
@@ -1011,6 +1028,92 @@ export const displayMenu = (): MenuItem[] => [
     run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
   },
 ];
+
+// The query over the list, in a bar above it: its filters (each a pill that removes itself; more from Filter), saving
+// them as a view, how it's grouped and ordered, and on a timeline its scale and today. Always over a timeline; over a
+// list while it's filtered.
+function QueryBar(): JSX.Element {
+  const timeline = (): boolean => display().layout === "timeline";
+  return (
+    <div class={sx(s.query)}>
+      <For each={conditions()}>
+        {(condition) => (
+          <button
+            class={sx(base.bare, base.hover, page.filterPill)}
+            title="Remove"
+            onClick={() => setConditions(conditions().filter((c) => c !== condition))}
+          >
+            {describe(condition)}
+            <Icon icon={i.Cancel01Icon} size={11} aria-hidden="true" />
+          </button>
+        )}
+      </For>
+      <Show when={display().hideResolved}>
+        <button
+          class={sx(base.bare, base.hover, page.filterPill)}
+          title="Show resolved threads"
+          onClick={() => setDisplay({ hideResolved: undefined })}
+        >
+          Resolved hidden
+          <Icon icon={i.Cancel01Icon} size={11} aria-hidden="true" />
+        </button>
+      </Show>
+      <MenuChip
+        title="Filter"
+        tone="muted"
+        icon={<Icon icon={i.FilterIcon} size={12} aria-hidden="true" />}
+        label="Filter"
+        items={filterItems()}
+      />
+      <Show when={conditions().length > 0 && mailbox().kind !== "view"}>
+        <button
+          class={sx(base.bare, base.dim, page.filterPill)}
+          onClick={() =>
+            setDialog({
+              kind: "newView",
+              filter: { and: [...baseFilter(mailbox()), ...conditions()] },
+            })
+          }
+        >
+          Save view
+        </button>
+      </Show>
+      <span class={sx(s.querySpacer)} />
+      <MenuChip
+        title="Group by"
+        tone={groupedBy() ? undefined : "muted"}
+        icon={<Icon icon={i.LayerIcon} size={12} aria-hidden="true" />}
+        label={groupedBy() ? FIELDS[groupedBy()!]!.label : "Group"}
+        items={groupItems()}
+      />
+      <MenuChip
+        title="Order by"
+        icon={<Icon icon={i.Sorting01Icon} size={12} aria-hidden="true" />}
+        label={ORDERS[display().order ?? "updated"]}
+        items={orderItems()}
+      />
+      <Show when={timeline()}>
+        <span class={sx(s.zooms)} role="radiogroup" aria-label="Zoom">
+          <For each={Object.keys(ZOOMS) as Zoom[]}>
+            {(zoom) => (
+              <button
+                class={sx(base.bare, s.zoom, (display().zoom ?? "weeks") === zoom && s.zoomOn)}
+                role="radio"
+                aria-checked={(display().zoom ?? "weeks") === zoom ? "true" : "false"}
+                onClick={() => setDisplay({ zoom })}
+              >
+                {ZOOMS[zoom]}
+              </button>
+            )}
+          </For>
+        </span>
+        <button class={sx(base.bare, base.hover, chip.chip)} onClick={showToday}>
+          Today
+        </button>
+      </Show>
+    </div>
+  );
+}
 
 export function MessageList(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
@@ -1109,15 +1212,7 @@ export function MessageList(): JSX.Element {
               look={topbar.button}
               title="Filter"
               label={<Icon icon={i.FilterIcon} {...ICON} />}
-              items={Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
-                label,
-                icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
-                items: values().map(([value, name]) => ({
-                  label: name,
-                  icon: valueIcon(field, value),
-                  run: () => setConditions([...conditions(), { [field]: { [compare]: value } }]),
-                })),
-              }))}
+              items={filterItems()}
             />
           </Show>
           <Show when={pageOf(mailbox())}>
@@ -1147,35 +1242,13 @@ export function MessageList(): JSX.Element {
           </Show>
         </span>
       </div>
-      {/* What narrows the list: each condition (click to remove it), and saving them as a view. */}
-      <Show when={filterable() && conditions().length > 0}>
-        <div class={sx(page.filters, s.filterRow)}>
-          <For each={conditions()}>
-            {(condition) => (
-              <button
-                class={sx(base.bare, base.hover, page.filterPill)}
-                title="Remove"
-                onClick={() => setConditions(conditions().filter((c) => c !== condition))}
-              >
-                {describe(condition)}
-                <Icon icon={i.Cancel01Icon} size={11} aria-hidden="true" />
-              </button>
-            )}
-          </For>
-          <Show when={mailbox().kind !== "view"}>
-            <button
-              class={sx(base.bare, base.dim, page.filterPill)}
-              onClick={() =>
-                setDialog({
-                  kind: "newView",
-                  filter: { and: [...baseFilter(mailbox()), ...conditions()] },
-                })
-              }
-            >
-              Save view
-            </button>
-          </Show>
-        </div>
+      <Show
+        when={
+          filterable() &&
+          (display().layout === "timeline" || conditions().length > 0 || display().hideResolved)
+        }
+      >
+        <QueryBar />
       </Show>
       <Show when={display().layout === "timeline"}>
         <Timeline />
@@ -1443,7 +1516,39 @@ const s = stylex.create({
   listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
   listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
   listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
-  filterRow: { paddingLeft: 12, paddingRight: 12 },
+  // The query bar: filters at the start, grouping, order and (on a timeline) its scale at the end.
+  query: {
+    display: "flex",
+    flexShrink: 0,
+    flexWrap: "wrap",
+    gap: 6,
+    alignItems: "center",
+    minHeight: 40,
+    padding: "6px 12px",
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
+  },
+  querySpacer: { flex: 1 },
+  zooms: {
+    display: "inline-flex",
+    padding: 2,
+    borderRadius: radii.control,
+    backgroundColor: colors.bgQuaternary,
+  },
+  zoom: {
+    height: 20,
+    padding: "0 8px",
+    borderRadius: 5,
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+    cursor: "pointer",
+  },
+  zoomOn: {
+    color: colors.textPrimary,
+    backgroundColor: colors.panel,
+    boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+  },
   listScroll: {
     position: "relative",
     isolation: "isolate",
