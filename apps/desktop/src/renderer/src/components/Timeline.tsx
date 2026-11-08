@@ -31,7 +31,7 @@ const DAY: Record<Zoom, number> = { weeks: 34, months: 12, quarters: 4 };
 // The names' column (as wide as it was left, within these), a row, a bar, a group's row, and the heading.
 // The names' column and its rows as the sidebar's (its points ÷ 1.1, for the 110% scale): 220px wide (180 to 320), rows
 // 30pt tall 2pt apart, inset and padded 8pt, rounded 8pt, names at 13pt.
-const NAMES = { initial: 220, min: 180, max: 320 };
+const NAMES = { min: 180, max: 420 };
 const ROW = 29.09;
 const INSET = 7.27;
 const BAR = 22;
@@ -76,15 +76,22 @@ type Line = { y: number } & ({ group: Group } | { thread: Thread });
 
 // `start` and `end`: what the list puts on the timeline's toolbar (its filters after the month, New at the end).
 export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX.Element {
-  // The names' width, dragged by the edge on its right (a double click puts it back).
+  // The names' width: as wide as the longest title (up to a limit), or as dragged by the edge on its right (a
+  // double click puts it back to fitting).
   const clamp = (px: number): number => Math.min(NAMES.max, Math.max(NAMES.min, Math.round(px)));
-  const [names, setNames] = createSignal(clamp(saved("timeline-names", NAMES.initial)));
+  const [dragged, setDragged] = createSignal<number | null>(
+    saved<number | null>("timeline-names", null),
+  );
+  const fitted = (): number =>
+    clamp(Math.max(0, ...threads().map((t) => textWidth(t.title))) + 4 * INSET + 2);
+  const names = (): number => clamp(dragged() ?? fitted());
+  const setNames = (px: number): void => void setDragged(clamp(px));
   const resizeNames = (event: PointerEvent): void => {
     const edge = event.currentTarget as HTMLElement;
     edge.setPointerCapture(event.pointerId);
     const start = event.clientX;
     const from = names();
-    const move = (e: PointerEvent): void => void setNames(clamp(from + e.clientX - start));
+    const move = (e: PointerEvent): void => setNames(from + e.clientX - start);
     edge.addEventListener("pointermove", move);
     edge.addEventListener(
       "pointerup",
@@ -486,8 +493,8 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
                 aria-orientation="vertical"
                 onPointerDown={resizeNames}
                 onDblClick={() => {
-                  setNames(NAMES.initial);
-                  save("timeline-names", NAMES.initial);
+                  setDragged(null);
+                  save("timeline-names", null);
                 }}
               />
               <For each={lines()}>
@@ -505,6 +512,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
                         selected(line.thread) && styles.nameSelected,
                       )}
                       style={{ top: `${line.y}px`, width: `${names() - 2 * INSET - 1}px` }}
+                      title={line.thread.title}
                       onClick={() => peek({ thread: line.thread.id })}
                       onContextMenu={(e) => showMenu(e, threadMenu(line.thread))}
                     >
@@ -627,6 +635,15 @@ function DateField(props: { onDate: (when: When) => void }): JSX.Element {
       </Show>
     </label>
   );
+}
+
+// How wide a title is as the names show it (11.82px, the app's font).
+let measure: CanvasRenderingContext2D | null = null;
+function textWidth(text: string): number {
+  measure ??= document.createElement("canvas").getContext("2d");
+  if (!measure) return 0;
+  measure.font = `11.82px ${getComputedStyle(document.body).fontFamily}`;
+  return Math.ceil(measure.measureText(text).width);
 }
 
 const styles = stylex.create({
