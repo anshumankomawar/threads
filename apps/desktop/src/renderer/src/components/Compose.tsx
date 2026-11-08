@@ -24,7 +24,7 @@ import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { dot } from "./ThreadView";
 import { moved, OptionButton } from "./Menus";
-import { createThread, focusOnShow, Modal, send } from "./Palettes";
+import { createThread, focusOnShow, send } from "./Palettes";
 
 type Ask = ComposeDraft["asks"][number];
 
@@ -224,7 +224,7 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
     props.page ? (
       <article class={sx(compose.page)}>{frame.children}</article>
     ) : (
-      <Modal>{frame.children}</Modal>
+      <>{frame.children}</>
     );
 
   return (

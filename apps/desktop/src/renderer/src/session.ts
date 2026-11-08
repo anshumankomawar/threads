@@ -424,7 +424,7 @@ function moveOn(thread: Thread): void {
 
 // ⌘E, or the inbox row's done button. Done with the open thread, the next one opens.
 // Back into your inbox, as ⌘E on something already done does.
-export function markUndone(item: InboxItem): void {
+function markUndone(item: InboxItem): void {
   item.doneAt = undefined;
   item.save();
   offerUndo("Moved to Inbox", () => {
@@ -433,7 +433,7 @@ export function markUndone(item: InboxItem): void {
   });
 }
 
-export function markDone(item: InboxItem): void {
+function markDone(item: InboxItem): void {
   if (active() === item.thread) moveOn(item.thread);
   item.doneAt = new Date();
   item.save();

@@ -89,7 +89,7 @@ export function chooseMailbox(next: Mailbox): void {
 }
 
 // A group of rows under a heading: the inbox lists each bucket apart.
-export type Group = { key: string; bucket?: Bucket; title?: string; threads: Thread[] };
+type Group = { key: string; bucket?: Bucket; title?: string; threads: Thread[] };
 
 const newestFirst = (threads: Thread[]): Thread[] =>
   [...threads].sort((a, b) => Number(b.isOpen) - Number(a.isOpen) || lastActive(b) - lastActive(a));

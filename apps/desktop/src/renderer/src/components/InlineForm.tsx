@@ -34,7 +34,7 @@ export function holdFocus(panel: HTMLElement): void {
   });
 }
 
-export type InlineAsk = {
+type InlineAsk = {
   // The icon it grows out of (or where it was, from a menu that's gone), whose place the panel's own icon takes.
   at: Element | DOMRect;
   // What it makes, as the menu entry it came from said, over its fields.

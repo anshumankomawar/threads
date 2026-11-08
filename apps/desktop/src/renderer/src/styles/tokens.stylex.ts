@@ -30,7 +30,6 @@ export const colors = stylex.defineVars({
   primaryHover: "rgb(28 112 196)",
   statusClosed: "oklch(0.713 0.094 155.438)",
   urgent: "oklch(0.712 0.177 12.651)",
-  overlay: "rgb(0 0 0 / 22%)",
   avatarRing: "transparent",
   // Mail's unread dot.
   systemBlue: "#0a84ff",
@@ -62,7 +61,6 @@ export const lightTheme = stylex.createTheme(colors, {
   primaryHover: "rgb(28 112 196)",
   statusClosed: "oklch(0.55 0.11 155.438)",
   urgent: "oklch(0.58 0.2 12.651)",
-  overlay: "rgb(0 0 0 / 8%)",
   avatarRing: "rgb(0 0 0 / 14%)",
   systemBlue: "#007aff",
   shadowPanel: "0 2px 8px rgb(0 0 0 / 8%)",
@@ -70,8 +68,6 @@ export const lightTheme = stylex.createTheme(colors, {
 });
 
 export const sidebarSpace = stylex.defineConsts({
-  inset: "12px",
-  rowGutter: "6px",
   // Where the top bar's first button starts, beside the traffic lights: its centre lands where a fourth light would
   // (theirs are 23pt apart, the first's centre 18.75pt in), so it's 9pt from the last, as they are from each other.
   // (12 + 3 × 23 + 6.75)pt ÷ 1.1, less half the 22px button. In CSS pixels at the 110% scale.

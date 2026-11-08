@@ -11,11 +11,11 @@ export type FilterKey = "from" | "to" | "in" | "label" | "is" | "priority" | "ha
 export type Token = { key: FilterKey; value: string; text: string };
 
 // A value a key can take: what it tests, how it reads, and how it's typed (`from:maya`).
-export type Choice = { value: string; text: string; typed: string; seed?: string };
+type Choice = { value: string; text: string; typed: string; seed?: string };
 
 const typedName = (name: string): string => name.toLowerCase().replaceAll(/\s+/g, "-");
 
-export const KEYS: Record<FilterKey, { hint: string; choices: () => Choice[] }> = {
+const KEYS: Record<FilterKey, { hint: string; choices: () => Choice[] }> = {
   from: {
     hint: "someone who wrote in it",
     choices: () =>

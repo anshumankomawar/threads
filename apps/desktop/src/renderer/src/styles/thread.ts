@@ -6,7 +6,7 @@ import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 // first line).
 export const TURN_GAP = 28;
 export const AVATAR = 28;
-export const AVATAR_TOP = 8;
+const AVATAR_TOP = 8;
 
 // A thread as a document (ThreadView): left-aligned like the other pages, about 706px of text.
 export const thread = stylex.create({

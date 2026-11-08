@@ -28,7 +28,7 @@ import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { moved, OptionButton, type Option } from "./Menus";
-import { focusOnShow, Modal } from "./Palettes";
+import { focusOnShow } from "./Palettes";
 
 // ⌘K (or /): everything in the app, from one field (commands.ts lists it). Before you type: the open thread's actions
 // and where to go. As you type: the best matches of every kind, each under its heading.
@@ -291,7 +291,7 @@ export function Search(): JSX.Element {
   };
 
   return (
-    <Modal>
+    <>
       <div class={sx(palette.inputRow, styles.inputRow)} onClick={() => input.focus()}>
         <Show when={page()}>
           {(current) => <span class={sx(styles.chip, styles.pageChip)}>{current().title}</span>}
@@ -390,6 +390,6 @@ export function Search(): JSX.Element {
           </span>
         </Show>
       </div>
-    </Modal>
+    </>
   );
 }

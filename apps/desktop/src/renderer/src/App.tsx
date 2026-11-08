@@ -42,7 +42,7 @@ import {
   SettingsView,
   SubspaceView,
 } from "./components/Pages";
-import { HistoryButtons } from "./components/Sidebar";
+import { HistoryButtons } from "./components/TopButtons";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";

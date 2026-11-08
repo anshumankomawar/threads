@@ -21,19 +21,6 @@ export type Column<T> = {
 
 const muted = colors.textTertiary;
 
-// A tool in a table's toolbar: an icon button. Its New is `button.solid`.
-export const tool = stylex.create({
-  icon: {
-    display: "grid",
-    placeItems: "center",
-    width: 28,
-    height: 28,
-    borderRadius: radii.row,
-    cursor: "pointer",
-  },
-});
-export const iconTool = [base.bare, base.hover, base.dim, tool.icon];
-
 const s = stylex.create({
   toolbar: { display: "flex", gap: 8, alignItems: "center", height: 40, marginTop: 20 },
   // The tabs, tools and rows all pull out 6px past the page's edges, so their text lines up with the page's and their

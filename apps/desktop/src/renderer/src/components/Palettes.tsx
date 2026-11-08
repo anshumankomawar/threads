@@ -32,9 +32,9 @@ import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
 import { Search } from "./Search";
 
-// A palette's content. The window itself is Palettes' one <dialog>, kept open while one palette gives way to another
-// (⌘K to New Bucket's form and back), so it reads as one continuous form rather than closing and opening again.
-export const Modal = (props: { children: JSX.Element }): JSX.Element => <>{props.children}</>;
+// A palette is its content: the window itself is Palettes' one <dialog>, kept open while one palette gives way to
+// another (⌘K to New Bucket's form and back), so it reads as one continuous form rather than closing and opening again.
+
 // A palette's field takes the focus as it appears, as `autofocus` only does when the window first opens.
 export const focusOnShow = (el: HTMLElement): void => queueMicrotask(() => el.focus());
 
@@ -102,7 +102,7 @@ function Picker(props: {
     event.preventDefault();
   };
   return (
-    <Modal>
+    <>
       <div class={sx(palette.inputRow, styles.inputRow)}>
         {/* Where Back goes once the steps run out: the palette this one was opened from. */}
         <Show when={dialog()?.back}>
@@ -172,7 +172,7 @@ function Picker(props: {
           </For>
         </div>
       </Show>
-    </Modal>
+    </>
   );
 }
 

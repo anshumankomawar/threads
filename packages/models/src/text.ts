@@ -39,7 +39,6 @@ const tokens = (text: string, kind: string): string[] =>
   [...text.matchAll(TOKEN)].filter((m) => m[1] === kind).map((m) => m[2]);
 export const mentionsIn = (text: string): string[] => tokens(text, "person");
 export const subspaceMentionsIn = (text: string): string[] => tokens(text, "subspace");
-export const threadLinksIn = (text: string): string[] => tokens(text, "thread");
 
 // The text with links as `#title` and mentions as `@name`.
 export const plainText = (

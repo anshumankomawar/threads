@@ -54,7 +54,7 @@ import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
-import { linksFrom, linksTo, progressOf } from "../links";
+import { branchesOf, progressOf } from "../links";
 import { commandFor, keysOf } from "../hotkeys";
 
 const CARET_MENU_WIDTH = 300;
@@ -353,76 +353,79 @@ function Header(props: { thread: Thread }): JSX.Element {
           )}
         </Show>
         <Properties thread={c()} />
-        <LinkedThreads thread={c()} />
+        <Branches thread={c()} />
       </div>
     </header>
   );
 }
 
-// The threads this one links to (what it's made of, with how many are resolved) and those that link to it, under its
-// properties. Each peeks open, so you can look without leaving. Either list folds away under its heading, and stays
-// folded (for every thread) until you open it again.
-const [folded, setFolded] = createSignal<string[]>(saved("links-folded", []));
-const toggleFold = (key: string): void =>
-  void setFolded((list) => {
-    const next = list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
-    save("links-folded", next);
-    return next;
+// A thread's branches, its parts, under its properties: each with its status, due date and owner, peeking open so you
+// can look without leaving, and how many are resolved. The list folds away under its heading (for every thread) until
+// you open it again.
+const [folded, setFolded] = createSignal<boolean>(saved("branches-folded", false));
+const toggleFold = (): void =>
+  void setFolded((was) => {
+    save("branches-folded", !was);
+    return !was;
   });
 
-function LinkedThreads(props: { thread: Thread }): JSX.Element {
-  const out = (): Thread[] => linksFrom(props.thread);
-  const back = (): Thread[] => linksTo(props.thread);
+function Branches(props: { thread: Thread }): JSX.Element {
+  const branches = (): Thread[] => branchesOf(props.thread);
   const progress = () => progressOf(props.thread);
-  const row = (t: Thread): JSX.Element => (
-    <button class={sx(base.bare, base.hover, styles.linked)} onClick={() => peek({ thread: t.id })}>
-      {dot(t.state)}
-      <span class={sx(base.ellipsis, styles.linkedTitle, !t.isOpen && styles.linkedDone)}>
-        {t.title}
-      </span>
-      <Show when={t.isOpen && t.dueAt}>
-        {(due) => <span class={sx(styles.linkedMeta)}>{shortDate(due())}</span>}
-      </Show>
-      <Show when={t.owner}>
-        {(owner) => (
-          <span class={sx(styles.linkedMeta)} title={owner().name}>
-            <Identicon seed={owner().id} size={14} />
-          </span>
-        )}
-      </Show>
-    </button>
-  );
-  const group = (
-    key: string,
-    title: string,
-    threads: () => Thread[],
-    count?: () => string | undefined,
-  ) => (
-    <Show when={threads().length > 0}>
-      <button
-        class={sx(base.bare, styles.linksHeading)}
-        aria-expanded={folded().includes(key) ? "false" : "true"}
-        onClick={() => toggleFold(key)}
-      >
-        <span>{title}</span>
-        <span class={sx(styles.linksCount)}>{count?.() ?? threads().length}</span>
-        <span class={sx(styles.linksChevron, !folded().includes(key) && styles.linksChevronOpen)}>
-          {icon(i.ArrowRight01Icon, 9)}
-        </span>
-      </button>
-      <Show when={!folded().includes(key)}>
-        <For each={threads()}>{row}</For>
-      </Show>
-    </Show>
-  );
   return (
-    <Show when={out().length > 0 || back().length > 0}>
+    <Show when={branches().length > 0}>
       <div class={sx(styles.links)}>
-        {group("out", "Links to", out, () => {
-          const p = progress();
-          return p && `${p.done} of ${p.total} resolved`;
-        })}
-        {group("back", "Linked from", back)}
+        <button
+          class={sx(base.bare, styles.linksHeading)}
+          aria-expanded={folded() ? "false" : "true"}
+          onClick={toggleFold}
+        >
+          <span>Branches</span>
+          <Show when={progress()}>
+            {(p) => (
+              <span class={sx(styles.linksCount)}>
+                {p().done} of {p().total} resolved
+              </span>
+            )}
+          </Show>
+          <span class={sx(styles.linksChevron, !folded() && styles.linksChevronOpen)}>
+            {icon(i.ArrowRight01Icon, 9)}
+          </span>
+        </button>
+        <Show when={!folded()}>
+          <For each={branches()}>
+            {(t) => (
+              <button
+                class={sx(base.bare, base.hover, styles.linked)}
+                onClick={() => peek({ thread: t.id })}
+                onContextMenu={(event) =>
+                  showMenu(event, [
+                    {
+                      label: "Remove from Branches",
+                      icon: icon(i.Cancel01Icon, 13),
+                      run: () => edit(t, { branchedFrom: undefined }),
+                    },
+                  ])
+                }
+              >
+                {dot(t.state)}
+                <span class={sx(base.ellipsis, styles.linkedTitle, !t.isOpen && styles.linkedDone)}>
+                  {t.title}
+                </span>
+                <Show when={t.isOpen && t.dueAt}>
+                  {(due) => <span class={sx(styles.linkedMeta)}>{shortDate(due())}</span>}
+                </Show>
+                <Show when={t.owner}>
+                  {(owner) => (
+                    <span class={sx(styles.linkedMeta)} title={owner().name}>
+                      <Identicon seed={owner().id} size={14} />
+                    </span>
+                  )}
+                </Show>
+              </button>
+            )}
+          </For>
+        </Show>
       </div>
     </Show>
   );

@@ -1,7 +1,7 @@
 import * as i from "@hugeicons/core-free-icons";
 import { Label, PRIORITIES, STATES, Subspace, Thread, User, View } from "models";
 import { bucketIcons } from "./bucketIcons";
-import { linksFrom, linksTo } from "./links";
+import { branchesOf, isUnder } from "./links";
 import type { IconSvgElement } from "./components/Icon";
 import { LABELS } from "./components/ThreadView";
 import { keysFor, type HotkeyId } from "./hotkeys";
@@ -72,6 +72,22 @@ function hotkey(
 }
 
 // ── The open thread ──
+
+// A page of threads to pick one from: those `allowed`, never the thread itself.
+const pickThread = (
+  thread: Thread,
+  title: string,
+  allowed: (t: Thread) => boolean,
+  pick: (t: Thread) => void,
+): Page => ({
+  title,
+  placeholder: "Search threads",
+  commands: () =>
+    store
+      .all(Thread)
+      .filter((t) => t !== thread && allowed(t))
+      .map((t) => ({ ...threadCommand(t, title), run: () => pick(t), peek: undefined })),
+});
 
 // A page of choices for the open thread, a check on the ones it has; each with its own icon, or the page's.
 const choices = (
@@ -155,27 +171,56 @@ function threadCommands(thread: Thread): Command[] {
           },
         ]
       : []),
-    // The threads it links to and that link to it, to open or peek at.
-    ...((): Command[] => {
-      const linked = [...linksFrom(thread), ...linksTo(thread)];
-      return linked.length === 0
-        ? []
-        : [
-            {
-              id: "linked",
-              title: "Linked Threads",
-              kind: "action",
-              section,
-              icon: i.Link01Icon,
-              keywords: "links related backlinks progress",
-              page: () => ({
-                title: "Linked Threads",
-                placeholder: "Search",
-                commands: () => linked.map((t) => threadCommand(t, thread.title)),
-              }),
-            },
-          ];
-    })(),
+    // Its parts: open one, make another thread one of them, or put this one under another.
+    ...(branchesOf(thread).length > 0
+      ? [
+          {
+            id: "branches",
+            title: "Branches",
+            kind: "action" as const,
+            section,
+            icon: i.GitBranchIcon,
+            keywords: "parts children progress",
+            page: (): Page => ({
+              title: "Branches",
+              placeholder: "Search",
+              commands: () => branchesOf(thread).map((t) => threadCommand(t, thread.title)),
+            }),
+          },
+        ]
+      : []),
+    {
+      id: "add-branch",
+      title: "Add Branch",
+      kind: "action",
+      section,
+      icon: i.GitBranchIcon,
+      keywords: "part depends child sub",
+      page: () =>
+        // Not one already, nor one it's under (that would loop).
+        pickThread(
+          thread,
+          "Add Branch",
+          (t) => t.branchedFrom !== thread && !isUnder(thread, t),
+          (t) => edit(t, { branchedFrom: thread }),
+        ),
+    },
+    {
+      id: "branch-of",
+      title: "Branch Of",
+      kind: "action",
+      section,
+      icon: i.GitBranchIcon,
+      keywords: "part of parent under move",
+      page: () =>
+        // Not where it is already, nor one of its own branches (that would loop).
+        pickThread(
+          thread,
+          "Branch Of",
+          (t) => t !== thread.branchedFrom && !isUnder(t, thread),
+          (t) => edit(thread, { branchedFrom: t }),
+        ),
+    },
     {
       id: "status",
       title: "Set Status",
@@ -491,7 +536,7 @@ function app(): Command[] {
 
 // ── People and threads ──
 
-export const personCommand = (u: User): Command => ({
+const personCommand = (u: User): Command => ({
   id: `person:${u.id}`,
   title: u.name,
   kind: "person",
