@@ -109,6 +109,8 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
 
 const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
 const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 520 });
+// A board beside an open thread: wider than a list, so a few columns show.
+const boardColumn = resizable("mail-board-width", { initial: 600, min: 300, max: 1100 });
 
 // ── One pill for hover and selection ──
 
@@ -1124,8 +1126,14 @@ export function MessageList(): JSX.Element {
   };
   return (
     <section
-      class={sx(s.list, display().board && s.listWide)}
-      style={{ width: display().board ? undefined : `${listColumn.width()}px` }}
+      class={sx(s.list, display().board && !active() && s.listAlone)}
+      style={{
+        width: display().board
+          ? active()
+            ? `${boardColumn.width()}px`
+            : undefined
+          : `${listColumn.width()}px`,
+      }}
       aria-label={mailboxTitle(mailbox())}
     >
       <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
@@ -1288,6 +1296,9 @@ export function MessageList(): JSX.Element {
       </div>
       <Show when={!display().board}>
         <listColumn.Edge label="Resize list" />
+      </Show>
+      <Show when={display().board && active()}>
+        <boardColumn.Edge label="Resize board" />
       </Show>
     </section>
   );
@@ -1475,8 +1486,8 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   listBar: { paddingLeft: 16 },
-  // A board takes the reading pane's room too.
-  listWide: { flex: 1, borderRightWidth: 0 },
+  // A board alone (no thread open beside it) takes the room, with no edge to divide.
+  listAlone: { flex: 1, borderRightWidth: 0 },
   hidden: { display: "none" },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
