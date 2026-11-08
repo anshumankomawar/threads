@@ -2,7 +2,10 @@
 // and filled into the macOS icon shape. No letterform: the texture is the mark. The dither is drawn at a coarser cell
 // than the page's so it still reads as dots at 32px.
 //
-//   vpx scripts/icon.ts <source.bmp> <out.png> [--cell 10] [--dot 7] [--levels 6] [--shuttle cx,cy,rx,ry,dx,dy]
+//   vpx scripts/icon.ts <source.bmp> <out.png> [--cell 10] [--dot 7] [--levels 6] [--shuttle cx,cy,rx,ry,dx,dy] [--lit 1]
+//
+// `--lit` lights it as macOS lights its icons: a sheen across the top, a shadow gathering at the bottom edge, a bright
+// rim, and a soft vignette, so the pane reads as glass with depth rather than a flat print.
 //
 // `--shuttle` paints Endeavour out: an ellipse (in cells) filled from `dx,dy` cells further along the band each way.
 //
@@ -11,7 +14,7 @@
 //
 //   sips -s format bmp -c 2200 2200 --cropOffset 400 1000 scripts/source/endeavour.jpeg --out crop.bmp
 //   sips -z 128 128 crop.bmp --out crop128.bmp
-//   vpx scripts/icon.ts crop128.bmp brand/Arc-1024.png --cell 8 --dot 6 --shuttle 64,55,9,7,5,11
+//   vpx scripts/icon.ts crop128.bmp brand/Arc-1024.png --cell 8 --dot 6 --shuttle 64,55,9,7,5,11 --lit 1
 //   mkdir Arc.iconset && for s in 16 32 128 256 512; do sips -z $s $s brand/Arc-1024.png --out Arc.iconset/icon_${s}x${s}.png;
 //     sips -z $((s*2)) $((s*2)) brand/Arc-1024.png --out Arc.iconset/icon_${s}x${s}@2x.png; done
 //   iconutil -c icns Arc.iconset -o brand/Arc.icns
@@ -28,6 +31,7 @@ const [srcFile, outFile] = args;
 const CELL = flag("cell", 10);
 const DOT = flag("dot", 7);
 const LEVELS = flag("levels", 6);
+const LIT = flag("lit", 0) > 0;
 const SIZE = 1024;
 const N = Math.ceil(SIZE / CELL); // cells a side (the last column and row may be cut by the edge)
 
@@ -141,6 +145,35 @@ function coverage(px: number, py: number): number {
   return inside / 16;
 }
 
+// The lighting, in the icon's own coordinates (0..1 across the squircle): how macOS lights an icon, pushed far enough
+// to read at Dock size. A glass sheen across the top third with a soft specular arc, a shadow gathering at the bottom,
+// an inner shadow and a bright rim at the edge, and a vignette; the dots keep their colour under it.
+function light(rgb: RGB, px: number, py: number): RGB {
+  const u = (px - INSET) / ICON;
+  const v = (py - INSET) / ICON;
+  const edge = Math.min(u, 1 - u, v, 1 - v);
+  // The sheen: strong at the top, fading by 40% down, plus a curved specular arc (a reflection of a wide light above).
+  const top = Math.max(0, 1 - v / 0.42) ** 1.4 * 0.34;
+  const arcY = 0.16 + 0.1 * (u - 0.5) ** 2 * 4; // the arc dips toward the sides
+  const arc = Math.exp(-(((v - arcY) / 0.075) ** 2)) * 0.22;
+  // Shadows: gathering at the bottom, and tucked against every edge.
+  const bottom = Math.max(0, (v - 0.5) / 0.5) ** 1.3 * 0.38;
+  const inner = Math.exp(-edge / 0.04) * 0.42;
+  // The rim: a thin bright line right at the edge, brightest at the top.
+  const rim = Math.exp(-edge / 0.0065) * (0.55 - v * 0.35);
+  const dx = u - 0.5,
+    dy = v - 0.5;
+  const vignette = Math.min(1, (dx * dx + dy * dy) * 1.5) * 0.22;
+  const gain = 1 + top * 0.6 + arc * 0.5 + rim - bottom - inner - vignette;
+  // Highlights add light rather than only scaling, so dark dots catch the sheen too.
+  const lift = (top + arc) * 120 + rim * 110;
+  return [
+    Math.min(255, Math.max(0, rgb[0] * gain + lift)),
+    Math.min(255, Math.max(0, rgb[1] * gain + lift)),
+    Math.min(255, Math.max(0, rgb[2] * gain + lift)),
+  ] as RGB;
+}
+
 const crcTable = Array.from({ length: 256 }, (_, n) => {
   let c = n;
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
@@ -179,6 +212,7 @@ for (let y = 0; y < SIZE; y++) {
       const j = (cy * N + cx) * 3;
       rgb = [q[j]!, q[j + 1]!, q[j + 2]!];
     }
+    if (LIT) rgb = light(rgb, x, y);
     raw[i] = rgb[0];
     raw[i + 1] = rgb[1];
     raw[i + 2] = rgb[2];
