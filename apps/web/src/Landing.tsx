@@ -233,7 +233,11 @@ const s = stylex.create({
   field: {
     position: "absolute",
     inset: 0,
-    backgroundImage: `radial-gradient(ellipse 70% 58% at 50% 34%, color-mix(in srgb, ${colors.page} 78%, transparent) 0%, color-mix(in srgb, ${colors.page} 55%, transparent) 45%, color-mix(in srgb, ${colors.page} 20%, transparent) 75%, transparent 100%), ${colors.field}`,
+    // On a phone the text fills the width, so the pool spans it edge to edge.
+    backgroundImage: {
+      default: `radial-gradient(ellipse 70% 58% at 50% 34%, color-mix(in srgb, ${colors.page} ${colors.veil}, transparent) 0%, color-mix(in srgb, ${colors.page} calc(${colors.veil} * 0.7), transparent) 45%, color-mix(in srgb, ${colors.page} calc(${colors.veil} * 0.25), transparent) 75%, transparent 100%), ${colors.field}`,
+      [PHONE]: `radial-gradient(ellipse 120% 52% at 50% 40%, color-mix(in srgb, ${colors.page} ${colors.veil}, transparent) 0%, color-mix(in srgb, ${colors.page} calc(${colors.veil} * 0.8), transparent) 55%, color-mix(in srgb, ${colors.page} calc(${colors.veil} * 0.3), transparent) 85%, transparent 100%), ${colors.field}`,
+    },
     // At least the screen's width, in whole multiples of half size where that fits, so the dots stay crisp.
     backgroundSize: { default: "auto, max(1200px, 100%) auto", [PHONE]: "auto, 1200px 900px" },
     backgroundPosition: { default: "center, center top", [PHONE]: "center, 70% top" },

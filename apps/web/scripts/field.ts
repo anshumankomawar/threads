@@ -74,13 +74,14 @@ function cells(light: boolean): Float32Array {
       const p = photo(x, y);
       for (let c = 0; c < 3; c++) {
         let v = p[c]! ** 1.4 * darken + (rand() * 2 - 1) * noise + noise * 0.35;
-        // On a light page the photo keeps its colour: space becomes paper, and the band's blue and orange are
-        // laid on it at full strength, so the page is white with a real sunrise across it rather than a wash.
+        // On a light page the photo keeps its colour: space becomes paper, and the atmosphere, dim blue sky and
+        // all, is laid on it in its own hues, so the page is white with a real sunrise across it rather than a wash.
+        // Presence follows luminance on a curve that keeps the faint blue, and each hue is deepened for print.
         if (light) {
           const lum = 0.2126 * p[0] + 0.7152 * p[1] + 0.0722 * p[2];
-          const presence = Math.min(1, Math.max(0, (lum - 0.06) / 0.5)); // how much of the scene is here
-          const sat = (p[c]! - lum) * 1.6; // its colour, boosted
-          const ink = 0.55 + sat; // the band's own tone: mid-bright, in its hue
+          const presence = Math.min(1, (lum / 0.6) ** 0.55); // how much of the scene is here
+          const sat = (p[c]! - lum) * 2.2; // its colour, boosted
+          const ink = 0.42 + sat; // the scene's own tone: deep enough to print, in its hue
           v = 1 - presence * (1 - Math.min(1, Math.max(0, ink))) + (rand() * 2 - 1) * noise * 0.5;
         }
         a[(y * COLS + x) * 3 + c] = v;

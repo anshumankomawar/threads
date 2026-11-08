@@ -31,6 +31,9 @@ const DARK = {
   windowShadow: "0 40px 100px -20px rgb(0 0 0 / 60%)",
   // The page's ground: NASA's sunrise from orbit, dithered (scripts/field.ts), on a dark or a light page.
   field: 'url("/field-dark.webp")',
+  // How much of the page's colour veils the field behind the text (Landing.tsx): the dark page needs more, the light
+  // page's field is faint enough to show through.
+  veil: "78%",
   // The toggle shows what it switches to: a sun in the dark, a moon in the light.
   showSun: "flex",
   showMoon: "none",
@@ -57,6 +60,7 @@ const LIGHT_VALUES = {
   systemBlue: "#007aff",
   windowShadow: "0 40px 100px -20px rgb(0 0 0 / 18%)",
   field: 'url("/field-light.webp")',
+  veil: "66%",
   showSun: "none",
   showMoon: "flex",
 };
@@ -83,6 +87,7 @@ export const colors = stylex.defineVars({
   systemBlue: { default: DARK.systemBlue, [LIGHT]: LIGHT_VALUES.systemBlue },
   windowShadow: { default: DARK.windowShadow, [LIGHT]: LIGHT_VALUES.windowShadow },
   field: { default: DARK.field, [LIGHT]: LIGHT_VALUES.field },
+  veil: { default: DARK.veil, [LIGHT]: LIGHT_VALUES.veil },
   showSun: { default: DARK.showSun, [LIGHT]: LIGHT_VALUES.showSun },
   showMoon: { default: DARK.showMoon, [LIGHT]: LIGHT_VALUES.showMoon },
 });
