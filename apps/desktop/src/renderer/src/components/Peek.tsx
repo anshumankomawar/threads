@@ -57,6 +57,8 @@ const styles = stylex.create({
     animationDuration: "160ms",
     animationTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
     "::backdrop": { backgroundColor: "transparent" },
+    // Over the window's drag strip, it is moved by its own bar, not the window by it.
+    WebkitAppRegion: "no-drag",
   },
   // Its title bar moves it.
   bar: {
