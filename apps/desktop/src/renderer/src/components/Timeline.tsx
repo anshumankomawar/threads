@@ -23,8 +23,9 @@ const TABLE = 260;
 const ROW = 36;
 const BAR = 26;
 const HEAD = 30;
-// The bar's padding either side of its title: a title that doesn't fit goes beside it.
+// Where a bar's title starts in it (a short bar's runs on past its end), and the gap before its due date.
 const PAD = 10;
+const GAP = 8;
 
 const startOfDay = (date: Date | number): number => new Date(date).setHours(0, 0, 0, 0);
 const addDays = (time: number, days: number): number => {
@@ -54,7 +55,7 @@ const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
 const LONG_MONTH_YEAR = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
-// How wide a title is on a bar (its font: the body size, medium weight).
+// How wide a title is on a bar (its font: the body size, medium weight), so its due date can follow it.
 const measure = document.createElement("canvas").getContext("2d")!;
 const titleWidth = (title: string): number => {
   measure.font = `500 12px ${getComputedStyle(document.body).fontFamily}`;
@@ -179,7 +180,9 @@ export function Timeline(): JSX.Element {
       const left = x(from);
       return { left, width: Math.max(day(), x(to) - left), open: ongoing };
     };
-    const roomy = (): boolean => bar().width >= titleWidth(t().title) + 2 * PAD;
+    // The due date after the bar, or after its title when that runs on further.
+    const dueAt = (): number =>
+      Math.max(bar().left + bar().width, bar().left + PAD + titleWidth(t().title)) + GAP;
     const due = (): string | undefined => {
       const d = dueDay(t());
       return d === undefined || !(overdue(t()) || dragging()?.thread === t())
@@ -206,9 +209,6 @@ export function Timeline(): JSX.Element {
             )}
             style={{ left: `${bar().left}px`, width: `${bar().width}px` }}
           >
-            <Show when={roomy()}>
-              <span class={sx(styles.barTitle)}>{t().title}</span>
-            </Show>
             <span
               class={sx(styles.handle)}
               aria-label="Change the due date"
@@ -216,15 +216,22 @@ export function Timeline(): JSX.Element {
               onClick={(e) => e.stopPropagation()}
             />
           </div>
-          {/* Beside the bar: its title when it's too short to hold it, and its due date when it's passed (or moving). */}
-          <span class={sx(styles.beside)} style={{ left: `${bar().left + bar().width + 8}px` }}>
-            <Show when={!roomy()}>
-              <span>{t().title}</span>
-            </Show>
-            <Show when={due()}>
-              <span class={sx(overdue(t()) && styles.overdue)}>{due()}</span>
-            </Show>
+          {/* Its title, starting on the bar and running on past a short one's end. */}
+          <span
+            class={sx(styles.title, t().state === "resolved" && styles.titleResolved)}
+            style={{ left: `${bar().left + PAD}px` }}
+          >
+            {t().title}
           </span>
+          {/* Its due date, when it's passed (or the end's being dragged). */}
+          <Show when={due()}>
+            <span
+              class={sx(styles.beside, overdue(t()) && styles.overdue)}
+              style={{ left: `${dueAt()}px` }}
+            >
+              {due()}
+            </span>
+          </Show>
         </div>
       </div>
     );
@@ -413,11 +420,7 @@ const styles = stylex.create({
     position: "absolute",
     top: (ROW - BAR) / 2,
     zIndex: 1,
-    display: "flex",
-    alignItems: "center",
     height: BAR,
-    padding: `0 ${PAD}px`,
-    overflow: "hidden",
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.raisedBorder,
@@ -431,13 +434,21 @@ const styles = stylex.create({
     borderRightWidth: 0,
     maskImage: "linear-gradient(to right, black 70%, transparent)",
   },
-  barTitle: {
-    overflow: "hidden",
+  title: {
+    position: "absolute",
+    top: 0,
+    zIndex: 1,
+    display: "flex",
+    alignItems: "center",
+    height: ROW,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     fontWeight: 500,
     whiteSpace: "nowrap",
+    pointerEvents: "none",
   },
+  titleResolved: { color: colors.textTertiary },
+
   // The bar's end, to drag its due date by.
   handle: {
     position: "absolute",
