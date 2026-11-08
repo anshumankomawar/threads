@@ -4,7 +4,7 @@ import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Zoom } from "../mail";
-import { edit, lastActive, peek, peeked, setDialog, showMenu, threadMenu } from "../session";
+import { edit, lastActive, peek, peeked, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
 import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
@@ -15,7 +15,7 @@ import { MenuChip } from "./Menus";
 // short card's runs on past its end). Without a start a card starts when the thread was created; without a due date it
 // runs on to today (or, resolved, to its last activity) and fades out. A card drags along the days (both dates move)
 // and either edge resizes it, its dates shown beside it as it goes; a click opens the thread in the floating view. A
-// row whose card is out of view has an arrow at the edge that brings it in.
+// row whose card is out of view has an arrow at the edge that brings it in. (New is in the query bar over it.)
 
 const DAY_MS = 86_400_000;
 // A day's width at each scale.
@@ -374,16 +374,6 @@ export function Timeline(): JSX.Element {
                 </>
               )}
             </For>
-            {/* A new thread, at the foot as Notion's New is. */}
-            <div class={sx(styles.newRow)}>
-              <button
-                class={sx(base.bare, base.hover, styles.new)}
-                onClick={() => setDialog({ kind: "newThread" })}
-              >
-                <Icon icon={i.Add01Icon} size={14} aria-hidden="true" />
-                New
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -575,26 +565,6 @@ const styles = stylex.create({
     borderRadius: 6,
     color: colors.textSecondary,
     backgroundColor: colors.raised,
-    cursor: "pointer",
-  },
-  newRow: {
-    position: "sticky",
-    left: 0,
-    display: "flex",
-    width: "max-content",
-    height: ROW,
-    alignItems: "center",
-  },
-  new: {
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    height: 26,
-    marginLeft: 10,
-    padding: "0 8px",
-    borderRadius: 6,
-    color: colors.textTertiary,
-    fontSize: fontSizes.body,
     cursor: "pointer",
   },
 });

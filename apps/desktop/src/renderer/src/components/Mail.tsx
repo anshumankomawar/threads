@@ -54,7 +54,7 @@ import {
 import { bucketIcons } from "../bucketIcons";
 import { describe, FIELDS, subspacesIn } from "../filters";
 import { base } from "../styles/base";
-import { topbar } from "../styles/controls";
+import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
@@ -1030,7 +1030,7 @@ export const displayMenu = (): MenuItem[] => [
 ];
 
 // The query over the list, in a bar above it: its filters (each a pill that removes itself; more from Filter), saving
-// them as a view, and how it's grouped and ordered. Always over a timeline; over a list while it's filtered.
+// them as a view, how it's grouped and ordered, and New. Always over a timeline; over a list while it's filtered.
 function QueryBar(): JSX.Element {
   return (
     <div class={sx(s.query)}>
@@ -1090,6 +1090,20 @@ function QueryBar(): JSX.Element {
         label={ORDERS[display().order ?? "updated"]}
         items={orderItems()}
       />
+      {/* The one main action here, as Notion's New: a thread in this list (its space or label). */}
+      <button
+        class={sx(base.bare, button.solid, s.queryNew)}
+        onClick={() =>
+          setDialog({
+            kind: "newThread",
+            subspaceId:
+              mailbox().kind === "subspace" ? (mailbox() as { id: string }).id : undefined,
+            labelId: mailbox().kind === "label" ? (mailbox() as { id: string }).id : undefined,
+          })
+        }
+      >
+        New
+      </button>
     </div>
   );
 }
@@ -1509,6 +1523,8 @@ const s = stylex.create({
     borderBottomColor: colors.strokeTertiary,
   },
   querySpacer: { flex: 1 },
+  // As tall as the chips beside it.
+  queryNew: { height: 22, marginLeft: 4, padding: "0 10px" },
   listScroll: {
     position: "relative",
     isolation: "isolate",
