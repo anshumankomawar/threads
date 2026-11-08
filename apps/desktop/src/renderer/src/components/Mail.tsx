@@ -1452,6 +1452,7 @@ const s = stylex.create({
     padding: 3.64,
     borderRadius: radii.pill,
     backgroundColor: colors.barFill,
+    backgroundImage: colors.barSheen,
     boxShadow: colors.barRim,
     WebkitAppRegion: "no-drag",
   },
