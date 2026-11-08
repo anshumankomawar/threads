@@ -23,7 +23,7 @@ import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
 import { peekMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { colors, motion, radii } from "../styles/tokens.stylex";
+import { colors, layers, motion, radii } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
 import { PersonView } from "./Pages";
 import { ThreadView } from "./ThreadView";
@@ -57,7 +57,13 @@ const styles = stylex.create({
     animationDuration: "160ms",
     animationTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
     "::backdrop": { backgroundColor: "transparent" },
-    // Over the window's drag strip, it is moved by its own bar, not the window by it.
+  },
+  // Where it is, cut out of the window's drag strip, so its bar moves it there and not the window. Not on the window
+  // itself: as a popover it's in the top layer, and there a no-drag stops the window dragging anywhere.
+  hole: {
+    position: "fixed",
+    zIndex: layers.titlebar,
+    pointerEvents: "none",
     WebkitAppRegion: "no-drag",
   },
   // Its title bar moves it.
@@ -182,134 +188,140 @@ export function Peek(): JSX.Element {
     if (active()) setSplit(thread);
     else open({ thread });
   };
+  const at = (): JSX.CSSProperties => ({
+    left: `${shownFrame().x}px`,
+    top: `${shownFrame().y}px`,
+    width: `${shownFrame().w}px`,
+    height: `${shownFrame().h}px`,
+  });
   return (
-    <div
-      ref={(el) => {
-        window = el;
-        // A manual popover, as a window is: a menu opened in it doesn't close it, and neither does working in the app
-        // beside it. It closes from its × or Escape (in it, or in the app with nothing else open).
-        document.addEventListener("keydown", (event) => {
-          if (event.key !== "Escape" || event.defaultPrevented || !el.matches(":popover-open"))
-            return;
-          if (el.contains(event.target as Node)) return;
-          if ((event.target as Element).closest?.("input, textarea, [contenteditable='true']"))
-            return;
-          if (document.querySelector(":popover-open:not([data-peek]), dialog[open]")) return;
-          event.preventDefault();
-          close();
-        });
-        // Open while there's something to peek at; a link inside it replaces what's shown.
-        createEffect(peeked, (shown) => {
-          // Taking the focus, so Escape and the keys are its, not the reply's behind it.
-          if (shown && !el.matches(":popover-open")) {
-            el.showPopover();
-            el.focus();
-          } else if (!shown && el.matches(":popover-open")) el.hidePopover();
-        });
-      }}
-      popover="manual"
-      data-peek
-      tabindex={-1}
-      class={sx(styles.window)}
-      style={{
-        left: `${shownFrame().x}px`,
-        top: `${shownFrame().y}px`,
-        width: `${shownFrame().w}px`,
-        height: `${shownFrame().h}px`,
-      }}
-      role="dialog"
-      aria-label={peeked() ? titleOf(peeked()!) : undefined}
-      onToggle={(event) => event.newState === "closed" && peek(null)}
-      // Back and forward (⌘[ ⌘] as rebound) go through what you've peeked at, not the app behind it.
-      onKeyDown={(event) => {
-        // Escape closes it, once whatever's open over it (a menu, the reply's) has had it.
-        if (event.key === "Escape") {
-          if (event.defaultPrevented || document.querySelector(":popover-open:not([data-peek])"))
-            return;
-          event.preventDefault();
-          return close();
-        }
-        const id = commandFor(keysOf(event) ?? "");
-        if (id === "back") peekBack();
-        else if (id === "forward") peekForward();
-        else return;
-        event.preventDefault();
-      }}
-    >
-      <Show when={peeked()} keyed>
-        {(shown) => (
-          <>
-            <For each={EDGES}>
-              {(edge) => (
-                <span
-                  class={sx(styles.edge, styles[edge])}
-                  onPointerDown={grab(edge)}
-                  aria-hidden="true"
-                />
-              )}
-            </For>
-            <div data-bar class={sx(topbar.bar, styles.bar)} onPointerDown={grab("move")}>
-              <button
-                class={sx(topbar.button)}
-                aria-label="Back"
-                title={`Back (${keysFor("back")})`}
-                disabled={!canPeekBack()}
-                onClick={peekBack}
-              >
-                <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
-              </button>
-              <button
-                class={sx(topbar.button, styles.lastNav)}
-                aria-label="Forward"
-                title={`Forward (${keysFor("forward")})`}
-                disabled={!canPeekForward()}
-                onClick={peekForward}
-              >
-                <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
-              </button>
-              <span class={sx(base.ellipsis, topbar.title, styles.title)}>{titleOf(shown)}</span>
-              <Show when={"thread" in shown && shown.thread}>
-                {(thread) => (
-                  <button
-                    class={sx(topbar.button)}
-                    aria-label="Split beside"
-                    title="Split beside"
-                    onClick={() => split(thread())}
-                  >
-                    <Icon icon={i.LayoutTwoColumnIcon} size={14} aria-hidden="true" />
-                  </button>
-                )}
-              </Show>
-              <button
-                class={sx(topbar.button)}
-                aria-label="Expand"
-                title="Expand"
-                onClick={() => expand(shown)}
-              >
-                <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
-              </button>
-              <button
-                class={sx(topbar.button)}
-                aria-label="Close"
-                title="Close (Esc)"
-                onClick={close}
-              >
-                <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
-              </button>
-            </div>
-            <div {...stylex.attrs(styles.body, peekMarker)}>
-              <Switch>
-                <Match when={"thread" in shown && store.findById(Thread, shown.thread)} keyed>
-                  {(thread) => <ThreadView thread={thread} autofocus={false} />}
-                </Match>
-                <Match when={"person" in shown && store.findById(User, shown.person)} keyed>
-                  {(user) => <PersonView user={user} />}
-                </Match>
-              </Switch>
-            </div>
-          </>
-        )}
+    <>
+      <Show when={peeked()}>
+        <div aria-hidden="true" class={sx(styles.hole)} style={at()} />
       </Show>
-    </div>
+      <div
+        ref={(el) => {
+          window = el;
+          // A manual popover, as a window is: a menu opened in it doesn't close it, and neither does working in the app
+          // beside it. It closes from its × or Escape (in it, or in the app with nothing else open).
+          document.addEventListener("keydown", (event) => {
+            if (event.key !== "Escape" || event.defaultPrevented || !el.matches(":popover-open"))
+              return;
+            if (el.contains(event.target as Node)) return;
+            if ((event.target as Element).closest?.("input, textarea, [contenteditable='true']"))
+              return;
+            if (document.querySelector(":popover-open:not([data-peek]), dialog[open]")) return;
+            event.preventDefault();
+            close();
+          });
+          // Open while there's something to peek at; a link inside it replaces what's shown.
+          createEffect(peeked, (shown) => {
+            // Taking the focus, so Escape and the keys are its, not the reply's behind it.
+            if (shown && !el.matches(":popover-open")) {
+              el.showPopover();
+              el.focus();
+            } else if (!shown && el.matches(":popover-open")) el.hidePopover();
+          });
+        }}
+        popover="manual"
+        data-peek
+        tabindex={-1}
+        class={sx(styles.window)}
+        style={at()}
+        role="dialog"
+        aria-label={peeked() ? titleOf(peeked()!) : undefined}
+        onToggle={(event) => event.newState === "closed" && peek(null)}
+        // Back and forward (⌘[ ⌘] as rebound) go through what you've peeked at, not the app behind it.
+        onKeyDown={(event) => {
+          // Escape closes it, once whatever's open over it (a menu, the reply's) has had it.
+          if (event.key === "Escape") {
+            if (event.defaultPrevented || document.querySelector(":popover-open:not([data-peek])"))
+              return;
+            event.preventDefault();
+            return close();
+          }
+          const id = commandFor(keysOf(event) ?? "");
+          if (id === "back") peekBack();
+          else if (id === "forward") peekForward();
+          else return;
+          event.preventDefault();
+        }}
+      >
+        <Show when={peeked()} keyed>
+          {(shown) => (
+            <>
+              <For each={EDGES}>
+                {(edge) => (
+                  <span
+                    class={sx(styles.edge, styles[edge])}
+                    onPointerDown={grab(edge)}
+                    aria-hidden="true"
+                  />
+                )}
+              </For>
+              <div data-bar class={sx(topbar.bar, styles.bar)} onPointerDown={grab("move")}>
+                <button
+                  class={sx(topbar.button)}
+                  aria-label="Back"
+                  title={`Back (${keysFor("back")})`}
+                  disabled={!canPeekBack()}
+                  onClick={peekBack}
+                >
+                  <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
+                </button>
+                <button
+                  class={sx(topbar.button, styles.lastNav)}
+                  aria-label="Forward"
+                  title={`Forward (${keysFor("forward")})`}
+                  disabled={!canPeekForward()}
+                  onClick={peekForward}
+                >
+                  <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
+                </button>
+                <span class={sx(base.ellipsis, topbar.title, styles.title)}>{titleOf(shown)}</span>
+                <Show when={"thread" in shown && shown.thread}>
+                  {(thread) => (
+                    <button
+                      class={sx(topbar.button)}
+                      aria-label="Split beside"
+                      title="Split beside"
+                      onClick={() => split(thread())}
+                    >
+                      <Icon icon={i.LayoutTwoColumnIcon} size={14} aria-hidden="true" />
+                    </button>
+                  )}
+                </Show>
+                <button
+                  class={sx(topbar.button)}
+                  aria-label="Expand"
+                  title="Expand"
+                  onClick={() => expand(shown)}
+                >
+                  <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
+                </button>
+                <button
+                  class={sx(topbar.button)}
+                  aria-label="Close"
+                  title="Close (Esc)"
+                  onClick={close}
+                >
+                  <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
+                </button>
+              </div>
+              <div {...stylex.attrs(styles.body, peekMarker)}>
+                <Switch>
+                  <Match when={"thread" in shown && store.findById(Thread, shown.thread)} keyed>
+                    {(thread) => <ThreadView thread={thread} autofocus={false} />}
+                  </Match>
+                  <Match when={"person" in shown && store.findById(User, shown.person)} keyed>
+                    {(user) => <PersonView user={user} />}
+                  </Match>
+                </Switch>
+              </div>
+            </>
+          )}
+        </Show>
+      </div>
+    </>
   );
 }
