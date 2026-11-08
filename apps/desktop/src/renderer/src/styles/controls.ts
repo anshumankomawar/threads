@@ -135,25 +135,92 @@ export const menu = stylex.create({
   },
 });
 
+// What's new in a pill (a thread's actions as one opens) comes in out of a blur, as it grows to them.
+const barIn = stylex.keyframes({
+  from: { opacity: 0, filter: "blur(6px)", transform: "scale(0.85)" },
+});
+
+// The top bar, as roomy as macOS's toolbar (52pt) with its buttons as an iOS app's: 36pt rounds and pills, flat and a
+// step above the ground. Each size is its points ÷ 1.1, for the renderer's 110% scale.
+const SLOT = 32.73;
 export const topbar = stylex.create({
-  bar: { display: "flex", flexShrink: 0, alignItems: "center", gap: 2.5, height: 34 },
+  bar: { display: "flex", flexShrink: 0, gap: 7.27, alignItems: "center", height: 47.27 },
+  // A button on its own: a round.
   button: {
     display: "flex",
+    flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
-    width: 22,
-    height: 22,
+    width: SLOT,
+    height: SLOT,
     padding: 0,
     borderStyle: "none",
-    borderRadius: radii.row,
+    borderRadius: radii.pill,
     color: colors.textPrimary,
-    backgroundColor: { default: "transparent", ":hover:not(:disabled)": colors.bgTertiary },
+    backgroundColor: colors.barFill,
+    boxShadow: colors.barRim,
     cursor: { default: "pointer", ":disabled": "default" },
     opacity: { default: 1, ":disabled": 0.35 },
+    transform: { default: null, ":active:not(:disabled)": "scale(0.92)" },
+    transitionProperty: "transform",
+    transitionDuration: "120ms",
     WebkitAppRegion: "no-drag",
   },
+  // Buttons that belong together, in one pill that springs to fit what's in it.
+  group: {
+    display: "flex",
+    flexShrink: 0,
+    justifyContent: "flex-end",
+    height: SLOT,
+    overflow: "hidden",
+    borderRadius: radii.pill,
+    backgroundColor: colors.barFill,
+    boxShadow: colors.barRim,
+    transitionProperty: { default: "width", [motion.reduced]: "none" },
+    transitionDuration: "340ms",
+    transitionTimingFunction: "cubic-bezier(0.34, 1.32, 0.64, 1)",
+    WebkitAppRegion: "no-drag",
+  },
+  groupInner: {
+    display: "flex",
+    flexShrink: 0,
+    alignItems: "center",
+    width: "max-content",
+    height: "100%",
+    padding: "0 2px",
+  },
+  groupContent: { display: "flex", alignItems: "center" },
+  // Content that's just come into a pill.
+  enter: {
+    animationName: { default: barIn, [motion.reduced]: "none" },
+    animationDuration: "260ms",
+    animationTimingFunction: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+  },
+  // A button in a pill: no fill of its own.
+  groupButton: {
+    display: "flex",
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    width: SLOT + 2,
+    height: SLOT,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: radii.pill,
+    color: colors.textPrimary,
+    backgroundColor: "transparent",
+    cursor: { default: "pointer", ":disabled": "default" },
+    opacity: { default: 1, ":active:not(:disabled)": 0.6, ":disabled": 0.35 },
+  },
   title: { color: colors.textSecondary },
-  end: { display: "flex", flexShrink: 0, gap: 2.5, marginLeft: "auto", paddingRight: 8 },
+  end: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 7.27,
+    alignItems: "center",
+    marginLeft: "auto",
+    paddingRight: 10.91,
+  },
 });
 
 export const link = stylex.create({

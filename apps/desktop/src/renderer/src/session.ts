@@ -436,7 +436,7 @@ function markUndone(item: InboxItem): void {
   });
 }
 
-function markDone(item: InboxItem): void {
+export function markDone(item: InboxItem): void {
   if (active() === item.thread) moveOn(item.thread);
   item.doneAt = new Date();
   item.save();

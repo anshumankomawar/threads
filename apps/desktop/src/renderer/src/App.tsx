@@ -12,6 +12,8 @@ import {
   setSplit,
   sidebarOpen,
   signedIn,
+  canGoBack,
+  goBack,
   source,
   SOURCES,
   split,
@@ -41,7 +43,7 @@ import {
   SettingsView,
   SubspaceView,
 } from "./components/Pages";
-import { SearchField } from "./components/TopButtons";
+import { Pill, SearchButton } from "./components/TopButtons";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
@@ -165,16 +167,30 @@ export default function App(): JSX.Element {
                 </div>
               )}
             </Show>
-            {/* As the macOS app's toolbar: the thread's ⋯ first, the search field at the far end. */}
+            {/* As an iOS app's toolbar: back on the left while a thread's open; on the right one pill, search alone or
+                the thread's actions before it, springing between them as a thread opens. */}
             <div data-bar class={sx(topbar.bar, styles.topbarBesideList)}>
-              <Show when={active()} keyed>
-                {(thread) => <ThreadActions thread={thread} />}
+              <Show when={active()}>
+                <button
+                  class={sx(topbar.button, topbar.enter)}
+                  aria-label="Back (⌘[)"
+                  title="Back (⌘[)"
+                  disabled={!canGoBack()}
+                  onClick={goBack}
+                >
+                  <Icon icon={i.ArrowLeft01Icon} size={15} aria-hidden="true" />
+                </button>
               </Show>
               <span class={sx(topbar.end)}>
                 <Show when={store.connection() === "offline"}>
                   <span class={sx(styles.offline)}>Offline</span>
                 </Show>
-                <SearchField />
+                <Pill content={active()?.id ?? "none"}>
+                  <Show when={active()} keyed>
+                    {(thread) => <ThreadActions thread={thread} />}
+                  </Show>
+                  <SearchButton />
+                </Pill>
               </span>
             </div>
             <Switch fallback={<NothingOpen />}>

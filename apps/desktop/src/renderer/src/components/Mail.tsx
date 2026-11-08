@@ -10,6 +10,8 @@ import {
   itemFor,
   edit,
   markAllRead,
+  markDone,
+  setState,
   menuFrom,
   me,
   myBuckets,
@@ -576,7 +578,7 @@ export function MailSidebar(): JSX.Element {
           <span class={sx(base.ellipsis)}>{me().name}</span>
         </button>
         <button
-          class={sx(topbar.button)}
+          class={sx(base.bare, s.footerButton)}
           aria-label="Settings"
           title="Settings (⌘,)"
           onClick={() => open({ settings: null })}
@@ -1079,35 +1081,43 @@ export function MessageList(): JSX.Element {
         <span class={sx(topbar.end)}>
           <Show when={filterable()}>
             <LayoutSwitch />
-            <MenuChip
-              look={topbar.button}
-              title="Display"
-              label={<Icon icon={i.SlidersHorizontalIcon} {...ICON} />}
-              items={displayMenu()}
-            />
           </Show>
-          <Show when={filterable()}>
-            <MenuChip
-              look={topbar.button}
-              title="Filter"
-              label={<Icon icon={i.FilterIcon} {...ICON} />}
-              items={filterItems()}
-            />
-          </Show>
-          <Show when={pageOf(mailbox())}>
-            {(page) => (
-              <button
-                class={sx(topbar.button)}
-                aria-label={pageLabel(mailbox())}
-                title={pageLabel(mailbox())}
-                onClick={() => open(page())}
-              >
-                <Icon
-                  icon={mailbox().kind === "person" ? i.InformationCircleIcon : i.Settings02Icon}
-                  {...ICON}
-                />
-              </button>
-            )}
+          <Show when={filterable() || pageOf(mailbox())}>
+            <span class={sx(topbar.group)}>
+              <span class={sx(topbar.groupInner)}>
+                <Show when={filterable()}>
+                  <MenuChip
+                    look={topbar.groupButton}
+                    title="Display"
+                    label={<Icon icon={i.SlidersHorizontalIcon} {...ICON} />}
+                    items={displayMenu()}
+                  />
+                  <MenuChip
+                    look={topbar.groupButton}
+                    title="Filter"
+                    label={<Icon icon={i.FilterIcon} {...ICON} />}
+                    items={filterItems()}
+                  />
+                </Show>
+                <Show when={pageOf(mailbox())}>
+                  {(page) => (
+                    <button
+                      class={sx(topbar.groupButton)}
+                      aria-label={pageLabel(mailbox())}
+                      title={pageLabel(mailbox())}
+                      onClick={() => open(page())}
+                    >
+                      <Icon
+                        icon={
+                          mailbox().kind === "person" ? i.InformationCircleIcon : i.Settings02Icon
+                        }
+                        {...ICON}
+                      />
+                    </button>
+                  )}
+                </Show>
+              </span>
+            </span>
           </Show>
           <button
             class={sx(topbar.button)}
@@ -1211,16 +1221,43 @@ export function NothingOpen(): JSX.Element {
 
 // ── The reading pane's toolbar: what you can do with the open thread ──
 
+// The open thread's actions, as buttons in the top bar's pill: done (when it's in your inbox), resolve, and the rest.
 export function ThreadActions(props: { thread: Thread }): JSX.Element {
+  const item = () => (inbox().order.includes(props.thread) ? itemFor(props.thread) : undefined);
   return (
-    <button
-      class={sx(topbar.button)}
-      aria-label="More"
-      title="More"
-      onClick={(e) => menuFrom(e.currentTarget, threadMenu(props.thread))}
-    >
-      <Icon icon={i.MoreHorizontalIcon} {...ICON} />
-    </button>
+    <>
+      <Show when={item()}>
+        {(it) => (
+          <button
+            class={sx(topbar.groupButton)}
+            aria-label="Mark Done"
+            title="Mark Done"
+            onClick={() => markDone(it())}
+          >
+            <Icon icon={i.InboxCheckIcon} {...ICON} />
+          </button>
+        )}
+      </Show>
+      <button
+        class={sx(topbar.groupButton)}
+        aria-label={props.thread.isOpen ? "Resolve for Everyone" : "Reopen"}
+        title={props.thread.isOpen ? "Resolve for Everyone" : "Reopen"}
+        onClick={() => setState(props.thread, props.thread.isOpen ? "resolved" : "open")}
+      >
+        <Icon
+          icon={props.thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon}
+          {...ICON}
+        />
+      </button>
+      <button
+        class={sx(topbar.groupButton)}
+        aria-label="More"
+        title="More"
+        onClick={(e) => menuFrom(e.currentTarget, threadMenu(props.thread))}
+      >
+        <Icon icon={i.MoreHorizontalIcon} {...ICON} />
+      </button>
+    </>
   );
 }
 
@@ -1380,26 +1417,38 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
+  // List or timeline, in a pill as the top bar's others, the chosen one on a round of its own.
   switch: {
     display: "flex",
+    flexShrink: 0,
     gap: 2,
-    padding: 2,
-    marginRight: 4,
+    alignItems: "center",
+    height: 32.73,
+    padding: 3,
     borderRadius: radii.pill,
-    backgroundColor: colors.bgQuaternary,
+    backgroundColor: colors.barFill,
+    boxShadow: colors.barRim,
     WebkitAppRegion: "no-drag",
   },
   switchOption: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 28,
-    height: 20,
+    width: 32.73,
+    height: "100%",
     borderRadius: radii.pill,
     color: colors.iconTertiary,
     cursor: "pointer",
   },
   switchOn: { color: colors.textPrimary, backgroundColor: colors.bgTertiary },
+  footerButton: {
+    display: "flex",
+    flexShrink: 0,
+    padding: 6,
+    borderRadius: radii.control,
+    color: colors.textSecondary,
+    cursor: "pointer",
+  },
   listBar: { paddingLeft: 16 },
   // A timeline alone (no thread open beside it) takes the room, with no edge to divide.
   listAlone: { flex: 1, borderRightWidth: 0 },
@@ -1409,9 +1458,10 @@ const s = stylex.create({
   hidden: { display: "none" },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
-  listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
-  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
-  listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
+  // Its name over how many are unread, as a macOS toolbar's title and subtitle: the name gets the width.
+  listHeading: { display: "flex", flexDirection: "column", minWidth: 0, lineHeight: 1.2 },
+  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 600 },
+  listSubtitle: { color: colors.textTertiary, fontSize: fontSizes.small },
   // The query bar: filters at the start, grouping and order at the end.
   query: {
     display: "flex",

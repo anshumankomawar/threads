@@ -11,7 +11,8 @@ const styles = stylex.create({
     right: 0,
     left: 0,
     zIndex: layers.titlebar,
-    height: 34,
+    // The top bar's height.
+    height: 47.27,
     pointerEvents: "none",
     WebkitAppRegion: "drag",
   },
