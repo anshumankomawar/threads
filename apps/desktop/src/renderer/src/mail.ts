@@ -2,7 +2,6 @@ import { createSignal } from "solid-js";
 import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
 import { matches, type Filter } from "sync";
 import {
-  active,
   edit,
   followOrder,
   inbox,
@@ -79,12 +78,12 @@ export function showMailbox(next: Mailbox): void {
   if (!sameMailbox(next, chosenNow)) setMailbox(next);
 }
 
-// Choosing a mailbox, as in Mail, leaves no thread open unless the one you're reading is in it; both are one step back.
+// Choosing a mailbox shows it: its list, and in the reading pane its page (a space's, a bucket's) or the scene, not
+// whatever thread was open before. Both are one step back.
 export function chooseMailbox(next: Mailbox): void {
   step(() => {
     setMailbox(next);
-    const reading = active();
-    if (reading && !listed().order.includes(reading)) open({ thread: null });
+    open({ thread: null });
   });
 }
 

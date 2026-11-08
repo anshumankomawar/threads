@@ -601,6 +601,7 @@ function hotkeyActions(
     previous: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
     done: free && current && toggleDone,
     reply: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
+    closeThread: reading && current && (() => open({ thread: null })),
     resolve: free && current && (() => setState(current, current.isOpen ? "resolved" : "open")),
     zoomIn: () => applyZoom(zoom() + 0.1),
     zoomOut: () => applyZoom(zoom() - 0.1),
@@ -615,7 +616,8 @@ export const hotkeyAction = (id: HotkeyId): (() => void) | undefined =>
   hotkeyActions(true, false)[id] || undefined;
 
 window.addEventListener("keydown", (event) => {
-  if (!signedIn()) return;
+  // Already handled (an Escape that closed Peek or a menu).
+  if (!signedIn() || event.defaultPrevented) return;
   const target = event.target as HTMLElement;
   // A form grown out of the sidebar or a menu keeps its keys (InlineForm).
   if (target.closest("[data-holds-keys]")) return;

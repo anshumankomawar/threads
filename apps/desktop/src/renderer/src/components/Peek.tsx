@@ -193,6 +193,7 @@ export function Peek(): JSX.Element {
           if ((event.target as Element).closest?.("input, textarea, [contenteditable='true']"))
             return;
           if (document.querySelector(":popover-open:not([data-peek]), dialog[open]")) return;
+          event.preventDefault();
           close();
         });
         // Open while there's something to peek at; a link inside it replaces what's shown.

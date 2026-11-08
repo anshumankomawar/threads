@@ -141,6 +141,7 @@ function threadCommands(thread: Thread): Command[] {
       thread.isOpen ? i.CheckmarkCircle02Icon : i.ArrowTurnBackwardIcon,
       "close finish",
     ),
+    ...hotkey("closeThread", "Close this thread", section, i.Cancel01Icon, "deselect leave"),
     ...hotkey("reply", "Reply to this thread", section, i.MailReply01Icon, "write message"),
     ...(item && thread.isOpen
       ? [

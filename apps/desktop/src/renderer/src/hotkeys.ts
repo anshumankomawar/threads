@@ -23,6 +23,7 @@ export const HOTKEYS = [
   { id: "previous", label: "Previous thread", section: "Inbox", keys: "K" },
   { id: "done", label: "Mark done", section: "Inbox", keys: "⌘E" },
   { id: "reply", label: "Reply", section: "Inbox", keys: "R" },
+  { id: "closeThread", label: "Close the thread", section: "Inbox", keys: "Esc" },
   { id: "resolve", label: "Resolve or reopen the thread", section: "Thread", keys: "⇧⌘E" },
   { id: "zoomIn", label: "Zoom in", section: "View", keys: "⌘=" },
   { id: "zoomOut", label: "Zoom out", section: "View", keys: "⌘-" },

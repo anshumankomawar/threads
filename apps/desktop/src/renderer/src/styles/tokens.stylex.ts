@@ -6,7 +6,7 @@ const LIGHT_BASE = "oklch(0.21 0 0)";
 const mix = (base: string, percent: number): string =>
   `color-mix(in srgb, ${base} ${percent}%, transparent)`;
 
-export const colors = stylex.defineVars({
+const DARK = {
   chrome: "oklch(0.191 0 0)",
   // The main area's ground: `chrome`, frosted over the window's vibrancy. The sidebar has `chrome` itself.
   frosted: mix("oklch(0.191 0 0)", 72),
@@ -37,7 +37,10 @@ export const colors = stylex.defineVars({
   // shadow has little to show against, and light on light.
   shadowPanel: "0 4px 12px rgb(0 0 0 / 28%)",
   shadowFloat: "0 8px 24px rgb(0 0 0 / 35%)",
-});
+};
+export const colors = stylex.defineVars(DARK);
+// Dark on any part of the app, whatever the theme: what sits on the empty pane's scene, which is dark either way.
+export const darkTheme = stylex.createTheme(colors, DARK);
 
 export const lightTheme = stylex.createTheme(colors, {
   chrome: "oklch(0.985 0 0)",
