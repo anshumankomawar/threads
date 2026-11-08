@@ -21,6 +21,11 @@ struct GlassWindow: NSViewRepresentable {
     window.backgroundColor = .clear
     window.isMovableByWindowBackground = true
     window.appearance = NSAppearance(named: .darkAqua)
+    // A floating window: above ordinary windows, on every Space, and not something a tiling manager lays out
+    // (AeroSpace also has a rule for it in ~/.config/aerospace/aerospace.toml, matched by the app's name).
+    window.level = .floating
+    window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    window.hidesOnDeactivate = false
   }
 }
 
