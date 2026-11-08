@@ -23,6 +23,7 @@ import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { icon, Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
+import { Tabs, type Tab } from "./Tabs";
 import { dot } from "./ThreadView";
 
 // The list as a timeline, after TeamGantt: the threads named down the left, and beside each its bar, a slim card with
@@ -167,20 +168,8 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   };
   // Those without a date: in a list from the toolbar, to be dragged onto a day or given one from their menu.
   const undated = (): Thread[] => [...new Set(listed().order)].filter((t) => !dated(t));
-  const [undatedOpen, setUndatedOpen] = createSignal(false);
-  // One being dragged from that list: where the pointer is, and the day under it on the timeline (if it's over it).
-  const [placing, setPlacing] = createSignal<{
-    thread: Thread;
-    x: number;
-    y: number;
-    day?: number;
-    top?: number;
-  } | null>(null);
-  let daysArea!: HTMLDivElement;
-  const place = (thread: Thread, date: Date, label: string): void => {
+  const place = (thread: Thread, date: Date, label: string): void =>
     edit(thread, { startAt: date, dueAt: date }, label);
-    setUndatedOpen(false);
-  };
   const from = (days: number): Date => new Date(addDays(today(), days));
   const dateMenu = (thread: Thread): MenuItem[] => [
     {
@@ -210,51 +199,13 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       run: () => peek({ thread: thread.id }),
     },
   ];
-  // A press on a row: dragged (once the pointer's moved) onto a day, it goes there; let go elsewhere, nothing; not
-  // moved, it opens.
-  const pressUndated = (thread: Thread, event: PointerEvent): void => {
-    if (event.button !== 0) return;
-    const row = event.currentTarget as HTMLElement;
-    row.setPointerCapture(event.pointerId);
-    const start = { x: event.clientX, y: event.clientY };
-    let moved = false;
-    const move = (e: PointerEvent): void => {
-      if (!moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < SLOP) return;
-      moved = true;
-      const box = daysArea.getBoundingClientRect();
-      const over =
-        e.clientX >= box.left &&
-        e.clientX <= box.right &&
-        e.clientY >= box.top &&
-        e.clientY <= box.bottom;
-      setPlacing({
-        thread,
-        x: e.clientX,
-        y: e.clientY,
-        day: over ? dayAt(e.clientX - box.left) : undefined,
-        top: over ? e.clientY - box.top - BAR / 2 : undefined,
-      });
-    };
-    const up = (): void => {
-      row.removeEventListener("pointermove", move);
-      const shown = placing();
-      setPlacing(null);
-      if (!moved) return peek({ thread: thread.id });
-      if (shown?.day !== undefined) place(thread, new Date(shown.day), "Place on Timeline");
-    };
-    row.addEventListener("pointermove", move);
-    row.addEventListener("pointerup", up, { once: true });
-  };
-  // The list closes on a press anywhere else (a menu from it, or the picker, aside).
-  createEffect(undatedOpen, (open) => {
-    if (!open) return;
-    const away = (e: PointerEvent): void => {
-      const at = e.target as Element;
-      if (!at.closest("[data-undated], [role=menu], [data-holds-keys]")) setUndatedOpen(false);
-    };
-    window.addEventListener("pointerdown", away, true);
-    return () => window.removeEventListener("pointerdown", away, true);
-  });
+  // The timeline, or those without dates: tabs on its toolbar, the one chosen kept.
+  const tabs: Tab[] = [
+    { label: "Timeline", icon: i.ChartBarDecreasingIcon },
+    { label: "Unscheduled", icon: i.InboxIcon, count: () => undated().length },
+  ];
+  const [tab, setTab] = createSignal(saved<string>("timeline-tab", "Timeline"));
+  const unscheduled = (): boolean => tab() === "Unscheduled";
   const height = (): number => (lines().at(-1)?.y ?? 0) + ROW + 24;
 
   const [drag, setDrag] = createSignal<Drag | null>(null);
@@ -479,82 +430,54 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     <div class={sx(styles.frame)}>
       {/* The month in view and the list's filters; its scale, today and a step either way; then New. */}
       <div class={sx(styles.toolbar)}>
-        <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
-        {props.start}
-        <Show when={undated().length > 0}>
-          <span class={sx(styles.undatedAnchor)} data-undated>
-            <button
-              class={sx(base.bare, base.hover, chip.chip, undatedOpen() && chip.open)}
-              onClick={() => setUndatedOpen(!undatedOpen())}
-            >
-              {undated().length} without dates
-              <Icon icon={i.ArrowDown01Icon} size={10} aria-hidden="true" />
-            </button>
-            <Show when={undatedOpen()}>
-              <div
-                class={sx(base.panel, styles.undatedPanel, placing() && styles.undatedPanelAway)}
-                role="list"
-                aria-label="Without dates"
-              >
-                <For each={undated()}>
-                  {(thread) => (
-                    <div
-                      class={sx(base.hover, styles.undatedRow)}
-                      role="listitem"
-                      onPointerDown={(e) => pressUndated(thread, e)}
-                      onContextMenu={(e) => showMenu(e, threadMenu(thread))}
-                    >
-                      <span class={sx(base.ellipsis, styles.undatedTitle)}>{thread.title}</span>
-                      <button
-                        class={sx(base.bare, base.hover, styles.undatedMore)}
-                        aria-label="Schedule"
-                        title="Schedule"
-                        onPointerDown={(e) => e.stopPropagation()}
-                        onClick={(e) => menuFrom(e.currentTarget, dateMenu(thread))}
-                      >
-                        <Icon icon={i.MoreHorizontalIcon} size={13} aria-hidden="true" />
-                      </button>
-                    </div>
-                  )}
-                </For>
-                <div class={sx(styles.undatedHint)}>Drag one onto a day to place it there</div>
-              </div>
-            </Show>
-          </span>
-        </Show>
-        <span class={sx(styles.toolbarSpacer)} />
-        <MenuChip
-          title="Zoom"
-          tone="muted"
-          label={ZOOMS[zoom()]}
-          items={(Object.keys(ZOOMS) as Zoom[]).map((z) => ({
-            label: ZOOMS[z],
-            checked: zoom() === z,
-            run: () => setDisplay({ zoom: z }),
-          }))}
+        <Tabs
+          label="Timeline or unscheduled"
+          tabs={tabs}
+          chosen={tabs.find((t) => t.label === tab()) ?? tabs[0]}
+          onChoose={(t) => {
+            setTab(t.label);
+            save("timeline-tab", t.label);
+          }}
         />
-        <button
-          class={sx(base.bare, base.hover, styles.step)}
-          aria-label="Back"
-          onClick={() => step(-1)}
-        >
-          <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
-        </button>
-        <button class={sx(base.bare, base.hover, chip.chip)} onClick={scrollToToday}>
-          Today
-        </button>
-        <button
-          class={sx(base.bare, base.hover, styles.step)}
-          aria-label="On"
-          onClick={() => step(1)}
-        >
-          <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
-        </button>
+        <Show when={!unscheduled()}>
+          <span class={sx(styles.shownMonth)}>{shownMonth()}</span>
+        </Show>
+        {props.start}
+        <span class={sx(styles.toolbarSpacer)} />
+        <Show when={!unscheduled()}>
+          <MenuChip
+            title="Zoom"
+            tone="muted"
+            label={ZOOMS[zoom()]}
+            items={(Object.keys(ZOOMS) as Zoom[]).map((z) => ({
+              label: ZOOMS[z],
+              checked: zoom() === z,
+              run: () => setDisplay({ zoom: z }),
+            }))}
+          />
+          <button
+            class={sx(base.bare, base.hover, styles.step)}
+            aria-label="Back"
+            onClick={() => step(-1)}
+          >
+            <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
+          </button>
+          <button class={sx(base.bare, base.hover, chip.chip)} onClick={scrollToToday}>
+            Today
+          </button>
+          <button
+            class={sx(base.bare, base.hover, styles.step)}
+            aria-label="On"
+            onClick={() => step(1)}
+          >
+            <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
+          </button>
+        </Show>
         {props.end}
       </div>
       <div
         ref={scroller}
-        class={sx(styles.timeline)}
+        class={sx(styles.timeline, unscheduled() && styles.away)}
         onScroll={() => setScrolled(scroller.scrollLeft)}
       >
         <div class={sx(styles.content)} style={{ width: `${names() + width()}px` }}>
@@ -630,16 +553,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
                 }
               </For>
             </div>
-            <div ref={daysArea} class={sx(styles.days)} style={area()}>
-              {/* Where a thread dragged from those without dates would go: a day under the pointer. */}
-              <Show when={placing()?.day !== undefined && placing()}>
-                {(p) => (
-                  <span
-                    class={sx(styles.ghost)}
-                    style={{ top: `${p().top}px`, left: `${x(p().day!)}px`, width: `${day()}px` }}
-                  />
-                )}
-              </Show>
+            <div class={sx(styles.days)} style={area()}>
               {/* A dashed line at each month's start, and a fine one at today, as Linear's. */}
               <For each={months().slice(1)}>
                 {(month) => (
@@ -682,15 +596,37 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
           </div>
         </div>
       </div>
-      <Show when={placing()}>
-        {(p) => (
-          <span
-            class={sx(base.panel, base.ellipsis, styles.dragged)}
-            style={{ left: `${p().x}px`, top: `${p().y}px` }}
+      {/* Those without dates: each opens as it's clicked, and its Schedule gives it a day (it moves to the
+          timeline). */}
+      <Show when={unscheduled()}>
+        <div class={sx(styles.backlog)}>
+          <For
+            each={undated()}
+            fallback={<p class={sx(styles.backlogEmpty)}>Everything here has a date.</p>}
           >
-            {p().thread.title}
-          </span>
-        )}
+            {(thread) => (
+              <div class={sx(styles.backlogRow)}>
+                <button
+                  class={sx(base.bare, styles.backlogTitle)}
+                  onClick={() => peek({ thread: thread.id })}
+                  onContextMenu={(e) => showMenu(e, threadMenu(thread))}
+                >
+                  <Show when={thread.owner}>
+                    {(owner) => <Identicon seed={owner().id} size={16} />}
+                  </Show>
+                  <span class={sx(base.ellipsis)}>{thread.title}</span>
+                </button>
+                <button
+                  class={sx(base.bare, base.hover, chip.chip)}
+                  onClick={(e) => menuFrom(e.currentTarget, dateMenu(thread))}
+                >
+                  <Icon icon={i.Calendar03Icon} size={12} aria-hidden="true" />
+                  Schedule
+                </button>
+              </div>
+            )}
+          </For>
+        </div>
       </Show>
     </div>
   );
@@ -712,54 +648,29 @@ function pickDate(pick: (date: Date) => void): void {
 
 const styles = stylex.create({
   frame: { display: "flex", flex: 1, flexDirection: "column", minHeight: 0 },
-  // Those without dates: a chip on the toolbar, and the list it opens under it.
-  undatedAnchor: { position: "relative" },
-  undatedPanel: {
-    position: "absolute",
-    top: "calc(100% + 4px)",
-    left: 0,
-    zIndex: 10,
-    width: 280,
-    maxHeight: 320,
-    overflowY: "auto",
-    padding: 4,
-  },
-  // Out of sight while one of its rows is dragged (it stays, holding the drag).
-  undatedPanelAway: { visibility: "hidden" },
-  undatedRow: {
+  // The grid while the unscheduled tab's shown: kept, out of sight.
+  away: { display: "none" },
+  // Those without dates, as the sidebar's rows: 30pt, 8pt in, 13pt names.
+  backlog: { flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 7.27px 10.91px" },
+  backlogRow: {
     display: "flex",
-    gap: 6,
+    gap: 8,
     alignItems: "center",
-    height: 27.27,
-    padding: "0 4px 0 7.27px",
-    borderRadius: 7.27,
+    height: 29.09,
+    padding: "0 7.27px",
+  },
+  backlogTitle: {
+    display: "flex",
+    flex: 1,
+    gap: 8,
+    alignItems: "center",
+    minWidth: 0,
     color: colors.textPrimary,
     fontSize: 11.82,
-    cursor: "grab",
-    userSelect: "none",
-  },
-  undatedTitle: { flex: 1, minWidth: 0 },
-  undatedMore: {
-    display: "flex",
-    flexShrink: 0,
-    padding: 3,
-    borderRadius: 5,
-    color: colors.textTertiary,
+    textAlign: "left",
     cursor: "pointer",
   },
-  undatedHint: { padding: "6px 7.27px 4px", color: colors.textTertiary, fontSize: 10 },
-  // What's dragged, by the pointer.
-  dragged: {
-    position: "fixed",
-    zIndex: 100,
-    maxWidth: 240,
-    padding: "3px 8px",
-    borderRadius: 7.27,
-    color: colors.textPrimary,
-    fontSize: 11.82,
-    pointerEvents: "none",
-    transform: "translate(10px, 10px)",
-  },
+  backlogEmpty: { padding: "24px 7.27px", color: colors.textTertiary },
   toolbar: {
     display: "flex",
     flexShrink: 0,
