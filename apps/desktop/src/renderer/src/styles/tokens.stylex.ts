@@ -26,6 +26,10 @@ const DARK = {
   // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
   raised: "#2b2b2b",
   raisedBorder: "#383838",
+  // A timeline's bars, by status, in TeamGantt's muted tones: open, blocked, resolved.
+  barOpen: "#5f93b4",
+  barBlocked: "#c47d5d",
+  barDone: "#64907a",
   accent: "#78aee7",
   accentFill: "#1f252c",
   // Solid buttons (a table view's New): Notion's blue, in both themes.
@@ -61,6 +65,9 @@ export const lightTheme = stylex.createTheme(colors, {
   panelSelected: "#f3f3f1",
   raised: "#ffffff",
   raisedBorder: "#dcdcd9",
+  barOpen: "#3f7697",
+  barBlocked: "#b0664a",
+  barDone: "#42715a",
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
   primary: "rgb(35 131 226)",
