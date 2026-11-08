@@ -5,7 +5,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
 import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
-import { edit, lastActive, peek, peeked, showMenu, threadMenu } from "../session";
+import { edit, lastActive, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
 import { chip } from "../styles/controls";
 import { sx } from "../styles/sx";
@@ -13,9 +13,10 @@ import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
+import { dot } from "./ThreadView";
 
-// The list as a timeline, after TeamGantt: the threads named down the left, and beside each its bar, slim and solid in
-// its status's color, from its start to its due date, its owner just past its end. A thread with branches fills its
+// The list as a timeline, after TeamGantt: the threads named down the left, and beside each its bar, a slim card with
+// its status's dot, from its start to its due date, its owner just past its end. A thread with branches fills its
 // bar as far as they're resolved. A thread that blocks another is joined to it by an elbow. A group's row has a
 // summary bar over all of its threads. Bars drag along the days (both dates move) and resize by either edge, a dashed
 // outline left where they were and the days moved shown over them; a click opens the thread in the floating view.
@@ -24,10 +25,10 @@ import { MenuChip } from "./Menus";
 const DAY_MS = 86_400_000;
 // A day's width at each scale.
 const DAY: Record<Zoom, number> = { weeks: 34, months: 12, quarters: 4 };
-// The names' column, a row, a bar, a group's row, and the heading (months over days).
-const NAMES = 240;
+// The names' column (as wide as it was left, within these), a row, a bar, a group's row, and the heading.
+const NAMES = { initial: 240, min: 160, max: 480 };
 const ROW = 34;
-const BAR = 20;
+const BAR = 22;
 const GROUP = 34;
 const HEAD = 48;
 const TOP = 6;
@@ -69,6 +70,25 @@ type Drag = { thread: Thread; kind: "move" | "start" | "end"; days: number };
 type Line = { y: number } & ({ group: Group } | { thread: Thread });
 
 export function Timeline(): JSX.Element {
+  // The names' width, dragged by the edge on its right (a double click puts it back).
+  const clamp = (px: number): number => Math.min(NAMES.max, Math.max(NAMES.min, Math.round(px)));
+  const [names, setNames] = createSignal(clamp(saved("timeline-names", NAMES.initial)));
+  const resizeNames = (event: PointerEvent): void => {
+    const edge = event.currentTarget as HTMLElement;
+    edge.setPointerCapture(event.pointerId);
+    const start = event.clientX;
+    const from = names();
+    const move = (e: PointerEvent): void => void setNames(clamp(from + e.clientX - start));
+    edge.addEventListener("pointermove", move);
+    edge.addEventListener(
+      "pointerup",
+      () => {
+        edge.removeEventListener("pointermove", move);
+        save("timeline-names", names());
+      },
+      { once: true },
+    );
+  };
   const zoom = (): Zoom => display().zoom ?? "weeks";
   const day = (): number => DAY[zoom()];
   const today = (): number => startOfDay(Date.now());
@@ -198,13 +218,13 @@ export function Timeline(): JSX.Element {
 
   let scroller!: HTMLDivElement;
   const scrollToToday = (): void => {
-    scroller.scrollTo({ left: Math.max(0, x(today()) - (scroller.clientWidth - NAMES) / 3) });
+    scroller.scrollTo({ left: Math.max(0, x(today()) - (scroller.clientWidth - names()) / 3) });
   };
   // Today a third of the way in, at first, whenever it's resized (a thread opened beside it), and at a new scale.
   createEffect(day, () => void requestAnimationFrame(scrollToToday));
   onSettled(() => {
     const resized = new ResizeObserver(() => {
-      setShownWidth(scroller.clientWidth - NAMES);
+      setShownWidth(scroller.clientWidth - names());
       scrollToToday();
     });
     resized.observe(scroller);
@@ -254,12 +274,6 @@ export function Timeline(): JSX.Element {
       const p = progressOf(t());
       return p && p.done / p.total;
     };
-    const tone = (): string =>
-      t().state === "resolved"
-        ? colors.statusClosed
-        : t().state === "blocked"
-          ? colors.urgent
-          : colors.barOpen;
     const original = (): { left: number; width: number } => {
       const { from, to } = span(t());
       return { left: x(from), width: Math.max(day(), x(to) - x(from)) };
@@ -290,11 +304,6 @@ export function Timeline(): JSX.Element {
             top: `${props.y + (ROW - BAR) / 2}px`,
             left: `${b().left}px`,
             width: `${b().width}px`,
-            // Over the ground, so it's solid even in a translucent tone.
-            background:
-              progress() === undefined
-                ? `linear-gradient(${tone()}, ${tone()}), ${colors.chrome}`
-                : `color-mix(in oklab, ${tone()} 38%, ${colors.chrome})`,
           }}
           title={t().title}
           onPointerDown={(e) => press(t(), "move", e)}
@@ -302,15 +311,11 @@ export function Timeline(): JSX.Element {
           onPointerLeave={() => hovered() === t() && setHovered(null)}
           onContextMenu={(e) => showMenu(e, threadMenu(t()))}
         >
-          {/* As far as its branches are resolved. */}
+          {/* As far as its branches are resolved; its status, as the app's dots show it. */}
           <Show when={progress()}>
-            {(done) => (
-              <span
-                class={sx(styles.progress)}
-                style={{ width: `${done() * 100}%`, "background-color": tone() }}
-              />
-            )}
+            {(done) => <span class={sx(styles.progress)} style={{ width: `${done() * 100}%` }} />}
           </Show>
+          <span class={sx(styles.status)}>{dot(t().state)}</span>
           <span
             class={sx(styles.edge, styles.edgeStart, grip() && styles.edgeShown)}
             aria-label="Change the start date"
@@ -406,10 +411,10 @@ export function Timeline(): JSX.Element {
         class={sx(styles.timeline)}
         onScroll={() => setScrolled(scroller.scrollLeft)}
       >
-        <div class={sx(styles.content)} style={{ width: `${NAMES + width()}px` }}>
+        <div class={sx(styles.content)} style={{ width: `${names() + width()}px` }}>
           {/* Months over days, stuck at the top. */}
           <div class={sx(styles.head)}>
-            <div class={sx(styles.corner)} />
+            <div class={sx(styles.corner)} style={{ width: `${names()}px` }} />
             <div class={sx(styles.scale)} style={{ width: `${width()}px` }}>
               <For each={months()}>
                 {(month) => (
@@ -441,7 +446,20 @@ export function Timeline(): JSX.Element {
           </div>
           <div class={sx(styles.body)}>
             {/* The names, stuck at the left as the days scroll under them. */}
-            <div class={sx(styles.names)} style={{ height: `${height()}px` }}>
+            <div
+              class={sx(styles.names)}
+              style={{ width: `${names()}px`, height: `${height()}px` }}
+            >
+              <hr
+                class={sx(styles.resize)}
+                aria-label="Resize the names"
+                aria-orientation="vertical"
+                onPointerDown={resizeNames}
+                onDblClick={() => {
+                  setNames(NAMES.initial);
+                  save("timeline-names", NAMES.initial);
+                }}
+              />
               <For each={lines()}>
                 {(line) =>
                   "group" in line ? (
@@ -457,7 +475,7 @@ export function Timeline(): JSX.Element {
                         styles.name,
                         selected(line.thread) && styles.nameSelected,
                       )}
-                      style={{ top: `${line.y}px` }}
+                      style={{ top: `${line.y}px`, width: `${names() - 17}px` }}
                       onClick={() => peek({ thread: line.thread.id })}
                       onContextMenu={(e) => showMenu(e, threadMenu(line.thread))}
                     >
@@ -553,9 +571,8 @@ const styles = stylex.create({
   corner: {
     position: "sticky",
     left: 0,
-    zIndex: 1,
+    zIndex: 2,
     flexShrink: 0,
-    width: NAMES,
     backgroundColor: colors.chrome,
     borderRightWidth: 1,
     borderRightStyle: "solid",
@@ -592,22 +609,34 @@ const styles = stylex.create({
   },
 
   // Today, solid, as TeamGantt marks it.
-  // Today, its date in a pill (not a color: the ground's opposite).
+  // Today, as the app marks what's chosen: shaded, rounded as its rows.
   tickToday: {
-    zIndex: 1,
-    padding: "0 6px",
-    borderRadius: radii.control,
-    color: colors.chrome,
+    padding: "0 7px",
+    borderRadius: radii.row,
+    color: colors.textPrimary,
     fontWeight: 600,
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.bgTertiary,
   },
+
   body: { position: "relative", display: "flex" },
+  // The names' resize edge: invisible, only its cursor says it's there (the column's border is the line).
+  resize: {
+    position: "absolute",
+    top: 0,
+    right: -3,
+    bottom: 0,
+    zIndex: 1,
+    width: 6,
+    margin: 0,
+    borderStyle: "none",
+    backgroundColor: "transparent",
+    cursor: "col-resize",
+  },
   names: {
     position: "sticky",
     left: 0,
     zIndex: 3,
     flexShrink: 0,
-    width: NAMES,
     backgroundColor: colors.chrome,
     borderRightWidth: 1,
     borderRightStyle: "solid",
@@ -619,7 +648,6 @@ const styles = stylex.create({
     left: 8,
     display: "flex",
     alignItems: "center",
-    width: NAMES - 17,
     height: ROW - 6,
     marginTop: 3,
     padding: "0 8px",
@@ -679,28 +707,42 @@ const styles = stylex.create({
     backgroundColor: colors.bgTertiary,
     pointerEvents: "none",
   },
-  // Slim and solid, in its status's tone (lighter, with its resolved share filled, when it has branches).
+  // A card, as the app's raised surfaces are: a hairline edge, the controls' radius, its status's dot at its start.
   bar: {
     position: "absolute",
     zIndex: 1,
+    display: "flex",
+    alignItems: "center",
     height: BAR,
     overflow: "hidden",
-    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.raisedBorder,
+    borderRadius: radii.control,
+    backgroundColor: colors.raised,
     cursor: "pointer",
-    filter: { default: "none", ":hover": "brightness(1.08)" },
+    filter: { default: "none", ":hover": "brightness(0.98)" },
   },
+  status: { position: "relative", display: "flex", marginLeft: 6 },
+
   // No due date: it runs on, fading, to now.
   barOpenEnded: { maskImage: "linear-gradient(to right, black 60%, transparent)" },
   barSelected: { boxShadow: `0 0 0 2px ${colors.chrome}, 0 0 0 3.5px ${colors.textSecondary}` },
   barDragged: { cursor: "grabbing", boxShadow: "0 3px 10px rgba(0, 0, 0, 0.25)" },
-  progress: { position: "absolute", top: 0, bottom: 0, left: 0 },
+  progress: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: colors.bgTertiary,
+  },
   ghost: {
     position: "absolute",
     height: BAR,
     borderWidth: 1.5,
     borderStyle: "dashed",
     borderColor: colors.strokeFocused,
-    borderRadius: radii.pill,
+    borderRadius: radii.control,
     pointerEvents: "none",
   },
   // A bar's edges, to resize it by: a light grip while it's hovered.
@@ -718,7 +760,7 @@ const styles = stylex.create({
       bottom: 5,
       width: 2,
       borderRadius: 1,
-      backgroundColor: "rgba(255, 255, 255, 0.85)",
+      backgroundColor: colors.textTertiary,
       opacity: 0,
     },
   },

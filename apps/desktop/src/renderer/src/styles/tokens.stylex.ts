@@ -26,8 +26,6 @@ const DARK = {
   // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
   raised: "#2b2b2b",
   raisedBorder: "#383838",
-  // An open thread's bar on a timeline (blocked and resolved ones take the status dots' red and green).
-  barOpen: mix(DARK_BASE, 34),
   accent: "#78aee7",
   accentFill: "#1f252c",
   // Solid buttons (a table view's New): Notion's blue, in both themes.
@@ -63,7 +61,6 @@ export const lightTheme = stylex.createTheme(colors, {
   panelSelected: "#f3f3f1",
   raised: "#ffffff",
   raisedBorder: "#dcdcd9",
-  barOpen: mix(LIGHT_BASE, 30),
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
   primary: "rgb(35 131 226)",
