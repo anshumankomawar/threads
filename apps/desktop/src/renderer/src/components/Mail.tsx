@@ -28,6 +28,7 @@ import {
   unread,
   view,
   workspace,
+  undoable,
   type MenuItem,
 } from "../session";
 import {
@@ -318,15 +319,18 @@ function askBucket(from: DOMRect, bucket?: Bucket): void {
       },
     ],
     submit: ([name, description]) => {
-      if (bucket) return edit(bucket, { name: name.slice(0, 40), description });
+      if (bucket) return edit(bucket, { name: name.slice(0, 40), description }, "Edit Bucket");
       const position = Math.max(-1, ...myBuckets().map((b) => b.position)) + 1;
-      const made = store.create(Bucket, {
-        user: me(),
-        name: name.slice(0, 40),
-        description: description.slice(0, 500),
-        position,
+      let id = "";
+      undoable("New Bucket", () => {
+        id = store.create(Bucket, {
+          user: me(),
+          name: name.slice(0, 40),
+          description: description.slice(0, 500),
+          position,
+        }).id;
       });
-      chooseMailbox({ kind: "bucket", id: made.id });
+      chooseMailbox({ kind: "bucket", id });
     },
   });
 }
@@ -343,7 +347,7 @@ export function askDeleteBucket(from: DOMRect, bucket: Bucket): void {
     submit: () => {
       if (sameMailbox(mailbox(), { kind: "bucket", id: bucket.id }))
         chooseMailbox({ kind: "inbox" });
-      void bucket.delete();
+      undoable("Delete Bucket", () => void bucket.delete());
     },
   });
 }
@@ -354,9 +358,11 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
     const buckets = myBuckets();
     const other = buckets[buckets.indexOf(bucket) + by];
     if (!other) return;
-    [bucket.position, other.position] = [other.position, bucket.position];
-    bucket.save();
-    other.save();
+    undoable("Move Bucket", () => {
+      [bucket.position, other.position] = [other.position, bucket.position];
+      bucket.save();
+      other.save();
+    });
   };
   return [
     {
@@ -521,10 +527,13 @@ export function MailSidebar(): JSX.Element {
             add={{
               label: "New Label",
               placeholder: "Name the label",
-              make: (name) => ({
-                kind: "label",
-                id: store.create(Label, { name, workspace: workspace() }).id,
-              }),
+              make: (name) => {
+                let id = "";
+                undoable("New Label", () => {
+                  id = store.create(Label, { name, workspace: workspace() }).id;
+                });
+                return { kind: "label", id };
+              },
             }}
           >
             <For each={byName(store.all(Label))}>
@@ -563,7 +572,7 @@ export function MailSidebar(): JSX.Element {
                             run: () => {
                               if (sameMailbox(mailbox(), { kind: "view", id: saved.id }))
                                 chooseMailbox({ kind: "all" });
-                              void saved.delete();
+                              undoable("Delete View", () => void saved.delete());
                             },
                           },
                         ]
@@ -749,7 +758,7 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
             {
               label: "Delete Draft",
               icon: icon(i.Delete02Icon, 13),
-              run: () => void props.draft.delete(),
+              run: () => undoable("Delete Draft", () => void props.draft.delete()),
             },
           ])
         }

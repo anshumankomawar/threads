@@ -6,11 +6,15 @@ import { registry, type ModelClass } from "./registry";
 import { memo } from "./signals";
 import { SyncClient } from "./sync-client";
 import { TransactionQueue, type Timer, type Transaction } from "./transactions";
+import { UndoStack } from "./undo";
 
+// Undo and redo, built on transactions as Linear's are (see undo.ts).
 export interface UndoQueue {
   group(label: string, fn: () => void): void; // every save() inside = one undo step
-  undo(): void;
-  redo(): void; // v1: stubs, added after the core works
+  undo(): string | null; // the step undone's label, or null if there was none
+  redo(): string | null;
+  readonly nextUndo: () => string | null; // what undo would undo, by its label
+  readonly nextRedo: () => string | null;
 }
 
 // Named server actions and their arguments; a product declares its own by merging into this interface.
@@ -80,6 +84,7 @@ export function createStore({
     lastSyncId: () => sync.lastSyncId,
   });
   const sync = new SyncClient({ core, queue, transport, localDB, workspace, token, setTimeout });
+  const undo = new UndoStack(core, queue);
   const started = sync.bootstrap().then(() => sync.connect());
 
   return {
@@ -117,7 +122,13 @@ export function createStore({
       await sync.waitForSyncId(lastSyncId);
     },
     subscribe: (group) => sync.subscribe(group),
-    undo: { group: (_label, fn) => fn(), undo() {}, redo() {} },
+    undo: {
+      group: (label, fn) => undo.group(label, fn),
+      undo: () => undo.undo(),
+      redo: () => undo.redo(),
+      nextUndo: undo.nextUndo,
+      nextRedo: undo.nextRedo,
+    },
     connection: sync.connection,
     pendingCount: queue.pendingCount,
     rejection: queue.rejection,

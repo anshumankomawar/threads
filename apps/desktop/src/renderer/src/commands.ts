@@ -642,6 +642,19 @@ function creating(): Command[] {
 function app(): Command[] {
   const section = "App";
   return [
+    // Undo and redo, named for what they'd undo or redo; there only when there's something to.
+    ...(store.undo.nextUndo()
+      ? hotkey(
+          "undo",
+          `Undo ${store.undo.nextUndo()}`,
+          section,
+          i.ArrowTurnBackwardIcon,
+          "revert back",
+        )
+      : []),
+    ...(store.undo.nextRedo()
+      ? hotkey("redo", `Redo ${store.undo.nextRedo()}`, section, i.ArrowTurnForwardIcon, "again")
+      : []),
     ...hotkey("settings", "Open settings", section, i.Settings02Icon, "preferences hotkeys"),
     ...hotkey("sidebar", "Show or hide the sidebar", section, i.PanelLeftIcon, "toggle"),
     ...hotkey("mailGroup", "Show the Inbox tab", section, i.InboxIcon, "sidebar tab"),

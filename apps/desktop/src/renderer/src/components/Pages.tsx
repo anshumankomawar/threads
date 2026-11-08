@@ -3,7 +3,17 @@ import { createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Label, Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
-import { me, memberOf, myBuckets, open, store, edit, memberIn, workspace } from "../session";
+import {
+  me,
+  memberOf,
+  myBuckets,
+  open,
+  store,
+  edit,
+  memberIn,
+  undoable,
+  workspace,
+} from "../session";
 import { askDeleteBucket } from "./Mail";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
@@ -182,7 +192,12 @@ export function SavedView(props: { view: View }): JSX.Element {
           />
         </Setting>
         <Setting name="Delete view" hint="Its threads stay as they are.">
-          <Delete onClick={() => (open({ thread: null }), void v().delete())} />
+          <Delete
+            onClick={() => (
+              open({ thread: null }),
+              undoable("Delete View", () => void v().delete())
+            )}
+          />
         </Setting>
       </Settings>
     ),
@@ -278,7 +293,12 @@ export function LabelView(props: { label: Label }): JSX.Element {
     body: (
       <Settings>
         <Setting name="Delete label" hint="It comes off its threads, which stay as they are.">
-          <Delete onClick={() => (open({ thread: null }), void l().delete())} />
+          <Delete
+            onClick={() => (
+              open({ thread: null }),
+              undoable("Delete Label", () => void l().delete())
+            )}
+          />
         </Setting>
       </Settings>
     ),
@@ -299,8 +319,10 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   const isMember = (): boolean => memberIn(s(), me().id) !== undefined;
   const toggle = (user: User): void => {
     const existing = memberIn(s(), user.id);
-    if (existing) void existing.delete();
-    else store.create(SubspaceMember, { subspace: s(), user });
+    undoable(existing ? "Remove Member" : "Add Member", () => {
+      if (existing) void existing.delete();
+      else store.create(SubspaceMember, { subspace: s(), user });
+    });
   };
   const isPrivate = (): boolean => s().visibility === "private";
   const people = members({
@@ -356,7 +378,12 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
           />
         </Setting>
         <Setting name="Delete subspace" hint="Its threads stay, outside it.">
-          <Delete onClick={() => (open({ thread: null }), void s().delete())} />
+          <Delete
+            onClick={() => (
+              open({ thread: null }),
+              undoable("Delete Space", () => void s().delete())
+            )}
+          />
         </Setting>
       </Settings>
     ),

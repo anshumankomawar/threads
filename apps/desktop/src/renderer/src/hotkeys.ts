@@ -6,6 +6,9 @@ import { save, saved } from "./startup";
 // typing; with ⌘ or ⌃ they work anywhere. What each does is in session.ts, by id.
 export const HOTKEYS = [
   { id: "search", label: "Search", section: "General", keys: "⌘K" },
+  // What you changed last, undone and redone (the sync engine's undo queue); while you're typing, the text's own.
+  { id: "undo", label: "Undo", section: "General", keys: "⌘Z" },
+  { id: "redo", label: "Redo", section: "General", keys: "⇧⌘Z" },
   // As in Slack and GitHub: when you aren't typing, / opens it too.
   { id: "searchSlash", label: "Search (without ⌘)", section: "General", keys: "/" },
   { id: "settings", label: "Settings", section: "General", keys: "⌘," },

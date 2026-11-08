@@ -17,7 +17,7 @@ We are building our own Linear-style sync engine, so product builders write plai
   its sync groups at startup; v2 below adds loading groups as they change and groups it follows.
 - Long offline sessions (the outbox covers reloads and short drops only).
 - Schema migrations on the client (a schema change clears local data and reloads).
-- Undo/redo, search, attachments, native mobile.
+- Search, attachments, native mobile.
 
 ## Why SolidJS 2
 
@@ -150,10 +150,29 @@ interface Store {
 
 interface UndoQueue {
   group(label: string, fn: () => void): void; // every save() inside = one undo step
-  undo(): void;
-  redo(): void; // v1: stubs, added after the core works
+  undo(): string | null; // the step undone's label, or null if there was none
+  redo(): string | null;
+  readonly nextUndo: () => string | null; // what undo would undo, by its label
+  readonly nextRedo: () => string | null;
 }
 ```
+
+### Undo and redo
+
+Built on transactions, as Linear's undo queue is (`undo.ts`):
+
+- `group(label, fn)` listens to the transaction queue while `fn` runs (as Linear's `undoQueue.addOperation` subscribes
+  to its transaction-queued signal); every transaction queued in that time, from `save()`, `create`, `archive` or
+  `delete`, is one undo step. A group inside another is part of it. Edits outside a group (marking a thread seen as
+  you open it) aren't undoable.
+- Undoing a step reverses its changes, last first, each with a new transaction that's queued, saved to the outbox
+  and synced like any other: an update's fields go back to their old values, a create is deleted, a delete is made
+  again with its id and fields, and an archive is unarchived (and the reverse). Those reversals are the redo step;
+  redo reverses them in turn. Undo and redo record no step themselves, and a new step clears what could be redone.
+- A change is only reversed where it still holds: a field changed since (by someone else, or a later edit) is left
+  as it is, a model that's gone is skipped, and so is a rejected transaction, which the queue has already rolled back.
+  A step with nothing left to reverse is dropped, and the one before it is undone instead.
+- The stacks are this session's, in memory, at most 100 steps.
 
 ### Server actions
 

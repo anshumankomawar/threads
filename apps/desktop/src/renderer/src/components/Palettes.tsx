@@ -21,6 +21,7 @@ import {
   switchTo,
   type Dialog,
   workspace,
+  undoable,
 } from "../session";
 import { keepDisplay } from "../mail";
 import { paletteSectionMarker } from "../styles/markers.stylex";
@@ -392,9 +393,13 @@ function NewLabel(props: { thread?: Thread }): JSX.Element {
       placeholder="Name the label"
       rows={(query) =>
         entry(query, "Make label", (name) => {
-          const label = store.create(Label, { name, workspace: workspace() });
-          if (!props.thread) return open({ label: label.id });
-          edit(props.thread, { labelIds: [...props.thread.labelIds, label.id] });
+          const thread = props.thread;
+          let id = "";
+          undoable("New Label", () => {
+            id = store.create(Label, { name, workspace: workspace() }).id;
+            if (thread) edit(thread, { labelIds: [...thread.labelIds, id] });
+          });
+          if (!thread) open({ label: id });
         })
       }
     />
@@ -443,7 +448,10 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
     if (props.bucket) return edit(props.bucket, { name: name(), description });
     const mine = myBuckets();
     const position = Math.max(-1, ...mine.map((bucket) => bucket.position)) + 1;
-    store.create(Bucket, { user: me(), name: name(), description, position });
+    undoable(
+      "New Bucket",
+      () => void store.create(Bucket, { user: me(), name: name(), description, position }),
+    );
   };
   return (
     <Picker
@@ -495,16 +503,19 @@ function NewView(props: { filter: Filter }): JSX.Element {
       placeholder="Name the view"
       rows={(query) =>
         entry(query, "Save view", (name) => {
-          const made = store.create(View, {
-            name,
-            filter: props.filter,
-            shared: false,
-            owner: me(),
-            workspace: workspace(),
+          let id = "";
+          undoable("Save View", () => {
+            id = store.create(View, {
+              name,
+              filter: props.filter,
+              shared: false,
+              owner: me(),
+              workspace: workspace(),
+            }).id;
           });
           // Shown as the list it was saved from is: a timeline stays one.
-          keepDisplay({ kind: "view", id: made.id });
-          open({ view: made.id });
+          keepDisplay({ kind: "view", id });
+          open({ view: id });
         })
       }
     />
@@ -513,8 +524,11 @@ function NewView(props: { filter: Filter }): JSX.Element {
 
 // A new subspace with you in it. It starts open; its page makes it private.
 export function makeSubspace(name: string): Subspace {
-  const made = store.create(Subspace, { name, visibility: "open", workspace: workspace() });
-  store.create(SubspaceMember, { subspace: made, user: me() });
+  let made!: Subspace;
+  undoable("New Space", () => {
+    made = store.create(Subspace, { name, visibility: "open", workspace: workspace() });
+    store.create(SubspaceMember, { subspace: made, user: me() });
+  });
   return made;
 }
 
@@ -537,7 +551,12 @@ function AddMember(props: { subspace: Subspace }): JSX.Element {
       rows={(query) =>
         people(
           query,
-          done((user) => store.create(SubspaceMember, { subspace: props.subspace, user })),
+          done((user) =>
+            undoable(
+              "Add Member",
+              () => void store.create(SubspaceMember, { subspace: props.subspace, user }),
+            ),
+          ),
           store.all(User).filter((u) => !memberIn(props.subspace, u.id)),
         )
       }

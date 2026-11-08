@@ -73,6 +73,7 @@ export class TransactionQueue {
   readonly #o: QueueOptions;
   #entries: Entry[] = [];
   #created: Entry[] = [];
+  #listeners = new Set<(record: TxRecord) => void>();
   #busy = false;
   #attempt = 0;
 
@@ -83,8 +84,16 @@ export class TransactionQueue {
   enqueue(record: TxRecord): Transaction {
     const entry: Entry = { record, tx: new Tx(record.id), saved: false };
     this.#add(entry);
+    for (const listener of this.#listeners) listener(record);
     if (this.#created.push(entry) === 1) queueMicrotask(() => void this.#flush());
     return entry.tx;
+  }
+
+  // Hears each transaction as it's queued (as Linear's transactionQueuedSignal), until the returned function is called:
+  // how an undo step learns what it's made of.
+  listen(listener: (record: TxRecord) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
   onDelta(modelId: string, lastSyncId: number): void {

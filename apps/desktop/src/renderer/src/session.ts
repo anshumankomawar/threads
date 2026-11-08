@@ -77,10 +77,16 @@ export const shortDate = (date: Date): string =>
 // An id list with `id` added, or taken out if it's there.
 export const toggled = (ids: string[], id: string): string[] =>
   ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id];
-export function edit<T extends Model>(record: T, change: Partial<T>): void {
-  Object.assign(record, change);
-  record.save();
+// A change to a record you can undo (⌘Z), as one step called `label`.
+export function edit<T extends Model>(record: T, change: Partial<T>, label = "Edit"): void {
+  undoable(label, () => {
+    Object.assign(record, change);
+    record.save();
+  });
 }
+// Everything `fn` saves, creates or deletes, as one undo step (⌘Z) called `label`: the sync engine's undo queue, as
+// Linear's. What it does by itself (marking a thread seen as you open it) isn't undone.
+export const undoable = (label: string, fn: () => void): void => store.undo.group(label, fn);
 // Who you can @mention: everyone else, and the subspaces with someone in them.
 export const others = (): User[] => store.all(User).filter((u) => u.id !== me().id);
 export const subspacesWithMembers = (): Subspace[] =>
@@ -251,6 +257,16 @@ function offerUndo(text: string, run?: () => void): void {
   clearTimeout(undoTimer);
   setUndo({ text, run });
   undoTimer = setTimeout(() => setUndo(null), 5000);
+}
+
+// ⌘Z and ⇧⌘Z (and Edit → Undo, Redo): the latest step undone or redone, said in the toast.
+export function undoLast(): void {
+  const label = store.undo.undo();
+  offerUndo(label ? `Undid ${label}` : "Nothing to undo", label ? redoLast : undefined);
+}
+export function redoLast(): void {
+  const label = store.undo.redo();
+  offerUndo(label ? `Redid ${label}` : "Nothing to redo", label ? undoLast : undefined);
 }
 
 // ── The inbox ──
@@ -428,47 +444,50 @@ function moveOn(thread: Thread): void {
 // ⌘E, or the inbox row's done button. Done with the open thread, the next one opens.
 // Back into your inbox, as ⌘E on something already done does.
 function markUndone(item: InboxItem): void {
-  item.doneAt = undefined;
-  item.save();
-  offerUndo("Moved to Inbox", () => {
-    item.doneAt = new Date();
+  undoable("Move to Inbox", () => {
+    item.doneAt = undefined;
     item.save();
   });
+  offerUndo("Moved to Inbox", undoLast);
 }
 
 function markDone(item: InboxItem): void {
   if (active() === item.thread) moveOn(item.thread);
-  item.doneAt = new Date();
-  item.save();
-  offerUndo("Done", () => {
-    item.doneAt = undefined;
+  undoable("Mark Done", () => {
+    item.doneAt = new Date();
     item.save();
   });
+  offerUndo("Done", undoLast);
 }
 
 // Into one of your buckets by hand, or back to the model.
-export const placeIn = (item: InboxItem, bucket?: Bucket): void => {
-  item.bucket = bucket;
-  item.manual = bucket !== undefined;
-  item.save();
-};
+export const placeIn = (item: InboxItem, bucket?: Bucket): void =>
+  undoable(bucket ? "Move to Bucket" : "Sort It for Me", () => {
+    item.bucket = bucket;
+    item.manual = bucket !== undefined;
+    item.save();
+  });
 
 // Everything in your inbox marked read, as Mail's Mark All as Read does.
 export function markAllRead(): void {
   const now = new Date();
-  for (const thread of inbox().order) {
-    const item = itemFor(thread);
-    if (!item || !hasNew(item)) continue;
-    item.seenAt = now;
-    item.save();
-  }
+  undoable("Mark All as Read", () => {
+    for (const thread of inbox().order) {
+      const item = itemFor(thread);
+      if (!item || !hasNew(item)) continue;
+      item.seenAt = now;
+      item.save();
+    }
+  });
 }
 // Whatever you placed by hand in your inbox, back to the model to sort.
 export function sortAllForMe(): void {
-  for (const thread of inbox().order) {
-    const item = itemFor(thread);
-    if (item?.manual) placeIn(item);
-  }
+  undoable("Sort All for Me", () => {
+    for (const thread of inbox().order) {
+      const item = itemFor(thread);
+      if (item?.manual) placeIn(item);
+    }
+  });
 }
 
 // What right-clicking a thread offers, wherever it's listed.
@@ -542,8 +561,10 @@ export function threadMenu(thread: Thread): MenuItem[] {
 export function setState(thread: Thread, state: Thread["state"]): void {
   const showing = thread === active() || thread.id === split();
   if (state === "resolved" && showing && inbox().order.includes(thread)) moveOn(thread);
-  thread.state = state;
-  thread.save();
+  undoable(state === "resolved" ? "Resolve" : state === "open" ? "Reopen" : "Change State", () => {
+    thread.state = state;
+    thread.save();
+  });
 }
 
 // ── Keys ──
@@ -577,6 +598,9 @@ function hotkeyActions(
   const reading = free && !typing;
   return {
     search: () => setDialog({ kind: "search" }),
+    // Typing, the text's own undo has them (the Edit menu's, below).
+    undo: !typing && undoLast,
+    redo: !typing && redoLast,
     searchSlash: free && !typing && (() => setDialog({ kind: "search" })),
     settings: () => (setDialog(null), open({ settings: null })),
     hotkeys: free && (() => open({ settings: null })),
@@ -645,3 +669,12 @@ window.addEventListener("keydown", (event) => {
 });
 
 applyZoom(zoom());
+
+// Edit → Undo and Redo, chosen from the menu or by their keys when the page didn't take them (as it doesn't while you
+// type): in a field, its text's; anywhere else, what you changed.
+window.electron?.ipcRenderer.on("edit", (_event, which: "undo" | "redo") => {
+  const focused = document.activeElement;
+  if (focused?.closest("input, textarea, [contenteditable='true']")) document.execCommand(which);
+  else if (which === "undo") undoLast();
+  else redoLast();
+});

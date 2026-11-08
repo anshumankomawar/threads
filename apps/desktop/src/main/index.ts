@@ -148,7 +148,30 @@ void app.whenReady().then(() => {
     Menu.buildFromTemplate([
       ...(process.platform === "darwin" ? [{ role: "appMenu" as const }] : []),
       { role: "fileMenu" },
-      { role: "editMenu" },
+      // Undo and Redo go to the page, which undoes what you changed (the sync engine's undo queue), or in a field its
+      // text; the rest are the standard ones.
+      {
+        label: "Edit",
+        submenu: [
+          {
+            label: "Undo",
+            accelerator: "CmdOrCtrl+Z",
+            click: () => BrowserWindow.getFocusedWindow()?.webContents.send("edit", "undo"),
+          },
+          {
+            label: "Redo",
+            accelerator: "Shift+CmdOrCtrl+Z",
+            click: () => BrowserWindow.getFocusedWindow()?.webContents.send("edit", "redo"),
+          },
+          { type: "separator" },
+          { role: "cut" },
+          { role: "copy" },
+          { role: "paste" },
+          { role: "pasteAndMatchStyle" },
+          { role: "delete" },
+          { role: "selectAll" },
+        ],
+      },
       {
         label: "View",
         submenu: [

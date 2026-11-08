@@ -3,7 +3,7 @@ import { createSignal, For, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { mention, User, type ComposeDraft, type Draft } from "models";
-import { firstName, me, open, store, summary } from "../session";
+import { firstName, me, open, store, summary, undoable } from "../session";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
 import { sx } from "../styles/sx";
@@ -118,7 +118,7 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
     open({ thread: created.id });
   };
   const discard = (): void => {
-    void d().delete();
+    undoable("Discard Draft", () => void d().delete());
     open({ thread: null });
   };
 

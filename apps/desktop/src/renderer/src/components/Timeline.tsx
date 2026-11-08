@@ -214,9 +214,9 @@ export function Timeline(): JSX.Element {
       setDrag(null);
       if (d.days === 0) return;
       const due = new Date(addDays(to, -1));
-      if (d.kind === "move") edit(thread, { startAt: new Date(from), dueAt: due });
-      else if (d.kind === "start") edit(thread, { startAt: new Date(from) });
-      else edit(thread, { dueAt: due });
+      if (d.kind === "move") edit(thread, { startAt: new Date(from), dueAt: due }, "Change Dates");
+      else if (d.kind === "start") edit(thread, { startAt: new Date(from) }, "Change Dates");
+      else edit(thread, { dueAt: due }, "Change Dates");
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up, { once: true });
@@ -389,7 +389,7 @@ export function Timeline(): JSX.Element {
         onPointerLeave={() => setAt(null)}
         onClick={(e) => {
           const date = new Date(pointed(e));
-          edit(props.thread, { startAt: date, dueAt: date });
+          edit(props.thread, { startAt: date, dueAt: date }, "Change Dates");
         }}
       >
         <Show when={at()}>

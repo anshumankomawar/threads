@@ -41,6 +41,7 @@ import {
   summary,
   toggled,
   type MenuItem,
+  undoable,
 } from "../session";
 import { bucketIcons } from "../bucketIcons";
 import { base } from "../styles/base";
@@ -467,7 +468,7 @@ function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): 
                 {
                   label: "Delete Message",
                   icon: icon(i.Delete02Icon, 13),
-                  run: () => void m().delete(),
+                  run: () => undoable("Delete Message", () => void m().delete()),
                 },
               ]
             : []),
