@@ -43,6 +43,7 @@ import {
   sameMailbox,
   type Mailbox,
   display,
+  groupedBy,
   moveToGroup,
   type Group,
   setDisplay,
@@ -60,6 +61,7 @@ import {
   draggable,
   dropTargetForElements,
 } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { preventUnhandled } from "@atlaskit/pragmatic-drag-and-drop/prevent-unhandled";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
 import { Tabs, type Tab } from "./Tabs";
@@ -937,36 +939,24 @@ export const displayMenu = (): MenuItem[] => [
   {
     label: "List",
     icon: icon(i.LeftToRightListBulletIcon, 13),
-    checked: !display().board,
     run: () => setDisplay({ board: false }),
   },
   {
     label: "Board",
     icon: icon(i.Layout3ColumnIcon, 13),
-    checked: display().board,
     run: () => setDisplay({ board: true }),
   },
   "separator",
   {
     label: "Group By",
     icon: icon(i.LayerIcon, 13),
-    items: [
-      ...(display().board
-        ? []
-        : [
-            {
-              label: "Nothing",
-              checked: !display().group,
-              run: () => setDisplay({ group: undefined }),
-            },
-          ]),
-      ...Object.entries(FIELDS).map(([field, { label }]) => ({
-        label,
-        icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
-        checked: (display().group ?? (display().board ? "state" : undefined)) === field,
-        run: () => setDisplay({ group: field }),
-      })),
-    ],
+    // Each a toggle: choosing the one it's grouped by ungroups it (a board goes back to its columns by status).
+    items: Object.entries(FIELDS).map(([field, { label }]) => ({
+      label,
+      icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
+      checked: groupedBy() === field,
+      run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
+    })),
   },
 ];
 
@@ -982,6 +972,8 @@ function BoardCard(props: { thread: Thread; group: string }): JSX.Element {
     draggable({
       element: card,
       getInitialData: () => ({ thread: t().id, from: props.group }),
+      // Let go anywhere but another column and it's simply put down, without the browser sliding it back.
+      onDragStart: () => preventUnhandled.start(),
     }),
   );
   return (

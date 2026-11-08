@@ -10,6 +10,7 @@ import {
   chooseMailbox,
   conditions,
   display,
+  groupedBy,
   mailbox,
   setDisplay,
   type Mailbox,
@@ -440,7 +441,7 @@ function places(): Command[] {
 
 function listing(): Command[] {
   const section = "This list";
-  const grouped = display().group ?? (display().board ? "state" : undefined);
+  const grouped = groupedBy();
   return [
     display().board
       ? {
@@ -471,17 +472,15 @@ function listing(): Command[] {
       page: () => ({
         title: "Group by",
         placeholder: "Search",
+        // Toggles, as in the list's menu: the one it's grouped by ungroups it.
         commands: () =>
-          [
-            ...(display().board ? [] : [{ field: undefined, label: "Nothing" }]),
-            ...Object.entries(FIELDS).map(([field, { label }]) => ({ field, label })),
-          ].map(({ field, label }): Command => ({
-            id: `group:${field ?? "none"}`,
+          Object.entries(FIELDS).map(([field, { label }]): Command => ({
+            id: `group:${field}`,
             title: label,
             kind: "action",
             section: "Group by",
             icon: grouped === field ? i.Tick02Icon : i.LayerIcon,
-            run: () => setDisplay({ group: field }),
+            run: () => setDisplay({ group: grouped === field ? undefined : field }),
           })),
       }),
     },
