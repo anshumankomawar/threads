@@ -20,7 +20,8 @@ import { dot } from "./ThreadView";
 // bar as far as they're resolved. A thread that blocks another is joined to it by an elbow. A group's row has a
 // summary bar over all of its threads. Bars drag along the days (both dates move) and resize by either edge, a dashed
 // outline left where they were and the days moved shown over them; a click opens the thread in the floating view.
-// Without a start a bar starts when the thread was created; without a due date it runs on to today and fades.
+// Without a start a bar starts when the thread was created; with a start alone it is a day long. Threads without
+// either are listed under No dates, a click on a day in their row putting them there.
 
 const DAY_MS = 86_400_000;
 // A day's width at each scale.
