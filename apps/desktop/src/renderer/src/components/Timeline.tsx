@@ -5,7 +5,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
 import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
-import { edit, lastActive, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
+import { edit, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
 import { chip } from "../styles/controls";
 import { sx } from "../styles/sx";
@@ -44,15 +44,15 @@ const addDays = (time: number, days: number): number => {
 // Whole days from one midnight to another (an hour's daylight saving rounded away).
 const daysBetween = (from: number, to: number): number => Math.round((to - from) / DAY_MS);
 
-// Where a thread's bar runs, in midnights: from its start (or creation) to the end of its due day, or to now.
-function span(thread: Thread): { from: number; to: number; open: boolean } {
+// Only threads with a date are on the timeline; the rest are listed under it.
+const UNDATED = "undated";
+const dated = (thread: Thread): boolean =>
+  thread.dueAt !== undefined || thread.startAt !== undefined;
+// Where a thread's bar runs, in midnights: from its start (or creation) to the end of its due day (or its start day).
+function span(thread: Thread): { from: number; to: number } {
   const from = startOfDay(thread.startAt ?? thread.createdAt);
-  if (thread.dueAt) {
-    const to = addDays(startOfDay(thread.dueAt), 1);
-    return { from: Math.min(from, to - DAY_MS), to: Math.max(to, from + DAY_MS), open: false };
-  }
-  const end = thread.isOpen ? Date.now() : lastActive(thread);
-  return { from, to: Math.max(end, from + DAY_MS), open: true };
+  const to = thread.dueAt ? addDays(startOfDay(thread.dueAt), 1) : addDays(from, 1);
+  return { from: Math.min(from, to - DAY_MS), to: Math.max(to, from + DAY_MS) };
 }
 
 const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
@@ -67,7 +67,7 @@ export const showToday = (): void => toToday?.();
 // A bar being dragged: along the days (both its dates), or by an edge (one of them), and by how many days.
 type Drag = { thread: Thread; kind: "move" | "start" | "end"; days: number };
 // The rows, in order, each where it sits: a group's heading, or a thread.
-type Line = { y: number } & ({ group: Group } | { thread: Thread });
+type Line = { y: number } & ({ group: Group } | { thread: Thread; placed: boolean });
 
 export function Timeline(): JSX.Element {
   // The names' width, dragged by the edge on its right (a double click puts it back).
@@ -92,7 +92,7 @@ export function Timeline(): JSX.Element {
   const zoom = (): Zoom => display().zoom ?? "weeks";
   const day = (): number => DAY[zoom()];
   const today = (): number => startOfDay(Date.now());
-  const threads = (): Thread[] => [...new Set(listed().order)];
+  const threads = (): Thread[] => [...new Set(listed().order)].filter(dated);
   // From the Monday before the first thread began (or a fortnight ago) to two months past the last due date.
   const range = (): { from: number; days: number } => {
     let first = addDays(today(), -14);
@@ -137,13 +137,26 @@ export function Timeline(): JSX.Element {
   const lines = (): Line[] => {
     const out: Line[] = [];
     let y = TOP;
-    for (const group of listed().groups) {
+    for (const all of listed().groups) {
+      const group = { ...all, threads: all.threads.filter(dated) };
+      if (group.threads.length === 0) continue;
       if (headed()) {
         out.push({ y, group });
         y += GROUP;
       }
       for (const thread of group.threads) {
-        out.push({ y, thread });
+        out.push({ y, thread, placed: true });
+        y += ROW;
+      }
+    }
+    // Then those without a date, to be put on it with a click on a day.
+    const undated = [...new Set(listed().order)].filter((t) => !dated(t));
+    if (undated.length > 0) {
+      if (out.length > 0) y += ROW / 2;
+      out.push({ y, group: { key: UNDATED, title: "No dates", threads: undated } });
+      y += GROUP;
+      for (const thread of undated) {
+        out.push({ y, thread, placed: false });
         y += ROW;
       }
     }
@@ -153,22 +166,19 @@ export function Timeline(): JSX.Element {
 
   const [drag, setDrag] = createSignal<Drag | null>(null);
   const [hovered, setHovered] = createSignal<Thread | null>(null);
-  // Where a bar runs as shown: dragged, by whole days (an open-ended one as if due today), never under a day long.
-  const shown = (t: Thread): { from: number; to: number; open: boolean } => {
-    const { from, to, open: ongoing } = span(t);
+  // Where a bar runs as shown: dragged, by whole days, never under a day long.
+  const shown = (t: Thread): { from: number; to: number } => {
+    const { from, to } = span(t);
     const d = drag();
-    if (d?.thread !== t || d.days === 0) return { from, to, open: ongoing };
-    const end = ongoing ? addDays(startOfDay(to), 1) : to;
-    if (d.kind === "move")
-      return { from: addDays(from, d.days), to: addDays(end, d.days), open: false };
-    if (d.kind === "start")
-      return { from: Math.min(addDays(from, d.days), end - DAY_MS), to: end, open: false };
-    return { from, to: Math.max(addDays(end, d.days), from + DAY_MS), open: false };
+    if (d?.thread !== t || d.days === 0) return { from, to };
+    if (d.kind === "move") return { from: addDays(from, d.days), to: addDays(to, d.days) };
+    if (d.kind === "start") return { from: Math.min(addDays(from, d.days), to - DAY_MS), to };
+    return { from, to: Math.max(addDays(to, d.days), from + DAY_MS) };
   };
-  const bar = (t: Thread): { left: number; width: number; open: boolean } => {
-    const { from, to, open: ongoing } = shown(t);
+  const bar = (t: Thread): { left: number; width: number } => {
+    const { from, to } = shown(t);
     const left = x(from);
-    return { left, width: Math.max(day(), x(to) - left), open: ongoing };
+    return { left, width: Math.max(day(), x(to) - left) };
   };
   // Its due day, and whether it's passed with the thread still open.
   const dueDay = (t: Thread): number | undefined => (t.dueAt ? addDays(span(t).to, -1) : undefined);
@@ -243,7 +253,8 @@ export function Timeline(): JSX.Element {
   // A thread that blocks another, joined to it: from the end of its bar, down (or up), into the start of the other's.
   const links = (): string[] => {
     const at = new Map<Thread, number>();
-    for (const line of lines()) if ("thread" in line) at.set(line.thread, line.y + ROW / 2);
+    for (const line of lines())
+      if ("thread" in line && line.placed) at.set(line.thread, line.y + ROW / 2);
     const out: string[] = [];
     for (const [t, y1] of at) {
       const blocked = t.blocks;
@@ -265,7 +276,7 @@ export function Timeline(): JSX.Element {
 
   const Bar = (props: { thread: Thread; y: number }): JSX.Element => {
     const t = (): Thread => props.thread;
-    const b = (): { left: number; width: number; open: boolean } => bar(t());
+    const b = (): { left: number; width: number } => bar(t());
     const dragging = (): Drag | undefined => {
       const d = drag();
       return d?.thread === t() ? d : undefined;
@@ -296,7 +307,6 @@ export function Timeline(): JSX.Element {
         <div
           class={sx(
             styles.bar,
-            b().open && styles.barOpenEnded,
             selected(t()) && styles.barSelected,
             dragging() && styles.barDragged,
           )}
@@ -365,9 +375,37 @@ export function Timeline(): JSX.Element {
     );
   };
 
+  // A thread without a date: its row shows the day under the pointer, and a click puts it there.
+  const Place = (props: { thread: Thread; y: number }): JSX.Element => {
+    const [at, setAt] = createSignal<number | null>(null);
+    const pointed = (e: MouseEvent): number =>
+      dayAt(e.clientX - (e.currentTarget as HTMLElement).getBoundingClientRect().left);
+    return (
+      <div
+        class={sx(styles.place)}
+        style={{ top: `${props.y}px` }}
+        onPointerMove={(e) => setAt(pointed(e))}
+        onPointerLeave={() => setAt(null)}
+        onClick={(e) => {
+          const date = new Date(pointed(e));
+          edit(props.thread, { startAt: date, dueAt: date });
+        }}
+      >
+        <Show when={at()}>
+          {(d) => (
+            <span
+              class={sx(styles.ghost, styles.placeGhost)}
+              style={{ left: `${x(d())}px`, width: `${day()}px` }}
+            />
+          )}
+        </Show>
+      </div>
+    );
+  };
+
   // A group's summary bar: from its first thread's start to its last's end.
   const summary = (group: Group): { left: number; width: number } | undefined => {
-    if (group.threads.length === 0) return undefined;
+    if (group.threads.length === 0 || group.key === UNDATED) return undefined;
     const spans = group.threads.map((t) => shown(t));
     const left = x(Math.min(...spans.map((s) => s.from)));
     return { left, width: x(Math.max(...spans.map((s) => s.to))) - left };
@@ -519,8 +557,10 @@ export function Timeline(): JSX.Element {
                         />
                       )}
                     </Show>
-                  ) : (
+                  ) : line.placed ? (
                     <Bar thread={line.thread} y={line.y} />
+                  ) : (
+                    <Place thread={line.thread} y={line.y} />
                   )
                 }
               </For>
@@ -720,8 +760,6 @@ const styles = stylex.create({
   },
   status: { position: "relative", display: "flex", marginLeft: 6 },
 
-  // No due date: it runs on, fading, to now.
-  barOpenEnded: { maskImage: "linear-gradient(to right, black 60%, transparent)" },
   barSelected: {
     boxShadow: `0 0 0 2px ${colors.chrome}, 0 0 0 3.5px ${colors.textSecondary}, 0 1px 2px rgba(0, 0, 0, 0.08)`,
   },
@@ -742,6 +780,8 @@ const styles = stylex.create({
     borderRadius: radii.control,
     pointerEvents: "none",
   },
+  place: { position: "absolute", left: 0, right: 0, height: ROW, cursor: "pointer" },
+  placeGhost: { top: (ROW - BAR) / 2 },
   // A bar's edges, to resize it by: a light grip while it's hovered.
   edge: {
     position: "absolute",
