@@ -56,9 +56,8 @@ import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, motion, sidebarSpace } from "../styles/tokens.stylex";
+import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons, HistoryButtons } from "./TopButtons";
-import { Tabs, type Tab } from "./Tabs";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
@@ -788,12 +787,28 @@ export const LAYOUTS: {
     keywords: "gantt roadmap schedule dates",
   },
 ];
-// List or timeline, as tabs by the list's title: one click, always in sight.
-const LAYOUT_TABS: (Tab & { layout: Layout })[] = LAYOUTS.map(({ layout, label, icon: glyph }) => ({
-  layout,
-  label,
-  icon: glyph,
-}));
+// List or timeline: a segmented pill floating at the foot of the list, as iOS's, one click and always in the same
+// place. Both named; the chosen one on its own ground.
+function LayoutPill(): JSX.Element {
+  return (
+    <div class={sx(s.pill)} role="tablist" aria-label="Layout">
+      <For each={LAYOUTS}>
+        {(choice) => (
+          <button
+            class={sx(base.bare, s.pillSegment, display().layout === choice.layout && s.pillChosen)}
+            role="tab"
+            aria-selected={display().layout === choice.layout ? "true" : "false"}
+            title={choice.title}
+            onClick={() => setDisplay({ layout: choice.layout })}
+          >
+            <Icon icon={choice.icon} size={13} aria-hidden="true" />
+            {choice.label}
+          </button>
+        )}
+      </For>
+    </div>
+  );
+}
 
 // The ways to group and order a list, and a timeline's scales: in the Display menu, the query bar and ⌘K. Grouping
 // toggles: choosing the one it's grouped by ungroups it.
@@ -1018,16 +1033,6 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
           <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>
         </span>
-        <Show when={filterable()}>
-          <span class={sx(s.layoutTabs)}>
-            <Tabs
-              label="Layout"
-              tabs={LAYOUT_TABS}
-              chosen={LAYOUT_TABS.find((t) => t.layout === display().layout) ?? LAYOUT_TABS[0]}
-              onChoose={(t) => setDisplay({ layout: t.layout })}
-            />
-          </span>
-        </Show>
         <span class={sx(topbar.end)}>
           <Show when={filterable()}>
             <MenuChip
@@ -1172,6 +1177,9 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
           </div>
         </Show>
       </div>
+      <Show when={filterable()}>
+        <LayoutPill />
+      </Show>
       <Show when={!wide()}>
         <listColumn.Edge label="Resize list" />
       </Show>
@@ -1394,7 +1402,36 @@ const s = stylex.create({
   querySpacer: { flex: 1 },
   // As tall as the chips beside it.
   // Spaced as the toolbar spaces everything, not as a dialog's buttons are.
-  layoutTabs: { display: "flex", flexShrink: 0, marginLeft: 10, WebkitAppRegion: "no-drag" },
+  // Over the list's foot, in the middle: a little glass, a soft shadow, fully round.
+  pill: {
+    position: "absolute",
+    bottom: 14,
+    left: "50%",
+    zIndex: 5,
+    display: "flex",
+    gap: 2,
+    padding: 3,
+    transform: "translateX(-50%)",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.raisedBorder,
+    borderRadius: radii.pill,
+    backgroundColor: `color-mix(in srgb, ${colors.raised} 82%, transparent)`,
+    backdropFilter: "blur(16px) saturate(1.4)",
+    boxShadow: colors.shadowFloat,
+  },
+  pillSegment: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 26,
+    padding: "0 12px",
+    borderRadius: radii.pill,
+    color: { default: colors.textSecondary, ":hover": colors.textPrimary },
+    fontSize: fontSizes.body,
+    cursor: "pointer",
+  },
+  pillChosen: { color: colors.textPrimary, backgroundColor: colors.bgTertiary },
   queryNew: {
     height: { default: 22, [stylex.when.ancestor(":is(*)", toolbarMarker)]: 24 },
     marginLeft: 0,
@@ -1409,7 +1446,8 @@ const s = stylex.create({
     minHeight: 0,
     overflowY: "auto",
     // Its first line as far below the top bar as every page's (17pt).
-    padding: "5.18px 7.27px 10.91px",
+    // Its last row clear of the layout pill over its foot.
+    padding: "5.18px 7.27px 56px",
     outline: "none",
   },
   // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.

@@ -178,7 +178,8 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   ];
   const [tab, setTab] = createSignal(saved<string>("timeline-tab", "Scheduled"));
   const unscheduled = (): boolean => tab() === "Unscheduled";
-  const height = (): number => (lines().at(-1)?.y ?? 0) + ROW + 24;
+  // Room under the last row for the layout pill over the foot.
+  const height = (): number => (lines().at(-1)?.y ?? 0) + ROW + 56;
 
   const [drag, setDrag] = createSignal<Drag | null>(null);
   const [hovered, setHovered] = createSignal<Thread | null>(null);
@@ -645,7 +646,7 @@ const styles = stylex.create({
   // The grid while the unscheduled tab's shown: kept, out of sight.
   away: { display: "none" },
   // Those without dates, as the sidebar's rows: 30pt, 8pt in, 13pt names.
-  backlog: { flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 7.27px 10.91px" },
+  backlog: { flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 7.27px 56px" },
   backlogRow: {
     display: "flex",
     gap: 8,
