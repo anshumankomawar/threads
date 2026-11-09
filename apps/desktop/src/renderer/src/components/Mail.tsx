@@ -10,6 +10,7 @@ import {
   inbox,
   itemFor,
   loaded,
+  toggled,
   edit,
   markAllRead,
   menuFrom,
@@ -171,7 +172,7 @@ function Collapse(props: { open: boolean; children: JSX.Element }): JSX.Element 
 const [folded, setFolded] = createSignal<string[]>(saved("mail-folded", []));
 const toggleFold = (key: string): void =>
   void setFolded((list) => {
-    const next = toggleIn(list, key);
+    const next = toggled(list, key);
     save("mail-folded", next);
     return next;
   });
@@ -182,7 +183,6 @@ type Add = { label: string; placeholder: string; make: (name: string) => Mailbox
 
 function Section(props: { title: string; add?: Add; children: JSX.Element }): JSX.Element {
   const shut = (): boolean => folded().includes(props.title);
-  let plus: HTMLButtonElement | undefined;
   // From the +, over it; from the heading's menu, in the menu's place under its title.
   const ask = (from: Element | DOMRect | null | undefined, title?: string): void => {
     const add = props.add;
@@ -225,7 +225,6 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
         <Show when={props.add}>
           {(add) => (
             <button
-              ref={plus}
               class={sx(base.bare, s.sectionAdd)}
               aria-label={add().label}
               title={add().label}
@@ -243,61 +242,36 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
   );
 }
 
-// From the latest list, written or not (Solid applies writes in batches), so two toggles at once both count.
-const toggleIn = (list: string[], key: string): string[] =>
-  list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
-
 const draftTitle = (draft: Draft): string =>
   draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft";
 
-// A space or label: how many open threads it has, and what right-clicking it offers.
-function SpaceOrLabel(props: {
-  box: { kind: "subspace" | "label"; id: string };
-  label: string;
-  icon: IconSvgElement;
-}): JSX.Element {
-  const field = (): "subspaceIds" | "labelIds" =>
-    props.box.kind === "subspace" ? "subspaceIds" : "labelIds";
+// A space: how many open threads it has, and what right-clicking it offers.
+function SpaceRow(props: { space: Subspace }): JSX.Element {
+  const sub = (): Subspace => props.space;
   const openCount = (): number =>
-    store.all(Thread).filter((t) => t.isOpen && t[field()].includes(props.box.id)).length;
-  const menu = (): MenuItem[] => {
-    const box = props.box;
-    if (box.kind === "label")
-      return [
-        {
-          label: "New Thread with This Label",
-          icon: icon(i.PencilEdit02Icon, 13),
-          run: () => setDialog({ kind: "newThread", labelId: box.id }),
-        },
-      ];
-    const sub = store.findById(Subspace, box.id);
-    return [
-      {
-        label: "Open Space Page",
-        icon: icon(i.InformationCircleIcon, 13),
-        run: () => open({ subspace: box.id }),
-      },
-      {
-        label: "New Thread in This Space",
-        icon: icon(i.PencilEdit02Icon, 13),
-        run: () => setDialog({ kind: "newThread", subspaceId: box.id }),
-      },
-      ...(sub
-        ? [
-            {
-              label: "Add Member",
-              icon: icon(i.UserAdd01Icon, 13),
-              run: () => setDialog({ kind: "addMember", subspace: sub }),
-            },
-          ]
-        : []),
-    ];
-  };
+    store.all(Thread).filter((t) => t.isOpen && t.subspaceIds.includes(sub().id)).length;
+  const menu = (): MenuItem[] => [
+    {
+      label: "Open Space Page",
+      icon: icon(i.InformationCircleIcon, 13),
+      run: () => open({ subspace: sub().id }),
+    },
+    {
+      label: "New Thread in This Space",
+      icon: icon(i.PencilEdit02Icon, 13),
+      run: () => setDialog({ kind: "newThread", subspaceId: sub().id }),
+    },
+    {
+      label: "Add Member",
+      icon: icon(i.UserAdd01Icon, 13),
+      run: () => setDialog({ kind: "addMember", subspace: sub() }),
+    },
+  ];
   return (
     <Mailbox
-      box={props.box}
-      label={props.label}
-      icon={props.icon}
+      box={{ kind: "subspace", id: sub().id }}
+      label={sub().name}
+      icon={sub().visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
       count={openCount()}
       menu={menu}
     />
@@ -346,14 +320,13 @@ export function askDeleteBucket(from: DOMRect, bucket: Bucket): void {
     fields: [{ label: "Bucket name", placeholder: `Type “${bucket.name}” to delete it` }],
     accept: ([typed]) => typed === bucket.name,
     submit: () => {
-      if (sameMailbox(mailbox(), { kind: "bucket", id: bucket.id }))
-        chooseMailbox({ kind: "inbox" });
+      leave({ kind: "bucket", id: bucket.id });
       undoable("Delete Bucket", () => void bucket.delete());
     },
   });
 }
 
-// What right-clicking a bucket offers, as the old sidebar's bucket headings did.
+// What right-clicking a bucket offers, in the sidebar and on its heading in the inbox.
 function bucketMenu(bucket: Bucket): MenuItem[] {
   const move = (by: number) => () => {
     const buckets = myBuckets();
@@ -396,7 +369,7 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   ];
 }
 
-// The sidebar's first places, which ⌘1, ⌘2… go to.
+// The places ⌘1, ⌘2… go to: Inbox, My Threads, All Spaces, Drafts.
 const PLACES: Mailbox[] = [
   { kind: "inbox" },
   { kind: "personal" },
@@ -497,15 +470,7 @@ export function MailSidebar(): JSX.Element {
             make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
           }}
         >
-          <For each={byName(store.all(Subspace))}>
-            {(sub) => (
-              <SpaceOrLabel
-                box={{ kind: "subspace", id: sub.id }}
-                label={sub.name}
-                icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
-              />
-            )}
-          </For>
+          <For each={byName(store.all(Subspace))}>{(sub) => <SpaceRow space={sub} />}</For>
         </Section>
         {/* The views you've pinned: here once there's one. */}
         <Show when={pinned().length > 0}>
@@ -843,15 +808,16 @@ function LayoutPill(): JSX.Element {
 // A field filtered to one value (a status, a priority, an owner) has nothing left to group or choose between.
 const pinnedTo = (field: string, compare: string): boolean =>
   compare === "eq" && conditions().some((c) => field in c);
+// What a list can be grouped by, here and in ⌘K.
+export const groupFields = (): ReturnType<typeof fieldsHere> =>
+  fieldsHere().filter(([field, { compare }]) => !pinnedTo(field, compare));
 const groupItems = (): MenuItem[] =>
-  fieldsHere()
-    .filter(([field, { compare }]) => !pinnedTo(field, compare))
-    .map(([field, { label }]) => ({
-      label,
-      icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
-      checked: groupedBy() === field,
-      run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
-    }));
+  groupFields().map(([field, { label }]) => ({
+    label,
+    icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
+    checked: groupedBy() === field,
+    run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
+  }));
 const orderItems = (): MenuItem[] =>
   (Object.keys(ORDERS) as Order[]).map((order) => ({
     label: ORDERS[order],
@@ -924,7 +890,7 @@ export const displayMenu = (): MenuItem[] => [
   },
 ];
 
-// What narrows the list: its filters (each a pill that removes itself; more from Filter), and saving them as a view.
+// What narrows the list: its filters, each a pill that removes itself (more from Filter).
 function QueryFilters(): JSX.Element {
   return (
     <>
@@ -984,14 +950,18 @@ function QueryBar(): JSX.Element {
 
 // Views: a filtered list, or one the sidebar doesn't have (a label's, a person's), saved as a view (pinned to the
 // sidebar to start with). A view pins and unpins; deleting it is in its menu and settings.
-const savable = (): boolean =>
+export const savable = (): boolean =>
   // Your inbox, a bucket or Sent isn't a filter, so a view can't keep it.
   !["view", "inbox", "unsorted", "bucket", "sent", "drafts"].includes(mailbox().kind) &&
   (conditions().length > 0 || mailbox().kind === "label" || mailbox().kind === "person");
-const saveView = (): void =>
+export const saveView = (): void =>
   setDialog({ kind: "newView", filter: { and: [...baseFilter(mailbox()), ...conditions()] } });
+// Off a list that's going (deleted), to the inbox.
+export const leave = (box: Mailbox): void => {
+  if (sameMailbox(mailbox(), box)) chooseMailbox({ kind: "inbox" });
+};
 export const deleteView = (saved: View): void => {
-  if (sameMailbox(mailbox(), { kind: "view", id: saved.id })) chooseMailbox({ kind: "inbox" });
+  leave({ kind: "view", id: saved.id });
   undoable("Delete View", () => void saved.delete());
 };
 const shownView = (): View | undefined => {
@@ -1260,8 +1230,6 @@ export function ThreadActions(props: { thread: Thread }): JSX.Element {
   );
 }
 
-// No thread open: as Mail says.
-
 const s = stylex.create({
   // The resize edge on a column's right.
   edge: {
@@ -1321,7 +1289,7 @@ const s = stylex.create({
     paddingRight: 7.27,
     borderRadius: 7.27,
     color: colors.textPrimary,
-    fontSize: 11.82,
+    fontSize: fontSizes.body,
     cursor: "default",
     outline: "none",
   },
@@ -1333,7 +1301,7 @@ const s = stylex.create({
     opacity: 0,
     transitionProperty: "grid-template-rows, opacity",
     transitionDuration: { default: "220ms", [motion.reduced]: "0s" },
-    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+    transitionTimingFunction: motion.settle,
   },
   collapseOpen: { gridTemplateRows: "1fr", opacity: 1 },
   collapseInner: { minHeight: 0, overflow: "hidden" },
@@ -1351,8 +1319,6 @@ const s = stylex.create({
     fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
   },
-  // Apart from the one before it; the first in its group sits right under the segments.
-  // 14pt above, its title at 12pt medium, 8pt in, 4pt over its rows.
   // Just apart from the rows above.
   nearby: { marginTop: 7.27 },
   // Apart from the places above and from each other.
@@ -1371,7 +1337,7 @@ const s = stylex.create({
     gap: 4,
     alignItems: "center",
     color: colors.textTertiary,
-    fontSize: 10.91,
+    fontSize: fontSizes.caption,
     fontWeight: 500,
     cursor: "default",
   },
@@ -1380,7 +1346,7 @@ const s = stylex.create({
     opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1 },
     transitionProperty: "transform, opacity",
     transitionDuration: { default: "220ms", [motion.reduced]: "0s" },
-    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+    transitionTimingFunction: motion.settle,
   },
   sectionChevronOpen: { transform: "rotate(90deg)" },
   sectionAdd: {
@@ -1405,7 +1371,7 @@ const s = stylex.create({
     padding: "6.36px 7.27px",
     borderRadius: 7.27,
     color: colors.textSecondary,
-    fontSize: 11.82,
+    fontSize: fontSizes.body,
     backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
   },
 
@@ -1476,7 +1442,7 @@ const s = stylex.create({
     backgroundColor: colors.bgTertiary,
     transitionProperty: { default: "transform, width", [motion.reduced]: "none" },
     transitionDuration: "320ms",
-    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+    transitionTimingFunction: motion.settle,
   },
   pillSegment: {
     position: "relative",
@@ -1516,7 +1482,7 @@ const s = stylex.create({
     alignItems: "center",
     padding: "9.09px 10.91px 1.82px",
     color: colors.textTertiary,
-    fontSize: 10.91,
+    fontSize: fontSizes.caption,
     fontWeight: 500,
   },
   groupCount: { fontWeight: 400 },
@@ -1571,7 +1537,7 @@ const s = stylex.create({
     display: "flex",
     gap: 7.27,
     alignItems: "last baseline",
-    fontSize: 11.82,
+    fontSize: fontSizes.body,
     lineHeight: "14.55px",
   },
   preview: {

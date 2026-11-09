@@ -47,7 +47,6 @@ export const page = stylex.create({
     "::placeholder": { color: muted },
   },
   titleRow: { display: "flex", gap: 6, alignItems: "center" },
-  lock: { display: "flex", color: muted },
   // A search field in a table's toolbar: an icon and the input in a bordered box.
   search: {
     display: "flex",
@@ -89,14 +88,7 @@ export const page = stylex.create({
   narrow: { maxWidth: 640 },
   itemBody: { display: "flex", flex: 1, flexDirection: "column", gap: 2, minWidth: 0 },
   itemName: { display: "flex", gap: 6, alignItems: "center", color: colors.textPrimary },
-  // A thread table's filters, under its toolbar.
-  filters: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 6,
-    alignItems: "center",
-    padding: "4px 0 8px",
-  },
+
   filterPill: {
     display: "inline-flex",
     gap: 6,
@@ -115,7 +107,6 @@ export const page = stylex.create({
   inCell: { display: "flex", gap: 6, alignItems: "center", minWidth: 0 },
   titleText: { fontWeight: 500 },
   // Notion's select and status values.
-  pills: { display: "flex", gap: 6, overflow: "hidden" },
   pill: {
     display: "inline-flex",
     gap: 6,

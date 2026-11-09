@@ -6,9 +6,7 @@ import type { IconSvgElement } from "./components/Icon";
 import { LABELS } from "./components/ThreadView";
 import { keysFor, type HotkeyId } from "./hotkeys";
 import {
-  baseFilter,
   chooseMailbox,
-  conditions,
   display,
   groupedBy,
   mailbox,
@@ -20,9 +18,16 @@ import {
   type Zoom,
   ZOOMS,
   type Mailbox,
-  fieldsHere,
 } from "./mail";
-import { deleteView, LAYOUTS, toggleResolved } from "./components/Mail";
+import {
+  deleteView,
+  groupFields,
+  LAYOUTS,
+  savable,
+  saveView,
+  toggleResolved,
+} from "./components/Mail";
+import { dueIn } from "./when";
 import { showToday } from "./components/Timeline";
 import {
   account,
@@ -134,13 +139,6 @@ const choices = (
       run: c.run,
     })),
 });
-
-// So many days on, by the calendar (not 24-hour steps, which a clock change throws off), at 5pm.
-const dueAt = (days: number): Date => {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return new Date(date.setHours(17, 0, 0, 0));
-};
 
 function threadCommands(thread: Thread): Command[] {
   const section = "This thread";
@@ -369,7 +367,7 @@ function threadCommands(thread: Thread): Command[] {
           })),
         ),
     },
-    // One date, as the thread shows it: when it's due (a span's start is typed on the thread itself).
+    // One date, as the thread shows it: when it's due (a span is picked on the thread's calendar).
     {
       id: "when",
       title: "Set When",
@@ -383,19 +381,19 @@ function threadCommands(thread: Thread): Command[] {
             id: "today",
             title: "Today",
             on: false,
-            run: () => edit(thread, { startAt: undefined, dueAt: dueAt(0) }, "When"),
+            run: () => edit(thread, { startAt: undefined, dueAt: dueIn(0) }, "When"),
           },
           {
             id: "tomorrow",
             title: "Tomorrow",
             on: false,
-            run: () => edit(thread, { startAt: undefined, dueAt: dueAt(1) }, "When"),
+            run: () => edit(thread, { startAt: undefined, dueAt: dueIn(1) }, "When"),
           },
           {
             id: "week",
             title: "Next Week",
             on: false,
-            run: () => edit(thread, { startAt: undefined, dueAt: dueAt(7) }, "When"),
+            run: () => edit(thread, { startAt: undefined, dueAt: dueIn(7) }, "When"),
           },
           {
             id: "none",
@@ -522,7 +520,7 @@ function listing(): Command[] {
               placeholder: "Search",
               // Toggles, as in the list's menu: the one it's grouped by ungroups it.
               commands: () =>
-                fieldsHere().map(([field, { label }]): Command => ({
+                groupFields().map(([field, { label }]): Command => ({
                   id: `group:${field}`,
                   title: label,
                   kind: "action",
@@ -570,7 +568,6 @@ function listing(): Command[] {
 
 function creating(): Command[] {
   const section = "New";
-  const narrowed = conditions();
   return [
     ...hotkey("newThread", "Create a Thread", section, i.PencilEdit02Icon, "new start write"),
     ...hotkey(
@@ -608,8 +605,7 @@ function creating(): Command[] {
       run: () => setDialog({ kind: "bucket" }),
     },
     // The list's filter, kept as a view of its own.
-    ...(!["view", "inbox", "unsorted", "bucket", "sent", "drafts"].includes(mailbox().kind) &&
-    (narrowed.length > 0 || mailbox().kind === "label" || mailbox().kind === "person")
+    ...(savable()
       ? [
           {
             id: "save-view",
@@ -618,11 +614,7 @@ function creating(): Command[] {
             section,
             icon: i.FilterAddIcon,
             keywords: "save view saved filter query pin",
-            run: () =>
-              setDialog({
-                kind: "newView",
-                filter: { and: [...baseFilter(mailbox()), ...narrowed] },
-              }),
+            run: saveView,
           },
         ]
       : []),

@@ -36,7 +36,7 @@ export const FIELDS: Record<
   ownerId: { label: "Owner", compare: "eq", values: people },
 };
 
-// Threads you own or are assigned: My Threads' filter, "Mine" in a pinned list's filter bar.
+// Threads you own or are assigned: My Threads' filter, "Mine" in a view's filter bar.
 export const MINE: Filter = {
   or: [{ ownerId: { eq: "$me" } }, { assigneeIds: { contains: "$me" } }],
 };

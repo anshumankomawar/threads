@@ -16,7 +16,7 @@ export const HOTKEYS = [
   { id: "back", label: "Back", section: "General", keys: "⌘[" },
   { id: "forward", label: "Forward", section: "General", keys: "⌘]" },
   { id: "sidebar", label: "Show or Hide the Sidebar", section: "General", keys: "⌘\\" },
-  // The sidebar's first places, in order.
+  // The places ⌘1–⌘4 go to: Inbox, My Threads, All Spaces, Drafts.
   { id: "goInbox", label: "Inbox", section: "Sidebar", keys: "⌘1" },
   { id: "goMine", label: "My Threads", section: "Sidebar", keys: "⌘2" },
   { id: "goEverything", label: "All Spaces", section: "Sidebar", keys: "⌘3" },

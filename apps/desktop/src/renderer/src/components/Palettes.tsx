@@ -63,9 +63,7 @@ const styles = stylex.create({
 // An input over rows that match it, in sections; arrows choose, Enter or a click runs the row.
 function Picker(props: {
   placeholder: string;
-  rows: (query: string, filter: number) => Row[];
-  // Tabs under the input that narrow the rows (⌘1, ⌘2…); `rows` gets the chosen one's index.
-  filters?: string[];
+  rows: (query: string) => Row[];
   // A form's steps share the one input, so the form holds what's typed.
   query?: Signal<string>;
   // Escape goes back a step instead of closing; Tab does whatever a step wants.
@@ -74,8 +72,7 @@ function Picker(props: {
 }): JSX.Element {
   const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
-  const [filter, setFilter] = createSignal(0);
-  const rows = createMemo(() => props.rows(query().trim(), filter()));
+  const rows = createMemo(() => props.rows(query().trim()));
   createEffect(rows, () => {
     setAt(0);
   });
@@ -98,8 +95,6 @@ function Picker(props: {
     else if (event.key === "Enter") rows()[index()]?.run();
     else if (event.key === "Escape" || (event.key === "Backspace" && atStart)) back();
     else if (event.key === "Tab" && props.onTab) props.onTab();
-    else if (event.metaKey && props.filters?.[Number(event.key) - 1])
-      setFilter(Number(event.key) - 1);
     else return;
     event.preventDefault();
   };
@@ -129,26 +124,6 @@ function Picker(props: {
           onKeyDown={onKeyDown}
         />
       </div>
-      <Show when={props.filters}>
-        {(filters) => (
-          <div class={sx(palette.filters)} role="tablist">
-            <For each={filters()}>
-              {(label, i) => (
-                <button
-                  class={sx(base.bare, palette.filter, filter() === i() && palette.filterChosen)}
-                  role="tab"
-                  aria-selected={filter() === i() ? "true" : "false"}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => setFilter(i())}
-                >
-                  {label}
-                  <span class={sx(palette.filterKey)}>⌘ {i() + 1}</span>
-                </button>
-              )}
-            </For>
-          </div>
-        )}
-      </Show>
       <Show when={rows().length > 0}>
         <div class={sx(palette.results)} role="listbox">
           <For each={sections()}>
@@ -395,19 +370,17 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
 }
 
 // From a thread's labels chip, the new label goes on that thread; otherwise its page opens.
-function NewLabel(props: { thread?: Thread }): JSX.Element {
+function NewLabel(): JSX.Element {
   return (
     <Picker
       placeholder="Name the label"
       rows={(query) =>
         entry(query, "Create Label", (name) => {
-          const thread = props.thread;
           let id = "";
           undoable("New Label", () => {
             id = store.create(Label, { name, workspace: workspace() }).id;
-            if (thread) edit(thread, { labelIds: [...thread.labelIds, id] }, "Add Label");
           });
-          if (!thread) open({ label: id });
+          open({ label: id });
         })
       }
     />

@@ -85,7 +85,7 @@ const styles = stylex.create({
   },
   reveal: {
     animationDuration: "180ms",
-    animationTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+    animationTimingFunction: motion.settle,
   },
   openOut: { animationName: { default: openOut, [motion.reduced]: "none" } },
   panel: {

@@ -43,8 +43,8 @@ export const chipTone = stylex.create({
 
 const menuIn = stylex.keyframes({ from: { opacity: 0, transform: "translateY(-2px)" } });
 
-// Every menu shares one panel (after `base.panel`) and one row (after `base.bare`). Keyboard menus mark the row with `itemSelected`; pointer menus use
-// `itemHover` (its default restates transparent: StyleX merges whole properties).
+// Every menu shares one panel (after `base.panel`) and one row (after `base.bare`); keyboard menus mark the row with
+// `itemSelected`.
 export const menu = stylex.create({
   menu: {
     display: "flex",
@@ -120,20 +120,11 @@ export const menu = stylex.create({
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  itemHover: { backgroundColor: { default: "transparent", ":hover": colors.panelSelected } },
   itemSelected: { backgroundColor: colors.panelSelected },
   itemIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
   label: { flex: 1 },
   hint: { marginLeft: 6, color: colors.textTertiary },
   accent: { color: colors.accent },
-  separator: {
-    flexShrink: 0,
-    width: "100%",
-    height: 1,
-    margin: "4px 0",
-    borderStyle: "none",
-    backgroundColor: colors.panelBorder,
-  },
 });
 
 export const topbar = stylex.create({

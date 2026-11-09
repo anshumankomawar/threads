@@ -8,7 +8,7 @@ export const peekMarker = stylex.defineMarker();
 // On the timeline's toolbar: its chips and New stand as tall as the tabs beside them.
 export const toolbarMarker = stylex.defineMarker();
 
-// Each sidebar tab's measured label width, set on the label by the sidebar so the chosen tab grows to fit it.
+// Each tab's measured label width, set on the label by Tabs so the chosen tab grows to fit it.
 export const tabLabel = stylex.defineVars({
   "--label-width": "auto",
 });

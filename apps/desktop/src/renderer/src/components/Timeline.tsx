@@ -5,7 +5,7 @@ import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
 import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
-import { edit, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
+import { edit, peek, peeked, save, saved, shortDate, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
 import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
@@ -15,7 +15,7 @@ import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { Tabs, type Tab } from "./Tabs";
 import { dot } from "./ThreadView";
-import { whenFields, type When } from "../when";
+import { dueOn, whenFields, type When } from "../when";
 import { pickDate } from "./DatePicker";
 
 // The list as a timeline, after TeamGantt: the threads named down the left, and beside each its bar, a slim card with
@@ -65,8 +65,6 @@ function span(thread: Thread): { from: number; to: number } {
 }
 
 const MONTH = new Intl.DateTimeFormat(undefined, { month: "long" });
-const DAY_MONTH = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
-const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 // Scrolls the timeline to today (⌘K's "Go to today"); the shown timeline sets it.
 let toToday: (() => void) | undefined;
@@ -239,7 +237,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       const { from, to } = shown(thread);
       setDrag(null);
       if (d.days === 0) return;
-      const due = new Date(new Date(addDays(to, -1)).setHours(17, 0, 0, 0));
+      const due = dueOn(addDays(to, -1));
       // A deadline moved stays a deadline, a start alone stays a start; a span moves both ends.
       if (d.kind === "move")
         edit(
@@ -391,7 +389,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
             )}
           </Show>
           <Show when={overdue(t())}>
-            <span class={sx(styles.overdue)}>{SHORT_DATE.format(dueDay(t())!)}</span>
+            <span class={sx(styles.overdue)}>{shortDate(new Date(dueDay(t())!))}</span>
           </Show>
         </span>
         {/* The days it's moved, over it. */}
@@ -500,7 +498,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
                   >
                     <span class={sx(tick.at === today() && styles.tickToday)}>
                       {tick.at === today()
-                        ? DAY_MONTH.format(tick.at)
+                        ? shortDate(new Date(tick.at))
                         : new Date(tick.at).getDate()}
                     </span>
                   </span>
@@ -666,7 +664,7 @@ const styles = stylex.create({
     alignItems: "center",
     minWidth: 0,
     color: colors.textPrimary,
-    fontSize: 11.82,
+    fontSize: fontSizes.body,
     textAlign: "left",
     cursor: "pointer",
   },
@@ -678,9 +676,9 @@ const styles = stylex.create({
     alignItems: "center",
     height: 22,
     padding: "0 7.27px",
-    borderRadius: 6,
+    borderRadius: radii.control,
     color: colors.textTertiary,
-    fontSize: 11.82,
+    fontSize: fontSizes.body,
     cursor: "pointer",
   },
   backlogEmpty: { padding: "24px 7.27px", color: colors.textTertiary },
@@ -765,7 +763,6 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
   },
 
-  // Today, solid, as TeamGantt marks it.
   // Today: its date, darker and bold.
   tickToday: { color: colors.textPrimary, fontWeight: 600 },
 
@@ -804,7 +801,7 @@ const styles = stylex.create({
     padding: `0 ${INSET}px`,
     borderRadius: 7.27,
     color: colors.textPrimary,
-    fontSize: 11.82,
+    fontSize: fontSizes.body,
     textAlign: "left",
     cursor: "default",
   },
@@ -823,7 +820,7 @@ const styles = stylex.create({
     height: GROUP,
     paddingBottom: 3.64,
     color: colors.textTertiary,
-    fontSize: 10.91,
+    fontSize: fontSizes.caption,
     fontWeight: 500,
   },
   count: { fontWeight: 400, color: colors.textTertiary },

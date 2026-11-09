@@ -104,6 +104,7 @@ export const radii = stylex.defineConsts({
 export const fontSizes = stylex.defineConsts({
   label: "9.09px", // 10pt
   small: "10px", // 11pt
+  caption: "10.91px", // 12pt, a section's or group's heading
   body: "11.82px", // 13pt, the body
   name: "12.73px", // 14pt, a row's title
   input: "12.73px", // 14pt
@@ -114,4 +115,6 @@ export const fontSizes = stylex.defineConsts({
 // Animations stop for anyone who asks the system for less motion.
 export const motion = stylex.defineConsts({
   reduced: "@media (prefers-reduced-motion: reduce)",
+  // macOS's spring-like settle, for things that move into place (folds, the layout pill).
+  settle: "cubic-bezier(0.32, 0.72, 0, 1)",
 });

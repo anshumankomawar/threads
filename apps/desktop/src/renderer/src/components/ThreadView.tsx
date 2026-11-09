@@ -289,7 +289,6 @@ function ListChip(props: {
   icon: IconSvgElement;
   title?: string;
   short?: (name: string) => string;
-  more?: MenuItem[];
   look?: stylex.StyleXStyles;
   // A field at the top of its menu, to type a new one in.
   typed?: MenuField;
@@ -303,27 +302,23 @@ function ListChip(props: {
     <MenuChip
       label={<span class={sx(base.ellipsis)}>{summary(ids().map(name), props.none)}</span>}
       icon={icon(props.icon, 13)}
-      tone={ids().length === 0 ? "muted" : undefined}
       title={props.title}
       look={props.look}
       field={props.typed}
-      items={[
-        ...byName(props.records).map((record) => ({
-          label: record.name,
-          icon: ids().includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
-          run: () =>
-            edit(
-              props.thread,
-              { [props.field]: toggled(ids(), record.id) },
-              {
-                labelIds: "Change Labels",
-                subspaceIds: "Change Spaces",
-                assigneeIds: "Change Assignees",
-              }[props.field],
-            ),
-        })),
-        ...(props.more ?? []),
-      ]}
+      items={byName(props.records).map((record) => ({
+        label: record.name,
+        icon: ids().includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
+        run: () =>
+          edit(
+            props.thread,
+            { [props.field]: toggled(ids(), record.id) },
+            {
+              labelIds: "Change Labels",
+              subspaceIds: "Change Spaces",
+              assigneeIds: "Change Assignees",
+            }[props.field],
+          ),
+      }))}
     />
   );
 }

@@ -33,7 +33,7 @@ import { focusOnShow } from "./Palettes";
 // ⌘K (or /): everything in the app, from one field (commands.ts lists it). Before you type: the open thread's actions
 // and where to go. As you type: the best matches of every kind, each under its heading.
 // A command with choices of its own (Move to Bucket, Set Priority) opens them in its place; Backspace or Escape goes
-// back. Tabs (⌘1–⌘5) or a first character narrow it to one kind: `>` commands, `#` threads, `@` people, `/` places.
+// back. Tabs (⌘1–⌘4) or a first character narrow it to one kind: `>` commands, `#` threads, `@` people.
 // Threads filter as in Slack or Discord: typing a key (`from:`) suggests its values, and a finished one becomes a chip.
 // ↵ runs the row; ⌘↵ peeks at a thread or person instead of leaving where you are.
 

@@ -161,7 +161,7 @@ export type Dialog =
     | { kind: "newView"; filter: Filter }
     | { kind: "newSubspace" }
     | { kind: "addMember"; subspace: Subspace }
-    | { kind: "newLabel"; thread?: Thread }
+    | { kind: "newLabel" }
     | { kind: "compose"; draftId?: string }
     | { kind: "bucket"; bucket?: Bucket }
     | { kind: "blocked"; thread: Thread }
@@ -275,11 +275,11 @@ function offerUndo(text: string, run?: () => void, action = "Undo"): void {
 }
 
 // ⌘Z and ⇧⌘Z (and Edit → Undo, Redo): the latest step undone or redone, said in the toast.
-export function undoLast(): void {
+function undoLast(): void {
   const label = store.undo.undo();
   offerUndo(label ? `Undid ${label}` : "Nothing to undo", label ? redoLast : undefined, "Redo");
 }
-export function redoLast(): void {
+function redoLast(): void {
   const label = store.undo.redo();
   offerUndo(label ? `Redid ${label}` : "Nothing to redo", label ? undoLast : undefined);
 }
@@ -583,7 +583,7 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 }
 
 // ── Keys ──
-// Which of the sidebar's first places ⌘1, ⌘2… go to (by position): Mail.tsx says how, as it owns them.
+// Which places ⌘1, ⌘2… go to (by position): Mail.tsx says how, as it owns them.
 let goTo: (at: number) => void = () => {};
 export const onGoTo = (go: typeof goTo): void => {
   goTo = go;

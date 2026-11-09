@@ -6,7 +6,8 @@ import { base } from "../styles/base";
 import { button, menu as look } from "../styles/controls";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
-import type { When } from "../when";
+import { shortDate } from "../session";
+import { startOfDay, type When } from "../when";
 import { Icon } from "./Icon";
 
 // Picking a date: two months side by side, floating under what asked. As a round trip's dates: a click is the start,
@@ -31,11 +32,9 @@ export function DatePicker(): JSX.Element {
   );
 }
 
-const day = (date: Date): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate());
 const same = (a: Date | undefined, b: Date | undefined): boolean =>
   !!a && !!b && a.getTime() === b.getTime();
 const MONTH = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
-const SHORT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
 // A month's days in weeks from Monday, with blanks before its first and after its last.
@@ -49,10 +48,10 @@ function weeks(first: Date): (Date | null)[] {
 }
 
 function Panel(props: { ask: Ask }): JSX.Element {
-  const today = day(new Date());
+  const today = startOfDay(new Date());
   const was = {
-    start: props.ask.start && day(props.ask.start),
-    end: props.ask.end && day(props.ask.end),
+    start: props.ask.start && startOfDay(props.ask.start),
+    end: props.ask.end && startOfDay(props.ask.end),
   };
   const shownFrom = was.start ?? was.end ?? today;
   const [month, setMonth] = createSignal(
@@ -124,10 +123,8 @@ function Panel(props: { ask: Ask }): JSX.Element {
   const summary = (): string => {
     const { start, end } = picked();
     if (!start) return "Pick a day, or a start and an end";
-    if (awaitingEnd()) return `${SHORT.format(start)} – pick an end, or save one day`;
-    return !end || same(start, end)
-      ? SHORT.format(start)
-      : `${SHORT.format(start)} – ${SHORT.format(end)}`;
+    if (awaitingEnd()) return `${shortDate(start)} – pick an end, or save one day`;
+    return !end || same(start, end) ? shortDate(start) : `${shortDate(start)} – ${shortDate(end)}`;
   };
 
   // Under what asked, its left edges level, kept on screen.
@@ -207,7 +204,7 @@ function Panel(props: { ask: Ask }): JSX.Element {
                             (is(d, "start") || is(d, "end")) && s.picked,
                             same(d, today) && !is(d, "start") && !is(d, "end") && s.today,
                           )}
-                          aria-label={SHORT.format(d)}
+                          aria-label={shortDate(d)}
                           aria-pressed={is(d, "start") || is(d, "end") ? "true" : "false"}
                           onPointerDown={(event) => {
                             if (event.button !== 0) return;

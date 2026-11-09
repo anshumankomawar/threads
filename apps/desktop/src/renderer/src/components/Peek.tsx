@@ -55,7 +55,7 @@ const styles = stylex.create({
     boxShadow: colors.shadowFloat,
     animationName: { default: peekIn, [motion.reduced]: "none" },
     animationDuration: "160ms",
-    animationTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+    animationTimingFunction: motion.settle,
     "::backdrop": { backgroundColor: "transparent" },
   },
   // Where it is, cut out of the window's drag strip, so its bar moves it there and not the window. Not on the window

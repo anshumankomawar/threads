@@ -94,8 +94,8 @@ export function showMailbox(next: Mailbox): void {
   if (!sameMailbox(next, chosenNow)) setMailbox(next);
 }
 
-// Choosing a mailbox shows it: its list, and in the reading pane its page (a space's, a bucket's) or the scene, not
-// whatever thread was open before. Both are one step back.
+// Choosing a mailbox shows it: its list, with nothing open beside it (not whatever thread was open before). Both are
+// one step back.
 export function chooseMailbox(next: Mailbox): void {
   step(() => {
     setMailbox(next);
@@ -128,8 +128,8 @@ export function setPinned(view: { id: string }, on: boolean): void {
   });
 }
 
-// One display for the whole app: whatever list you open looks as you last set it. A pinned list is the exception,
-// shown as it was pinned (and changing its display changes its pin's).
+// One display for the whole app: whatever list you open looks as you last set it. A view is the exception, shown as
+// it was saved (and changing its display changes the view's).
 const EVERYWHERE = "*";
 const keyOf = (box: Mailbox): string => (box.kind === "view" ? `view:${box.id}` : EVERYWHERE);
 const [displays, setDisplays] = createSignal<Record<string, Display>>(
