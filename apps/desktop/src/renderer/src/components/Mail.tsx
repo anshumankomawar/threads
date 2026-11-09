@@ -40,6 +40,8 @@ import {
   listed,
   mailbox,
   mailboxTitle,
+  mineOnly,
+  toggleMine,
   sameMailbox,
   type Mailbox,
   display,
@@ -121,6 +123,8 @@ function Mailbox(props: {
   indent?: boolean;
   // What right-clicking it offers.
   menu?: () => MenuItem[];
+  // A + at its end, shown on hover, that makes one under it (a space under Spaces), asked for in a form grown from it.
+  add?: { label: string; placeholder: string; make: (name: string) => Mailbox };
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
@@ -129,7 +133,7 @@ function Mailbox(props: {
         role="button"
         tabindex={0}
         aria-current={on() ? "true" : undefined}
-        class={sx(s.mailbox, props.indent && s.indent, on() && s.selected)}
+        class={sx(s.mailbox, props.indent && s.indent, on() && s.selected, stylex.defaultMarker())}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
           const items = props.menu?.();
@@ -147,6 +151,26 @@ function Mailbox(props: {
         <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
         <Show when={props.count}>
           <span class={sx(s.count)}>{props.count}</span>
+        </Show>
+        <Show when={props.add}>
+          {(add) => (
+            <button
+              class={sx(base.bare, s.sectionAdd)}
+              aria-label={add().label}
+              title={add().label}
+              onClick={(e) => {
+                e.stopPropagation();
+                askInline({
+                  at: e.currentTarget.querySelector("svg") ?? e.currentTarget,
+                  icon: i.Add01Icon,
+                  fields: [{ label: add().label, placeholder: add().placeholder }],
+                  submit: ([name]) => chooseMailbox(add().make(name)),
+                });
+              }}
+            >
+              <Icon icon={i.Add01Icon} size={12} aria-hidden="true" />
+            </button>
+          )}
         </Show>
       </div>
     </li>
@@ -250,6 +274,7 @@ function SpaceOrLabel(props: {
   box: { kind: "subspace" | "label"; id: string };
   label: string;
   icon: IconSvgElement;
+  indent?: boolean;
 }): JSX.Element {
   const field = (): "subspaceIds" | "labelIds" =>
     props.box.kind === "subspace" ? "subspaceIds" : "labelIds";
@@ -294,6 +319,7 @@ function SpaceOrLabel(props: {
       label={props.label}
       icon={props.icon}
       count={openCount()}
+      indent={props.indent}
       menu={menu}
     />
   );
@@ -422,8 +448,7 @@ export function MailSidebar(): JSX.Element {
           </button>
         </span>
       </div>
-      {/* One list, nothing behind a tab: your inbox and its buckets, your threads and everyone's, then the spaces,
-          then what you've pinned. */}
+      {/* One list, nothing behind a tab: your inbox and its buckets, then the spaces, then what you've pinned. */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
         <ul class={sx(s.mailboxes)}>
           <Mailbox
@@ -473,8 +498,6 @@ export function MailSidebar(): JSX.Element {
               />
             )}
           </For>
-          <Mailbox box={{ kind: "personal" }} label="My Threads" icon={i.UserIcon} />
-          <Mailbox box={{ kind: "all" }} label="Everything" icon={i.DashboardSquare01Icon} />
           <Show when={drafts().length > 0}>
             <Mailbox
               box={{ kind: "drafts" }}
@@ -484,24 +507,29 @@ export function MailSidebar(): JSX.Element {
             />
           </Show>
         </ul>
-        <Section
-          title="Spaces"
-          add={{
-            label: "New Space",
-            placeholder: "Name the space",
-            make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
-          }}
-        >
+        {/* Where the work lives: every space's threads, and each space's under them. */}
+        <ul class={sx(s.mailboxes, s.section)}>
+          <Mailbox
+            box={{ kind: "all" }}
+            label="Spaces"
+            icon={i.Layers01Icon}
+            add={{
+              label: "New Space",
+              placeholder: "Name the space",
+              make: (name) => ({ kind: "subspace", id: makeSubspace(name).id }),
+            }}
+          />
           <For each={byName(store.all(Subspace))}>
             {(sub) => (
               <SpaceOrLabel
                 box={{ kind: "subspace", id: sub.id }}
                 label={sub.name}
                 icon={sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
+                indent
               />
             )}
           </For>
-        </Section>
+        </ul>
         {/* Lists pinned from the filter bar (a filtered list, a label's, a person's): here once there's one. */}
         <Show when={pinned().length > 0}>
           <Section title="Pinned">
@@ -1033,6 +1061,18 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               />
             </Show>
           </Show>
+          {/* Mine: the list narrowed to your own threads (yours already are, in My Threads). */}
+          <Show when={filterable() && mailbox().kind !== "personal"}>
+            <button
+              class={sx(topbar.button, mineOnly() && s.pressed)}
+              aria-label="Only mine"
+              aria-pressed={mineOnly() ? "true" : "false"}
+              title={mineOnly() ? "Show everyone's" : "Only mine"}
+              onClick={toggleMine}
+            >
+              <Icon icon={i.UserIcon} {...ICON} />
+            </button>
+          </Show>
           <Show when={pinnable()}>
             <button
               class={sx(topbar.button)}
@@ -1232,6 +1272,8 @@ const s = stylex.create({
     padding: "8.27px 7.27px 12px",
     overflowY: "auto",
   },
+  // A top-bar toggle that's on.
+  pressed: { backgroundColor: colors.bgTertiary },
   // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
   selected: { backgroundColor: colors.bgTertiary },
   // A little space between rows, so neighbouring fills (a space and its open thread) don't run together.

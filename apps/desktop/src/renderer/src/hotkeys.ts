@@ -19,7 +19,7 @@ export const HOTKEYS = [
   // The sidebar's first places, in order.
   { id: "goInbox", label: "Inbox", section: "Sidebar", keys: "⌘1" },
   { id: "goMine", label: "My Threads", section: "Sidebar", keys: "⌘2" },
-  { id: "goEverything", label: "Everything", section: "Sidebar", keys: "⌘3" },
+  { id: "goEverything", label: "All Spaces", section: "Sidebar", keys: "⌘3" },
   { id: "goDrafts", label: "Drafts", section: "Sidebar", keys: "⌘4" },
   { id: "newThread", label: "New thread", section: "Create", keys: "⌘N" },
   { id: "compose", label: "Write a thread as a message", section: "Create", keys: "⇧⌘N" },

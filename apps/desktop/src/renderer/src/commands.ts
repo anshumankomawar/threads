@@ -460,7 +460,7 @@ function places(): Command[] {
     place("sent", "Sent", i.SentIcon, { kind: "sent" }),
     place("drafts", "Drafts", i.NoteEditIcon, { kind: "drafts" }),
     place("personal", "My Threads", i.UserIcon, { kind: "personal" }, "mine personal"),
-    place("all", "Everything", i.DashboardSquare01Icon, { kind: "all" }, "workspace all threads"),
+    place("all", "All Spaces", i.Layers01Icon, { kind: "all" }, "everything workspace all threads"),
     ...byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id)).map((v) =>
       place(v.id, v.name, i.PinIcon, { kind: "view", id: v.id }, "pinned view"),
     ),

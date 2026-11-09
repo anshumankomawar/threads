@@ -36,9 +36,17 @@ export const FIELDS: Record<
   ownerId: { label: "Owner", compare: "eq", values: people },
 };
 
+// Threads you own or are assigned: "Mine", which any list can be narrowed to.
+export const MINE: Filter = {
+  or: [{ ownerId: { eq: "$me" } }, { assigneeIds: { contains: "$me" } }],
+};
+export const isMine = (condition: Filter): boolean =>
+  JSON.stringify(condition) === JSON.stringify(MINE);
+
 // One field's test, as the filter bar shows it: "Status: Open". Either of several ("Owner: Me or Assignee: Me") reads
 // as each joined, and a field it doesn't offer by its own name, so a view made elsewhere still shows.
 export function describe(condition: Filter): string {
+  if (isMine(condition)) return "Mine";
   if ("or" in condition) return (condition.or as Filter[]).map(describe).join(" or ");
   if ("and" in condition) return (condition.and as Filter[]).map(describe).join(", ");
   const [[field, comparison]] = Object.entries(condition);

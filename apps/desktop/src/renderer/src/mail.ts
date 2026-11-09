@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { Bucket, Draft, Label, PRIORITIES, Subspace, Thread, User, View } from "models";
 import { matches, type Filter } from "sync";
-import { FIELDS } from "./filters";
+import { FIELDS, isMine, MINE } from "./filters";
 import {
   edit,
   followOrder,
@@ -46,6 +46,13 @@ export function setConditions(next: Filter[]): void {
   else setExtra(next);
 }
 
+// Narrowing the list to your own threads, and back: a filter like any other (it shows in the filter bar, and a
+// pinned list keeps it).
+export const mineOnly = (): boolean => conditions().some(isMine);
+export function toggleMine(): void {
+  setConditions(mineOnly() ? conditions().filter((c) => !isMine(c)) : [...conditions(), MINE]);
+}
+
 // What a mailbox's threads have in common, as a filter, so that saving its filtered list as a view keeps them.
 export function baseFilter(box: Mailbox): Filter[] {
   switch (box.kind) {
@@ -56,7 +63,7 @@ export function baseFilter(box: Mailbox): Filter[] {
     case "person":
       return [{ or: [{ ownerId: { eq: box.id } }, { assigneeIds: { contains: box.id } }] }];
     case "personal":
-      return [{ or: [{ ownerId: { eq: "$me" } }, { assigneeIds: { contains: "$me" } }] }];
+      return [MINE];
     default:
       return [];
   }
@@ -311,7 +318,7 @@ export function mailboxTitle(box: Mailbox): string {
     case "drafts":
       return "Drafts";
     case "all":
-      return "Everything";
+      return "Spaces";
     case "personal":
       return "My Threads";
     case "bucket":
