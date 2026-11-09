@@ -210,16 +210,21 @@ export function createThread(fields: {
   branchedFrom?: Thread;
 }): Thread {
   const { assignees = [], labelIds = [], subspaceIds = [], ...rest } = fields;
-  return store.create(Thread, {
-    ...rest,
-    state: "open",
-    priority: "none",
-    workspace: workspace(),
-    owner: me(),
-    labelIds,
-    subspaceIds,
-    assigneeIds: assignees.map((u) => u.id),
+  // One undo step: a caller that does more with it (its first messages, new labels) wraps all of that in its own.
+  let made!: Thread;
+  undoable("New Thread", () => {
+    made = store.create(Thread, {
+      ...rest,
+      state: "open",
+      priority: "none",
+      workspace: workspace(),
+      owner: me(),
+      labelIds,
+      subspaceIds,
+      assigneeIds: assignees.map((u) => u.id),
+    });
   });
+  return made;
 }
 
 export function send(thread: Thread, body: string): void {
@@ -261,27 +266,30 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     else dialogBack();
   };
   const create = (assignees: User[], subspace?: Subspace): void => {
-    const labels = store.all(Label);
-    const labelIds = names().map(
-      (name) =>
-        (
-          labels.find((l) => l.name === name) ??
-          store.create(Label, { name, workspace: workspace() })
-        ).id,
-    );
-    const subspaceIds = [
-      ...new Set([
-        ...(props.subspaceId ? [props.subspaceId] : []),
-        ...(subspace ? [subspace.id] : []),
-      ]),
-    ];
-    setDialog(null);
-    const made = createThread({
-      title: title(),
-      description: description(),
-      assignees,
-      labelIds,
-      subspaceIds,
+    let made!: Thread;
+    undoable("New Thread", () => {
+      const labels = store.all(Label);
+      const labelIds = names().map(
+        (name) =>
+          (
+            labels.find((l) => l.name === name) ??
+            store.create(Label, { name, workspace: workspace() })
+          ).id,
+      );
+      const subspaceIds = [
+        ...new Set([
+          ...(props.subspaceId ? [props.subspaceId] : []),
+          ...(subspace ? [subspace.id] : []),
+        ]),
+      ];
+      setDialog(null);
+      made = createThread({
+        title: title(),
+        description: description(),
+        assignees,
+        labelIds,
+        subspaceIds,
+      });
     });
     open({ thread: made.id });
   };

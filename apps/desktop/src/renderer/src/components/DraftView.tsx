@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { mention, User, type ComposeDraft, type Draft } from "models";
+import { mention, User, type ComposeDraft, type Draft, type Thread } from "models";
 import { firstName, me, open, store, summary, undoable } from "../session";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
@@ -111,10 +111,13 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
     add();
     const made = doc();
     const title = made.title.trim() || plainDraft(d().text).title || "New thread";
-    const created = createThread({ title, description: made.context.trim() || undefined });
-    for (const { personIds, text } of made.asks)
-      send(created, [...personIds.map(mention), text].join(" "));
-    void d().delete();
+    let created!: Thread;
+    undoable("New Thread", () => {
+      created = createThread({ title, description: made.context.trim() || undefined });
+      for (const { personIds, text } of made.asks)
+        send(created, [...personIds.map(mention), text].join(" "));
+      void d().delete();
+    });
     open({ thread: created.id });
   };
   const discard = (): void => {

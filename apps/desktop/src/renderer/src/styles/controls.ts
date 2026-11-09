@@ -255,9 +255,10 @@ export const toast = stylex.create({
     WebkitBoxOrient: "vertical",
     WebkitLineClamp: 2,
   },
+  // Over the window's foot, whatever's open, and clear of the layout pill under it.
   undo: {
-    position: "absolute",
-    bottom: 20,
+    position: "fixed",
+    bottom: 64,
     left: "50%",
     zIndex: layers.overlay,
     display: "flex",

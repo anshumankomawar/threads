@@ -52,8 +52,12 @@ export function switchTo(next: { source?: Source; viewer?: string | null }): voi
   location.reload();
 }
 
+// Whether the first load's in: until it is, a space or label not found may just not be here yet.
+const [isLoaded, setLoaded] = createSignal(false);
+export const loaded = isLoaded;
 // The first load is as the admin, to find who's here; then you're the first person. Someone no longer here starts over.
 void store.ready().then(() => {
+  setLoaded(true);
   if (viewerId === null) {
     const first = store.all(User)[0];
     if (first) switchTo({ viewer: first.id });
@@ -239,7 +243,12 @@ export function menuFrom(button: Element, items: MenuItem[]): void {
 }
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
 // A toast at the bottom: what just happened, and undoing it if it can be.
-export const [undo, setUndo] = createSignal<{ text: string; run?: () => void } | null>(null);
+// What was just done, and what its button does (Undo, or Redo after an undo).
+export const [undo, setUndo] = createSignal<{
+  text: string;
+  run?: () => void;
+  action?: string;
+} | null>(null);
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));
 function applyZoom(next: number): void {
@@ -259,16 +268,16 @@ export const showMenu = (event: MouseEvent, items: MenuItem[]): void => {
 };
 
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
-function offerUndo(text: string, run?: () => void): void {
+function offerUndo(text: string, run?: () => void, action = "Undo"): void {
   clearTimeout(undoTimer);
-  setUndo({ text, run });
+  setUndo({ text, run, action });
   undoTimer = setTimeout(() => setUndo(null), 5000);
 }
 
 // ⌘Z and ⇧⌘Z (and Edit → Undo, Redo): the latest step undone or redone, said in the toast.
 export function undoLast(): void {
   const label = store.undo.undo();
-  offerUndo(label ? `Undid ${label}` : "Nothing to undo", label ? redoLast : undefined);
+  offerUndo(label ? `Undid ${label}` : "Nothing to undo", label ? redoLast : undefined, "Redo");
 }
 export function redoLast(): void {
   const label = store.undo.redo();

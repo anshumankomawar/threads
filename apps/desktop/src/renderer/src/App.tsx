@@ -264,24 +264,25 @@ export default function App(): JSX.Element {
                 )}
               </Match>
             </Switch>
-            <Show when={undo()}>
-              {(offered) => (
-                <div class={sx(base.panel, toast.undo)} role="status">
-                  <span>{offered().text}</span>
-                  <Show when={offered().run}>
-                    {(run) => (
-                      <button
-                        class={sx(base.bare, toast.action)}
-                        onClick={() => (run()(), setUndo(null))}
-                      >
-                        Undo
-                      </button>
-                    )}
-                  </Show>
-                </div>
-              )}
-            </Show>
           </main>
+        </Show>
+        {/* Outside the reading pane, so it shows with nothing open beside the list too. */}
+        <Show when={undo()}>
+          {(offered) => (
+            <div class={sx(base.panel, toast.undo)} role="status">
+              <span>{offered().text}</span>
+              <Show when={offered().run}>
+                {(run) => (
+                  <button
+                    class={sx(base.bare, toast.action)}
+                    onClick={() => (run()(), setUndo(null))}
+                  >
+                    {offered().action}
+                  </button>
+                )}
+              </Show>
+            </div>
+          )}
         </Show>
         <Palettes />
         <MentionToasts />

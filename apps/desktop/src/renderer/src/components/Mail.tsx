@@ -9,6 +9,7 @@ import {
   byName,
   inbox,
   itemFor,
+  loaded,
   edit,
   markAllRead,
   menuFrom,
@@ -1023,6 +1024,19 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
                     : undefined;
     if (next) showMailbox(next);
   });
+  // A list whose space, label, view, bucket or person is gone (deleted here or elsewhere, or a creation undone) goes back
+  // to the inbox rather than showing an empty list with no name.
+  createEffect(
+    () => {
+      const box = mailbox();
+      if (!loaded() || !("id" in box)) return false;
+      const model = { subspace: Subspace, label: Label, view: View, bucket: Bucket, person: User }[
+        box.kind
+      ];
+      return !store.findById(model as typeof Subspace, box.id);
+    },
+    (gone) => void (gone && showMailbox({ kind: "inbox" })),
+  );
   // A space's threads, and those of any space a filter names, load even if you're not in it.
   createEffect(
     () => {

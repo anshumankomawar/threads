@@ -1,7 +1,7 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { Draft, mention, Subspace, User, type ComposeDraft } from "models";
+import { Draft, mention, Subspace, User, type ComposeDraft, type Thread } from "models";
 import {
   draftWith,
   firstName,
@@ -13,6 +13,7 @@ import {
   setDialog,
   store,
   subspacesWithMembers,
+  undoable,
 } from "../session";
 import { base } from "../styles/base";
 import { button, link } from "../styles/controls";
@@ -155,9 +156,12 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
       saved?.delete();
       setDialog(null);
       const title = made.title.trim() || plainDraft(trimmed()).title || "New thread";
-      const thread = createThread({ title, description: made.context });
-      for (const { personIds, text: body } of made.asks)
-        send(thread, [...personIds.map(mention), body].join(" "));
+      let thread!: Thread;
+      undoable("New Thread", () => {
+        thread = createThread({ title, description: made.context });
+        for (const { personIds, text: body } of made.asks)
+          send(thread, [...personIds.map(mention), body].join(" "));
+      });
       open({ thread: thread.id });
     };
     if (draft) return create(draft);
