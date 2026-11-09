@@ -283,8 +283,8 @@ export function Peek(): JSX.Element {
                   {(thread) => (
                     <button
                       class={sx(topbar.button)}
-                      aria-label="Split beside"
-                      title="Split beside"
+                      aria-label="Split Beside"
+                      title="Split Beside"
                       onClick={() => split(thread())}
                     >
                       <Icon icon={i.LayoutTwoColumnIcon} size={14} aria-hidden="true" />

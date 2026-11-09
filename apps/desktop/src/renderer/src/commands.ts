@@ -164,7 +164,7 @@ function threadCommands(thread: Thread): Command[] {
       ? [
           {
             id: "bucket",
-            title: "Move to bucket",
+            title: "Move to Bucket",
             kind: "action" as const,
             section,
             icon: i.Folder01Icon,
@@ -180,7 +180,7 @@ function threadCommands(thread: Thread): Command[] {
                 })),
                 {
                   id: "auto",
-                  title: "Sort it for me",
+                  title: "Sort It for Me",
                   icon: i.SparklesIcon,
                   on: false,
                   run: () => placeIn(item),
@@ -194,7 +194,7 @@ function threadCommands(thread: Thread): Command[] {
       ? [
           {
             id: "branches",
-            title: "Show branches",
+            title: "Show Branches",
             kind: "action" as const,
             section,
             icon: i.GitBranchIcon,
@@ -211,7 +211,7 @@ function threadCommands(thread: Thread): Command[] {
       ? [
           {
             id: "blocked",
-            title: "Mark as blocked on another thread",
+            title: "Mark as Blocked on Another Thread",
             kind: "action" as const,
             section,
             icon: i.UnavailableIcon,
@@ -222,7 +222,7 @@ function threadCommands(thread: Thread): Command[] {
       : []),
     {
       id: "add-branch",
-      title: "Add a branch",
+      title: "Add a Branch",
       kind: "action",
       section,
       icon: i.GitBranchIcon,
@@ -238,7 +238,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "branch-of",
-      title: "Make this a branch of another thread",
+      title: "Make This a Branch of Another Thread",
       kind: "action",
       section,
       icon: i.GitBranchIcon,
@@ -254,7 +254,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "status",
-      title: "Change status",
+      title: "Change Status",
       kind: "action",
       section,
       icon: i.CircleIcon,
@@ -274,7 +274,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "priority",
-      title: "Change priority",
+      title: "Change Priority",
       kind: "action",
       section,
       icon: i.Flag02Icon,
@@ -294,7 +294,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "labels",
-      title: "Add or remove labels",
+      title: "Add or Remove Labels",
       kind: "action",
       section,
       icon: i.Tag01Icon,
@@ -315,7 +315,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "assign",
-      title: "Assign to someone",
+      title: "Assign to Someone",
       kind: "action",
       section,
       icon: i.UserMultipleIcon,
@@ -336,7 +336,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "spaces",
-      title: "Add to a space",
+      title: "Add to a Space",
       kind: "action",
       section,
       icon: i.Layers01Icon,
@@ -357,7 +357,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "start",
-      title: "Set a start date",
+      title: "Set a Start Date",
       kind: "action",
       section,
       icon: i.Calendar03Icon,
@@ -378,13 +378,13 @@ function threadCommands(thread: Thread): Command[] {
           },
           {
             id: "week",
-            title: "Next week",
+            title: "Next Week",
             on: false,
             run: () => edit(thread, { startAt: dueAt(7) }),
           },
           {
             id: "none",
-            title: "When it was created",
+            title: "When It Was Created",
             on: !thread.startAt,
             run: () => edit(thread, { startAt: undefined }),
           },
@@ -392,7 +392,7 @@ function threadCommands(thread: Thread): Command[] {
     },
     {
       id: "due",
-      title: "Set a due date",
+      title: "Set a Due Date",
       kind: "action",
       section,
       icon: i.Calendar01Icon,
@@ -408,13 +408,13 @@ function threadCommands(thread: Thread): Command[] {
           },
           {
             id: "week",
-            title: "Next week",
+            title: "Next Week",
             on: false,
             run: () => edit(thread, { dueAt: dueAt(7) }),
           },
           {
             id: "none",
-            title: "No due date",
+            title: "No Due Date",
             on: !thread.dueAt,
             run: () => edit(thread, { dueAt: undefined }),
           },
@@ -501,7 +501,7 @@ function listing(): Command[] {
       ? [
           {
             id: "timeline-today",
-            title: "Go to today on the timeline",
+            title: "Go to Today on the Timeline",
             kind: "action",
             section,
             icon: i.Calendar03Icon,
@@ -527,13 +527,13 @@ function listing(): Command[] {
       : [
           {
             id: "group-by",
-            title: "Group by",
+            title: "Group By",
             kind: "action" as const,
             section,
             icon: i.LayerIcon,
             keywords: "sections columns display",
             page: () => ({
-              title: "Group by",
+              title: "Group By",
               placeholder: "Search",
               // Toggles, as in the list's menu: the one it's grouped by ungroups it.
               commands: () =>
@@ -550,13 +550,13 @@ function listing(): Command[] {
         ]),
     {
       id: "order-by",
-      title: "Order by",
+      title: "Order By",
       kind: "action",
       section,
       icon: i.Sorting01Icon,
       keywords: "sort order newest due priority created",
       page: () => ({
-        title: "Order by",
+        title: "Order By",
         placeholder: "Search",
         commands: () =>
           (Object.keys(ORDERS) as Order[]).map((order): Command => ({
@@ -597,7 +597,7 @@ function creating(): Command[] {
     ),
     {
       id: "new-space",
-      title: "Create a space",
+      title: "Create a Space",
       kind: "action",
       section,
       icon: i.Layers01Icon,
@@ -606,7 +606,7 @@ function creating(): Command[] {
     },
     {
       id: "new-label",
-      title: "Create a label",
+      title: "Create a Label",
       kind: "action",
       section,
       icon: i.Tag01Icon,
@@ -615,7 +615,7 @@ function creating(): Command[] {
     },
     {
       id: "new-bucket",
-      title: "Create a bucket",
+      title: "Create a Bucket",
       kind: "action",
       section,
       icon: i.Folder01Icon,
@@ -629,7 +629,7 @@ function creating(): Command[] {
       ? [
           {
             id: "save-view",
-            title: "Pin this list to the sidebar",
+            title: "Pin This List to the Sidebar",
             kind: "action" as const,
             section,
             icon: i.PinIcon,
@@ -650,7 +650,7 @@ function creating(): Command[] {
       return [
         {
           id: "unpin",
-          title: "Unpin this list from the sidebar",
+          title: "Unpin This List from the Sidebar",
           kind: "action" as const,
           section,
           icon: i.PinOffIcon,
@@ -689,7 +689,7 @@ function app(): Command[] {
     ...hotkey("forward", "Go forward", section, i.ArrowRight01Icon, "history next"),
     {
       id: "profile",
-      title: "Open your profile",
+      title: "Open Your Profile",
       kind: "action",
       section,
       icon: i.UserIcon,

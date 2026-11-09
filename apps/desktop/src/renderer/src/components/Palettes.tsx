@@ -535,9 +535,9 @@ export function makeSubspace(name: string): Subspace {
 function NewSubspace(): JSX.Element {
   return (
     <Picker
-      placeholder="Name the subspace"
+      placeholder="Name the space"
       rows={(query) =>
-        entry(query, "Make subspace", (name) => open({ subspace: makeSubspace(name).id }))
+        entry(query, "Create Space", (name) => open({ subspace: makeSubspace(name).id }))
       }
     />
   );

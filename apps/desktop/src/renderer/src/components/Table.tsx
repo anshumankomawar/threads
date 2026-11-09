@@ -144,7 +144,7 @@ export function Table<T>(props: {
   const menu = (c: Column<T>): MenuItem[] => [
     sortBy(c, false),
     sortBy(c, true),
-    ...(sort()?.column === c ? [{ label: "Clear sort", run: () => setSort(null) }] : []),
+    ...(sort()?.column === c ? [{ label: "Clear Sort", run: () => setSort(null) }] : []),
     ...(props.hide && c !== props.columns[0]
       ? [
           "separator" as const,

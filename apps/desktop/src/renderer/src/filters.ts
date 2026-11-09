@@ -23,7 +23,7 @@ export const FIELDS: Record<
     values: () => [...PRIORITIES].reverse().map((p): [string, string] => [p, LABELS[p]]),
   },
   subspaceIds: {
-    label: "Subspace",
+    label: "Space",
     compare: "contains",
     values: () => store.all(Subspace).map((s) => [s.id, s.name]),
   },

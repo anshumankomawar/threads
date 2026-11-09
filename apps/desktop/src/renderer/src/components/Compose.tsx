@@ -251,7 +251,7 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
           />
         </Show>
         <Show when={matches().length > 0}>
-          <div class={sx(compose.mentions)} role="listbox" aria-label="Mention someone">
+          <div class={sx(compose.mentions)} role="listbox" aria-label="Mention Someone">
             <For each={matches()}>
               {(u, index) => (
                 <OptionButton

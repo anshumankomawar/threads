@@ -338,12 +338,12 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
           <span class={sx(styles.status)}>{dot(t().state)}</span>
           <span
             class={sx(styles.edge, styles.edgeStart, grip() && styles.edgeShown)}
-            aria-label="Change the start date"
+            aria-label="Change the Start Date"
             onPointerDown={(e) => press(t(), "start", e)}
           />
           <span
             class={sx(styles.edge, styles.edgeEnd, grip() && styles.edgeShown)}
-            aria-label="Change the due date"
+            aria-label="Change the Due Date"
             onPointerDown={(e) => press(t(), "end", e)}
           />
         </div>
@@ -398,7 +398,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       {/* The month in view and the list's filters; its scale, today and a step either way; then New. */}
       <div {...stylex.attrs(styles.toolbar, toolbarMarker)}>
         <Tabs
-          label="Timeline or unscheduled"
+          label="Timeline or Unscheduled"
           tabs={tabs}
           chosen={tabs.find((t) => t.label === tab()) ?? tabs[0]}
           onChoose={(t) => {
@@ -484,7 +484,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
             >
               <hr
                 class={sx(styles.resize)}
-                aria-label="Resize the names"
+                aria-label="Resize the Names"
                 aria-orientation="vertical"
                 onPointerDown={resizeNames}
                 onDblClick={() => {

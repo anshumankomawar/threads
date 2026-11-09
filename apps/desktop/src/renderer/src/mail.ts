@@ -149,9 +149,9 @@ export function keepDisplay(to: Mailbox): void {
 
 // The orders a list can take; without one, the mailbox's own (most recently active first, or the inbox's).
 export const ORDERS = {
-  updated: "Last activity",
+  updated: "Last Activity",
   created: "Created",
-  due: "Due date",
+  due: "Due Date",
   priority: "Priority",
 } as const;
 export type Order = keyof typeof ORDERS;

@@ -275,7 +275,7 @@ export const LABELS = {
   open: "Open",
   resolved: "Resolved",
   blocked: "Blocked",
-  none: "No priority",
+  none: "No Priority",
   low: "Low",
   medium: "Medium",
   high: "High",
@@ -508,26 +508,26 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     if (open === "command")
       return [
         {
-          label: "Mark as blocked on another thread",
+          label: "Mark as Blocked on Another Thread",
           hint: "Ask someone for what this needs",
           icon: i.UnavailableIcon,
           run: () => (menu.pick(), setDialog({ kind: "blocked", thread: c() })),
         },
         {
-          label: "Resolve this thread",
+          label: "Resolve This Thread",
           hint: "Resolve it for everyone",
           icon: i.CheckmarkCircle02Icon,
           run: () => (menu.pick(), setState(c(), "resolved")),
         },
         // As in ⌘K, whose pages they open.
         {
-          label: "Add a branch",
+          label: "Add a Branch",
           hint: "Make another thread part of this one",
           icon: i.GitBranchIcon,
           run: () => (menu.pick(), setDialog({ kind: "search", command: "add-branch" })),
         },
         {
-          label: "Make this a branch of another thread",
+          label: "Make This a Branch of Another Thread",
           hint: "Make this thread part of another",
           icon: i.GitBranchIcon,
           run: () => (menu.pick(), setDialog({ kind: "search", command: "branch-of" })),
@@ -578,7 +578,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       ? [
           ...found,
           {
-            label: "New thread",
+            label: "New Thread",
             hint: `“${title}”`,
             icon: i.Add01Icon,
             accent: true,
@@ -733,7 +733,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
                 icon: icon(b === it().bucket ? i.Tick02Icon : bucketIcon(b), 13),
                 run: place(b),
               })),
-              ...(it().manual ? [{ label: "Sort it for me", run: place(undefined) }] : []),
+              ...(it().manual ? [{ label: "Sort It for Me", run: place(undefined) }] : []),
             ]}
           />
         )}
@@ -745,7 +745,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
         records={store.all(Label)}
         none="No labels"
         icon={i.Tag01Icon}
-        more={[{ label: "New label", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
+        more={[{ label: "New Label", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
       />
       <ListChip
         look={value}
@@ -784,8 +784,8 @@ function Properties(props: { thread: Thread }): JSX.Element {
             items={[
               { label: "Today", run: change({ startAt: dueAt(0) }) },
               { label: "Tomorrow", run: change({ startAt: dueAt(1) }) },
-              { label: "Next week", run: change({ startAt: dueAt(7) }) },
-              { label: "When it was created", run: change({ startAt: undefined }) },
+              { label: "Next Week", run: change({ startAt: dueAt(7) }) },
+              { label: "When It Was Created", run: change({ startAt: undefined }) },
             ]}
           />
         )}
@@ -808,8 +808,8 @@ function Properties(props: { thread: Thread }): JSX.Element {
         items={[
           { label: "Today", run: change({ dueAt: dueAt(0) }) },
           { label: "Tomorrow", run: change({ dueAt: dueAt(1) }) },
-          { label: "Next week", run: change({ dueAt: dueAt(7) }) },
-          { label: "No due date", run: change({ dueAt: undefined }) },
+          { label: "Next Week", run: change({ dueAt: dueAt(7) }) },
+          { label: "No Due Date", run: change({ dueAt: undefined }) },
         ]}
       />
     </div>

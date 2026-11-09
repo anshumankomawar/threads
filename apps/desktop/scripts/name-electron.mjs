@@ -11,4 +11,8 @@ if (process.platform === "darwin") {
   const plist = join(electron, "dist", "Electron.app", "Contents", "Info.plist");
   for (const key of ["CFBundleName", "CFBundleDisplayName"])
     execFileSync("plutil", ["-replace", key, "-string", NAME, plist]);
+  // macOS keeps an app's name from when it first saw it: have it read the bundle again, or it still says Electron.
+  const lsregister =
+    "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
+  execFileSync(lsregister, ["-f", join(electron, "dist", "Electron.app")]);
 }

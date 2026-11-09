@@ -145,7 +145,7 @@ function members(props: {
           {icon(i.Search01Icon, 13)}
           <input
             class={sx(base.bare, page.searchInput)}
-            aria-label="Search members"
+            aria-label="Search Members"
             placeholder="Search"
             spellcheck={false}
             value={search()}
@@ -184,10 +184,10 @@ export function SavedView(props: { view: View }): JSX.Element {
       <Settings>
         <Setting name="Shared" hint="Everyone in the workspace sees it pinned in their sidebar.">
           <MenuChip
-            label={v().shared ? "Workspace" : "Only you"}
+            label={v().shared ? "Everyone" : "Only You"}
             items={[
-              { label: "Only you", run: () => edit(v(), { shared: false }) },
-              { label: "Workspace", run: () => edit(v(), { shared: true }) },
+              { label: "Only You", run: () => edit(v(), { shared: false }) },
+              { label: "Everyone", run: () => edit(v(), { shared: true }) },
             ]}
           />
         </Setting>
@@ -248,7 +248,7 @@ export function BucketView(props: { bucket: Bucket }): JSX.Element {
         </Setting>
         {/* Sorting needs somewhere to put things. */}
         <Show when={myBuckets().length > 1}>
-          <Setting name="Delete bucket" hint="Its threads go back to be sorted.">
+          <Setting name="Delete Bucket" hint="Its threads go back to be sorted.">
             <button
               class={sx(base.hover, chip.chip, chipTone.urgent)}
               onClick={(event) => askDeleteBucket(event.currentTarget.getBoundingClientRect(), b())}
@@ -292,7 +292,7 @@ export function LabelView(props: { label: Label }): JSX.Element {
     tab: SETTINGS,
     body: (
       <Settings>
-        <Setting name="Delete label" hint="It comes off its threads, which stay as they are.">
+        <Setting name="Delete Label" hint="It comes off its threads, which stay as they are.">
           <Delete
             onClick={() => (
               open({ thread: null }),
@@ -341,7 +341,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         }
       >
         <ComboButton
-          label="Add member"
+          label="Add Member"
           class={sx(base.bare, button.solid)}
           placeholder="Add someone"
           empty="Everyone's in it."
@@ -377,7 +377,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
             ]}
           />
         </Setting>
-        <Setting name="Delete subspace" hint="Its threads stay, outside it.">
+        <Setting name="Delete Space" hint="Its threads stay, outside it.">
           <Delete
             onClick={() => (
               open({ thread: null }),
@@ -531,7 +531,7 @@ export function SettingsView(): JSX.Element {
     tab: HOTKEYS_TAB,
     tools: (
       <>
-        <SearchBox label="Search hotkeys" value={search()} onInput={setSearch} />
+        <SearchBox label="Search Hotkeys" value={search()} onInput={setSearch} />
         <Show when={HOTKEYS.some((h) => changed(h.id))}>
           <button class={sx(base.bare, base.hover, base.dim, page.quiet)} onClick={resetAll}>
             Reset all

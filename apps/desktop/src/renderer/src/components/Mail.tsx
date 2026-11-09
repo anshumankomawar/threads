@@ -414,8 +414,8 @@ export function MailSidebar(): JSX.Element {
         <span class={sx(topbar.end)}>
           <button
             class={sx(topbar.button)}
-            aria-label="New thread"
-            title="New thread (⌘N)"
+            aria-label="New Thread"
+            title="New Thread (⌘N)"
             onClick={() => setDialog({ kind: "newThread" })}
           >
             <Icon icon={i.PencilEdit02Icon} {...ICON} />
@@ -539,7 +539,7 @@ export function MailSidebar(): JSX.Element {
         {/* You: one button to your profile and settings, on one page. */}
         <button
           class={sx(base.bare, s.profile)}
-          aria-label="Profile and settings"
+          aria-label="Profile and Settings"
           title="Profile and settings (⌘,)"
           onClick={() => open({ settings: null })}
         >
@@ -547,7 +547,7 @@ export function MailSidebar(): JSX.Element {
           <span class={sx(base.ellipsis)}>{me().name}</span>
         </button>
       </div>
-      <sidebarColumn.Edge label="Resize sidebar" />
+      <sidebarColumn.Edge label="Resize Sidebar" />
     </aside>
   );
 }
@@ -747,7 +747,7 @@ const pageLabel = (box: Mailbox): string =>
   box.kind === "subspace"
     ? "Space settings"
     : box.kind === "view"
-      ? "View settings"
+      ? "Pinned List Settings"
       : box.kind === "bucket"
         ? "Bucket settings"
         : "Profile";
@@ -776,14 +776,14 @@ export const LAYOUTS: {
   {
     layout: "list",
     label: "List",
-    title: "Show as a list",
+    title: "Show as a List",
     icon: i.LeftToRightListBulletIcon,
     keywords: "rows",
   },
   {
     layout: "timeline",
     label: "Timeline",
-    title: "Show as a timeline",
+    title: "Show as a Timeline",
     icon: i.ChartBarDecreasingIcon,
     keywords: "gantt roadmap schedule dates",
   },
@@ -899,7 +899,7 @@ function QueryFilters(): JSX.Element {
       <Show when={display().hideResolved}>
         <button
           class={sx(base.bare, base.hover, page.filterPill)}
-          title="Show resolved threads"
+          title="Show Resolved Threads"
           onClick={() => setDisplay({ hideResolved: undefined })}
         >
           Resolved hidden
@@ -1069,8 +1069,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
           <Show when={pinnable()}>
             <button
               class={sx(topbar.button)}
-              aria-label="Pin to the sidebar"
-              title="Pin to the sidebar"
+              aria-label="Pin to the Sidebar"
+              title="Pin to the Sidebar"
               onClick={pinList}
             >
               <Icon icon={i.PinIcon} {...ICON} />
@@ -1086,8 +1086,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
             {(saved) => (
               <button
                 class={sx(topbar.button)}
-                aria-label="Unpin from the sidebar"
-                title="Unpin from the sidebar"
+                aria-label="Unpin from the Sidebar"
+                title="Unpin from the Sidebar"
                 onClick={() => unpin(saved())}
               >
                 <Icon icon={i.PinOffIcon} {...ICON} />
@@ -1112,8 +1112,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
           <Show when={!sidebarOpen()}>
             <button
               class={sx(topbar.button)}
-              aria-label="New thread"
-              title="New thread (⌘N)"
+              aria-label="New Thread"
+              title="New Thread (⌘N)"
               onClick={() => setDialog({ kind: "newThread" })}
             >
               <Icon icon={i.PencilEdit02Icon} {...ICON} />
@@ -1195,7 +1195,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
         <LayoutPill />
       </Show>
       <Show when={!props.alone}>
-        <listColumn.Edge label="Resize list" />
+        <listColumn.Edge label="Resize List" />
       </Show>
     </section>
   );
