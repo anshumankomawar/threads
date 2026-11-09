@@ -9,6 +9,35 @@
     font-display: block;
     src: url(./fonts/fraunces-latin-wght.woff2) format("woff2-variations");
   }
+  /* The welcome screen's steps (Welcome.tsx's toStep): the old one lifts away, unscaled from the top, while the new one
+     writes itself in with its own animations. The rest of the window doesn't change, so it doesn't cross-fade. */
+  ::view-transition-group(welcome-step) {
+    animation-duration: 0s;
+  }
+  ::view-transition-old(welcome-step),
+  ::view-transition-new(welcome-step) {
+    height: 100%;
+    object-fit: none;
+    object-position: top;
+  }
+  ::view-transition-old(welcome-step) {
+    animation: 200ms cubic-bezier(0.4, 0, 1, 1) both welcome-lift;
+  }
+  ::view-transition-new(welcome-step) {
+    animation: none;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+  @keyframes welcome-lift {
+    to {
+      opacity: 0;
+      transform: translateY(-10px);
+      filter: blur(4px);
+    }
+  }
+
   @font-face {
     font-family: "Hanken Grotesk";
     font-style: normal;
