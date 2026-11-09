@@ -64,7 +64,12 @@ export function createStore({
     pool,
     materialize: (name, row) => {
       const model = new (registry.classOf(name))();
+      // A field the row doesn't have (one added since it was written) is null, as it would be written today: an edit
+      // to it then undoes and rolls back to null, which syncs, rather than to undefined, which JSON leaves out.
       model.__data = { ...row };
+      for (const [field, meta] of Object.entries(model.__meta.fields))
+        if (meta.kind === "property" && meta.nullable && !(field in row))
+          model.__data[field] = null;
       model.__store = core;
       return model;
     },

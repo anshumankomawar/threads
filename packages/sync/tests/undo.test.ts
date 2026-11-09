@@ -358,3 +358,18 @@ test("an undo the server echoes back while it's pending can still be redone", as
   expect(store.undo.redo()).toBe("Rename");
   expect(c1.title).toBe("A");
 });
+
+test("an edit to a field the row was written without undoes to null, which reaches the server", async () => {
+  // c1's row has no `dueAt`, as a row written before that field existed.
+  const { store, localDB } = await setup(seed);
+  const c1 = store.findById(Conversation, "c1")!;
+  store.undo.group("Set due", () => {
+    c1.dueAt = new Date(1000);
+    c1.save();
+  });
+  store.undo.undo();
+  expect(c1.dueAt).toBeUndefined();
+  await tick();
+  const outbox = await localDB.outbox.all();
+  expect(outbox.map((tx) => tx.changes)).toEqual([{ dueAt: 1000 }, { dueAt: null }]);
+});

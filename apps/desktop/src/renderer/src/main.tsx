@@ -1,7 +1,9 @@
 import "./assets/global.css";
 import { render } from "@solidjs/web";
-import { needsSignIn } from "./startup";
+import { needsSignIn, needsWorkspace } from "./startup";
 
-// Signed out, only the sign-in screen loads: the app and its store come once you're someone.
-const { default: Root } = needsSignIn ? await import("./components/SignIn") : await import("./App");
+// Signed out, or with no workspace yet, only the welcome screen loads: the app and its store come once you're someone
+// somewhere.
+const { default: Root } =
+  needsSignIn || needsWorkspace ? await import("./components/Welcome") : await import("./App");
 render(() => <Root />, document.getElementById("root")!);

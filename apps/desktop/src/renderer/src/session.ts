@@ -182,6 +182,7 @@ export type Dialog =
     | { kind: "compose"; draftId?: string }
     | { kind: "bucket"; bucket?: Bucket }
     | { kind: "blocked"; thread: Thread }
+    | { kind: "invite" }
   ) & {
     // The palette it was opened from (⌘K), which going back from its first step returns to.
     back?: Dialog;
@@ -285,6 +286,8 @@ export const showMenu = (event: MouseEvent, items: MenuItem[]): void => {
 };
 
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
+// Says what just happened, in the toast.
+export const say = (text: string): void => offerUndo(text);
 function offerUndo(text: string, run?: () => void, action = "Undo"): void {
   clearTimeout(undoTimer);
   setUndo({ text, run, action });

@@ -8,7 +8,8 @@ contextBridge.exposeInMainWorld("electron", electronAPI);
 // and who you're signed in as. The session itself never reaches the window.
 setupRenderer();
 contextBridge.exposeInMainWorld("threads", {
-  signedIn: () => ipcRenderer.invoke("threads:signed-in"),
+  signedIn: (workspace?: string) => ipcRenderer.invoke("threads:signed-in", workspace),
+  call: (path: string, body?: unknown) => ipcRenderer.invoke("threads:call", path, body),
   source: () => ipcRenderer.invoke("threads:source"),
   useSource: (source: string) => ipcRenderer.invoke("threads:use-source", source),
 });

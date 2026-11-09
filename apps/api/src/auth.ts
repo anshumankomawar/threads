@@ -1,11 +1,10 @@
 import { betterAuth, type BetterAuthOptions } from "better-auth";
-import { APIError } from "better-auth/api";
 import { getMigrations } from "better-auth/db/migration";
 import { electron } from "@better-auth/electron";
 
-// Signing in, with Better Auth, through Google. Its users and sessions live in D1
-// (`AUTH_DB`), apart from the workspaces. Only invited emails get in (`INVITES`), each as one Person; a signed-in
-// session is then traded for the Threads session token the sync API already takes (`POST /auth/token` in worker.ts).
+// Signing in, with Better Auth, through Google. Its users and sessions live in D1 (`AUTH_DB`), beside the directory
+// of workspaces (directory.ts). Anyone with a Google account can sign in; a signed-in session is then traded for the
+// Threads session token the sync API takes, for one of their workspaces (`POST /auth/token` in worker.ts).
 // The desktop app signs in from its main process (Better Auth's Electron plugin), with Google in the browser, which comes back to this API and then to the app on a `com.threads.arc://` link (`SIGNED_IN_PAGE`).
 
 const DEV_SECRET = "threads-local-development-secret-not-for-production";
@@ -14,14 +13,6 @@ const DEV_SECRET = "threads-local-development-secret-not-for-production";
 const LOCAL_ORIGIN = "http://127.0.0.1:3030";
 // The desktop app's link scheme, which signing in with Google sends you back to it on.
 const APP_SCHEME = "com.threads.arc";
-
-// The Person an email signs in as, if `INVITES` (`email=personId` pairs, separated by commas) invites it.
-export function personFor(invites: string, email: string): string | undefined {
-  for (const pair of invites.split(",")) {
-    const [invited, personId] = pair.split("=").map((part) => part.trim());
-    if (invited?.toLowerCase() === email.trim().toLowerCase()) return personId || undefined;
-  }
-}
 
 // Better Auth's settings for one request (the D1 binding exists only while handling one).
 function authOptions(env: Env) {
@@ -38,17 +29,6 @@ function authOptions(env: Env) {
     trustedOrigins: [origin, `${APP_SCHEME}:/`],
     socialProviders: google === undefined ? {} : { google },
     plugins: [electron()],
-    databaseHooks: {
-      user: {
-        create: {
-          // The invite list decides who gets an account, however they sign in.
-          before: async (user) => {
-            if (personFor(env.INVITES, user.email) === undefined)
-              throw new APIError("FORBIDDEN", { message: "This email isn't invited to Threads" });
-          },
-        },
-      },
-    },
   } satisfies BetterAuthOptions;
 }
 

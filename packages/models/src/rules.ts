@@ -305,11 +305,50 @@ const effects: ServerOptions["effects"] = {
   },
 };
 
+// Who `admit` lets in, and to where: the workspace's directory entry, and the person as they signed in.
+export type Admission = {
+  workspace: { id: string; name: string };
+  person: { id: string; name: string; email: string; avatarUrl?: string };
+  role: "admin" | "member";
+};
+
 const actions: ServerOptions["actions"] = {
   // Fills a new workspace: `args` is its name.
   seed: (workspace, session, db) => {
     if (!("admin" in session)) throw new Refusal("forbidden", "Only the admin seeds a workspace");
     for (const write of seed(workspace as string)) db.write(write);
+  },
+  // Makes whatever of a member's place is missing: the workspace, their person and their membership. The directory
+  // (apps/api) decides who's a member; this runs each time they sign in, so it changes nothing that's there.
+  admit: (args, session, db) => {
+    if (!("admin" in session)) throw new Refusal("forbidden", "Only the admin admits people");
+    const { workspace, person, role } = args as Admission;
+    if (db.get("Workspace", workspace.id) === undefined)
+      db.write({
+        kind: "create",
+        model: "Workspace",
+        modelId: workspace.id,
+        changes: { name: workspace.name },
+      });
+    if (db.get("User", person.id) === undefined)
+      db.write({
+        kind: "create",
+        model: "User",
+        modelId: person.id,
+        changes: {
+          name: person.name,
+          email: person.email,
+          avatarUrl: person.avatarUrl ?? null,
+          workspaceIds: [],
+        },
+      });
+    if (memberOf(db, person.id, workspace.id) === undefined)
+      db.write({
+        kind: "create",
+        model: "WorkspaceMember",
+        modelId: crypto.randomUUID(),
+        changes: { workspaceId: workspace.id, userId: person.id, role },
+      });
   },
 };
 

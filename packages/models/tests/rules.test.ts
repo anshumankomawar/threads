@@ -408,3 +408,21 @@ test("the sample seed: admin members, subspaces, labelled threads in inboxes, a 
   expect(sees("priya")).toBe(true);
   expect(sees("sam")).toBe(false);
 });
+
+test("admitting someone makes their workspace, person and membership once, with their buckets", () => {
+  const server = threadsServer(memoryStorage(), () => []);
+  const admission = {
+    workspace: { id: "w1", name: "Acme" },
+    person: { id: "p1", name: "Ada Lovelace", email: "ada@acme.com" },
+    role: "admin" as const,
+  };
+  server.action(admin, "admit", admission);
+  server.action(admin, "admit", admission);
+  expect(rows(server, "Workspace").map((w) => w.name)).toEqual(["Acme"]);
+  expect(rows(server, "User").map((u) => [u.name, u.email, u.workspaceIds])).toEqual([
+    ["Ada Lovelace", "ada@acme.com", ["w1"]],
+  ]);
+  expect(rows(server, "WorkspaceMember").map((m) => [m.userId, m.role])).toEqual([["p1", "admin"]]);
+  expect(rows(server, "Bucket").length).toBeGreaterThan(0);
+  expect(() => server.action({ userId: "p1" }, "admit", admission)).toThrow();
+});

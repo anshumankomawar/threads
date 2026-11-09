@@ -47,15 +47,46 @@ const auth = createAuthClient({
   ],
 });
 
-// Who you're signed in as, for the window, or null when you're not (or the API can't be reached).
-async function signedIn(): Promise<unknown> {
+// Who you're signed in as, in `workspace` (or your first), for the window: null when you're not signed in (or the API
+// can't be reached), and `{ onboarding: true }` when you are but have no workspace yet.
+async function signedIn(workspace?: string): Promise<unknown> {
   const cookie = auth.getCookie();
   if (!cookie) return null;
   try {
-    const response = await fetch(`${API_URL}/auth/token`, { method: "POST", headers: { cookie } });
+    const response = await fetch(`${API_URL}/auth/token`, {
+      method: "POST",
+      headers: { cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ workspace }),
+    });
+    if (response.status === 409) return { onboarding: true };
     return response.ok ? await response.json() : null;
   } catch {
     return null;
+  }
+}
+
+// The API's routes for choosing, making and inviting to workspaces (apps/api), as whoever's signed in: the session
+// stays here, so the window asks through this. Only those routes, so it can't reach anything else as you.
+const CALLABLE = /^\/(onboarding|workspaces(\/[\w-]+\/(join|invites))?)$/;
+async function call(
+  path: string,
+  body?: unknown,
+): Promise<{ ok: boolean; status: number; body: unknown }> {
+  if (!CALLABLE.test(path)) return { ok: false, status: 404, body: null };
+  const cookie = auth.getCookie() ?? "";
+  try {
+    const response = await fetch(`${API_URL}${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: { cookie, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: await response.json().catch(() => null),
+    };
+  } catch {
+    return { ok: false, status: 0, body: null };
   }
 }
 
@@ -64,7 +95,8 @@ async function signedIn(): Promise<unknown> {
 // `claimLink` is false for a second copy run beside the usual one, which leaves the link to it.
 export function setupSignIn({ claimLink = true } = {}): void {
   auth.setupMain({ scheme: claimLink, bridges: true });
-  ipcMain.handle("threads:signed-in", signedIn);
+  ipcMain.handle("threads:signed-in", (_event, workspace?: string) => signedIn(workspace));
+  ipcMain.handle("threads:call", (_event, path: string, body?: unknown) => call(path, body));
   ipcMain.handle("threads:source", () => source);
   ipcMain.handle("threads:use-source", (_event, next: string) => {
     writeFileSync(SOURCE_FILE, next);

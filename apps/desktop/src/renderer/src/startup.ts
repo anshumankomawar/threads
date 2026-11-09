@@ -30,18 +30,41 @@ export function save(key: string, value: unknown): void {
 export const useSource = (next: Source): Promise<void> => window.threads.useSource(next);
 export const source = await window.threads.source();
 export const otherSources = (Object.keys(SOURCES) as Source[]).filter((s) => s !== source);
+
+// Local and Cloudflare are your workspaces, which you sign in to; Sample is a demo you view as anyone (⌘U). Signed in,
+// you're in the workspace you were last in (or your first); with none yet, you make or join one (Welcome.tsx).
+const workspaceKey = `workspace:${source}`;
+const signedIn =
+  source === "sample" ? null : await window.threads.signedIn(saved(workspaceKey, undefined));
+export const account = signedIn !== null && "token" in signedIn ? signedIn : null;
+export const needsSignIn = source !== "sample" && signedIn === null;
+// Choosing a workspace: you have none yet, or you asked to make or join another (`chooseWorkspace`).
+export const needsWorkspace =
+  (signedIn !== null && "onboarding" in signedIn) ||
+  (account !== null && location.hash === "#workspaces");
+if (account?.workspace) save(workspaceKey, account.workspace);
+
 export const server = {
   // VITE_LOCAL_API_URL points Local and Sample at another local API (a second one, on its own port).
   url:
     source === "cloudflare"
       ? HOSTED_URL!
       : (import.meta.env.VITE_LOCAL_API_URL ?? "http://127.0.0.1:3030"),
-  workspace: source === "cloudflare" ? "local" : source,
+  // An API from before workspaces could be made doesn't say which: then it's the team's first one.
+  workspace: account?.workspace ?? (source === "sample" ? "sample" : "local"),
 };
 
-// Local and Cloudflare are the team's workspace, which you sign in to; Sample is a demo you view as anyone (⌘U).
-export const account = source === "sample" ? null : await window.threads.signedIn();
-export const needsSignIn = source !== "sample" && account === null;
+// Into another of your workspaces, or the one you just made or joined.
+export function openWorkspace(id: string): void {
+  save(workspaceKey, id);
+  location.hash = "";
+  location.reload();
+}
+// To the screen for making or joining a workspace, from the app.
+export function chooseWorkspace(): void {
+  location.hash = "workspaces";
+  location.reload();
+}
 // Signing in or out reloads as whoever you are now.
 window.onAuthenticated(() => location.reload());
 export async function signOut(): Promise<void> {

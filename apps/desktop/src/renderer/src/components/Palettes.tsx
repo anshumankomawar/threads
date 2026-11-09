@@ -12,6 +12,7 @@ import {
   memberIn,
   open,
   others,
+  say,
   setDialog,
   store,
   summary,
@@ -21,6 +22,7 @@ import {
   workspace,
   undoable,
 } from "../session";
+import { addresses, invite, invited, refreshInvites } from "../invites";
 import { keepDisplay, saveBucket } from "../mail";
 import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
@@ -385,6 +387,42 @@ function NewLabel(): JSX.Element {
   );
 }
 
+// Inviting people to the workspace by email: one or several typed at once, and who's invited already.
+function Invite(): JSX.Element {
+  void refreshInvites();
+  return (
+    <Picker
+      placeholder="Invite people by email"
+      rows={(query) => {
+        const emails = addresses(query);
+        return [
+          ...(emails.length === 0
+            ? []
+            : [
+                {
+                  label:
+                    emails.length === 1 ? `Invite ${emails[0]}` : `Invite ${emails.length} People`,
+                  hint: "↵",
+                  run: done(() =>
+                    invite(emails).then((ok) =>
+                      say(
+                        ok
+                          ? `Invited. They'll see ${workspace().name} when they log in.`
+                          : "Couldn't invite them",
+                      ),
+                    ),
+                  ),
+                },
+              ]),
+          ...invited()
+            .filter((email) => matches(email, query))
+            .map((email) => ({ label: email, hint: "Invited", section: "Invited", run: () => {} })),
+        ];
+      }}
+    />
+  );
+}
+
 // `/blocked`: ask someone for what this needs, in a thread that keeps this one blocked until it's resolved.
 function Blocked(props: { thread: Thread }): JSX.Element {
   const [person, setPerson] = createSignal<User | null>(null);
@@ -545,6 +583,7 @@ const PALETTES = {
   newThread: NewThread,
   newLabel: NewLabel,
   blocked: Blocked,
+  invite: Invite,
   bucket: BucketEditor,
   viewAs: ViewAs,
   compose: Compose,

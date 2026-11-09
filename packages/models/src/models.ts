@@ -42,6 +42,8 @@ export class User extends Model {
   @Property({ nullable: true }) email?: string;
   @Property({ nullable: true }) avatarUrl?: string;
   @Property() workspaceIds!: string[];
+  // When they put away the sidebar's Getting Started list.
+  @Property({ nullable: true, serializer: date }) gettingStartedHiddenAt?: Date;
   @OneToMany(() => WorkspaceMember, "user") memberships!: Collection<WorkspaceMember>;
 }
 

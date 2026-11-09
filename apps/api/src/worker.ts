@@ -14,11 +14,14 @@ import {
   type SyncServer,
 } from "server";
 import { registry } from "sync";
-import { createAuth, personFor, SIGNED_IN_PAGE } from "./auth.ts";
+import type { Admission } from "models/server";
+import { createAuth, SIGNED_IN_PAGE } from "./auth.ts";
+import { d1, Directory, suggestedName, type Membership } from "./directory.ts";
 import { workersAiComposer } from "./compose.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
-const WORKSPACES = ["local", "sample"];
+// The workspaces made before the directory, seeded rather than made by their first member.
+const SEEDED = ["local", "sample"];
 const ADMIN: Session = { admin: true };
 // The Worker passes the session it resolved to the workspace's object in this header, replacing any the request came
 // with. Only the Worker reaches the objects, so they trust it.
@@ -82,11 +85,12 @@ export class Workspace extends DurableObject<Env> {
     return this.ctx.id.name!;
   }
 
-  // Loaded from storage on first use; a new workspace is seeded.
+  // Loaded from storage on first use; the first workspaces are seeded, others are made by `admit`.
   #load(): SyncServer {
     if (this.#server !== undefined) return this.#server;
     const server = threadsServer(sqliteStorage(this.ctx.storage), () => this.#sockets());
-    if (server.deltas(ADMIN, 0).lastSyncId === 0) server.action(ADMIN, "seed", this.#workspace);
+    if (server.deltas(ADMIN, 0).lastSyncId === 0 && SEEDED.includes(this.#workspace))
+      server.action(ADMIN, "seed", this.#workspace);
     const { AI: ai } = this.env as { AI?: Ai };
     if (ai !== undefined)
       this.#triager = new Triager(server, workersAiClassifier(ai), {
@@ -180,23 +184,123 @@ app.on(["GET", "POST"], "/api/auth/*", async (c) => (await createAuth(c.env)).ha
 // Where the browser lands after signing in with Google, to hand the app its one-time code.
 app.get("/", (c) => c.html(SIGNED_IN_PAGE));
 
-// Trades a signed-in Better Auth session (its cookie) for the token the sync API takes, as the Person the email is
-// invited as: hosted, a signed session token; locally, their id.
-app.post("/auth/token", async (c) => {
+// The directory of workspaces (directory.ts), once per isolate.
+let directory: Directory | undefined;
+const directoryOf = (env: Env): Directory =>
+  (directory ??= new Directory(d1(env.AUTH_DB), env.INVITES));
+
+// Who's signed in with Better Auth (its cookie), or null.
+async function signedIn(c: Ctx) {
   const auth = await createAuth(c.env);
-  const signedIn = await auth.api.getSession({ headers: c.req.raw.headers });
-  if (signedIn === null) return c.json({ error: "Not signed in" }, 401);
-  const { email } = signedIn.user;
-  const personId = personFor(c.env.INVITES, email);
-  if (personId === undefined) return c.json({ error: "This email isn't invited to Threads" }, 403);
+  return (await auth.api.getSession({ headers: c.req.raw.headers }))?.user ?? null;
+}
+
+// Makes sure a member's person is in their workspace's own data (the `admit` action), as they signed in.
+async function admit(
+  c: Ctx,
+  member: Membership,
+  user: { name: string; email: string; image?: string | null },
+): Promise<void> {
+  const admission: Admission = {
+    workspace: { id: member.id, name: member.name },
+    person: {
+      id: member.personId,
+      name: user.name || user.email.split("@")[0],
+      email: user.email,
+      avatarUrl: user.image ?? undefined,
+    },
+    role: member.role,
+  };
+  const { exports } = c.executionCtx as ExecutionContext;
+  const response = await exports.Workspace.getByName(member.id).fetch(
+    new Request("https://workspace/actions/admit", {
+      method: "POST",
+      headers: { [SESSION_HEADER]: JSON.stringify(ADMIN) },
+      body: JSON.stringify(admission),
+    }),
+  );
+  if (!response.ok) throw new Error(`Couldn't admit to ${member.id}: ${await response.text()}`);
+}
+
+// Where you can go once signed in (directory.ts's Choices), and what to call a workspace you make.
+app.get("/onboarding", async (c) => {
+  const user = await signedIn(c);
+  if (user === null) return c.json({ error: "Not signed in" }, 401);
+  const choices = await directoryOf(c.env).choices(user.email);
+  return c.json({
+    ...choices,
+    email: user.email,
+    name: user.name,
+    suggestedName: suggestedName(user.email),
+  });
+});
+
+// Makes a workspace, with you its admin: `{ name, openToDomain }`.
+app.post("/workspaces", async (c) => {
+  const user = await signedIn(c);
+  if (user === null) return c.json({ error: "Not signed in" }, 401);
+  const { name, openToDomain } = await c.req.json<{ name?: string; openToDomain?: boolean }>();
+  const trimmed = name?.trim().slice(0, 60);
+  if (!trimmed) return c.json({ error: "A workspace needs a name" }, 400);
+  const member = await directoryOf(c.env).create(user.email, trimmed, openToDomain === true);
+  await admit(c, member, user);
+  return c.json(member);
+});
+
+// Joins a workspace you're invited to, or one open to your company's domain.
+app.post("/workspaces/:id/join", async (c) => {
+  const user = await signedIn(c);
+  if (user === null) return c.json({ error: "Not signed in" }, 401);
+  const member = await directoryOf(c.env).join(c.req.param("id"), user.email);
+  if (member === undefined) return c.json({ error: "You can't join that workspace" }, 403);
+  await admit(c, member, user);
+  return c.json(member);
+});
+
+// Who's invited to a workspace of yours and hasn't joined (GET), and inviting more (POST `{ emails }`). No email is
+// sent: they see the workspace when they next sign in.
+app.on(["GET", "POST"], "/workspaces/:id/invites", async (c) => {
+  const user = await signedIn(c);
+  if (user === null) return c.json({ error: "Not signed in" }, 401);
+  const id = c.req.param("id");
+  const dir = directoryOf(c.env);
+  if ((await dir.membership(id, user.email)) === undefined)
+    return c.json({ error: "Not a member" }, 403);
+  if (c.req.method === "POST") {
+    const { emails } = await c.req.json<{ emails?: string[] }>();
+    const valid = (emails ?? []).filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()));
+    if (valid.length === 0 || valid.length > 50) return c.json({ error: "No addresses" }, 400);
+    await dir.invite(id, user.name || user.email, valid);
+  }
+  return c.json({ invited: await dir.invited(id) });
+});
+
+// Trades a signed-in Better Auth session for the token the sync API takes, in one of your workspaces (`{ workspace }`,
+// or your first): hosted, a signed session token; locally, the person's id. 409 when you have none yet.
+app.post("/auth/token", async (c) => {
+  const user = await signedIn(c);
+  if (user === null) return c.json({ error: "Not signed in" }, 401);
+  const { workspace } = await c.req
+    .json<{ workspace?: string }>()
+    .catch(() => ({ workspace: undefined }));
+  const { workspaces } = await directoryOf(c.env).choices(user.email);
+  const member = workspaces.find((w) => w.id === workspace) ?? workspaces[0];
+  if (member === undefined) return c.json({ error: "No workspace yet" }, 409);
+  await admit(c, member, user);
   const token = c.env.API_TOKEN
     ? await signSession(sessionSecret(c.env.API_TOKEN), {
-        userId: personId,
-        workspace: "local",
+        userId: member.personId,
+        workspace: member.id,
         expiresAtMs: Date.now() + SESSION_MS,
       })
-    : personId;
-  return c.json({ personId, email, token });
+    : member.personId;
+  return c.json({
+    personId: member.personId,
+    email: user.email,
+    token,
+    workspace: member.id,
+    workspaces: workspaces.map(({ id, name }) => ({ id, name })),
+  });
 });
 
 // Drafting a new thread from what you typed (src/compose.ts). It reads and writes nothing, so it runs here,
@@ -219,11 +323,11 @@ app.post("/ai/compose", async (c) => {
 // The sync protocol goes to the workspace's object, with the session; the socket authenticates with its Hello.
 app.on(["GET", "POST"], ["/sync/*", "/actions/*"], async (c) => {
   const workspace = workspaceOf(c);
-  if (
-    !WORKSPACES.includes(workspace) ||
-    (workspace === "sample" && c.env.SAMPLE_WORKSPACE !== "on")
-  )
-    return c.json({ error: `Unknown workspace: ${workspace}` }, 404);
+  const known =
+    workspace === "sample"
+      ? c.env.SAMPLE_WORKSPACE === "on"
+      : SEEDED.includes(workspace) || (await directoryOf(c.env).exists(workspace));
+  if (!known) return c.json({ error: `Unknown workspace: ${workspace}` }, 404);
   const forwarded = new Request(c.req.raw);
   if (c.req.path !== "/sync/socket") {
     const session = await authenticate(c.env, tokenOf(c), workspace);

@@ -1,5 +1,22 @@
 /* What StyleX can't reach, in the lowest layer (declared first in index.html). */
 @layer reset {
+  /* The welcome screen's faces, as the web page's (Welcome.tsx): Fraunces, light, for its headlines, and Hanken
+     Grotesk for the rest. The app itself stays in the system's San Francisco. */
+  @font-face {
+    font-family: "Fraunces";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: block;
+    src: url(./fonts/fraunces-latin-wght.woff2) format("woff2-variations");
+  }
+  @font-face {
+    font-family: "Hanken Grotesk";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: block;
+    src: url(./fonts/hanken-grotesk-latin-wght.woff2) format("woff2-variations");
+  }
+
   :root {
     --scrollbar-thumb: color-mix(in srgb, oklch(0.955 0 0) 8%, transparent);
     color-scheme: dark;

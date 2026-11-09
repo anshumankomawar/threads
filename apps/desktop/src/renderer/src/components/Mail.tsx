@@ -65,6 +65,7 @@ import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, radii, sidebarSpace, space } from "../styles/tokens.stylex";
 import { AppButtons, HistoryButtons } from "./TopButtons";
+import { GettingStarted } from "./GettingStarted";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
@@ -501,6 +502,7 @@ export function MailSidebar(): JSX.Element {
         </Show>
       </nav>
       <InlineForm />
+      <GettingStarted />
       <div class={sx(s.footer)}>
         {/* You: one button to your profile and settings, on one page. */}
         <button
@@ -1163,11 +1165,22 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               size={28}
               aria-hidden="true"
             />
-            <span class={sx(s.emptyTitle)}>
-              {mailbox().kind === "inbox" ? "All caught up" : "Nothing here"}
-            </span>
-            <Show when={mailbox().kind === "inbox"}>
-              <span>Nothing in your inbox needs you right now.</span>
+            <Show
+              when={mailbox().kind === "inbox" && store.all(Thread).length === 0}
+              fallback={
+                <>
+                  <span class={sx(s.emptyTitle)}>
+                    {mailbox().kind === "inbox" ? "All caught up" : "Nothing here"}
+                  </span>
+                  <Show when={mailbox().kind === "inbox"}>
+                    <span>Nothing in your inbox needs you right now.</span>
+                  </Show>
+                </>
+              }
+            >
+              {/* A new workspace: what to do first, rather than "caught up" on nothing. */}
+              <span class={sx(s.emptyTitle)}>Start your first thread</span>
+              <span>Press ⌘N to write one, or ⌘K for everything else.</span>
             </Show>
           </div>
         </Show>

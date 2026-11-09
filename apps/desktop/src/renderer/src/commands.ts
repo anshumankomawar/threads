@@ -30,6 +30,8 @@ import {
   toggleResolved,
 } from "./components/Mail";
 import { dueIn } from "./when";
+import { chooseWorkspace, openWorkspace, server } from "./startup";
+import { gettingStartedShown, showGettingStarted } from "./components/GettingStarted";
 import { showToday } from "./components/Timeline";
 import {
   account,
@@ -815,7 +817,7 @@ function app(): Command[] {
       ? [
           {
             id: "sign-out",
-            title: `Sign out (${account.email})`,
+            title: `Log Out (${account.email})`,
             kind: "action" as const,
             section,
             icon: i.Logout01Icon,
@@ -824,6 +826,52 @@ function app(): Command[] {
           },
         ]
       : []),
+  ];
+}
+
+// Your workspaces: inviting people to this one, going to another, and making or joining one more. Only signed in.
+function workspaces(): Command[] {
+  if (!account) return [];
+  const section = "Workspace";
+  return [
+    {
+      id: "invite",
+      title: "Invite People",
+      kind: "action",
+      section,
+      icon: i.UserAdd01Icon,
+      keywords: "invite add team member teammate email",
+      run: () => setDialog({ kind: "invite" }),
+    },
+    ...(account.workspaces ?? [])
+      .filter((w) => w.id !== server.workspace)
+      .map((w): Command => ({
+        id: `workspace:${w.id}`,
+        title: `Switch to ${w.name}`,
+        kind: "action",
+        section,
+        icon: i.ArrowDataTransferHorizontalIcon,
+        keywords: "workspace change team",
+        run: () => openWorkspace(w.id),
+      })),
+    {
+      id: "choose-workspace",
+      title: "Create or Join a Workspace",
+      kind: "action",
+      section,
+      icon: i.Add01Icon,
+      keywords: "new workspace team company",
+      run: chooseWorkspace,
+    },
+    {
+      id: "getting-started",
+      title: gettingStartedShown() ? "Hide Getting Started" : "Show Getting Started",
+      kind: "action",
+      section,
+      icon: i.CheckListIcon,
+      keywords: "checklist onboarding tips setup",
+      run: () => showGettingStarted(!gettingStartedShown()),
+    },
   ];
 }
 
@@ -859,6 +907,7 @@ export function commands(): Command[] {
     ...here(),
     ...listing(),
     ...creating(),
+    ...workspaces(),
     ...app(),
     ...store.all(User).map(personCommand),
   ];
@@ -871,6 +920,7 @@ export function suggestions(): Command[] {
     ...(thread ? threadCommands(thread) : []),
     ...places().slice(0, 1 + inbox().sections.length + 4),
     ...creating(),
+    ...workspaces(),
     ...app(),
   ];
 }

@@ -70,7 +70,7 @@ export function indexedLocalDB(): LocalDB {
     },
     load: (model) => db.getAll(model),
     async write(actions, meta) {
-      const tx = db.transaction(
+      const tx = db.transaction<string[], "readwrite">(
         [...new Set(actions.map((action) => action.model)), META],
         "readwrite",
       );
@@ -78,7 +78,7 @@ export function indexedLocalDB(): LocalDB {
       await tx.done;
     },
     async replace(actions, meta) {
-      const tx = db.transaction([...models(), META], "readwrite");
+      const tx = db.transaction<string[], "readwrite">([...models(), META], "readwrite");
       for (const model of models()) void tx.objectStore(model).clear();
       store(tx, actions, meta);
       await tx.done;
