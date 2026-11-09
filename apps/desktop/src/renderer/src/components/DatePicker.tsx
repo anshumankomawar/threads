@@ -222,7 +222,7 @@ const s = stylex.create({
     justifyContent: "center",
     width: 22,
     height: 22,
-    borderRadius: radii.control,
+    borderRadius: radii.pill,
     color: colors.textSecondary,
     cursor: "pointer",
   },
@@ -241,21 +241,21 @@ const s = stylex.create({
     alignItems: "center",
     justifyContent: "center",
     height: CELL,
-    borderRadius: radii.control,
+    borderRadius: radii.pill,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
     cursor: "pointer",
   },
-  // Inside a span: a band behind its days.
+  // Inside a span: a band behind its days, between its round ends.
   between: { borderRadius: 0, backgroundColor: colors.bgTertiary },
-  // Its ends, or the one day.
+  // Its ends, or the one day: round, in the app's blue (New's).
   picked: {
     color: "white",
     fontWeight: 600,
-    backgroundColor: { default: colors.accent, ":hover": colors.accent },
+    backgroundColor: { default: colors.primary, ":hover": colors.primaryHover },
   },
-  today: { color: colors.accent, fontWeight: 600 },
+  today: { color: colors.primary, fontWeight: 600 },
   foot: {
     display: "flex",
     alignItems: "center",
@@ -268,8 +268,8 @@ const s = stylex.create({
   },
   summary: { color: colors.textSecondary },
   clear: {
-    padding: "2px 6px",
-    borderRadius: radii.control,
+    padding: "2px 8px",
+    borderRadius: radii.pill,
     color: colors.textSecondary,
     cursor: "pointer",
   },
