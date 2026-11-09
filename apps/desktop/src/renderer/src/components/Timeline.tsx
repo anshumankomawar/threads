@@ -64,7 +64,7 @@ function span(thread: Thread): { from: number; to: number } {
   return { from: Math.min(from, to - DAY_MS), to: Math.max(to, from + DAY_MS) };
 }
 
-const MONTH = new Intl.DateTimeFormat(undefined, { month: "short" });
+const MONTH = new Intl.DateTimeFormat(undefined, { month: "long" });
 const DAY_MONTH = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
 const SHORT_DATE = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
@@ -718,22 +718,17 @@ const styles = stylex.create({
   // Over the names, holding their room in the header: clear, so the days run on across the top behind it.
   corner: { flexShrink: 0 },
   scale: { position: "relative", flexShrink: 0 },
-  // Linear's: each month's name, small and spaced, from its first day.
+  // Each month's name over its first day: plain, quiet, starting where that day's number does.
   month: {
     position: "absolute",
     top: 6,
-    paddingLeft: 4,
+    marginLeft: -3,
     overflow: "hidden",
-    color: colors.textTertiary,
-    fontSize: 9.09,
-    fontWeight: 600,
-    letterSpacing: "0.06em",
+    color: colors.textSecondary,
+    fontSize: fontSizes.small,
+    fontWeight: 500,
     lineHeight: "14px",
-    textTransform: "uppercase",
     whiteSpace: "nowrap",
-    borderLeftWidth: 1,
-    borderLeftStyle: "solid",
-    borderLeftColor: colors.strokeFocused,
   },
 
   tick: {
