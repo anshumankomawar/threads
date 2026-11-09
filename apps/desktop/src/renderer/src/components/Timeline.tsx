@@ -7,6 +7,7 @@ import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
 import { edit, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
+import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
@@ -30,7 +31,9 @@ const DAY: Record<Zoom, number> = { weeks: 34, months: 12, quarters: 4 };
 // The names' column (as wide as it was left, within these), a row, a bar, a group's row, and the heading.
 // The names' column and its rows as the sidebar's (its points ÷ 1.1, for the 110% scale): 220px wide (180 to 320), rows
 // 30pt tall 2pt apart, inset and padded 8pt, rounded 8pt, names at 13pt.
-const NAMES = { min: 180, max: 420 };
+// The names column: fitted to its titles up to `fit` (longer ones end in an ellipsis), dragged anywhere from `min` to
+// `max`.
+const NAMES = { min: 120, fit: 260, max: 420 };
 const ROW = 29.09;
 const INSET = 7.27;
 const BAR = 22;
@@ -81,7 +84,10 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     saved<number | null>("timeline-names", null),
   );
   const fitted = (): number =>
-    clamp(Math.max(0, ...threads().map((t) => textWidth(t.title))) + 4 * INSET + 2);
+    Math.min(
+      NAMES.fit,
+      clamp(Math.max(0, ...threads().map((t) => textWidth(t.title))) + 4 * INSET + 2),
+    );
   const names = (): number => clamp(dragged() ?? fitted());
   const setNames = (px: number): void => void setDragged(clamp(px));
   const resizeNames = (event: PointerEvent): void => {
@@ -389,7 +395,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   return (
     <div class={sx(styles.frame)}>
       {/* The month in view and the list's filters; its scale, today and a step either way; then New. */}
-      <div class={sx(styles.toolbar)}>
+      <div {...stylex.attrs(styles.toolbar, toolbarMarker)}>
         <Tabs
           label="Timeline or unscheduled"
           tabs={tabs}
@@ -688,7 +694,7 @@ const styles = stylex.create({
   stepper: {
     display: "inline-flex",
     alignItems: "center",
-    height: 22,
+    height: 24,
     padding: 1,
     borderWidth: 1,
     borderStyle: "solid",
@@ -699,14 +705,14 @@ const styles = stylex.create({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 18,
-    height: 18,
+    width: 20,
+    height: 20,
     borderRadius: 4,
     color: colors.textSecondary,
     cursor: "pointer",
   },
   stepToday: {
-    height: 18,
+    height: 20,
     padding: "0 5px",
     borderRadius: 4,
     color: colors.textSecondary,

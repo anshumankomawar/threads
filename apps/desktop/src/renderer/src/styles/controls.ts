@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { base } from "./base";
+import { toolbarMarker } from "./markers.stylex";
 import { colors, fontSizes, layers, motion, radii } from "./tokens.stylex";
 
 // Below, starting at the anchor's left edge (StyleX's types only know single keywords).
@@ -11,7 +12,7 @@ export const chip = stylex.create({
     display: "inline-flex",
     alignItems: "center",
     gap: 5,
-    height: 22,
+    height: { default: 22, [stylex.when.ancestor(":is(*)", toolbarMarker)]: 24 },
     padding: "0 7px",
     borderWidth: 1,
     borderStyle: "solid",

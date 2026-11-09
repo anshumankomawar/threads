@@ -54,6 +54,7 @@ import { describe, FIELDS, subspacesIn } from "../filters";
 import { base } from "../styles/base";
 import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
+import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons, HistoryButtons } from "./TopButtons";
@@ -1380,7 +1381,11 @@ const s = stylex.create({
   querySpacer: { flex: 1 },
   // As tall as the chips beside it.
   // Spaced as the toolbar spaces everything, not as a dialog's buttons are.
-  queryNew: { height: 22, marginLeft: 0, padding: "0 10px" },
+  queryNew: {
+    height: { default: 22, [stylex.when.ancestor(":is(*)", toolbarMarker)]: 24 },
+    marginLeft: 0,
+    padding: "0 10px",
+  },
   // Sized as the macOS app's list: each size here is its points ÷ 1.1, for the renderer's 110% scale. Cards 8pt in
   // from the column's sides and 2pt apart.
   listScroll: {
