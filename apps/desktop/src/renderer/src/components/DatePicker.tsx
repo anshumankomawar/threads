@@ -3,15 +3,16 @@ import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { base } from "../styles/base";
-import { menu as look } from "../styles/controls";
+import { button, menu as look } from "../styles/controls";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import type { When } from "../when";
 import { Icon } from "./Icon";
 
-// Picking a date: two months side by side, floating under what asked. A click is one day (a deadline), a drag across
-// days is a span, and a shift-click stretches what's picked to the day clicked. Under them, what's picked (or how to
-// pick), and No Date when there's one to clear. A click elsewhere or Escape closes it; picking does too.
+// Picking a date: two months side by side, floating under what asked. As a round trip's dates: a click is the start,
+// a second the end (or Save keeps the one day, a deadline); a drag across days, or a shift-click, picks a span. Under
+// them, what's picked (or how to pick), No Date when there's one to clear, and Save. Escape or a click elsewhere leaves
+// it as it was.
 type Ask = {
   at: Element | DOMRect;
   start?: Date;
@@ -57,9 +58,16 @@ function Panel(props: { ask: Ask }): JSX.Element {
   const [month, setMonth] = createSignal(
     new Date(shownFrom.getFullYear(), shownFrom.getMonth(), 1),
   );
-  // While dragging: the day it started on, and the one under the pointer.
-  const [anchor, setAnchor] = createSignal<Date | null>(null);
+  // What's picked so far, as a round trip's dates are: a first click is the start, a second the end (one before the
+  // start moves the start instead), a third starts again. Nothing's given until Save.
+  const [picked, setPicked] = createSignal<{ start?: Date; end?: Date }>({
+    start: was.start ?? was.end,
+    end: was.end ?? was.start,
+  });
+  const [awaitingEnd, setAwaitingEnd] = createSignal(false);
+  // The day under the pointer (a span's end, previewed while the end's being picked), and where a drag began.
   const [over, setOver] = createSignal<Date | null>(null);
+  const [pressed, setPressed] = createSignal<Date | null>(null);
   let panel!: HTMLDivElement;
 
   const months = (): Date[] => [
@@ -68,34 +76,58 @@ function Panel(props: { ask: Ask }): JSX.Element {
   ];
   const step = (by: number) => () =>
     setMonth(new Date(month().getFullYear(), month().getMonth() + by, 1));
-  // What's picked as it shows: the drag under way, or what it was.
+  const ordered = (a: Date, b: Date) => (a <= b ? { start: a, end: b } : { start: b, end: a });
+  // What shows: a drag under way, the end being picked (to the day pointed at), or what's picked.
   const range = (): { start?: Date; end?: Date } => {
-    const a = anchor();
-    const b = over();
-    if (a && b) return a <= b ? { start: a, end: b } : { start: b, end: a };
-    return { start: was.start ?? was.end, end: was.end ?? was.start };
+    const from = pressed();
+    const to = over();
+    if (from && to) return ordered(from, to);
+    const { start } = picked();
+    if (awaitingEnd() && start && to && to > start) return { start, end: to };
+    return picked();
   };
-  const picked = (d: Date): boolean => same(d, range().start) || same(d, range().end);
+  const is = (d: Date, edge: "start" | "end"): boolean => same(d, range()[edge]);
+  const spans = (): boolean =>
+    !!range().start && !!range().end && !same(range().start, range().end);
   const between = (d: Date): boolean => {
     const { start, end } = range();
     return !!start && !!end && d > start && d < end;
+  };
+  const choose = (d: Date): void => {
+    const { start } = picked();
+    if (awaitingEnd() && start && d >= start) {
+      setPicked({ start, end: d });
+      setAwaitingEnd(false);
+    } else {
+      setPicked({ start: d, end: d });
+      setAwaitingEnd(true);
+    }
+  };
+  const release = (): void => {
+    const from = pressed();
+    const to = over() ?? from;
+    setPressed(null);
+    if (!from || !to) return;
+    // A press and release on one day is a click; across days, a drag picks the span.
+    if (same(from, to)) return choose(from);
+    setPicked(ordered(from, to));
+    setAwaitingEnd(false);
   };
   const done = (when: When | null): void => {
     props.ask.pick(when);
     panel.hidePopover();
   };
-  const finish = (): void => {
-    const a = anchor();
-    const b = over() ?? a;
-    setAnchor(null);
-    setOver(null);
-    if (!a || !b) return;
-    done(a <= b ? { start: a, end: b } : { start: b, end: a });
+  const save = (): void => {
+    const { start, end } = picked();
+    if (start) done({ start, end: end ?? start });
   };
   const summary = (): string => {
-    const { start, end } = range();
-    if (!start || !end) return "Pick a day, or drag across days";
-    return same(start, end) ? SHORT.format(end) : `${SHORT.format(start)} – ${SHORT.format(end)}`;
+    const { start, end } = picked();
+    if (!start) return "Pick a day, or a start and an end";
+    if (awaitingEnd()) return `${SHORT.format(start)} – pick an end, or save one day`;
+    return !end || same(start, end)
+      ? SHORT.format(start)
+      : `${SHORT.format(start)} – ${SHORT.format(end)}`;
   };
 
   // Under what asked, its left edges level, kept on screen.
@@ -103,6 +135,7 @@ function Panel(props: { ask: Ask }): JSX.Element {
     panel = el;
     queueMicrotask(() => {
       el.showPopover();
+      el.focus();
       const at =
         props.ask.at instanceof Element ? props.ask.at.getBoundingClientRect() : props.ask.at;
       const { width, height } = el.getBoundingClientRect();
@@ -116,12 +149,18 @@ function Panel(props: { ask: Ask }): JSX.Element {
     <div
       ref={place}
       popover="auto"
+      tabindex={-1}
       class={sx(base.panel, look.popover, s.panel)}
       role="dialog"
       aria-label="Pick a date"
       onToggle={(event) => event.newState === "closed" && asked() === props.ask && setAsked(null)}
-      onPointerUp={finish}
-      onPointerLeave={() => anchor() && setOver(anchor())}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        save();
+      }}
+      onPointerUp={release}
+      onPointerLeave={() => setOver(null)}
     >
       <div class={sx(s.months)}>
         <For each={months()}>
@@ -153,30 +192,39 @@ function Panel(props: { ask: Ask }): JSX.Element {
                 <For each={weeks(first)}>
                   {(d) =>
                     d ? (
-                      <button
+                      // The band behind a span runs into its round ends: half a cell from each.
+                      <span
                         class={sx(
-                          base.bare,
-                          s.day,
-                          between(d) && s.between,
-                          picked(d) && s.picked,
-                          same(d, today) && !picked(d) && s.today,
+                          s.cell,
+                          between(d) && s.band,
+                          spans() && is(d, "start") && s.bandAfter,
+                          spans() && is(d, "end") && s.bandBefore,
                         )}
-                        aria-label={SHORT.format(d)}
-                        aria-pressed={picked(d) ? "true" : "false"}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          if (event.shiftKey && (was.start || was.end)) {
-                            setAnchor((was.start ?? was.end)!);
-                            setOver(d);
-                            return;
-                          }
-                          setAnchor(d);
-                          setOver(d);
-                        }}
-                        onPointerEnter={() => anchor() && setOver(d)}
                       >
-                        {d.getDate()}
-                      </button>
+                        <button
+                          class={sx(
+                            base.bare,
+                            s.day,
+                            (is(d, "start") || is(d, "end")) && s.picked,
+                            same(d, today) && !is(d, "start") && !is(d, "end") && s.today,
+                          )}
+                          aria-label={SHORT.format(d)}
+                          aria-pressed={is(d, "start") || is(d, "end") ? "true" : "false"}
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            if (event.shiftKey && picked().start) {
+                              setPicked(ordered(picked().start!, d));
+                              setAwaitingEnd(false);
+                              return;
+                            }
+                            setPressed(d);
+                            setOver(d);
+                          }}
+                          onPointerEnter={() => setOver(d)}
+                        >
+                          {d.getDate()}
+                        </button>
+                      </span>
                     ) : (
                       <span />
                     )
@@ -188,12 +236,19 @@ function Panel(props: { ask: Ask }): JSX.Element {
         </For>
       </div>
       <div class={sx(s.foot)}>
-        <span class={sx(s.summary)}>{summary()}</span>
+        <span class={sx(base.ellipsis, s.summary)}>{summary()}</span>
         <Show when={was.start || was.end}>
           <button class={sx(base.bare, base.hover, s.clear)} onClick={() => done(null)}>
             No Date
           </button>
         </Show>
+        <button
+          class={sx(base.bare, button.solid, s.save)}
+          disabled={!picked().start}
+          onClick={save}
+        >
+          Save
+        </button>
       </div>
     </div>
   );
@@ -236,8 +291,17 @@ const s = stylex.create({
     color: colors.textTertiary,
     fontSize: fontSizes.small,
   },
+  cell: { display: "flex", height: CELL },
+  band: { backgroundColor: colors.bgTertiary },
+  bandAfter: {
+    backgroundImage: `linear-gradient(to right, transparent 50%, ${colors.bgTertiary} 50%)`,
+  },
+  bandBefore: {
+    backgroundImage: `linear-gradient(to right, ${colors.bgTertiary} 50%, transparent 50%)`,
+  },
   day: {
     display: "flex",
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
     height: CELL,
@@ -247,8 +311,6 @@ const s = stylex.create({
     backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
     cursor: "pointer",
   },
-  // Inside a span: a band behind its days, between its round ends.
-  between: { borderRadius: 0, backgroundColor: colors.bgTertiary },
   // Its ends, or the one day: round, in the app's blue (New's).
   picked: {
     color: "white",
@@ -258,15 +320,16 @@ const s = stylex.create({
   today: { color: colors.primary, fontWeight: 600 },
   foot: {
     display: "flex",
+    gap: 6,
     alignItems: "center",
-    justifyContent: "space-between",
     height: 24,
     paddingTop: 6,
     borderTopWidth: 1,
     borderTopStyle: "solid",
     borderTopColor: colors.strokeTertiary,
   },
-  summary: { color: colors.textSecondary },
+  summary: { flex: 1, minWidth: 0, color: colors.textSecondary },
+  save: { height: 24, marginLeft: 0, padding: "0 12px", borderRadius: radii.pill },
   clear: {
     padding: "2px 8px",
     borderRadius: radii.pill,
