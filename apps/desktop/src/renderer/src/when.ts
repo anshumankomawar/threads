@@ -129,3 +129,14 @@ function dated(month: number, date: number, year: string | undefined, today: Dat
   if (here && here >= today) return here;
   return valid(today.getFullYear() + 1, month, date);
 }
+
+// What a typed "when" sets on a thread: one day is when it's due (at 5pm, as every due date is); a span starts on its
+// first day too.
+export function whenFields(when: When): { startAt: Date | undefined; dueAt: Date } {
+  const due = new Date(when.end);
+  due.setHours(17, 0, 0, 0);
+  return {
+    startAt: when.start.getTime() === when.end.getTime() ? undefined : when.start,
+    dueAt: due,
+  };
+}

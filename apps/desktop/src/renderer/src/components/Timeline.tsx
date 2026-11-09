@@ -15,7 +15,7 @@ import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { Tabs, type Tab } from "./Tabs";
 import { dot } from "./ThreadView";
-import { describeWhen, parseWhen, type When } from "../when";
+import { describeWhen, parseWhen, whenFields, type When } from "../when";
 
 // The list as a timeline, after TeamGantt: the threads named down the left, and beside each its bar, a slim card with
 // its status's dot, from its start to its due date, its owner just past its end. A thread with branches fills its
@@ -170,7 +170,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   // Those without a date: in a list from the toolbar, to be dragged onto a day or given one from their menu.
   const undated = (): Thread[] => [...new Set(listed().order)].filter((t) => !dated(t));
   const place = (thread: Thread, when: When, label: string): void =>
-    edit(thread, { startAt: when.start, dueAt: when.end }, label);
+    edit(thread, whenFields(when), label);
   // The timeline, or those without dates: tabs on its toolbar, the one chosen kept.
   const tabs: Tab[] = [
     { label: "Scheduled", icon: i.Calendar03Icon },

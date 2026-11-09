@@ -355,68 +355,39 @@ function threadCommands(thread: Thread): Command[] {
           })),
         ),
     },
+    // One date, as the thread shows it: when it's due (a span's start is typed on the thread itself).
     {
-      id: "start",
-      title: "Set a Start Date",
+      id: "when",
+      title: "Set When",
       kind: "action",
       section,
       icon: i.Calendar03Icon,
-      keywords: "begin when date timeline",
+      keywords: "due date deadline start schedule timeline",
       page: () =>
-        choices(thread, "Start date", i.Calendar03Icon, [
+        choices(thread, "When", i.Calendar03Icon, [
           {
             id: "today",
             title: "Today",
             on: false,
-            run: () => edit(thread, { startAt: dueAt(0) }),
+            run: () => edit(thread, { startAt: undefined, dueAt: dueAt(0) }),
           },
           {
             id: "tomorrow",
             title: "Tomorrow",
             on: false,
-            run: () => edit(thread, { startAt: dueAt(1) }),
+            run: () => edit(thread, { startAt: undefined, dueAt: dueAt(1) }),
           },
           {
             id: "week",
             title: "Next Week",
             on: false,
-            run: () => edit(thread, { startAt: dueAt(7) }),
+            run: () => edit(thread, { startAt: undefined, dueAt: dueAt(7) }),
           },
           {
             id: "none",
-            title: "When It Was Created",
-            on: !thread.startAt,
-            run: () => edit(thread, { startAt: undefined }),
-          },
-        ]),
-    },
-    {
-      id: "due",
-      title: "Set a Due Date",
-      kind: "action",
-      section,
-      icon: i.Calendar01Icon,
-      keywords: "deadline when date",
-      page: () =>
-        choices(thread, "Due date", i.Calendar01Icon, [
-          { id: "today", title: "Today", on: false, run: () => edit(thread, { dueAt: dueAt(0) }) },
-          {
-            id: "tomorrow",
-            title: "Tomorrow",
-            on: false,
-            run: () => edit(thread, { dueAt: dueAt(1) }),
-          },
-          {
-            id: "week",
-            title: "Next Week",
-            on: false,
-            run: () => edit(thread, { dueAt: dueAt(7) }),
-          },
-          {
-            id: "none",
-            title: "No Due Date",
-            on: !thread.dueAt,
-            run: () => edit(thread, { dueAt: undefined }),
+            title: "No Date",
+            on: !thread.dueAt && !thread.startAt,
+            run: () => edit(thread, { startAt: undefined, dueAt: undefined }),
           },
         ]),
     },

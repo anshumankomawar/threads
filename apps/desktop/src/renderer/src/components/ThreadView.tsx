@@ -6,7 +6,6 @@ import { createEffect, createMemo, createSignal, For, onSettled, Show, untrack }
 import { Portal, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import {
-  Bucket,
   Label,
   Subspace,
   Thread,
@@ -22,14 +21,11 @@ import {
   byName,
   edit,
   firstName,
-  itemFor,
   me,
-  myBuckets,
   open,
   save,
   saved,
   others,
-  placeIn,
   setDialog,
   peek,
   setState,
@@ -43,7 +39,6 @@ import {
   type MenuItem,
   undoable,
 } from "../session";
-import { bucketIcons } from "../bucketIcons";
 import { base } from "../styles/base";
 import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
@@ -53,6 +48,8 @@ import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
+import { askInline } from "./InlineForm";
+import { parseWhen, whenFields } from "../when";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
 import { branchesOf, progressOf } from "../links";
@@ -692,15 +689,100 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 // A thread as a document: its heading, its messages, then the reply. Opened from your inbox it starts at the top
 // without taking the cursor, so the inbox keys keep working.
 
-// A thread's properties, under its title: a row of values, each a menu you change it from, plain until you hover it.
+// A thread's properties, under its title: its status, then only what's been set, each a menu you change it from, plain
+// until you hover it; "Add" offers the rest. Only what everyone on it shares (your inbox's buckets are yours alone).
 const value = [base.bare, base.hover, styles.value];
 function Properties(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
-  const item = (): ReturnType<typeof itemFor> => itemFor(c());
   const change = (fields: Partial<Thread>) => () => edit(c(), fields);
-  const place = (bucket: Bucket | undefined) => () => placeIn(item()!, bucket);
-  const bucketIcon = (bucket?: Bucket): IconSvgElement =>
-    bucketIcons(myBuckets()).get(bucket?.id ?? "") ?? i.InboxIcon;
+  const listItems = (field: ListField, records: { id: string; name: string }[]): MenuItem[] =>
+    byName(records).map((record) => ({
+      label: record.name,
+      icon: c()[field].includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
+      run: () => edit(c(), { [field]: toggled(c()[field], record.id) }),
+    }));
+  // When: today, tomorrow, next week, or typed ("fri", "mon to fri"), or none.
+  const whenItems = (): MenuItem[] => [
+    { label: "Today", run: change({ startAt: undefined, dueAt: dueAt(0) }) },
+    { label: "Tomorrow", run: change({ startAt: undefined, dueAt: dueAt(1) }) },
+    { label: "Next Week", run: change({ startAt: undefined, dueAt: dueAt(7) }) },
+    {
+      label: "Type a Date",
+      form: true,
+      run: (from) =>
+        askInline({
+          at: from,
+          title: "When",
+          icon: i.Calendar03Icon,
+          fields: [{ label: "When", placeholder: "fri, next week, mon to fri" }],
+          accept: ([typed]) => parseWhen(typed) !== null,
+          submit: ([typed]) => {
+            const when = parseWhen(typed);
+            if (when) edit(c(), whenFields(when));
+          },
+        }),
+    },
+    ...(c().dueAt || c().startAt
+      ? [
+          "separator" as const,
+          { label: "No Date", run: change({ startAt: undefined, dueAt: undefined }) },
+        ]
+      : []),
+  ];
+  const when = (): string => {
+    const due = c().dueAt;
+    const start = c().startAt;
+    if (start && due && start.toDateString() !== due.toDateString())
+      return `${shortDate(start)} – ${shortDate(due)}`;
+    return due ? `Due ${shortDate(due)}` : `From ${shortDate(start!)}`;
+  };
+  const unset = (): MenuItem[] => [
+    ...(c().labelIds.length === 0
+      ? [
+          {
+            label: "Label",
+            icon: icon(i.Tag01Icon, 13),
+            items: [
+              ...listItems("labelIds", store.all(Label)),
+              { label: "New Label", run: () => setDialog({ kind: "newLabel", thread: c() }) },
+            ],
+          },
+        ]
+      : []),
+    ...(c().subspaceIds.length === 0
+      ? [
+          {
+            label: "Space",
+            icon: icon(i.Layers01Icon, 13),
+            items: listItems("subspaceIds", store.all(Subspace)),
+          },
+        ]
+      : []),
+    ...(c().assigneeIds.length === 0
+      ? [
+          {
+            label: "Assignee",
+            icon: icon(i.UserMultipleIcon, 13),
+            items: listItems("assigneeIds", store.all(User)),
+          },
+        ]
+      : []),
+    ...(c().priority === "none"
+      ? [
+          {
+            label: "Priority",
+            icon: icon(i.Flag01Icon, 13),
+            items: PRIORITIES.filter((p) => p !== "none").map((priority) => ({
+              label: LABELS[priority],
+              run: change({ priority }),
+            })),
+          },
+        ]
+      : []),
+    ...(!c().dueAt && !c().startAt
+      ? [{ label: "When", icon: icon(i.Calendar03Icon, 13), items: whenItems() }]
+      : []),
+  ];
   return (
     <div class={sx(styles.properties)} aria-label="Properties">
       <MenuChip
@@ -713,105 +795,68 @@ function Properties(props: { thread: Thread }): JSX.Element {
           run: () => setState(c(), state),
         }))}
       />
-      <Show when={item()}>
-        {(it) => (
-          <MenuChip
-            look={value}
-            label={<span class={sx(base.ellipsis)}>{it().bucket?.name ?? "Sorting"}</span>}
-            icon={icon(bucketIcon(it().bucket), 13)}
-            tone={it().bucket ? undefined : "muted"}
-            title={
-              it().bucket
-                ? it().manual
-                  ? "Placed by you"
-                  : it().reason
-                : "Being sorted into one of your buckets"
-            }
-            items={[
-              ...myBuckets().map((b) => ({
-                label: b.name,
-                icon: icon(b === it().bucket ? i.Tick02Icon : bucketIcon(b), 13),
-                run: place(b),
-              })),
-              ...(it().manual ? [{ label: "Sort It for Me", run: place(undefined) }] : []),
-            ]}
-          />
-        )}
+      <Show when={c().labelIds.length > 0}>
+        <ListChip
+          look={value}
+          thread={c()}
+          field="labelIds"
+          records={store.all(Label)}
+          none=""
+          icon={i.Tag01Icon}
+          more={[{ label: "New Label", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
+        />
       </Show>
-      <ListChip
-        look={value}
-        thread={c()}
-        field="labelIds"
-        records={store.all(Label)}
-        none="No labels"
-        icon={i.Tag01Icon}
-        more={[{ label: "New Label", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
-      />
-      <ListChip
-        look={value}
-        thread={c()}
-        field="subspaceIds"
-        records={store.all(Subspace)}
-        // In no space, it's simply the workspace's: anyone can see it, which needs no name of its own.
-        none="No space"
-        icon={i.Layers01Icon}
-        title="Where it lives: its spaces' members see it, and only they when one is private"
-      />
-      <ListChip
-        look={value}
-        thread={c()}
-        field="assigneeIds"
-        records={store.all(User)}
-        none="No assignees"
-        icon={i.UserMultipleIcon}
-        short={(name) => firstName({ name })}
-      />
-      <MenuChip
-        look={value}
-        label={<span class={sx(base.ellipsis)}>{LABELS[c().priority]}</span>}
-        tone={c().priority === "urgent" ? "urgent" : c().priority === "none" ? "muted" : undefined}
-        items={PRIORITIES.map((priority) => ({
-          label: LABELS[priority],
-          run: change({ priority }),
-        }))}
-      />
-      <Show when={c().startAt}>
-        {(start) => (
-          <MenuChip
-            look={value}
-            icon={icon(i.Calendar03Icon, 13)}
-            label={<span class={sx(base.ellipsis)}>{`Starts ${shortDate(start())}`}</span>}
-            items={[
-              { label: "Today", run: change({ startAt: dueAt(0) }) },
-              { label: "Tomorrow", run: change({ startAt: dueAt(1) }) },
-              { label: "Next Week", run: change({ startAt: dueAt(7) }) },
-              { label: "When It Was Created", run: change({ startAt: undefined }) },
-            ]}
-          />
-        )}
+      <Show when={c().subspaceIds.length > 0}>
+        <ListChip
+          look={value}
+          thread={c()}
+          field="subspaceIds"
+          records={store.all(Subspace)}
+          none=""
+          icon={i.Layers01Icon}
+          title="Where it lives: its spaces' members see it, and only they when one is private"
+        />
       </Show>
-      <MenuChip
-        look={value}
-        icon={icon(i.Calendar01Icon, 13)}
-        label={
-          <span class={sx(base.ellipsis)}>
-            {c().dueAt ? `Due ${shortDate(c().dueAt!)}` : "No due date"}
-          </span>
-        }
-        tone={
-          c().dueAt && c().dueAt!.getTime() < Date.now()
-            ? "urgent"
-            : c().dueAt
-              ? undefined
-              : "muted"
-        }
-        items={[
-          { label: "Today", run: change({ dueAt: dueAt(0) }) },
-          { label: "Tomorrow", run: change({ dueAt: dueAt(1) }) },
-          { label: "Next Week", run: change({ dueAt: dueAt(7) }) },
-          { label: "No Due Date", run: change({ dueAt: undefined }) },
-        ]}
-      />
+      <Show when={c().assigneeIds.length > 0}>
+        <ListChip
+          look={value}
+          thread={c()}
+          field="assigneeIds"
+          records={store.all(User)}
+          none=""
+          icon={i.UserMultipleIcon}
+          short={(name) => firstName({ name })}
+        />
+      </Show>
+      <Show when={c().priority !== "none"}>
+        <MenuChip
+          look={value}
+          label={<span class={sx(base.ellipsis)}>{LABELS[c().priority]}</span>}
+          tone={c().priority === "urgent" ? "urgent" : undefined}
+          items={PRIORITIES.map((priority) => ({
+            label: LABELS[priority],
+            run: change({ priority }),
+          }))}
+        />
+      </Show>
+      <Show when={c().dueAt || c().startAt}>
+        <MenuChip
+          look={value}
+          icon={icon(i.Calendar03Icon, 13)}
+          label={<span class={sx(base.ellipsis)}>{when()}</span>}
+          tone={c().dueAt && c().dueAt!.getTime() < Date.now() ? "urgent" : undefined}
+          items={whenItems()}
+        />
+      </Show>
+      <Show when={unset().length > 0}>
+        <MenuChip
+          look={value}
+          tone="muted"
+          icon={icon(i.Add01Icon, 13)}
+          label="Add"
+          items={unset()}
+        />
+      </Show>
     </div>
   );
 }
