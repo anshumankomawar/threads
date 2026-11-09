@@ -10,9 +10,13 @@ import {
 export type Announcer = { track: () => void; notify: () => void };
 
 // Values live in plain objects the engine reads at once (Solid shows a signal's new value only after its batch), so
-// this signal carries none: reading it subscribes, writing it tells its readers to update.
+// this signal carries none: reading it subscribes, writing it tells its readers to update. Owned by nothing: it lives as
+// long as its model or list, and a signal keeps its owner, so made under the component that first read it, it kept
+// that component (and its elements) for good after it was gone.
 export function announcer(): Announcer {
-  const [read, write] = createSignal(0, { equals: false, ownedWrite: true });
+  const [read, write] = runWithOwner(null, () =>
+    createSignal(0, { equals: false, ownedWrite: true }),
+  );
   return { track: () => void read(), notify: () => void write(0) };
 }
 

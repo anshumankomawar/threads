@@ -284,10 +284,7 @@ export function MenuChip(props: {
       </button>
       <div
         id={id}
-        ref={(el) => {
-          popover = el;
-          if (typable()) holdFocus(el);
-        }}
+        ref={popover}
         popover="auto"
         onToggle={(event) => {
           setOpen(event.newState === "open");
@@ -295,8 +292,11 @@ export function MenuChip(props: {
         class={sx(base.panel, look.menu, look.compact, look.popover, chip.menu)}
         role="menu"
       >
-        {/* Mounted while open, so it opens at the top level again. */}
+        {/* Mounted while open, so it opens at the top level again. Its items are read only here, under the open
+            menu: an item's icon is an element (an avatar, for a person), and read anywhere else it belonged to nothing
+            and stayed in memory for good. */}
         <Show when={open()}>
+          {void (typable() && !("holdsKeys" in popover.dataset) && holdFocus(popover))}
           <Show when={props.field}>
             {(field) => <FieldRow field={field()} close={() => popover.hidePopover()} />}
           </Show>
