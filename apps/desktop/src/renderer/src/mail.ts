@@ -46,6 +46,21 @@ export function setConditions(next: Filter[]): void {
   else setExtra(next);
 }
 
+// The fields a list can still be filtered or grouped by: not the one it's made of (a space's by space, a label's by
+// label, someone's by owner or assignee).
+export function fieldsHere(): [string, (typeof FIELDS)[string]][] {
+  const box = chosen();
+  const made: string[] =
+    box.kind === "subspace"
+      ? ["subspaceIds"]
+      : box.kind === "label"
+        ? ["labelIds"]
+        : box.kind === "person" || box.kind === "personal"
+          ? ["ownerId", "assigneeIds"]
+          : [];
+  return Object.entries(FIELDS).filter(([field]) => !made.includes(field));
+}
+
 // What a mailbox's threads have in common, as a filter, so that saving its filtered list as a view keeps them.
 export function baseFilter(box: Mailbox): Filter[] {
   switch (box.kind) {

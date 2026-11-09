@@ -50,9 +50,10 @@ import {
   type Order,
   type Layout,
   setDisplay,
+  fieldsHere,
 } from "../mail";
 import { bucketIcons } from "../bucketIcons";
-import { describe, FIELDS, subspacesIn } from "../filters";
+import { describe, subspacesIn } from "../filters";
 import { base } from "../styles/base";
 import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
@@ -838,7 +839,7 @@ function LayoutPill(): JSX.Element {
 // The ways to group and order a list, and a timeline's scales: in the Display menu, the query bar and ⌘K. Grouping
 // toggles: choosing the one it's grouped by ungroups it.
 const groupItems = (): MenuItem[] =>
-  Object.entries(FIELDS).map(([field, { label }]) => ({
+  fieldsHere().map(([field, { label }]) => ({
     label,
     icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
     checked: groupedBy() === field,
@@ -853,7 +854,7 @@ const orderItems = (): MenuItem[] =>
 
 // What a list can be narrowed by: each field's values, and resolved threads (hidden, they're a pill too).
 const filterItems = (): MenuItem[] => [
-  ...Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
+  ...fieldsHere().map(([field, { label, compare, values }]) => ({
     label,
     icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
     items: values().map(([value, name]) => ({

@@ -20,8 +20,8 @@ import {
   type Zoom,
   ZOOMS,
   type Mailbox,
+  fieldsHere,
 } from "./mail";
-import { FIELDS } from "./filters";
 import { deleteView, LAYOUTS } from "./components/Mail";
 import { showToday } from "./components/Timeline";
 import {
@@ -509,7 +509,7 @@ function listing(): Command[] {
               placeholder: "Search",
               // Toggles, as in the list's menu: the one it's grouped by ungroups it.
               commands: () =>
-                Object.entries(FIELDS).map(([field, { label }]): Command => ({
+                fieldsHere().map(([field, { label }]): Command => ({
                   id: `group:${field}`,
                   title: label,
                   kind: "action",
