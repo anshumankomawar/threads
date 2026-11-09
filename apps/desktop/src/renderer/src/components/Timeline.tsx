@@ -99,14 +99,14 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     const from = names();
     const move = (e: PointerEvent): void => setNames(from + e.clientX - start);
     edge.addEventListener("pointermove", move);
-    edge.addEventListener(
-      "pointerup",
-      () => {
-        edge.removeEventListener("pointermove", move);
-        save("timeline-names", names());
-      },
-      { once: true },
-    );
+    const done = (): void => {
+      edge.removeEventListener("pointermove", move);
+      edge.removeEventListener("pointerup", done);
+      edge.removeEventListener("pointercancel", done);
+      save("timeline-names", names());
+    };
+    edge.addEventListener("pointerup", done);
+    edge.addEventListener("pointercancel", done);
   };
   const zoom = (): Zoom => display().zoom ?? "weeks";
   const day = (): number => DAY[zoom()];
@@ -209,7 +209,8 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
 
   // A press on a bar (or one of its edges): a drag once the pointer has moved, otherwise a click that opens it.
   const press = (thread: Thread, kind: Drag["kind"], event: PointerEvent): void => {
-    if (event.button !== 0) return;
+    // A control-click is the Mac's right click: the menu, not a drag or Peek.
+    if (event.button !== 0 || event.ctrlKey) return;
     event.stopPropagation();
     const target = event.currentTarget as HTMLElement;
     target.setPointerCapture(event.pointerId);
@@ -220,8 +221,15 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       dragged = true;
       setDrag({ thread, kind, days: Math.round((e.clientX - start) / day()) });
     };
+    // Let go, or the press taken away (the window losing it): either way it's over, cancelled without a drop.
+    const cancel = (): void => {
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+      setDrag(null);
+    };
     const up = (): void => {
       target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointercancel", cancel);
       const d = drag();
       if (!dragged || !d) {
         setDrag(null);
@@ -232,11 +240,15 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       setDrag(null);
       if (d.days === 0) return;
       const due = new Date(new Date(addDays(to, -1)).setHours(17, 0, 0, 0));
-      // A deadline moved stays a deadline; a span moves both ends.
+      // A deadline moved stays a deadline, a start alone stays a start; a span moves both ends.
       if (d.kind === "move")
         edit(
           thread,
-          thread.startAt ? { startAt: new Date(from), dueAt: due } : { dueAt: due },
+          !thread.dueAt
+            ? { startAt: new Date(from) }
+            : thread.startAt
+              ? { startAt: new Date(from), dueAt: due }
+              : { dueAt: due },
           "Change Dates",
         );
       else if (d.kind === "start") edit(thread, { startAt: new Date(from) }, "Change Dates");
@@ -244,9 +256,20 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     };
     target.addEventListener("pointermove", move);
     target.addEventListener("pointerup", up, { once: true });
+    target.addEventListener("pointercancel", cancel, { once: true });
   };
 
   let scroller!: HTMLDivElement;
+  // The range starting earlier (a bar dropped before it) moves every day right: scroll with it, so nothing jumps.
+  let shownFrom: number | undefined;
+  createEffect(
+    () => range().from,
+    (from) => {
+      if (shownFrom !== undefined && from !== shownFrom && scroller)
+        scroller.scrollLeft += Math.round((shownFrom - from) / DAY_MS) * day();
+      shownFrom = from;
+    },
+  );
   const scrollToToday = (): void => {
     scroller.scrollTo({ left: Math.max(0, x(today()) - (scroller.clientWidth - names()) / 3) });
   };
@@ -457,12 +480,12 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
             <div class={sx(styles.corner)} style={{ width: `${names()}px` }} />
             <div class={sx(styles.scale)} style={{ width: `${width()}px` }}>
               <For each={months()}>
-                {(month) => (
+                {(month, at) => (
                   <span
                     class={sx(styles.month)}
                     style={{ left: `${x(month.at)}px`, width: `${month.width}px` }}
                   >
-                    {new Date(month.at).getMonth() === 0 || month === months()[0]
+                    {new Date(month.at).getMonth() === 0 || at() === 0
                       ? `${MONTH.format(month.at)} ${new Date(month.at).getFullYear()}`
                       : MONTH.format(month.at)}
                   </span>
@@ -791,6 +814,9 @@ const styles = stylex.create({
   groupName: {
     position: "absolute",
     left: 2 * INSET,
+    right: INSET,
+    overflow: "hidden",
+    whiteSpace: "nowrap",
     display: "flex",
     gap: 6,
     alignItems: "flex-end",
@@ -801,7 +827,8 @@ const styles = stylex.create({
     fontWeight: 500,
   },
   count: { fontWeight: 400, color: colors.textTertiary },
-  days: { position: "relative", flexShrink: 0 },
+  // Its own stacking: what's drawn in it (a drag's badge) stays under the stuck names and header.
+  days: { position: "relative", zIndex: 0, flexShrink: 0 },
   monthLine: {
     position: "absolute",
     top: 0,

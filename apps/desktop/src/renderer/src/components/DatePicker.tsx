@@ -105,7 +105,7 @@ function Panel(props: { ask: Ask }): JSX.Element {
   };
   const release = (): void => {
     const from = pressed();
-    const to = over() ?? from;
+    const to = over();
     setPressed(null);
     if (!from || !to) return;
     // A press and release on one day is a click; across days, a drag picks the span.
@@ -154,13 +154,12 @@ function Panel(props: { ask: Ask }): JSX.Element {
       role="dialog"
       aria-label="Pick a date"
       onToggle={(event) => event.newState === "closed" && asked() === props.ask && setAsked(null)}
+      // Enter saves, except on a button, which does its own thing (a day picks it, No Date clears).
       onKeyDown={(event) => {
-        if (event.key !== "Enter") return;
+        if (event.key !== "Enter" || (event.target as HTMLElement).closest("button")) return;
         event.preventDefault();
         save();
       }}
-      onPointerUp={release}
-      onPointerLeave={() => setOver(null)}
     >
       <div class={sx(s.months)}>
         <For each={months()}>
@@ -211,6 +210,7 @@ function Panel(props: { ask: Ask }): JSX.Element {
                           aria-label={SHORT.format(d)}
                           aria-pressed={is(d, "start") || is(d, "end") ? "true" : "false"}
                           onPointerDown={(event) => {
+                            if (event.button !== 0) return;
                             event.preventDefault();
                             if (event.shiftKey && picked().start) {
                               setPicked(ordered(picked().start!, d));
@@ -219,8 +219,18 @@ function Panel(props: { ask: Ask }): JSX.Element {
                             }
                             setPressed(d);
                             setOver(d);
+                            // Let go anywhere: on a day it picks; off the days, the press is forgotten.
+                            const up = (): void => {
+                              removeEventListener("pointercancel", up);
+                              release();
+                            };
+                            addEventListener("pointerup", up, { once: true });
+                            addEventListener("pointercancel", up, { once: true });
                           }}
                           onPointerEnter={() => setOver(d)}
+                          onPointerLeave={() => setOver(null)}
+                          // The keyboard's click (Enter or Space on a day): pick it as a click would.
+                          onClick={(event) => event.detail === 0 && choose(d)}
                         >
                           {d.getDate()}
                         </button>

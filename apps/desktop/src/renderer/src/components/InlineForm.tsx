@@ -19,8 +19,10 @@ export function holdFocus(panel: HTMLElement): void {
   panel.dataset.holdsKeys = "";
   panel.addEventListener("keydown", (event) => {
     if (event.key !== "Tab") return;
+    // Round a form's fields; anywhere else (a menu with one field, its rows) Tab moves on as usual.
     const fields = [...panel.querySelectorAll<HTMLInputElement>("input")];
     const at = fields.indexOf(document.activeElement as HTMLInputElement);
+    if (fields.length < 2 || at < 0) return;
     event.preventDefault();
     fields[(at + (event.shiftKey ? -1 : 1) + fields.length) % fields.length]?.focus();
   });
