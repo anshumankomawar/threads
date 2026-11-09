@@ -96,9 +96,8 @@ function FieldRow(props: { field: MenuField; close: () => void }): JSX.Element {
             if (props.field.submit(typed())) props.close();
           }}
         />
-        <Show when={typed().trim() && props.field.preview(typed())}>
-          {(seen) => <span class={sx(look.entryKeys)}>{seen()}</span>}
-        </Show>
+        {/* As the inline forms have it: Enter, always there, so nothing moves as you type. */}
+        <span class={sx(combo.enter)}>↵</span>
       </label>
       <hr class={sx(look.entrySeparator)} />
     </>
@@ -328,6 +327,7 @@ const combo = stylex.create({
     outline: "none",
     "::placeholder": { color: colors.textTertiary },
   },
+  enter: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   list: { display: "flex", flexDirection: "column" },
   empty: { color: colors.textTertiary, cursor: "default" },
 });

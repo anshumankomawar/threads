@@ -142,11 +142,10 @@ export type MenuItem =
     }
   | { label: string; icon?: JSX.Element; items: MenuItem[]; field?: MenuField }
   | "separator";
-// A field as a menu's first row, to type into rather than choose: what it's understood as shows at its end (null: not
-// understood), and Enter gives it, closing the menu when `submit` takes it.
+// A field as a menu's first row, to type into rather than choose: Enter gives it, closing the menu when `submit` takes
+// it.
 export type MenuField = {
   placeholder: string;
-  preview: (text: string) => string | null;
   submit: (text: string) => boolean;
 };
 export type Dialog =

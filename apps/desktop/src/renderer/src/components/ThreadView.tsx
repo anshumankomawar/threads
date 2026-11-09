@@ -50,7 +50,7 @@ import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { describeWhen, parseWhen, whenFields } from "../when";
+import { parseWhen, whenFields } from "../when";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
 import { branchesOf, progressOf } from "../links";
@@ -722,10 +722,6 @@ function Properties(props: { thread: Thread }): JSX.Element {
     store.all(Label).find((l) => l.name.toLowerCase() === text.trim().toLowerCase());
   const labelField: MenuField = {
     placeholder: "Type a label",
-    preview: (text) => {
-      const found = labelNamed(text);
-      return !found ? "New Label" : c().labelIds.includes(found.id) ? "Remove" : "Add";
-    },
     submit: (text) => {
       const name = text.trim();
       if (!name) return false;
@@ -743,10 +739,6 @@ function Properties(props: { thread: Thread }): JSX.Element {
   // Typed first: "fri", "next week", "mon to fri"; Enter sets it.
   const whenField: MenuField = {
     placeholder: "Type a date",
-    preview: (text) => {
-      const when = parseWhen(text);
-      return when ? describeWhen(when) : "Not a date";
-    },
     submit: (text) => {
       const when = parseWhen(text);
       if (when) edit(c(), whenFields(when));
