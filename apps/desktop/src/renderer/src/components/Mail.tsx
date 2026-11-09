@@ -473,14 +473,16 @@ export function MailSidebar(): JSX.Element {
               />
             )}
           </For>
-          <Show when={drafts().length > 0}>
-            <Mailbox
-              box={{ kind: "drafts" }}
-              label="Drafts"
-              icon={i.NoteEditIcon}
-              count={drafts().length}
-            />
-          </Show>
+        </ul>
+        {/* What you've written: sent, and not yet. */}
+        <ul class={sx(s.mailboxes, s.section)}>
+          <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
+          <Mailbox
+            box={{ kind: "drafts" }}
+            label="Drafts"
+            icon={i.NoteEditIcon}
+            count={drafts().length}
+          />
         </ul>
         <Section
           title="Spaces"
