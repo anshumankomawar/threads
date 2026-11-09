@@ -1265,11 +1265,11 @@ const s = stylex.create({
   // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
   // points ÷ 1.1, for the 110% scale).
   // Level with the list's first heading beside them (their middles on one line); the rows stay where they were.
-  // Its first row level with the list's first heading beside it.
+  // Its first line where every column's starts (21pt under the top bar).
   nav: {
     flex: 1,
     minHeight: 0,
-    padding: "8.27px 7.27px 12px",
+    padding: "12.37px 7.27px 12px",
     overflowY: "auto",
   },
   // A top-bar toggle that's on.
@@ -1414,7 +1414,7 @@ const s = stylex.create({
     alignItems: "center",
     minHeight: 40,
     // Its first line as far below the top bar as every page's (21pt).
-    padding: "15px 12px 6px",
+    padding: "14px 12px 6px",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,

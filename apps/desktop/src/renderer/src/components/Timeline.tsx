@@ -680,7 +680,7 @@ const styles = stylex.create({
     alignItems: "center",
     // Its first line as far below the top bar as every page's (21pt).
     height: 46.91,
-    padding: "6.91px 12px 0",
+    padding: "6.31px 12px 0",
   },
   toolbarSpacer: { flex: 1 },
   step: {
