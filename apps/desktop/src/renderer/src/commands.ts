@@ -709,7 +709,7 @@ function app(): Command[] {
       section,
       icon: i.DatabaseIcon,
       keywords: "source server workspace",
-      run: () => switchTo({ source: s }),
+      run: () => void switchTo({ source: s }),
     })),
     ...(account
       ? [

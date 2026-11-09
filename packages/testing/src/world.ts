@@ -6,6 +6,7 @@ import {
   createStore,
   RejectedError,
   type LocalDB,
+  type Meta,
   type Store,
   type Transaction,
   type Transport,
@@ -48,26 +49,33 @@ function recorded(db: LocalDB): Recorded {
   const loads: Recorded["loads"] = [{ ids: [] }];
   let groups: string | undefined;
   const written: SyncAction[] = [];
+  // A position saved: a change of groups starts a new load from it.
+  const position = (meta: Meta): void => {
+    if (groups !== undefined && groups !== JSON.stringify(meta.groups))
+      loads.push({ base: meta.lastSyncId, ids: [] });
+    groups = JSON.stringify(meta.groups);
+    loads.at(-1)!.base ??= meta.lastSyncId;
+  };
   return {
     ...db,
     written,
     loads,
-    write(actions) {
+    write(actions, meta) {
       written.push(...structuredClone(actions));
       loads.at(-1)!.ids.push(...actions.filter((a) => a.id > 0).map((a) => a.id));
-      return db.write(actions);
+      position(meta);
+      return db.write(actions, meta);
     },
-    wipe() {
+    replace(actions, meta) {
       loads.push({ ids: [] });
-      return db.wipe();
+      written.push(...structuredClone(actions));
+      position(meta);
+      return db.replace(actions, meta);
     },
     meta: {
       get: () => db.meta.get(),
       set(meta) {
-        if (groups !== undefined && groups !== JSON.stringify(meta.groups))
-          loads.push({ base: meta.lastSyncId, ids: [] });
-        groups = JSON.stringify(meta.groups);
-        loads.at(-1)!.base ??= meta.lastSyncId;
+        position(meta);
         return db.meta.set(meta);
       },
     },

@@ -48,6 +48,8 @@ type QueueOptions = {
   transport: Transport;
   waitForSyncId(id: number): Promise<void>;
   lastSyncId(): number;
+  // The local database is open: until then the outbox can't be saved to.
+  opened: Promise<unknown>;
   setTimeout: Timer;
 };
 
@@ -75,6 +77,7 @@ export class TransactionQueue {
   #created: Entry[] = [];
   #listeners = new Set<(record: TxRecord) => void>();
   #corrections = new Set<(txId: string, field: string, value: unknown) => void>();
+  #idle: (() => void)[] = [];
   #busy = false;
   #attempt = 0;
 
@@ -104,13 +107,22 @@ export class TransactionQueue {
     return () => this.#corrections.delete(listener);
   }
 
+  // Resolves once nothing is pending.
+  idle(): Promise<void> {
+    if (this.#entries.length === 0) return Promise.resolve();
+    return new Promise((resolve) => this.#idle.push(resolve));
+  }
+
   onDelta(modelId: string, lastSyncId: number): void {
     for (const { record, syncId } of this.#entries)
       if (record.modelId === modelId && !(syncId! <= lastSyncId)) this.#apply(record);
   }
 
-  // The transactions saved before a reload, ahead of anything queued since: they were made first.
-  replayOutbox(records: TxRecord[]): void {
+  // The transactions saved before a reload, ahead of anything queued since: they were made first. One queued while
+  // loading may already be saved, and so in the outbox as read; it's here already.
+  replayOutbox(saved: TxRecord[]): void {
+    const queued = new Set(this.#entries.map((entry) => entry.record.id));
+    const records = saved.filter((record) => !queued.has(record.id));
     const replayed = records.map((record) => ({ record, tx: new Tx(record.id), saved: true }));
     this.#entries = [...replayed, ...this.#entries];
     this.pendingCount.set(this.#entries.length);
@@ -131,6 +143,7 @@ export class TransactionQueue {
     const created = this.#created.filter((entry) => this.#entries.includes(entry));
     this.#created = [];
     this.batch++;
+    await this.#o.opened;
     await this.#o.localDB.outbox.put(created.map((entry) => entry.record));
     for (const entry of created) entry.saved = true;
     this.#pump();
@@ -204,18 +217,32 @@ export class TransactionQueue {
   }
 
   async #reject(entry: Entry, error: Error): Promise<void> {
-    const { kind, modelId } = entry.record;
     this.rejection.set(error.message);
     await this.#rollback(entry.record);
-    // What waits on a refused creation goes with it: undoing it would bring back a model that never existed. Unless
-    // the server has the model after all, and the rollback put its copy back.
+    // What waits on a refused creation goes with it, and what waits on that, last first: sent, the server would refuse
+    // each (a message in a conversation that doesn't exist); undone, it would bring back a model that never existed.
+    // Unless the server has the model after all, and the rollback put its copy back.
+    const { kind, modelId } = entry.record;
     if (kind === "create" && !this.#o.core.pool.get(modelId))
-      await Promise.all(
-        this.#entries
-          .filter((later) => later !== entry && later.record.modelId === modelId)
-          .map((later) => this.#finish(later, error)),
-      );
+      for (const later of this.#waitingOn(entry).toReversed()) {
+        await this.#rollback(later.record);
+        await this.#finish(later, error);
+      }
     return this.#finish(entry, error);
+  }
+
+  // The queued transactions that need a refused creation, directly or through another creation that does.
+  #waitingOn(created: Entry): Entry[] {
+    const gone = new Set([created.record.modelId]);
+    const waiting: Entry[] = [];
+    for (const later of this.#entries.slice(this.#entries.indexOf(created) + 1)) {
+      const { record } = later;
+      if (!gone.has(record.modelId) && !references(record).some((id) => gone.has(id as string)))
+        continue;
+      waiting.push(later);
+      if (record.kind === "create") gone.add(record.modelId);
+    }
+    return waiting;
   }
 
   async #finish(entry: Entry, error?: Error): Promise<void> {
@@ -223,6 +250,7 @@ export class TransactionQueue {
     this.pendingCount.set(this.#entries.length);
     await this.#o.localDB.outbox.remove(entry.record.id);
     entry.tx.settle(error);
+    if (this.#entries.length === 0) for (const resolve of this.#idle.splice(0)) resolve();
   }
 
   // (Re)applies a transaction on top of what the pool holds now, which becomes its `original` (in place, so an undo

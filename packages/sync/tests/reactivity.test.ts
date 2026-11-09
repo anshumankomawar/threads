@@ -2,6 +2,7 @@ import { createEffect, createRoot, flush } from "@solidjs/signals";
 import type { SyncAction } from "protocol";
 import { row, setup, tick } from "testing";
 import { expect, test } from "vite-plus/test";
+import { ObjectPool } from "../src/pool";
 import { Conversation } from "./models";
 
 // Each effect counts its runs and remembers what it last saw.
@@ -58,4 +59,26 @@ test("a view over findById updates when the model arrives, goes and comes back",
     expect(seen.seen).toBe(title);
   }
   expect(seen.runs).toBe(4);
+});
+
+test("the pool lets go of lists left empty and signals nothing reads", async () => {
+  const { store } = await setup([c1]);
+  const model = store.findById(Conversation, "c1")!;
+  const pool = new ObjectPool();
+  pool.put(model);
+  const held = pool.held;
+  let stop!: () => void;
+  createRoot((dispose) => {
+    stop = dispose;
+    createEffect(
+      () => [pool.get("missing"), pool.byIndex("Conversation", "state", "nobody")],
+      () => {},
+    );
+  });
+  flush();
+  expect(pool.held.signals).toBe(held.signals + 2);
+  stop();
+  expect(pool.held).toEqual(held);
+  pool.remove("c1");
+  expect(pool.held).toEqual({ lists: 0, signals: 0 });
 });

@@ -472,7 +472,7 @@ function ViewAs(): JSX.Element {
   return (
     <Picker
       placeholder="View as"
-      rows={(query) => people(query, (u) => switchTo({ viewer: u.id }))}
+      rows={(query) => people(query, (u) => void switchTo({ viewer: u.id }))}
     />
   );
 }

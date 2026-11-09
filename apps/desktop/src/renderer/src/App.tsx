@@ -108,7 +108,10 @@ function Waiting(): JSX.Element {
           <div class={sx(styles.sources)}>
             <For each={otherSources}>
               {(s) => (
-                <button class={sx(base.hover, chip.chip)} onClick={() => switchTo({ source: s })}>
+                <button
+                  class={sx(base.hover, chip.chip)}
+                  onClick={() => void switchTo({ source: s })}
+                >
                   Use {SOURCES[s]} Data
                 </button>
               )}

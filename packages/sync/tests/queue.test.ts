@@ -1,8 +1,8 @@
 import { expect, test } from "vite-plus/test";
 import type { MutateRequest } from "protocol";
-import { httpTransport, RejectedError } from "../src";
+import { createStore, httpTransport, RejectedError } from "../src";
 import { Conversation, Message } from "./models";
-import { row, setup, tick } from "testing";
+import { fakeTransport, memoryLocalDB, row, setup, tick } from "testing";
 
 const seed = [
   { model: "Conversation", row: row("c1", { title: "One", state: "open", teamId: "t1" }) },
@@ -174,9 +174,62 @@ test("an edit to a model whose creation was refused goes with it, unsent", async
   expect(await localDB.outbox.all()).toEqual([]);
 });
 
+test("what's made in a model whose creation was refused goes with it, unsent", async () => {
+  const { store, transport, localDB } = await setup(seed);
+  const created = store.create(Conversation, { title: "New", state: "open", teamId: "t1" });
+  const message = store.create(Message, { conversation: created, body: "hi" });
+  await tick();
+  const { request, resolve } = transport.requests[0];
+  resolve({
+    results: [{ txId: request.transactions[0].id, ok: false, code: "invalid", message: "no" }],
+  });
+  await expect(message.transaction.result()).rejects.toThrow("no");
+  await tick();
+  expect(transport.requests).toHaveLength(1);
+  expect(store.findById(Message, message.id)).toBeUndefined();
+  expect(store.pendingCount()).toBe(0);
+  expect(await localDB.outbox.all()).toEqual([]);
+});
+
+test("a model made before the store has loaded is saved and sent once", async () => {
+  const transport = fakeTransport();
+  transport.rows = seed;
+  const localDB = memoryLocalDB();
+  const store = createStore({
+    transport,
+    localDB,
+    workspace: "w",
+    token: "t",
+    setTimeout: () => {},
+  });
+  const early = store.create(Conversation, { title: "Early", state: "open", teamId: "t1" });
+  await store.ready();
+  await tick();
+  expect(store.findById(Conversation, early.id)?.title).toBe("Early");
+  expect((await localDB.outbox.all()).map((tx) => tx.modelId)).toEqual([early.id]);
+  expect(transport.requests.flatMap((r) => r.request.transactions.map((tx) => tx.modelId))).toEqual(
+    [early.id],
+  );
+});
+
+test("switching away waits for what's pending to be sent", async () => {
+  const { store, transport } = await setup(seed);
+  const c1 = store.findById(Conversation, "c1")!;
+  c1.title = "A";
+  c1.save();
+  let idle = false;
+  void store.idle().then(() => (idle = true));
+  await tick();
+  expect(idle).toBe(false);
+  transport.requests[0].resolve(ok(transport.requests[0].request, 1));
+  transport.send({ type: "delta", groups: [], actions: [], lastSyncId: 1 });
+  await tick();
+  expect(idle).toBe(true);
+});
+
 test("a request refused as a whole rolls back; one turned away for auth or load is retried", async () => {
   const { store, transport, timers } = await setup(seed);
-  const statuses = [401, 408, 429, 403];
+  const statuses = [401, 408, 429, 404];
   const fetch = globalThis.fetch;
   globalThis.fetch = async () => new Response("no", { status: statuses.shift() });
   try {

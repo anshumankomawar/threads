@@ -28,7 +28,6 @@ type SyncOptions = {
   queue: TransactionQueue;
   transport: Transport;
   localDB: LocalDB;
-  workspace: string;
   token: string;
   setTimeout: Timer;
 };
@@ -49,9 +48,10 @@ export class SyncClient {
     this.#o = options;
   }
 
-  async bootstrap(): Promise<void> {
-    const { localDB, transport, queue, workspace } = this.#o;
-    if ((await localDB.open(workspace, registry.schemaHash)) === "fresh")
+  // From the local database once it's open (`opened`, which says whether it holds this workspace), else the server.
+  async bootstrap(opened: Promise<"fresh" | "existing">): Promise<void> {
+    const { localDB, transport, queue } = this.#o;
+    if ((await opened) === "fresh")
       for (let attempt = 0; ; attempt++)
         try {
           return await this.#full();
@@ -155,8 +155,7 @@ export class SyncClient {
       ({ actions, lastSyncId } = fetched);
     }
     if (lastSyncId === this.lastSyncId) return;
-    await this.#o.localDB.write(actions);
-    await this.#o.localDB.meta.set({ lastSyncId, ...this.#holding });
+    await this.#o.localDB.write(actions, { lastSyncId, ...this.#holding });
     this.#update(actions, lastSyncId);
   }
 
@@ -192,8 +191,7 @@ export class SyncClient {
     ];
     const lastSyncId = Math.max(this.lastSyncId, end.lastSyncId);
     this.#holding = { ...this.#holding, groups: end.groups };
-    await localDB.write(changes);
-    await localDB.meta.set({ lastSyncId, ...this.#holding });
+    await localDB.write(changes, { lastSyncId, ...this.#holding });
     this.#update(changes, lastSyncId);
   }
 
@@ -209,9 +207,7 @@ export class SyncClient {
     const { rows, end } = await transport.bootstrap(this.#holding.subscribed);
     const inserts = rows.map(({ model, row }) => insert(model, row));
     this.#holding = { ...this.#holding, groups: end.groups };
-    await localDB.wipe();
-    await localDB.write(inserts);
-    await localDB.meta.set({ lastSyncId: end.lastSyncId, ...this.#holding });
+    await localDB.replace(inserts, { lastSyncId: end.lastSyncId, ...this.#holding });
     const kept = new Set(rows.map(({ row }) => row.id));
     const removed = core.pool
       .ids()

@@ -28,12 +28,12 @@ export interface Transport {
   }): { close(): void; hello(): void };
 }
 
-// A request the server refused (400, 403, 409, 413, 422: it never will take it): its transactions roll back. Anything
+// A request the server refused (400, 403, 404 for a workspace it doesn't have, 409, 413, 422: it never will take it): its transactions roll back. Anything
 // else thrown is a network error, retried; that includes 401, 408 and 429, which say nothing about the edits (a token
 // being refreshed, a slow or busy server), so the edits wait rather than being undone.
 export class RejectedError extends Error {}
 
-const REFUSED = new Set([400, 403, 409, 413, 422]);
+const REFUSED = new Set([400, 403, 404, 409, 413, 422]);
 
 // The spec's endpoints over fetch and one WebSocket.
 export function httpTransport({

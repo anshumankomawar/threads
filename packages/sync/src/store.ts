@@ -38,6 +38,9 @@ export interface Store {
   readonly rejection: () => string | null;
   dismissRejection(): void;
   ready(): Promise<void>;
+  // Resolves once nothing is waiting to sync: before the app starts over as someone else, whose token couldn't send
+  // these.
+  idle(): Promise<void>;
 }
 
 // Starts loading at once: from the local database when it has this workspace, else from the server; then connects.
@@ -56,6 +59,7 @@ export function createStore({
   setTimeout?: Timer;
 }): Store {
   const pool = new ObjectPool();
+  const opened = localDB.open(workspace, registry.schemaHash);
   const core: Core = {
     pool,
     materialize: (name, row) => {
@@ -82,10 +86,11 @@ export function createStore({
     setTimeout,
     waitForSyncId: (id) => sync.waitForSyncId(id),
     lastSyncId: () => sync.lastSyncId,
+    opened,
   });
-  const sync = new SyncClient({ core, queue, transport, localDB, workspace, token, setTimeout });
+  const sync = new SyncClient({ core, queue, transport, localDB, token, setTimeout });
   const undo = new UndoStack(core, queue);
-  const started = sync.bootstrap().then(() => sync.connect());
+  const started = sync.bootstrap(opened).then(() => sync.connect());
 
   return {
     create<T extends Model>(type: ModelClass<T>, fields: Partial<T>) {
@@ -134,5 +139,6 @@ export function createStore({
     rejection: queue.rejection,
     dismissRejection: () => queue.rejection.set(null),
     ready: () => started,
+    idle: () => queue.idle(),
   };
 }

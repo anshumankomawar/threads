@@ -16,7 +16,16 @@ import {
   type WorkspaceMember,
 } from "models";
 
-import { account, save, saved, server, source, useSource, type Source } from "./startup";
+import {
+  account,
+  save,
+  saved,
+  server,
+  signOut as endSession,
+  source,
+  useSource,
+  type Source,
+} from "./startup";
 import { icon } from "./components/Icon";
 import { commandFor, keysFor, keysOf, type HotkeyId } from "./hotkeys";
 
@@ -26,7 +35,6 @@ export {
   save,
   saved,
   server,
-  signOut,
   source,
   otherSources,
   SOURCES,
@@ -46,8 +54,18 @@ export const store = createStore({
   token,
 });
 
-export function switchTo(next: { source?: Source; viewer?: string | null }): void {
-  if (next.source !== undefined) return void useSource(next.source);
+// What's pending has gone (or a few seconds have): each person's edits wait in their own database, sent only as them.
+const settled = (): Promise<unknown> =>
+  Promise.race([store.idle(), new Promise((resolve) => setTimeout(resolve, 5000))]);
+
+export async function signOut(): Promise<void> {
+  await settled();
+  await endSession();
+}
+
+export async function switchTo(next: { source?: Source; viewer?: string | null }): Promise<void> {
+  await settled();
+  if (next.source !== undefined) return useSource(next.source);
   save(viewerKey, next.viewer ?? null);
   location.reload();
 }
@@ -60,8 +78,8 @@ void store.ready().then(() => {
   setLoaded(true);
   if (viewerId === null) {
     const first = store.all(User)[0];
-    if (first) switchTo({ viewer: first.id });
-  } else if (!account && !store.findById(User, viewerId)) switchTo({ viewer: null });
+    if (first) void switchTo({ viewer: first.id });
+  } else if (!account && !store.findById(User, viewerId)) void switchTo({ viewer: null });
 });
 
 export const me = (): User => store.findById(User, viewerId ?? "")!;

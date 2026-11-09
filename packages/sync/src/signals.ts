@@ -1,4 +1,11 @@
-import { createMemo, createRoot, createSignal, getObserver, runWithOwner } from "@solidjs/signals";
+import {
+  createMemo,
+  createRoot,
+  createSignal,
+  getObserver,
+  onCleanup,
+  runWithOwner,
+} from "@solidjs/signals";
 
 export type Announcer = { track: () => void; notify: () => void };
 
@@ -7,6 +14,33 @@ export type Announcer = { track: () => void; notify: () => void };
 export function announcer(): Announcer {
   const [read, write] = createSignal(0, { equals: false, ownedWrite: true });
   return { track: () => void read(), notify: () => void write(0) };
+}
+
+// Announcers by key, made when something tracks one and dropped once nothing does, so a key read once (an id looked up,
+// a list by some value) doesn't stay in memory for good. Notifying a key nobody tracks does nothing: nobody to tell.
+export class Announcers<K> {
+  readonly #live = new Map<K, { announcer: Announcer; readers: number }>();
+
+  track(key: K): void {
+    if (getObserver() === null) return;
+    let entry = this.#live.get(key);
+    if (!entry) this.#live.set(key, (entry = { announcer: announcer(), readers: 0 }));
+    const tracked = entry;
+    tracked.readers++;
+    tracked.announcer.track();
+    onCleanup(() => {
+      if (--tracked.readers === 0 && this.#live.get(key) === tracked) this.#live.delete(key);
+    });
+  }
+
+  notify(key: K): void {
+    this.#live.get(key)?.announcer.notify();
+  }
+
+  // How many keys are tracked, for the tests.
+  get size(): number {
+    return this.#live.size;
+  }
 }
 
 // A value read reactively, for the store's connection and pending count.

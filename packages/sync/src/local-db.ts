@@ -1,4 +1,4 @@
-import { openDB, type IDBPDatabase } from "idb";
+import { openDB, type IDBPDatabase, type IDBPTransaction } from "idb";
 import type { Row, SyncAction, TxRecord } from "protocol";
 import { registry } from "./registry";
 
@@ -9,14 +9,18 @@ export type Meta = { lastSyncId: number; groups: string[]; subscribed: string[] 
 export interface LocalDB {
   open(workspaceId: string, schemaHash: string): Promise<"fresh" | "existing">;
   load(model: string): Promise<Row[]>;
-  write(actions: SyncAction[]): Promise<void>; // server-approved data only
+  // Server-approved data and where it brings the local data to, in one step: a crash between them can't leave rows a
+  // position doesn't account for.
+  write(actions: SyncAction[], meta: Meta): Promise<void>;
+  // Everything the server sent instead of what's here, in one step (the outbox stays): a crash part way can't leave a
+  // database with no position, which the next start would take for a new one and clear, outbox and all.
+  replace(actions: SyncAction[], meta: Meta): Promise<void>;
   meta: { get(): Promise<Meta>; set(meta: Meta): Promise<void> };
   outbox: {
     put(txs: TxRecord[]): Promise<void>;
     remove(id: string): Promise<void>;
     all(): Promise<TxRecord[]>;
   };
-  wipe(): Promise<void>;
 }
 
 const META = "_meta";
@@ -30,6 +34,15 @@ export function indexedLocalDB(): LocalDB {
   const clear = async (stores: string[]) => {
     const tx = db.transaction(stores, "readwrite");
     await Promise.all([...stores.map((store) => tx.objectStore(store).clear()), tx.done]);
+  };
+  const store = (
+    tx: IDBPTransaction<unknown, string[], "readwrite">,
+    actions: SyncAction[],
+    meta: Meta,
+  ) => {
+    for (const { model, modelId, data } of actions)
+      void (data ? tx.objectStore(model).put(data) : tx.objectStore(model).delete(modelId));
+    void tx.objectStore(META).put({ ...meta, schemaHash }, "meta");
   };
   return {
     async open(workspace, hash) {
@@ -56,12 +69,18 @@ export function indexedLocalDB(): LocalDB {
       return "fresh";
     },
     load: (model) => db.getAll(model),
-    async write(actions) {
-      // An IndexedDB transaction needs at least one store.
-      if (actions.length === 0) return;
-      const tx = db.transaction([...new Set(actions.map((action) => action.model))], "readwrite");
-      for (const { model, modelId, data } of actions)
-        void (data ? tx.objectStore(model).put(data) : tx.objectStore(model).delete(modelId));
+    async write(actions, meta) {
+      const tx = db.transaction(
+        [...new Set(actions.map((action) => action.model)), META],
+        "readwrite",
+      );
+      store(tx, actions, meta);
+      await tx.done;
+    },
+    async replace(actions, meta) {
+      const tx = db.transaction([...models(), META], "readwrite");
+      for (const model of models()) void tx.objectStore(model).clear();
+      store(tx, actions, meta);
       await tx.done;
     },
     meta: {
@@ -82,6 +101,5 @@ export function indexedLocalDB(): LocalDB {
       },
       all: () => db.getAll(OUTBOX),
     },
-    wipe: () => clear([...models(), META]),
   };
 }
