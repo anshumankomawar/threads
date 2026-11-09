@@ -734,7 +734,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
     const start = c().startAt;
     if (start && due && start.toDateString() !== due.toDateString())
       return `${shortDate(start)} – ${shortDate(due)}`;
-    return due ? `Due ${shortDate(due)}` : `From ${shortDate(start!)}`;
+    return shortDate((due ?? start)!);
   };
   const unset = (): MenuItem[] => [
     ...(c().labelIds.length === 0
@@ -843,6 +843,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
         <MenuChip
           look={value}
           icon={icon(i.Calendar03Icon, 13)}
+          title="When"
           label={<span class={sx(base.ellipsis)}>{when()}</span>}
           tone={c().dueAt && c().dueAt!.getTime() < Date.now() ? "urgent" : undefined}
           items={whenItems()}
