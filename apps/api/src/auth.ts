@@ -64,10 +64,6 @@ export const SIGNED_IN_PAGE = `<!doctype html>
     --fill: color-mix(in srgb, var(--text) 4%, transparent);
     --fill-hover: color-mix(in srgb, var(--text) 8%, transparent);
     --stroke: color-mix(in srgb, var(--text) 10%, transparent);
-    --arc-1: #5b8cff;
-    --arc-2: #8e6bff;
-    --arc-3: #ff6fb1;
-    --arc-4: #ffa45c;
     font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   }
   @media (prefers-color-scheme: dark) {
@@ -78,15 +74,10 @@ export const SIGNED_IN_PAGE = `<!doctype html>
       --fill: color-mix(in srgb, var(--text) 5%, transparent);
       --fill-hover: color-mix(in srgb, var(--text) 9%, transparent);
       --stroke: color-mix(in srgb, var(--text) 8%, transparent);
-      --arc-1: #7fa6ff;
-      --arc-2: #a88bff;
-      --arc-3: #ff86c0;
-      --arc-4: #ffb37a;
     }
   }
   body { display: grid; min-height: 100vh; margin: 0; place-items: center; background: var(--ground); color: var(--text); }
   main { display: flex; flex-direction: column; align-items: center; width: min(320px, calc(100vw - 32px)); text-align: center; }
-  svg { width: 44px; height: 44px; margin-bottom: 24px; }
   h1 { margin: 0 0 8px; font-size: 19px; font-weight: 500; }
   p { margin: 0; color: var(--muted); text-wrap: balance; }
   #signed-in { width: 100%; margin-top: 24px; }
@@ -102,22 +93,11 @@ export const SIGNED_IN_PAGE = `<!doctype html>
   button { height: 32px; padding: 0 14px; border: 0; border-radius: 16px; background: var(--fill-hover); color: inherit;
     font: inherit; font-size: 13px; cursor: pointer; }
   button:hover { background: var(--stroke); }
-  a:focus-visible, button:focus-visible { outline: 2px solid var(--arc-1); outline-offset: 2px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--muted); outline-offset: 2px; }
 </style>
 </head>
 <body>
 <main>
-  <svg viewBox="237 247 550 506" aria-hidden="true">
-    <defs>
-      <linearGradient id="arc" gradientUnits="userSpaceOnUse" x1="290" y1="270" x2="740" y2="760">
-        <stop offset="0" style="stop-color: var(--arc-1)"/>
-        <stop offset="0.38" style="stop-color: var(--arc-2)"/>
-        <stop offset="0.72" style="stop-color: var(--arc-3)"/>
-        <stop offset="1" style="stop-color: var(--arc-4)"/>
-      </linearGradient>
-    </defs>
-    <path d="M321.6 668 V522.4 A190.4 190.4 0 0 1 702.4 522.4 V668" fill="none" stroke="url(#arc)" stroke-width="168" stroke-linecap="round"/>
-  </svg>
   <h1 id="title">Arc</h1>
   <p id="status" role="status">Log in from the Arc app. You can close this tab.</p>
   <div id="signed-in" hidden>

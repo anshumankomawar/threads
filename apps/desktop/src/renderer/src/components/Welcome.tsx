@@ -2,7 +2,6 @@ import { createSignal, flush, For, Match, onSettled, Show, Switch, untrack } fro
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import horizon from "../assets/horizon.png";
-import logo from "../assets/logo-dark.png";
 import {
   needsSignIn,
   openWorkspace,
@@ -112,7 +111,7 @@ const s = stylex.create({
     backgroundImage: `radial-gradient(ellipse 460px 400px at 50% 48%, rgb(12 12 13 / 80%), rgb(12 12 13 / 50%) 50%, transparent)`,
     pointerEvents: "none",
   },
-  // A fixed height, its steps from the top, so the logo never moves as they change.
+  // A fixed height, its steps from the top, so the headline never moves as they change.
   column: {
     position: "relative",
     display: "flex",
@@ -122,7 +121,7 @@ const s = stylex.create({
     minHeight: 360,
     textAlign: "center",
   },
-  // The step under the logo: what a view transition lifts away.
+  // The step: what a view transition lifts away.
   step: { display: "flex", flexDirection: "column", alignItems: "center", width: "100%" },
   // Waiting on the API: a spinner, only after a moment, so a quick answer shows none.
   pending: {
@@ -149,14 +148,6 @@ const s = stylex.create({
     animationIterationCount: "infinite",
   },
   big: { width: 18, height: 18, color: ink(60) },
-  logo: {
-    width: 40,
-    height: 40,
-    marginBottom: 22,
-    animationName: { default: appear, [motion.reduced]: "none" },
-    animationDuration: "600ms",
-    animationFillMode: "backwards",
-  },
   title: {
     margin: 0,
     fontFamily: SERIF,
@@ -305,18 +296,20 @@ const Spinner = (props: { big?: boolean }): JSX.Element => (
   <span class={sx(s.spinner, props.big && s.big)} aria-hidden="true" />
 );
 
-// The picture is 2400×1800. Shown at a whole number of screen pixels per pixel of it, the least that covers the
-// window, and placed on whole screen pixels, its dots stay crisp at any zoom (the app is at 110%).
-const PICTURE = { width: 2400, height: 1800 };
+// The picture is one pixel per cell (scripts/horizon), each drawn as a solid square of whole screen pixels, about 3
+// CSS pixels across (as Devin's), or more where the window needs more to be covered; placed on whole screen pixels,
+// so no cell is ever split.
+const PICTURE = { width: 640, height: 427 };
+const CELL = 3;
 function cover(): JSX.CSSProperties {
   const ratio = devicePixelRatio;
-  const times = Math.max(
+  const per = Math.max(
     1,
-    Math.ceil(
-      Math.max((innerWidth * ratio) / PICTURE.width, (innerHeight * ratio) / PICTURE.height),
-    ),
+    Math.round(CELL * ratio),
+    Math.ceil((innerWidth * ratio) / PICTURE.width),
+    Math.ceil((innerHeight * ratio) / PICTURE.height),
   );
-  const [width, height] = [(PICTURE.width * times) / ratio, (PICTURE.height * times) / ratio];
+  const [width, height] = [(PICTURE.width * per) / ratio, (PICTURE.height * per) / ratio];
   const snap = (value: number): number => Math.round(value * ratio) / ratio;
   return {
     width: `${width}px`,
@@ -697,7 +690,6 @@ export function WelcomeScreen(props: { leaving?: boolean; children: JSX.Element 
         <span class={sx(s.veil)} aria-hidden="true" />
         <div class={sx(s.column)}>
           <Show when={ready()}>
-            <img class={sx(s.logo)} src={logo} alt="" />
             <div class={sx(s.step)} style={{ "view-transition-name": "welcome-step" }}>
               {props.children}
             </div>

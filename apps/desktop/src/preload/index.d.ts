@@ -27,6 +27,10 @@ declare global {
         path: string,
         body?: unknown,
       ) => Promise<{ ok: boolean; status: number; body: unknown }>;
+      // Signs out here at once; the API is told after.
+      signOut: () => Promise<void>;
+      // Who you are (or where) changed since the window drew what was kept.
+      onChanged: (callback: () => void) => void;
       // The data source the main process signs in against; choosing another restarts the app.
       source: () => Promise<"cloudflare" | "local" | "sample">;
       useSource: (source: string) => Promise<void>;

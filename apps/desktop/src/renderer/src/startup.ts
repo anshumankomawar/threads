@@ -26,6 +26,20 @@ export function save(key: string, value: unknown): void {
   } catch {}
 }
 
+// The theme first, before anything is waited on, so the first paint is already in it.
+type Theme = "dark" | "light";
+const [chosen, setChosen] = createSignal<Theme>(saved("theme", "dark"));
+export const theme = chosen;
+const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
+export function applyTheme(next: Theme): void {
+  setChosen(next);
+  save("theme", next);
+  document.documentElement.dataset.theme = next;
+  for (const name of LIGHT) document.documentElement.classList.toggle(name, next === "light");
+  window.electron?.ipcRenderer.send("set-theme", next);
+}
+applyTheme(theme());
+
 // The main process keeps the source and signs in against its API, so choosing another restarts the app.
 export const useSource = (next: Source): Promise<void> => window.threads.useSource(next);
 export const source = await window.threads.source();
@@ -64,22 +78,10 @@ export function chooseWorkspace(): void {
   location.hash = "workspaces";
   location.reload();
 }
-// Signing in or out reloads as whoever you are now.
+// Signing in or out reloads as whoever you are now, and so does learning you're someone else than was kept.
 window.onAuthenticated(() => location.reload());
+window.threads.onChanged(() => location.reload());
 export async function signOut(): Promise<void> {
-  await window.signOut();
+  await window.threads.signOut();
   location.reload();
 }
-
-type Theme = "dark" | "light";
-const [chosen, setChosen] = createSignal<Theme>(saved("theme", "dark"));
-export const theme = chosen;
-const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
-export function applyTheme(next: Theme): void {
-  setChosen(next);
-  save("theme", next);
-  document.documentElement.dataset.theme = next;
-  for (const name of LIGHT) document.documentElement.classList.toggle(name, next === "light");
-  window.electron?.ipcRenderer.send("set-theme", next);
-}
-applyTheme(theme());

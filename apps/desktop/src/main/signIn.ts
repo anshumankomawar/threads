@@ -1,10 +1,10 @@
 import { electronClient } from "@better-auth/electron/client";
 import { storage } from "@better-auth/electron/storage";
 import { createAuthClient } from "better-auth/client";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
-import { app, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, safeStorage } from "electron";
 
 // Signing the app in, with Better Auth's Electron plugin, all from this main process:
 // - Google: the browser opens straight at Google, comes back to the API, and the API's page opens the app on a
@@ -47,11 +47,9 @@ const auth = createAuthClient({
   ],
 });
 
-// Who you're signed in as, in `workspace` (or your first), for the window: null when you're not signed in (or the API
-// can't be reached), and `{ onboarding: true }` when you are but have no workspace yet.
-async function signedIn(workspace?: string): Promise<unknown> {
-  const cookie = auth.getCookie();
-  if (!cookie) return null;
+// Who you're signed in as, in `workspace` (or your first), for the window: null when you're not signed in, and
+// `{ onboarding: true }` when you are but have no workspace yet; undefined when the API can't be reached.
+async function ask(cookie: string, workspace?: string): Promise<unknown> {
   try {
     const response = await fetch(`${API_URL}/auth/token`, {
       method: "POST",
@@ -59,10 +57,74 @@ async function signedIn(workspace?: string): Promise<unknown> {
       body: JSON.stringify({ workspace }),
     });
     if (response.status === 409) return { onboarding: true };
-    return response.ok ? await response.json() : null;
+    if (response.status === 401 || response.status === 403) return null;
+    return response.ok ? await response.json() : undefined;
   } catch {
-    return null;
+    return undefined;
   }
+}
+
+// The last answer for each workspace asked for, kept encrypted on disk (the OS keychain, as the session is), so a
+// reload or a launch draws at once: the API is asked again behind it, and only if who you are or where has changed
+// does the window load again. Its token is good for 30 days, so an old one is fine while the new one comes.
+const ANSWERS_FILE = join(DATA_DIR, `answers-${source}`);
+let answers: Record<string, unknown> | undefined;
+function saved(): Record<string, unknown> {
+  if (answers) return answers;
+  try {
+    answers = JSON.parse(safeStorage.decryptString(readFileSync(ANSWERS_FILE))) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    answers = {};
+  }
+  return answers;
+}
+function keep(): void {
+  if (!safeStorage.isEncryptionAvailable()) return;
+  writeFileSync(ANSWERS_FILE, safeStorage.encryptString(JSON.stringify(answers ?? {})));
+}
+// What a window shows follows from these; a new token alone changes nothing on screen.
+const who = (answer: unknown): string => {
+  if (answer === null || typeof answer !== "object") return String(answer);
+  const { personId, workspace, workspaces, onboarding } = answer as Record<string, unknown>;
+  return JSON.stringify({ personId, workspace, workspaces, onboarding });
+};
+
+// The session signed out of here: its cookie may linger while the API is told, but it's no one now.
+let signedOut: string | null = null;
+
+async function signedIn(workspace?: string): Promise<unknown> {
+  const cookie = auth.getCookie();
+  if (!cookie || cookie === signedOut) return null;
+  const key = workspace ?? "";
+  const fresh = ask(cookie, workspace).then((answer) => {
+    if (answer === undefined || auth.getCookie() !== cookie) return answer;
+    const before = saved()[key];
+    saved()[key] = answer;
+    keep();
+    // Shown already from what was kept, and it's changed: the window loads again as who you are now.
+    if (key in shown && who(before) !== who(answer))
+      for (const window of BrowserWindow.getAllWindows())
+        window.webContents.send("threads:changed");
+    return answer;
+  });
+  if (key in saved()) {
+    shown[key] = true;
+    return saved()[key];
+  }
+  // Never asked before: wait for it. Unreachable, you're signed out for now.
+  return (await fresh) ?? null;
+}
+const shown: Record<string, true> = {};
+
+// Signing out is at once: what was kept goes, the session is no one from now, and the API hears of it after.
+function signOut(): void {
+  signedOut = auth.getCookie();
+  answers = {};
+  rmSync(ANSWERS_FILE, { force: true });
+  void auth.signOut().catch(() => {});
 }
 
 // The API's routes for choosing, making and inviting to workspaces (apps/api), as whoever's signed in: the session
@@ -96,6 +158,7 @@ async function call(
 export function setupSignIn({ claimLink = true } = {}): void {
   auth.setupMain({ scheme: claimLink, bridges: true });
   ipcMain.handle("threads:signed-in", (_event, workspace?: string) => signedIn(workspace));
+  ipcMain.handle("threads:sign-out", signOut);
   ipcMain.handle("threads:call", (_event, path: string, body?: unknown) => call(path, body));
   ipcMain.handle("threads:source", () => source);
   ipcMain.handle("threads:use-source", (_event, next: string) => {
