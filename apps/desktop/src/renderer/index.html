@@ -5,10 +5,13 @@
     <title>Threads</title>
     <!-- global.css's reset layer comes first, so it sits under StyleX's layers. -->
     <style>
-      @layer reset;
-      /* Before any script: the window's ground (main/index.ts), dark until the saved theme says otherwise. */
-      html {
-        background: light-dark(#fafafa, #141414);
+      /* Before any script: the window's ground (main/index.ts), dark until the saved theme says otherwise (in the reset
+         layer, so global.css's light theme still wins). */
+      @layer reset {
+        html {
+          color-scheme: dark;
+          background: light-dark(#fafafa, #141414);
+        }
       }
     </style>
     <meta

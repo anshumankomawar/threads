@@ -1,9 +1,9 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import type { Filter } from "sync";
-import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
+import { Bucket, Draft, Label, Message, Subspace, Thread, User, View } from "models";
 import {
   active,
   byName,
@@ -533,9 +533,11 @@ function stamp(date: Date): string {
 }
 
 // What a message says, without the @mentions most start with (the list shows who it's from already).
+// Everyone's @name, once for every row rather than per row.
+const mentionNames = store.view(() => store.all(User).map((u) => `@${u.name} `));
 function preview(body: string): string {
   let text = plain(body);
-  const names = store.all(User).map((u) => `@${u.name} `);
+  const names = mentionNames();
   let lead = names.find((name) => text.startsWith(name));
   while (lead) {
     text = text.slice(lead.length);
@@ -557,7 +559,13 @@ function Row(props: { thread: Thread }): JSX.Element {
     const it = item();
     return it !== undefined && !it.doneAt && unread(it);
   };
-  const last = () => t().messages.sorted("createdAt").at(-1);
+  // Its latest message, found once (a pass, not a sort) for the three places that show it.
+  const last = createMemo(() => {
+    let latest: Message | undefined;
+    for (const message of t().messages)
+      if (!latest || message.createdAt > latest.createdAt) latest = message;
+    return latest;
+  });
   const from = () => last()?.author ?? t().owner;
   let row!: HTMLDivElement;
   // The open thread stays in view as J and K (or the arrows) move past the rows showing.

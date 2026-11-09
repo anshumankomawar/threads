@@ -92,6 +92,10 @@ const who = (answer: unknown): string => {
   return JSON.stringify({ personId, workspace, workspaces, onboarding });
 };
 
+// An answer as kept, with when it came.
+type Kept = { answer: unknown; at: number };
+const FRESH_FOR_MS = 7 * 24 * 60 * 60_000;
+
 // The session signed out of here: its cookie may linger while the API is told, but it's no one now.
 let signedOut: string | null = null;
 
@@ -99,23 +103,25 @@ async function signedIn(workspace?: string): Promise<unknown> {
   const cookie = auth.getCookie();
   if (!cookie || cookie === signedOut) return null;
   const key = workspace ?? "";
+  const kept = saved()[key] as Kept | undefined;
   const fresh = ask(cookie, workspace).then((answer) => {
-    if (answer === undefined || auth.getCookie() !== cookie) return answer;
-    const before = saved()[key];
-    saved()[key] = answer;
+    // Unreachable, or signed out (or in as someone else) while it was asked: it's no one's answer now.
+    if (answer === undefined || cookie === signedOut || auth.getCookie() !== cookie) return answer;
+    saved()[key] = { answer, at: Date.now() };
     keep();
     // Shown already from what was kept, and it's changed: the window loads again as who you are now.
-    if (key in shown && who(before) !== who(answer))
+    if (key in shown && who(kept?.answer) !== who(answer))
       for (const window of BrowserWindow.getAllWindows())
         window.webContents.send("threads:changed");
     return answer;
   });
-  if (key in saved()) {
+  // Kept, and recent enough that its token is still good (they last 30 days): shown at once.
+  if (kept && Date.now() - kept.at < FRESH_FOR_MS) {
     shown[key] = true;
-    return saved()[key];
+    return kept.answer;
   }
-  // Never asked before: wait for it. Unreachable, you're signed out for now.
-  return (await fresh) ?? null;
+  // Never asked, or too long ago: wait for it. Unreachable, what was kept stands, or you're signed out for now.
+  return (await fresh) ?? kept?.answer ?? null;
 }
 const shown: Record<string, true> = {};
 

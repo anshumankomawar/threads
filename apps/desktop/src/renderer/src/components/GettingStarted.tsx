@@ -27,14 +27,14 @@ const mine = (): Thread[] => store.where(Thread, "ownerId", me().id);
 const STEPS: Step[] = [
   {
     id: "thread",
-    label: "Start a thread",
+    label: "Start a Thread",
     icon: i.PencilEdit02Icon,
     done: () => mine().length > 0,
     run: newThreadHere,
   },
   {
     id: "due",
-    label: "Give it a due date",
+    label: "Give It a Due Date",
     icon: i.Calendar03Icon,
     done: () => store.all(Thread).some((t) => t.dueAt != null),
     // Your latest thread, where its date chip is; with none yet, one to start.
@@ -46,14 +46,14 @@ const STEPS: Step[] = [
   },
   {
     id: "space",
-    label: "Make a space for a team",
+    label: "Make a Space for a Team",
     icon: i.Layers01Icon,
     done: () => store.all(Subspace).length > 0,
     run: () => setDialog({ kind: "newSubspace" }),
   },
   {
     id: "invite",
-    label: "Invite your team",
+    label: "Invite Your Team",
     icon: i.UserAdd01Icon,
     done: () => store.all(WorkspaceMember).length > 1 || invited().length > 0,
     run: () => setDialog({ kind: "invite" }),
@@ -61,9 +61,11 @@ const STEPS: Step[] = [
 ];
 
 const finished = (): number => STEPS.filter((step) => step.done()).length;
+// Whether every step's done, so there's nothing to show.
+export const gettingStartedDone = (): boolean => finished() === STEPS.length;
 // Whether it's in the sidebar: yours to see, not put away, and not all done.
 export const gettingStartedShown = (): boolean =>
-  account !== null && me().gettingStartedHiddenAt == null && finished() < STEPS.length;
+  account !== null && me().gettingStartedHiddenAt == null && !gettingStartedDone();
 // Puts it away, or brings it back (⌘K).
 export const showGettingStarted = (shown: boolean): void =>
   edit(

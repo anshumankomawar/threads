@@ -31,7 +31,11 @@ import {
 } from "./components/Mail";
 import { dueIn } from "./when";
 import { chooseWorkspace, openWorkspace, server } from "./startup";
-import { gettingStartedShown, showGettingStarted } from "./components/GettingStarted";
+import {
+  gettingStartedDone,
+  gettingStartedShown,
+  showGettingStarted,
+} from "./components/GettingStarted";
 import { showToday } from "./components/Timeline";
 import {
   account,
@@ -863,15 +867,20 @@ function workspaces(): Command[] {
       keywords: "new workspace team company",
       run: chooseWorkspace,
     },
-    {
-      id: "getting-started",
-      title: gettingStartedShown() ? "Hide Getting Started" : "Show Getting Started",
-      kind: "action",
-      section,
-      icon: i.CheckListIcon,
-      keywords: "checklist onboarding tips setup",
-      run: () => showGettingStarted(!gettingStartedShown()),
-    },
+    // Nothing to show once every step's done.
+    ...(gettingStartedDone()
+      ? []
+      : [
+          {
+            id: "getting-started",
+            title: gettingStartedShown() ? "Hide Getting Started" : "Show Getting Started",
+            kind: "action" as const,
+            section,
+            icon: i.CheckListIcon,
+            keywords: "checklist onboarding tips setup",
+            run: () => showGettingStarted(!gettingStartedShown()),
+          },
+        ]),
   ];
 }
 

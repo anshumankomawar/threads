@@ -10,6 +10,13 @@ export const addresses = (text: string): string[] =>
     .map((part) => part.trim())
     .filter((part) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(part));
 
+// What's typed that isn't an address, to say so rather than leave it out unmentioned.
+export const notAddresses = (text: string): string[] =>
+  text
+    .split(/[\s,;]+/)
+    .map((part) => part.trim())
+    .filter((part) => part !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(part));
+
 const path = (workspace: string): string => `/workspaces/${workspace}/invites`;
 
 // Who's invited to this workspace and hasn't joined yet, once asked for.

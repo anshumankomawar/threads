@@ -27,7 +27,22 @@ function authOptions(env: Env) {
     baseURL: origin,
     // The desktop app signs in through the browser and comes back on a `com.threads.arc://` link (Better Auth's Electron plugin).
     trustedOrigins: [origin, `${APP_SCHEME}:/`],
-    socialProviders: google === undefined ? {} : { google },
+    socialProviders:
+      google === undefined
+        ? {}
+        : {
+            google: {
+              ...google,
+              // The Google Workspace domain the account is managed by (directory.ts), on a verified address; none for
+              // a personal account, whatever its address. Kept up to date each time they sign in.
+              overrideUserInfoOnSignIn: true,
+              mapProfileToUser: (profile) => ({
+                hostedDomain:
+                  profile.email_verified && profile.hd ? profile.hd.toLowerCase() : null,
+              }),
+            },
+          },
+    user: { additionalFields: { hostedDomain: { type: "string", required: false, input: false } } },
     plugins: [electron()],
   } satisfies BetterAuthOptions;
 }

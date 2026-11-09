@@ -22,7 +22,7 @@ import {
   workspace,
   undoable,
 } from "../session";
-import { addresses, invite, invited, refreshInvites } from "../invites";
+import { addresses, invite, invited, notAddresses, refreshInvites } from "../invites";
 import { keepDisplay, saveBucket } from "../mail";
 import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
@@ -395,8 +395,13 @@ function Invite(): JSX.Element {
       placeholder="Invite people by email"
       rows={(query) => {
         const emails = addresses(query);
+        const wrong = notAddresses(query);
         return [
-          ...(emails.length === 0
+          // Typed, but not all of it addresses: say which, rather than invite the rest unmentioned.
+          ...(wrong.length === 0
+            ? []
+            : [{ label: `“${wrong.join(", ")}” isn’t an email address`, run: () => {} }]),
+          ...(emails.length === 0 || wrong.length > 0
             ? []
             : [
                 {

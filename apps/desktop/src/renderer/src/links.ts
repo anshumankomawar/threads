@@ -5,7 +5,7 @@ import { store } from "./session";
 // of them are resolved is its progress. A link in a message is only a link: it makes nothing part of anything.
 
 export const branchesOf = (thread: Thread): Thread[] =>
-  store.all(Thread).filter((t) => t.branchedFromId === thread.id);
+  store.where(Thread, "branchedFromId", thread.id);
 
 // How many of its branches are resolved, if it has any.
 export function progressOf(thread: Thread): { done: number; total: number } | undefined {

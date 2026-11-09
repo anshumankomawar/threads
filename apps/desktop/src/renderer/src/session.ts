@@ -314,30 +314,38 @@ const hasNew = (item: InboxItem): boolean =>
 // The thread you're reading is never unread; leaving it marks it seen.
 export const unread = (item: InboxItem): boolean => item.thread !== active() && hasNew(item);
 
-// A message counts as activity on its thread, though it doesn't change the Thread's row.
-export const lastActive = (thread: Thread): number =>
-  Math.max(
-    thread.updatedAt.getTime(),
-    thread.messages.sorted("createdAt").at(-1)?.createdAt.getTime() ?? 0,
-  );
+// A message counts as activity on its thread, though it doesn't change the Thread's row. One pass for the latest, not
+// a sort: lists sort by this.
+export function lastActive(thread: Thread): number {
+  let latest = thread.updatedAt.getTime();
+  for (const message of thread.messages) latest = Math.max(latest, message.createdAt.getTime());
+  return latest;
+}
+// Each thread's last activity worked out once for a sort, not on every comparison.
+export function byLastActive(threads: Thread[]): Thread[] {
+  const at = new Map(threads.map((thread) => [thread, lastActive(thread)]));
+  return threads.sort((a, b) => at.get(b)! - at.get(a)!);
+}
 
 const RANK = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 };
-const byUrgency = (a: InboxItem, b: InboxItem): number => {
-  const [x, y] = [a.thread, b.thread];
-  return (
-    Number(x.state === "blocked") - Number(y.state === "blocked") ||
-    RANK[x.priority] - RANK[y.priority] ||
-    (x.dueAt?.getTime() ?? Infinity) - (y.dueAt?.getTime() ?? Infinity) ||
-    lastActive(y) - lastActive(x)
-  );
-};
+function byUrgency(items: InboxItem[]): InboxItem[] {
+  const at = new Map(items.map((item) => [item, lastActive(item.thread)]));
+  return items.sort((a, b) => {
+    const [x, y] = [a.thread, b.thread];
+    return (
+      Number(x.state === "blocked") - Number(y.state === "blocked") ||
+      RANK[x.priority] - RANK[y.priority] ||
+      (x.dueAt?.getTime() ?? Infinity) - (y.dueAt?.getTime() ?? Infinity) ||
+      at.get(b)! - at.get(a)!
+    );
+  });
+}
 
 // Your inbox in your buckets, most urgent first; what the model hasn't sorted yet waits apart.
 export const inbox = store.view(() => {
-  const items = store
-    .where(InboxItem, "userId", me().id)
-    .filter((i) => i.thread?.isOpen && !i.doneAt)
-    .sort(byUrgency);
+  const items = byUrgency(
+    store.where(InboxItem, "userId", me().id).filter((i) => i.thread?.isOpen && !i.doneAt),
+  );
   const buckets = myBuckets();
   const sections = buckets.map((bucket) => ({
     bucket,
@@ -352,14 +360,15 @@ export const inbox = store.view(() => {
 });
 
 // Open threads you own that someone else is on, unless they're back in your inbox.
-export const sent = store.view(() =>
-  store
-    .where(Thread, "ownerId", me().id)
-    .filter(
-      (c) => c.isOpen && !inbox().order.includes(c) && c.assigneeIds.some((id) => id !== me().id),
-    )
-    .sort((a, b) => lastActive(b) - lastActive(a)),
-);
+export const sent = store.view(() => {
+  const inInbox = new Set(inbox().order);
+  const myId = me().id;
+  return byLastActive(
+    store
+      .where(Thread, "ownerId", myId)
+      .filter((c) => c.isOpen && !inInbox.has(c) && c.assigneeIds.some((id) => id !== myId)),
+  );
+});
 
 // ── Navigation and the actions it takes ──
 const activeId = (): string | null => {

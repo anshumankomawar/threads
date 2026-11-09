@@ -123,16 +123,25 @@ export function passes(thread: Thread, token: Token): boolean {
   }
 }
 
+// A thread's words, lowercased, kept while its title, description and messages stay as they were (messages are only
+// ever added or deleted, so their count says when), rather than joined again for every thread on every keystroke.
+const haystacks = new WeakMap<Thread, { key: string; text: string }>();
+function haystack(thread: Thread): string {
+  const description = thread.description ?? "";
+  const key = `${thread.title}\u0000${description}\u0000${thread.messages.length}`;
+  const kept = haystacks.get(thread);
+  if (kept?.key === key) return kept.text;
+  const text = [thread.title, description, ...[...thread.messages].map((m) => m.body)]
+    .join("\n")
+    .toLowerCase();
+  haystacks.set(thread, { key, text });
+  return text;
+}
+
 // Whether a thread mentions all of `text`'s words, in its title or any message.
 export function says(thread: Thread, text: string): boolean {
   const words = text.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  const haystack = [
-    thread.title,
-    thread.description ?? "",
-    ...thread.messages.sorted("createdAt").map((m) => m.body),
-  ]
-    .join("\n")
-    .toLowerCase();
-  return words.every((w) => haystack.includes(w));
+  const found = haystack(thread);
+  return words.every((w) => found.includes(w));
 }

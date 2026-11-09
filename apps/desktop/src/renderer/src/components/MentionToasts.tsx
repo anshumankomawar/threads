@@ -41,20 +41,24 @@ const mentionsMe = (message: Message): boolean =>
 export function MentionToasts(): JSX.Element {
   const [nowMs, setNowMs] = createSignal(Date.now());
   const [dismissed, setDismissed] = createSignal<Set<string>>(new Set());
-  const toasts = createMemo((): Message[] =>
-    store
+  // Others' messages since the app opened that mention you: the clock doesn't touch this, so its once-a-second tick
+  // only looks over these few, not every message there is.
+  const candidates = createMemo((): Message[] => {
+    const myId = me().id;
+    return store
       .all(Message)
-      .filter((message) => {
-        const at = message.createdAt.getTime();
-        return (
-          message.authorId !== me().id &&
-          at >= LOADED_AT &&
-          nowMs() - at < SHOW_MS &&
-          !dismissed().has(message.id) &&
-          mentionsMe(message)
-        );
-      })
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+      .filter(
+        (message) =>
+          message.createdAt.getTime() >= LOADED_AT &&
+          message.authorId !== myId &&
+          mentionsMe(message),
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  });
+  const toasts = createMemo((): Message[] =>
+    candidates().filter(
+      (message) => nowMs() - message.createdAt.getTime() < SHOW_MS && !dismissed().has(message.id),
+    ),
   );
   onSettled(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);

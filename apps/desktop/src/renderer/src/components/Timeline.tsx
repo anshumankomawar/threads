@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import type { Thread } from "models";
@@ -110,9 +110,10 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   const zoom = (): Zoom => display().zoom ?? "weeks";
   const day = (): number => DAY[zoom()];
   const today = (): number => startOfDay(Date.now());
-  const threads = (): Thread[] => [...new Set(listed().order)].filter(dated);
+  // Memos, so a bar being dragged (every frame) doesn't make every bar walk the whole list again.
+  const threads = createMemo((): Thread[] => [...new Set(listed().order)].filter(dated));
   // From the Monday before the first thread began (or a fortnight ago) to two months past the last due date.
-  const range = (): { from: number; days: number } => {
+  const range = createMemo((): { from: number; days: number } => {
     let first = addDays(today(), -14);
     let last = addDays(today(), 60);
     for (const t of threads()) {
@@ -123,7 +124,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     const start = addDays(first, -7);
     const monday = addDays(start, -((new Date(start).getDay() + 6) % 7));
     return { from: monday, days: daysBetween(monday, startOfDay(last)) };
-  };
+  });
   const x = (time: number): number => ((time - range().from) / DAY_MS) * day();
   const width = (): number => range().days * day();
 
@@ -151,7 +152,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
 
   // The groups to head, when it's grouped (by the mailbox, as the inbox's buckets, or by a field).
   const headed = (): boolean => listed().groups.length > 1 || groupedBy() !== undefined;
-  const lines = (): Line[] => {
+  const lines = createMemo((): Line[] => {
     const out: Line[] = [];
     let y = TOP;
     for (const all of listed().groups) {
@@ -167,9 +168,9 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       }
     }
     return out;
-  };
+  });
   // Those without a date: in a list from the toolbar, to be dragged onto a day or given one from their menu.
-  const undated = (): Thread[] => [...new Set(listed().order)].filter((t) => !dated(t));
+  const undated = createMemo((): Thread[] => [...new Set(listed().order)].filter((t) => !dated(t)));
   const place = (thread: Thread, when: When, label: string): void =>
     edit(thread, whenFields(when), label);
   // The timeline, or those without dates: tabs on its toolbar, the one chosen kept.

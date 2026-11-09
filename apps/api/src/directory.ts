@@ -2,11 +2,17 @@
 // may join it from, its members (an email and the Person they are in it) and who's invited. Signing in finds your
 // workspaces here; each workspace's own data (its Persons among it) is in its Durable Object, which `admit` fills
 // from this.
+//
+// A company's domain is the Google Workspace one Google vouches for (its `hd` claim, on a verified address; auth.ts),
+// never just what's after the @: anyone can have a Google account on any address, a personal one on a work address
+// included, and only a domain's own Workspace can say who's still in it.
 
 // The queries the directory runs, over D1 in the Worker and over SQLite in tests.
 export interface Sql {
   run(query: string, ...binds: unknown[]): Promise<void>;
   all<T>(query: string, ...binds: unknown[]): Promise<T[]>;
+  // Several writes, all or none.
+  batch(statements: [string, ...unknown[]][]): Promise<void>;
 }
 
 export const d1 = (db: D1Database): Sql => ({
@@ -22,7 +28,12 @@ export const d1 = (db: D1Database): Sql => ({
         .bind(...binds)
         .all<T>()
     ).results,
+  batch: async (statements) =>
+    void (await db.batch(statements.map(([query, ...binds]) => db.prepare(query).bind(...binds)))),
 });
+
+// Who's asking: their address, and the Workspace domain Google vouches for, if any.
+export type Who = { email: string; domain: string | null };
 
 export type Role = "admin" | "member";
 export type Summary = { id: string; name: string; members: number };
@@ -48,39 +59,10 @@ const TABLES = [
   "CREATE INDEX IF NOT EXISTS workspaces_domain ON workspaces (domain)",
 ];
 
-// Domains anyone can have an address at, which say nothing about where someone works.
-const PERSONAL = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "msn.com",
-  "yahoo.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "aol.com",
-  "proton.me",
-  "protonmail.com",
-  "hey.com",
-  "fastmail.com",
-  "gmx.com",
-  "zoho.com",
-  "yandex.com",
-]);
-
 export const normal = (email: string): string => email.trim().toLowerCase();
 
-// The company an address is at, or null for a personal one.
-export function companyDomain(email: string): string | null {
-  const domain = normal(email).split("@")[1];
-  return domain && !PERSONAL.has(domain) ? domain : null;
-}
-
-// A name for a new workspace from its maker's domain: acme.com → Acme, acme-labs.io → Acme Labs.
-export function suggestedName(email: string): string {
-  const domain = companyDomain(email);
+// A name for a new workspace from its maker's Workspace domain: acme.com → Acme, acme-labs.io → Acme Labs.
+export function suggestedName(domain: string | null): string {
   if (domain === null) return "";
   return domain
     .split(".")[0]
@@ -109,10 +91,9 @@ export class Directory {
     return this.#ready;
   }
 
-  async choices(email: string): Promise<Choices> {
+  async choices({ email, domain }: Who): Promise<Choices> {
     await this.ready();
     const address = normal(email);
-    const domain = companyDomain(address);
     const count = "(SELECT COUNT(*) FROM members m WHERE m.workspaceId = w.id) AS members";
     const workspaces = await this.#sql.all<Membership>(
       `SELECT w.id, w.name, ${count}, me.personId, me.role FROM members me JOIN workspaces w ON w.id = me.workspaceId
@@ -148,32 +129,50 @@ export class Directory {
     return found;
   }
 
-  async membership(workspaceId: string, email: string): Promise<Membership | undefined> {
-    return (await this.choices(email)).workspaces.find((w) => w.id === workspaceId);
+  async membership(workspaceId: string, who: Who): Promise<Membership | undefined> {
+    return (await this.choices(who)).workspaces.find((w) => w.id === workspaceId);
   }
 
-  // A new workspace, with its maker as its admin. With `openToDomain`, anyone at the maker's company may join it.
-  async create(email: string, name: string, openToDomain: boolean): Promise<Membership> {
+  // A new workspace, with its maker as its admin, both at once. With `openToDomain`, anyone in the maker's Workspace
+  // domain may join it.
+  async create(who: Who, name: string, openToDomain: boolean): Promise<Membership> {
     await this.ready();
     const id = crypto.randomUUID();
-    const domain = openToDomain ? companyDomain(email) : null;
-    await this.#sql.run(
-      "INSERT INTO workspaces (id, name, domain, createdAt) VALUES (?, ?, ?, ?)",
-      id,
-      name,
-      domain,
-      Date.now(),
-    );
-    return this.#add(id, email, "admin");
+    const now = Date.now();
+    await this.#sql.batch([
+      [
+        "INSERT INTO workspaces (id, name, domain, createdAt) VALUES (?, ?, ?, ?)",
+        id,
+        name,
+        openToDomain ? who.domain : null,
+        now,
+      ],
+      [
+        "INSERT INTO members (workspaceId, email, personId, role, createdAt) VALUES (?, ?, ?, 'admin', ?)",
+        id,
+        normal(who.email),
+        crypto.randomUUID(),
+        now,
+      ],
+    ]);
+    return (await this.membership(id, who))!;
   }
 
-  // Joins a workspace you're invited to, or one open to your company's domain; undefined when you may not.
-  async join(workspaceId: string, email: string): Promise<Membership | undefined> {
-    const choices = await this.choices(email);
+  // Joins a workspace you're invited to, or one open to your Workspace domain; undefined when you may not. Joining
+  // twice (a double click) is the one membership.
+  async join(workspaceId: string, who: Who): Promise<Membership | undefined> {
+    const choices = await this.choices(who);
     const joined = choices.workspaces.find((w) => w.id === workspaceId);
     if (joined) return joined;
-    const may = [...choices.invited, ...choices.sameDomain].some((w) => w.id === workspaceId);
-    return may ? this.#add(workspaceId, email, "member") : undefined;
+    if (![...choices.invited, ...choices.sameDomain].some((w) => w.id === workspaceId)) return;
+    await this.#sql.run(
+      `INSERT OR IGNORE INTO members (workspaceId, email, personId, role, createdAt) VALUES (?, ?, ?, 'member', ?)`,
+      workspaceId,
+      normal(who.email),
+      crypto.randomUUID(),
+      Date.now(),
+    );
+    return this.membership(workspaceId, who);
   }
 
   // Invites addresses to a workspace (`by` is a member's name, shown to them). Members aren't invited again.
@@ -202,17 +201,5 @@ export class Directory {
       workspaceId,
     );
     return rows.map((row) => row.email);
-  }
-
-  async #add(workspaceId: string, email: string, role: Role): Promise<Membership> {
-    await this.#sql.run(
-      "INSERT INTO members (workspaceId, email, personId, role, createdAt) VALUES (?, ?, ?, ?, ?)",
-      workspaceId,
-      normal(email),
-      crypto.randomUUID(),
-      role,
-      Date.now(),
-    );
-    return (await this.membership(workspaceId, email))!;
   }
 }

@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, Match, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, onCleanup, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Thread, User } from "models";
@@ -204,7 +204,7 @@ export function Peek(): JSX.Element {
           window = el;
           // A manual popover, as a window is: a menu opened in it doesn't close it, and neither does working in the app
           // beside it. It closes from its × or Escape (in it, or in the app with nothing else open).
-          document.addEventListener("keydown", (event) => {
+          const onEscape = (event: KeyboardEvent): void => {
             if (event.key !== "Escape" || event.defaultPrevented || !el.matches(":popover-open"))
               return;
             if (el.contains(event.target as Node)) return;
@@ -213,7 +213,9 @@ export function Peek(): JSX.Element {
             if (document.querySelector(":popover-open:not([data-peek]), dialog[open]")) return;
             event.preventDefault();
             close();
-          });
+          };
+          document.addEventListener("keydown", onEscape);
+          onCleanup(() => document.removeEventListener("keydown", onEscape));
           // Open while there's something to peek at; a link inside it replaces what's shown.
           createEffect(peeked, (shown) => {
             // Taking the focus, so Escape and the keys are its, not the reply's behind it.

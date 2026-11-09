@@ -16,7 +16,7 @@ import {
 import { registry } from "sync";
 import type { Admission } from "models/server";
 import { createAuth, SIGNED_IN_PAGE } from "./auth.ts";
-import { d1, Directory, suggestedName, type Membership } from "./directory.ts";
+import { d1, Directory, suggestedName, type Membership, type Who } from "./directory.ts";
 import { workersAiComposer } from "./compose.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
@@ -193,8 +193,14 @@ async function signedIn(c: Ctx) {
   const auth = await createAuth(c.env);
   return (await auth.api.getSession({ headers: c.req.raw.headers }))?.user ?? null;
 }
+// Them as the directory knows them: their address and the Workspace domain Google vouches for (auth.ts).
+const whoIs = (user: { email: string; hostedDomain?: string | null }): Who => ({
+  email: user.email,
+  domain: user.hostedDomain ?? null,
+});
 
-// Makes sure a member's person is in their workspace's own data (the `admit` action), as they signed in.
+// Makes sure a member's person is in their workspace's own data (the `admit` action), as they signed in. Done again on
+// every token, so one that fails here (the workspace's object briefly unreachable) is done then instead.
 async function admit(
   c: Ctx,
   member: Membership,
@@ -220,17 +226,19 @@ async function admit(
   );
   if (!response.ok) throw new Error(`Couldn't admit to ${member.id}: ${await response.text()}`);
 }
+const admitSoon = (c: Ctx, member: Membership, user: Parameters<typeof admit>[2]): Promise<void> =>
+  admit(c, member, user).catch((error: unknown) => console.error(error));
 
 // Where you can go once signed in (directory.ts's Choices), and what to call a workspace you make.
 app.get("/onboarding", async (c) => {
   const user = await signedIn(c);
   if (user === null) return c.json({ error: "Not signed in" }, 401);
-  const choices = await directoryOf(c.env).choices(user.email);
+  const choices = await directoryOf(c.env).choices(whoIs(user));
   return c.json({
     ...choices,
     email: user.email,
     name: user.name,
-    suggestedName: suggestedName(user.email),
+    suggestedName: suggestedName(user.hostedDomain ?? null),
   });
 });
 
@@ -241,8 +249,8 @@ app.post("/workspaces", async (c) => {
   const { name, openToDomain } = await c.req.json<{ name?: string; openToDomain?: boolean }>();
   const trimmed = name?.trim().slice(0, 60);
   if (!trimmed) return c.json({ error: "A workspace needs a name" }, 400);
-  const member = await directoryOf(c.env).create(user.email, trimmed, openToDomain === true);
-  await admit(c, member, user);
+  const member = await directoryOf(c.env).create(whoIs(user), trimmed, openToDomain === true);
+  await admitSoon(c, member, user);
   return c.json(member);
 });
 
@@ -250,9 +258,9 @@ app.post("/workspaces", async (c) => {
 app.post("/workspaces/:id/join", async (c) => {
   const user = await signedIn(c);
   if (user === null) return c.json({ error: "Not signed in" }, 401);
-  const member = await directoryOf(c.env).join(c.req.param("id"), user.email);
+  const member = await directoryOf(c.env).join(c.req.param("id"), whoIs(user));
   if (member === undefined) return c.json({ error: "You can't join that workspace" }, 403);
-  await admit(c, member, user);
+  await admitSoon(c, member, user);
   return c.json(member);
 });
 
@@ -263,7 +271,7 @@ app.on(["GET", "POST"], "/workspaces/:id/invites", async (c) => {
   if (user === null) return c.json({ error: "Not signed in" }, 401);
   const id = c.req.param("id");
   const dir = directoryOf(c.env);
-  if ((await dir.membership(id, user.email)) === undefined)
+  if ((await dir.membership(id, whoIs(user))) === undefined)
     return c.json({ error: "Not a member" }, 403);
   if (c.req.method === "POST") {
     const { emails } = await c.req.json<{ emails?: string[] }>();
@@ -282,7 +290,7 @@ app.post("/auth/token", async (c) => {
   const { workspace } = await c.req
     .json<{ workspace?: string }>()
     .catch(() => ({ workspace: undefined }));
-  const { workspaces } = await directoryOf(c.env).choices(user.email);
+  const { workspaces } = await directoryOf(c.env).choices(whoIs(user));
   const member = workspaces.find((w) => w.id === workspace) ?? workspaces[0];
   if (member === undefined) return c.json({ error: "No workspace yet" }, 409);
   await admit(c, member, user);
@@ -319,20 +327,21 @@ app.post("/ai/compose", async (c) => {
   }
 });
 
-// The sync protocol goes to the workspace's object, with the session; the socket authenticates with its Hello.
+// The sync protocol goes to the workspace's object, with the session; the socket authenticates with its Hello. Who's
+// asking is settled before the directory is: a stranger's guesses at workspace ids never reach D1.
 app.on(["GET", "POST"], ["/sync/*", "/actions/*"], async (c) => {
   const workspace = workspaceOf(c);
-  const known =
-    workspace === SAMPLE
-      ? c.env.SAMPLE_WORKSPACE === "on"
-      : await directoryOf(c.env).exists(workspace);
-  if (!known) return c.json({ error: `Unknown workspace: ${workspace}` }, 404);
   const forwarded = new Request(c.req.raw);
   if (c.req.path !== "/sync/socket") {
     const session = await authenticate(c.env, tokenOf(c), workspace);
     if (session === undefined) return c.json({ error: "Unauthorized" }, 401);
     forwarded.headers.set(SESSION_HEADER, JSON.stringify(session));
   }
+  const known =
+    workspace === SAMPLE
+      ? c.env.SAMPLE_WORKSPACE === "on"
+      : await directoryOf(c.env).exists(workspace);
+  if (!known) return c.json({ error: `Unknown workspace: ${workspace}` }, 404);
   const { exports } = c.executionCtx as ExecutionContext;
   return exports.Workspace.getByName(workspace).fetch(forwarded);
 });

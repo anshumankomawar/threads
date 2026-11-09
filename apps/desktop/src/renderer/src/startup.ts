@@ -79,9 +79,14 @@ export function chooseWorkspace(): void {
   location.reload();
 }
 // Signing in or out reloads as whoever you are now, and so does learning you're someone else than was kept.
-window.onAuthenticated(() => location.reload());
+// Into the app, never back to choosing a workspace you'd asked for before.
+function reload(): void {
+  location.hash = "";
+  location.reload();
+}
+window.onAuthenticated(reload);
 window.threads.onChanged(() => location.reload());
 export async function signOut(): Promise<void> {
   await window.threads.signOut();
-  location.reload();
+  reload();
 }

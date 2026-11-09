@@ -12,7 +12,7 @@ import {
   SOURCES,
   useSource,
 } from "../startup";
-import { addresses, invite } from "../invites";
+import { addresses, invite, notAddresses } from "../invites";
 import { base } from "../styles/base";
 import { sx } from "../styles/sx";
 import { motion } from "../styles/tokens.stylex";
@@ -286,10 +286,12 @@ const s = stylex.create({
 export function toStep(change: () => void): void {
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (!document.startViewTransition || reduced) return change();
-  document.startViewTransition(() => {
+  const transition = document.startViewTransition(() => {
     change();
     flush();
   });
+  // Cut short by the next one (quick clicks): the change was still made, so that's no error.
+  transition.ready.catch(() => {});
 }
 
 const Spinner = (props: { big?: boolean }): JSX.Element => (
@@ -624,6 +626,11 @@ export function InviteTeam(props: {
   const submit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
     const emails = addresses(text());
+    const wrong = notAddresses(text());
+    if (wrong.length > 0)
+      return void setProblem(
+        `${wrong.map((part) => `“${part}”`).join(", ")} ${wrong.length === 1 ? "isn’t an email address" : "aren’t email addresses"}.`,
+      );
     if (emails.length === 0) return void setProblem("Add an email address.");
     setBusy(true);
     const ok = await invite(emails, props.workspace.id);
@@ -653,11 +660,7 @@ export function InviteTeam(props: {
           )}
           ref={focus}
         />
-        <button
-          class={sx(s.primary, busy() && s.busy)}
-          type="submit"
-          disabled={busy() || addresses(text()).length === 0}
-        >
+        <button class={sx(s.primary, busy() && s.busy)} type="submit" disabled={busy()}>
           <Show when={busy()}>
             <Spinner />
           </Show>
@@ -721,13 +724,20 @@ export default function Welcome(): JSX.Element {
   const [made, setMade] = createSignal<{ id: string; name: string } | null>(null);
   const [leaving, setLeaving] = createSignal(false);
   // Asked as it opens, and again from Try Again; the answer comes after, outside the component.
+  // Asking again (Try Again): its spinner shows and it can't be asked twice at once.
+  const [asking, setAsking] = createSignal(false);
   const load = (): void =>
     void call("/onboarding").then(({ ok, body }) =>
       toStep(() => {
+        setAsking(false);
         setProblem(ok ? null : "Couldn’t reach Arc. Check your connection.");
         if (ok) setChoices(body as Choices);
       }),
     );
+  const retry = (): void => {
+    setAsking(true);
+    load();
+  };
   if (!needsSignIn) load();
   // Into the app: everything fades out first, then the window opens it.
   const enter = (id: string): void => {
@@ -769,7 +779,10 @@ export default function Welcome(): JSX.Element {
         </Match>
         <Match when={problem()}>
           <Step title="Something went wrong" lede={problem()!}>
-            <button class={sx(s.secondary)} onClick={load}>
+            <button class={sx(s.secondary)} disabled={asking()} onClick={retry}>
+              <Show when={asking()}>
+                <Spinner />
+              </Show>
               Try Again
             </button>
           </Step>
