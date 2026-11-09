@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { menu, setMenu, type MenuItem } from "../session";
+import { menu, setMenu, type MenuField, type MenuItem } from "../session";
 import { base } from "../styles/base";
 import { chip, chipTone, menu as look } from "../styles/controls";
 import { palette } from "../styles/palette";
@@ -77,6 +77,34 @@ export function OptionButton(props: {
 // A menu's rows, as macOS lays them out: an icon column (a toggle's check goes there too), titles in one column after it,
 // and a chevron on a row with `items`, whose submenu opens beside it while you're on it.
 // `leftward`, as a menu hanging from a toolbar's right end: its submenus open to the left.
+// A menu's field row (MenuField), focused as the menu opens, and the line under it.
+function FieldRow(props: { field: MenuField; close: () => void }): JSX.Element {
+  const [typed, setTyped] = createSignal("");
+  return (
+    <>
+      <label class={sx(look.entry, combo.field)}>
+        <input
+          ref={(el) => queueMicrotask(() => el.focus())}
+          class={sx(base.bare, combo.input)}
+          placeholder={props.field.placeholder}
+          spellcheck={false}
+          value={typed()}
+          onInput={(event) => setTyped(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.isComposing) return;
+            event.preventDefault();
+            if (props.field.submit(typed())) props.close();
+          }}
+        />
+        <Show when={typed().trim() && props.field.preview(typed())}>
+          {(seen) => <span class={sx(look.entryKeys)}>{seen()}</span>}
+        </Show>
+      </label>
+      <hr class={sx(look.entrySeparator)} />
+    </>
+  );
+}
+
 function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean }): JSX.Element {
   // A menu where no row has an icon (or a check) has no icon column at all.
   const gutter = (): boolean =>
@@ -182,6 +210,9 @@ function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean
             style={{ left: `${open.row.right + 4}px`, top: `${open.row.top - 4.5}px` }}
             role="menu"
           >
+            <Show when={(open.item as { field?: MenuField }).field}>
+              {(field) => <FieldRow field={field()} close={props.close} />}
+            </Show>
             <Items items={open.item.items} close={props.close} leftward={props.leftward} />
           </div>
         )}
@@ -227,10 +258,16 @@ export function MenuChip(props: {
   // In place of the chip's look, as for an icon button.
   look?: stylex.StyleXStyles;
   items: MenuItem[];
+  // A field as the menu's first row, to type into rather than choose.
+  field?: MenuField;
 }): JSX.Element {
   const id = createUniqueId();
   const [open, setOpen] = createSignal(false);
   let popover!: HTMLDivElement;
+  // Typing in it, or in a submenu's, keeps the keys from the app's hotkeys.
+  const typable = (): boolean =>
+    props.field !== undefined ||
+    props.items.some((item) => item !== "separator" && "field" in item && item.field);
   return (
     <>
       <button
@@ -248,14 +285,22 @@ export function MenuChip(props: {
       </button>
       <div
         id={id}
-        ref={popover}
+        ref={(el) => {
+          popover = el;
+          if (typable()) holdFocus(el);
+        }}
         popover="auto"
-        onToggle={(event) => setOpen(event.newState === "open")}
+        onToggle={(event) => {
+          setOpen(event.newState === "open");
+        }}
         class={sx(base.panel, look.menu, look.compact, look.popover, chip.menu)}
         role="menu"
       >
         {/* Mounted while open, so it opens at the top level again. */}
         <Show when={open()}>
+          <Show when={props.field}>
+            {(field) => <FieldRow field={field()} close={() => popover.hidePopover()} />}
+          </Show>
           <Items items={props.items} close={() => popover.hidePopover()} />
         </Show>
       </div>

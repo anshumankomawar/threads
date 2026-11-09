@@ -36,8 +36,10 @@ import {
   membersHint,
   summary,
   toggled,
+  type MenuField,
   type MenuItem,
   undoable,
+  workspace,
 } from "../session";
 import { base } from "../styles/base";
 import { link, menu as look } from "../styles/controls";
@@ -48,8 +50,7 @@ import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { askInline } from "./InlineForm";
-import { parseWhen, whenFields } from "../when";
+import { describeWhen, parseWhen, whenFields } from "../when";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
 import { branchesOf, progressOf } from "../links";
@@ -292,6 +293,8 @@ function ListChip(props: {
   short?: (name: string) => string;
   more?: MenuItem[];
   look?: stylex.StyleXStyles;
+  // A field at the top of its menu, to type a new one in.
+  typed?: MenuField;
 }): JSX.Element {
   const ids = (): string[] => props.thread[props.field];
   const name = (id: string): string => {
@@ -305,6 +308,7 @@ function ListChip(props: {
       tone={ids().length === 0 ? "muted" : undefined}
       title={props.title}
       look={props.look}
+      field={props.typed}
       items={[
         ...byName(props.records).map((record) => ({
           label: record.name,
@@ -706,22 +710,6 @@ function Properties(props: { thread: Thread }): JSX.Element {
     { label: "Today", run: change({ startAt: undefined, dueAt: dueAt(0) }) },
     { label: "Tomorrow", run: change({ startAt: undefined, dueAt: dueAt(1) }) },
     { label: "Next Week", run: change({ startAt: undefined, dueAt: dueAt(7) }) },
-    {
-      label: "Type a Date",
-      form: true,
-      run: (from) =>
-        askInline({
-          at: from,
-          title: "When",
-          icon: i.Calendar03Icon,
-          fields: [{ label: "When", placeholder: "fri, next week, mon to fri" }],
-          accept: ([typed]) => parseWhen(typed) !== null,
-          submit: ([typed]) => {
-            const when = parseWhen(typed);
-            if (when) edit(c(), whenFields(when));
-          },
-        }),
-    },
     ...(c().dueAt || c().startAt
       ? [
           "separator" as const,
@@ -729,6 +717,42 @@ function Properties(props: { thread: Thread }): JSX.Element {
         ]
       : []),
   ];
+  // A label typed: one there is goes on (or comes off), a new one is made and goes on.
+  const labelNamed = (text: string): Label | undefined =>
+    store.all(Label).find((l) => l.name.toLowerCase() === text.trim().toLowerCase());
+  const labelField: MenuField = {
+    placeholder: "Type a label",
+    preview: (text) => {
+      const found = labelNamed(text);
+      return !found ? "New Label" : c().labelIds.includes(found.id) ? "Remove" : "Add";
+    },
+    submit: (text) => {
+      const name = text.trim();
+      if (!name) return false;
+      const found = labelNamed(name);
+      if (found) edit(c(), { labelIds: toggled(c().labelIds, found.id) }, "Label");
+      else
+        undoable("New Label", () => {
+          const made = store.create(Label, { name, workspace: workspace() });
+          c().labelIds = [...c().labelIds, made.id];
+          c().save();
+        });
+      return true;
+    },
+  };
+  // Typed first: "fri", "next week", "mon to fri"; Enter sets it.
+  const whenField: MenuField = {
+    placeholder: "Type a date",
+    preview: (text) => {
+      const when = parseWhen(text);
+      return when ? describeWhen(when) : "Not a date";
+    },
+    submit: (text) => {
+      const when = parseWhen(text);
+      if (when) edit(c(), whenFields(when));
+      return when !== null;
+    },
+  };
   const when = (): string => {
     const due = c().dueAt;
     const start = c().startAt;
@@ -742,10 +766,8 @@ function Properties(props: { thread: Thread }): JSX.Element {
           {
             label: "Label",
             icon: icon(i.Tag01Icon, 13),
-            items: [
-              ...listItems("labelIds", store.all(Label)),
-              { label: "New Label", run: () => setDialog({ kind: "newLabel", thread: c() }) },
-            ],
+            field: labelField,
+            items: listItems("labelIds", store.all(Label)),
           },
         ]
       : []),
@@ -780,7 +802,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
         ]
       : []),
     ...(!c().dueAt && !c().startAt
-      ? [{ label: "When", icon: icon(i.Calendar03Icon, 13), items: whenItems() }]
+      ? [{ label: "When", icon: icon(i.Calendar03Icon, 13), field: whenField, items: whenItems() }]
       : []),
   ];
   return (
@@ -803,7 +825,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
           records={store.all(Label)}
           none=""
           icon={i.Tag01Icon}
-          more={[{ label: "New Label", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
+          typed={labelField}
         />
       </Show>
       <Show when={c().subspaceIds.length > 0}>
@@ -847,6 +869,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
           label={<span class={sx(base.ellipsis)}>{when()}</span>}
           tone={c().dueAt && c().dueAt!.getTime() < Date.now() ? "urgent" : undefined}
           items={whenItems()}
+          field={whenField}
         />
       </Show>
       <Show when={unset().length > 0}>
