@@ -474,8 +474,8 @@ export function MailSidebar(): JSX.Element {
             )}
           </For>
         </ul>
-        {/* What you've written: sent, and not yet. */}
-        <ul class={sx(s.mailboxes, s.section)}>
+        {/* What you've written: sent, and not yet; just apart from the inbox. */}
+        <ul class={sx(s.mailboxes, s.nearby)}>
           <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
           <Mailbox
             box={{ kind: "drafts" }}
@@ -1319,6 +1319,8 @@ const s = stylex.create({
   },
   // Apart from the one before it; the first in its group sits right under the segments.
   // 14pt above, its title at 12pt medium, 8pt in, 4pt over its rows.
+  // Just apart from the rows above.
+  nearby: { marginTop: 7.27 },
   // Apart from the places above and from each other.
   section: { marginTop: 18.18 },
   sectionHeader: {
