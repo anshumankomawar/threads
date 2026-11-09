@@ -173,10 +173,10 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     edit(thread, { startAt: when.start, dueAt: when.end }, label);
   // The timeline, or those without dates: tabs on its toolbar, the one chosen kept.
   const tabs: Tab[] = [
-    { label: "Timeline", icon: i.ChartBarDecreasingIcon },
+    { label: "Scheduled", icon: i.Calendar03Icon },
     { label: "Unscheduled", icon: i.InboxIcon, count: () => undated().length },
   ];
-  const [tab, setTab] = createSignal(saved<string>("timeline-tab", "Timeline"));
+  const [tab, setTab] = createSignal(saved<string>("timeline-tab", "Scheduled"));
   const unscheduled = (): boolean => tab() === "Unscheduled";
   const height = (): number => (lines().at(-1)?.y ?? 0) + ROW + 24;
 

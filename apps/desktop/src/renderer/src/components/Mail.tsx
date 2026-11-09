@@ -58,6 +58,7 @@ import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, sidebarSpace } from "../styles/tokens.stylex";
 import { AppButtons, HistoryButtons } from "./TopButtons";
+import { Tabs, type Tab } from "./Tabs";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
@@ -787,7 +788,12 @@ export const LAYOUTS: {
     keywords: "gantt roadmap schedule dates",
   },
 ];
-const layoutIcon = (): IconSvgElement => LAYOUTS.find((l) => l.layout === display().layout)!.icon;
+// List or timeline, as tabs by the list's title: one click, always in sight.
+const LAYOUT_TABS: (Tab & { layout: Layout })[] = LAYOUTS.map(({ layout, label, icon: glyph }) => ({
+  layout,
+  label,
+  icon: glyph,
+}));
 
 // The ways to group and order a list, and a timeline's scales: in the Display menu, the query bar and ⌘K. Grouping
 // toggles: choosing the one it's grouped by ungroups it.
@@ -828,12 +834,6 @@ const filterItems = (): MenuItem[] => [
 // How the list is shown (mail.ts' display, kept on this Mac): rows or a timeline; grouped by any field a filter can test;
 // a timeline's scale; its order; and whether resolved threads show. In ⌘K too.
 export const displayMenu = (): MenuItem[] => [
-  ...LAYOUTS.map(({ layout, label, icon: glyph }) => ({
-    label,
-    icon: icon(glyph, 13),
-    run: () => setDisplay({ layout }),
-  })),
-  "separator",
   // The inbox is grouped by its buckets.
   ...(mailbox().kind === "inbox"
     ? []
@@ -1018,12 +1018,22 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
           <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>
         </span>
+        <Show when={filterable()}>
+          <span class={sx(s.layoutTabs)}>
+            <Tabs
+              label="Layout"
+              tabs={LAYOUT_TABS}
+              chosen={LAYOUT_TABS.find((t) => t.layout === display().layout) ?? LAYOUT_TABS[0]}
+              onChoose={(t) => setDisplay({ layout: t.layout })}
+            />
+          </span>
+        </Show>
         <span class={sx(topbar.end)}>
           <Show when={filterable()}>
             <MenuChip
               look={topbar.button}
               title="Display"
-              label={<Icon icon={layoutIcon()} {...ICON} />}
+              label={<Icon icon={i.FilterHorizontalIcon} {...ICON} />}
               items={displayMenu()}
             />
           </Show>
@@ -1384,6 +1394,7 @@ const s = stylex.create({
   querySpacer: { flex: 1 },
   // As tall as the chips beside it.
   // Spaced as the toolbar spaces everything, not as a dialog's buttons are.
+  layoutTabs: { display: "flex", flexShrink: 0, marginLeft: 10, WebkitAppRegion: "no-drag" },
   queryNew: {
     height: { default: 22, [stylex.when.ancestor(":is(*)", toolbarMarker)]: 24 },
     marginLeft: 0,
