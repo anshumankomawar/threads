@@ -604,8 +604,12 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     else return false;
     return true;
   };
-  // Made once, as its element is.
-  const mount = (element: HTMLDivElement): void => {
+  // Made once its element is in the page, never before: ProseMirror listens for selection changes on the element's
+  // document as it's made, and stops on its document as it's destroyed. Made while Solid's template still owns the
+  // element, it listened on the template's document and stopped on the page's, so every reply editor, and the thread
+  // around it, stayed in memory for good.
+  let element!: HTMLDivElement;
+  const mount = (): void => {
     editor = untrack(
       () =>
         new Editor({
@@ -648,7 +652,10 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
         }),
     );
   };
-  onSettled(() => () => editor.destroy());
+  onSettled(() => {
+    mount();
+    return () => editor.destroy();
+  });
   return (
     // Yours, so on the right as your messages are.
     <div class={sx(thread.block, styles.mine)} onClick={() => editor.commands.focus()}>
@@ -659,7 +666,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
         <div class={sx(thread.meta)}>
           <span class={sx(thread.author)}>{me().name}</span>
         </div>
-        <div ref={mount} class={sx(styles.reply, styles.replyMine)} />
+        <div ref={element} class={sx(styles.reply, styles.replyMine)} />
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (

@@ -15,7 +15,9 @@ export default defineConfig({
     },
     // Models use legacy decorators.
     oxc: { decorator: { legacy: true } },
-    // StyleX compiles `stylex.create` calls into atomic classes before Solid compiles the JSX.
-    plugins: [stylex({ useCSSLayers: true }), solid()],
+    // StyleX compiles `stylex.create` calls into atomic classes before Solid compiles the JSX. No performance
+    // tracks: on by default in development, they record every scope that renders, with its element, and never let go
+    // (a window open for a day held gigabytes of rows and avatars long gone).
+    plugins: [stylex({ useCSSLayers: true }), solid({ performanceTracks: false })],
   },
 });
