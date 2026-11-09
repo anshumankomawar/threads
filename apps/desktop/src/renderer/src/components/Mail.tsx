@@ -1223,11 +1223,11 @@ const s = stylex.create({
   // Under the top bar, 10pt in from the sides and 10pt above the rows (as the macOS app's: each size here is its
   // points ÷ 1.1, for the 110% scale).
   // Level with the list's first heading beside them (their middles on one line); the rows stay where they were.
-  // Its first line where every column's starts (21pt under the top bar).
+  // Its first line where every column's starts (17pt under the top bar).
   nav: {
     flex: 1,
     minHeight: 0,
-    padding: "12.37px 7.27px 12px",
+    padding: "8.37px 7.27px 12px",
     overflowY: "auto",
   },
   // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
@@ -1369,8 +1369,8 @@ const s = stylex.create({
     gap: 6,
     alignItems: "center",
     minHeight: 40,
-    // Its first line as far below the top bar as every page's (21pt).
-    padding: "14px 12px 6px",
+    // Its first line as far below the top bar as every page's (17pt).
+    padding: "10px 12px 6px",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
@@ -1386,8 +1386,8 @@ const s = stylex.create({
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    // Its first line as far below the top bar as every page's (21pt).
-    padding: "9.18px 7.27px 10.91px",
+    // Its first line as far below the top bar as every page's (17pt).
+    padding: "5.18px 7.27px 10.91px",
     outline: "none",
   },
   // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.

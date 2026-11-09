@@ -13,7 +13,7 @@ export const page = stylex.create({
     minHeight: 0,
     // In the reading pane, just under its toolbar, as a thread starts.
     padding: {
-      default: "16px 52px 48px",
+      default: "12px 52px 48px",
       [stylex.when.ancestor(":is(*)", peekMarker)]: "16px 24px 32px",
     },
     overflowY: "auto",
