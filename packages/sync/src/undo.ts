@@ -12,12 +12,14 @@ type Step = { label: string; changes: Change[] };
 
 const LIMIT = 100;
 
+// The original isn't copied: the queue corrects it where it must (an earlier transaction refused, or a rebase onto
+// the server's latest), and undoing should go back to that, not to a value the server refused.
 const copy = ({ kind, model, modelId, changes, original }: TxRecord): Change => ({
   kind,
   model,
   modelId,
   changes: changes && { ...changes },
-  original: original && { ...original },
+  original,
 });
 
 // Undo and redo, as Linear's UndoQueue: built on transactions. `group` listens to the transaction queue while its
@@ -69,16 +71,15 @@ export class UndoStack {
     return this.#move(this.#redos, this.#undos);
   }
 
-  // Reverses the latest step on `from` and puts what that did on `to`; returns the step's label, or null if there was
-  // nothing to reverse. A step whose changes have all been overtaken is dropped, and the one before it is tried.
+  // Reverses the latest step on `from` and puts what that did on `to`, in the order it ran, so reversing that is last
+  // first too; returns the step's label, or null if there was nothing to reverse. A step whose changes have all been overtaken is dropped, and the one before it is tried.
   #move(from: Step[], to: Step[]): string | null {
     while (from.length > 0) {
       const step = from.pop()!;
       const done = step.changes
         .toReversed()
         .map((change) => this.#reverse(change))
-        .filter((change): change is Change => change !== null)
-        .toReversed();
+        .filter((change): change is Change => change !== null);
       if (done.length === 0) continue;
       to.push({ label: step.label, changes: done });
       this.#announce();

@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import type { MutateRequest } from "protocol";
-import { RejectedError } from "../src";
+import { httpTransport, RejectedError } from "../src";
 import { Conversation, Message } from "./models";
 import { row, setup, tick } from "testing";
 
@@ -153,4 +153,46 @@ test("a confirmed change the socket doesn't bring back makes it reconnect, and c
   await tick();
   expect(c.state).toBe("blocked");
   expect(store.pendingCount()).toBe(0);
+});
+
+test("an edit to a model whose creation was refused goes with it, unsent", async () => {
+  const { store, transport, localDB } = await setup(seed);
+  const created = store.create(Conversation, { title: "New", state: "open", teamId: "t1" });
+  await tick();
+  created.title = "Renamed";
+  const later = created.save();
+  await tick();
+  const { request, resolve } = transport.requests[0];
+  resolve({
+    results: [{ txId: request.transactions[0].id, ok: false, code: "invalid", message: "no" }],
+  });
+  await expect(later.result()).rejects.toThrow("no");
+  await tick();
+  expect(transport.requests).toHaveLength(1);
+  expect(store.findById(Conversation, created.id)).toBeUndefined();
+  expect(store.pendingCount()).toBe(0);
+  expect(await localDB.outbox.all()).toEqual([]);
+});
+
+test("a request refused as a whole rolls back; one turned away for auth or load is retried", async () => {
+  const { store, transport, timers } = await setup(seed);
+  const statuses = [401, 408, 429, 403];
+  const fetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("no", { status: statuses.shift() });
+  try {
+    const http = httpTransport({ url: "", workspace: "w", token: "t" });
+    transport.mutate = (request) => http.mutate(request);
+    const c1 = store.findById(Conversation, "c1")!;
+    c1.title = "A";
+    const tx = c1.save();
+    for (let i = 0; i < 3; i++) {
+      await tick();
+      expect([tx.status, c1.title]).toEqual(["queued", "A"]);
+      timers.shift()!();
+    }
+    await expect(tx.result()).rejects.toBeInstanceOf(RejectedError);
+    expect(c1.title).toBe("One");
+  } finally {
+    globalThis.fetch = fetch;
+  }
 });

@@ -28,8 +28,12 @@ export interface Transport {
   }): { close(): void; hello(): void };
 }
 
-// A request the server refused (4xx): its transaction rolls back. Anything else thrown is a network error: retried.
+// A request the server refused (400, 403, 409, 413, 422: it never will take it): its transactions roll back. Anything
+// else thrown is a network error, retried; that includes 401, 408 and 429, which say nothing about the edits (a token
+// being refreshed, a slow or busy server), so the edits wait rather than being undone.
 export class RejectedError extends Error {}
+
+const REFUSED = new Set([400, 403, 409, 413, 422]);
 
 // The spec's endpoints over fetch and one WebSocket.
 export function httpTransport({
@@ -53,7 +57,7 @@ export function httpTransport({
     });
     if (response.ok) return response;
     const message = `${response.status} ${await response.text()}`;
-    throw response.status < 500 ? new RejectedError(message) : new Error(message);
+    throw REFUSED.has(response.status) ? new RejectedError(message) : new Error(message);
   }
   const json = async <T>(path: string, body?: unknown): Promise<T> =>
     (await request(path, body)).json() as Promise<T>;

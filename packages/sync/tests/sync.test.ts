@@ -113,6 +113,55 @@ test("a reload replays the outbox over the local database and resends it", async
   ]);
 });
 
+test("a reload sends the outbox before anything edited while it loads", async () => {
+  const localDB = memoryLocalDB();
+  const first = await setup(seed, localDB);
+  const c = first.store.findById(Conversation, "c1")!;
+  c.title = "Unsent";
+  c.save();
+  await tick();
+
+  // An edit made as soon as the reloaded page shows the conversation, which may be while it still reads its database.
+  let edited = false;
+  const edit = () => {
+    const c = store.findById(Conversation, "c1");
+    if (!c || edited) return;
+    edited = true;
+    c.state = "resolved";
+    c.save();
+  };
+  const reading = async <T>(read: Promise<T>) => {
+    const result = await read;
+    edit();
+    return result;
+  };
+  const transport = fakeTransport();
+  const store = createStore({
+    transport,
+    localDB: {
+      ...localDB,
+      load: (model) => reading(localDB.load(model)),
+      meta: { ...localDB.meta, get: () => reading(localDB.meta.get()) },
+      outbox: { ...localDB.outbox, all: () => reading(localDB.outbox.all()) },
+    },
+    workspace: "w",
+    token: "t",
+    setTimeout: () => {},
+  });
+  await store.ready();
+  edit();
+  await tick();
+  expect(transport.requests[0].request.transactions).toMatchObject([
+    { modelId: "c1", changes: { title: "Unsent" } },
+  ]);
+  const [{ request, resolve }] = transport.requests;
+  resolve({ results: [{ txId: request.transactions[0].id, ok: true, syncId: 1 }] });
+  await tick();
+  expect(transport.requests[1].request.transactions).toMatchObject([
+    { modelId: "c1", changes: { state: "resolved" } },
+  ]);
+});
+
 test("a server that started over replaces what the local database kept", async () => {
   const localDB = memoryLocalDB();
   const first = await setup(seed, localDB);

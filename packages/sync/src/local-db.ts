@@ -75,7 +75,11 @@ export function indexedLocalDB(): LocalDB {
         for (const record of txs) void tx.store.add(record);
         await tx.done;
       },
-      remove: async (id) => db.delete(OUTBOX, (await db.getKeyFromIndex(OUTBOX, "id", id))!),
+      // One already gone is left alone, as Map.delete would.
+      async remove(id) {
+        const key = await db.getKeyFromIndex(OUTBOX, "id", id);
+        if (key !== undefined) await db.delete(OUTBOX, key);
+      },
       all: () => db.getAll(OUTBOX),
     },
     wipe: () => clear([...models(), META]),

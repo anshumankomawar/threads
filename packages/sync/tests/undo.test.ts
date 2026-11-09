@@ -1,11 +1,16 @@
 import { expect, test } from "vite-plus/test";
-import { Conversation } from "./models";
+import type { MutateRequest, MutateResponse } from "protocol";
+import { Conversation, Message } from "./models";
 import { row, setup, tick } from "testing";
 
 const seed = [
   { model: "Conversation", row: row("c1", { title: "One", state: "open", teamId: "t1" }) },
   { model: "Conversation", row: row("c2", { title: "Two", state: "open", teamId: "t1" }) },
 ];
+
+const refuse = (request: MutateRequest, code: "forbidden" | "conflict"): MutateResponse => ({
+  results: request.transactions.map((tx) => ({ txId: tx.id, ok: false, code, message: "no" })),
+});
 
 test("an edit undoes to what it was and redoes to what it became, each as a transaction", async () => {
   const { store, localDB } = await setup(seed);
@@ -170,4 +175,70 @@ test("a rejected edit, already rolled back, has nothing left to undo", async () 
   await tick();
   expect(c1.title).toBe("One");
   expect(store.undo.undo()).toBe(null);
+});
+
+test("redo makes a step's changes again in the order they were made", async () => {
+  const { store, localDB } = await setup(seed);
+  const c1 = store.findById(Conversation, "c1")!;
+  store.undo.group("Rename twice", () => {
+    c1.title = "B";
+    c1.save();
+    c1.title = "C";
+    c1.save();
+  });
+  store.undo.undo();
+  expect(c1.title).toBe("One");
+  store.undo.redo();
+  expect(c1.title).toBe("C");
+
+  store.undo.group("New", () => {
+    const c = store.create(Conversation, { title: "New", state: "open", teamId: "t1" });
+    store.create(Message, { conversation: c, body: "hi" });
+  });
+  store.undo.undo();
+  store.undo.redo();
+  await tick();
+  // The conversation is made again before the message that references it.
+  const outbox = await localDB.outbox.all();
+  expect(outbox.slice(-2).map((tx) => [tx.kind, tx.model])).toEqual([
+    ["create", "Conversation"],
+    ["create", "Message"],
+  ]);
+});
+
+test("undoing a later step doesn't bring back an earlier one the server refused", async () => {
+  const { store, transport } = await setup(seed);
+  const c1 = store.findById(Conversation, "c1")!;
+  store.undo.group("A", () => {
+    c1.title = "A";
+    c1.save();
+  });
+  await tick();
+  store.undo.group("B", () => {
+    c1.title = "B";
+    c1.save();
+  });
+  transport.requests[0].resolve(refuse(transport.requests[0].request, "forbidden"));
+  await tick();
+  expect(c1.title).toBe("B");
+  store.undo.undo();
+  expect(c1.title).toBe("One");
+});
+
+test("undoing a delete before the server answers it keeps the model, whatever the answer", async () => {
+  const { store, transport } = await setup(seed);
+  store.undo.group("Delete", () => void store.findById(Conversation, "c2")!.delete());
+  await tick();
+  store.undo.undo();
+  await tick();
+  // The delete is refused, so the server still has it, and refuses to make it again.
+  transport.requests[0].resolve(refuse(transport.requests[0].request, "forbidden"));
+  await tick();
+  expect(transport.requests[1].request.transactions.map((tx) => tx.kind)).toEqual(["create"]);
+  transport.requests[1].resolve(refuse(transport.requests[1].request, "conflict"));
+  await tick();
+  const c2 = store.findById(Conversation, "c2");
+  expect(c2?.title).toBe("Two");
+  expect(c2?.isPersisted).toBe(true);
+  expect(store.pendingCount()).toBe(0);
 });

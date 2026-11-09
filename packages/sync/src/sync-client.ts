@@ -64,9 +64,11 @@ export class SyncClient {
         .map(async ({ name }) => (await localDB.load(name)).map((row) => insert(name, row))),
     );
     const { lastSyncId, ...holding } = await localDB.meta.get();
+    // Read before the pool fills, so the outbox replays in the same step: nothing edited in between can go first.
+    const outbox = await localDB.outbox.all();
     this.#holding = holding;
     this.#update(loaded.flat(), lastSyncId);
-    await queue.replayOutbox();
+    queue.replayOutbox(outbox);
     // Offline, the socket's Hello catches up once it connects. A server behind this cache has started over.
     await transport
       .deltas(this.lastSyncId, this.#holding.subscribed)
