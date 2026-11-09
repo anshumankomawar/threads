@@ -521,28 +521,33 @@ function listing(): Command[] {
             })),
         ]
       : []),
-    {
-      id: "group-by",
-      title: "Group by",
-      kind: "action",
-      section,
-      icon: i.LayerIcon,
-      keywords: "sections columns display",
-      page: () => ({
-        title: "Group by",
-        placeholder: "Search",
-        // Toggles, as in the list's menu: the one it's grouped by ungroups it.
-        commands: () =>
-          Object.entries(FIELDS).map(([field, { label }]): Command => ({
-            id: `group:${field}`,
-            title: label,
-            kind: "action",
-            section: "Group by",
-            icon: grouped === field ? i.Tick02Icon : i.LayerIcon,
-            run: () => setDisplay({ group: grouped === field ? undefined : field }),
-          })),
-      }),
-    },
+    // The inbox is grouped by its buckets.
+    ...(mailbox().kind === "inbox"
+      ? []
+      : [
+          {
+            id: "group-by",
+            title: "Group by",
+            kind: "action" as const,
+            section,
+            icon: i.LayerIcon,
+            keywords: "sections columns display",
+            page: () => ({
+              title: "Group by",
+              placeholder: "Search",
+              // Toggles, as in the list's menu: the one it's grouped by ungroups it.
+              commands: () =>
+                Object.entries(FIELDS).map(([field, { label }]): Command => ({
+                  id: `group:${field}`,
+                  title: label,
+                  kind: "action",
+                  section: "Group by",
+                  icon: grouped === field ? i.Tick02Icon : i.LayerIcon,
+                  run: () => setDisplay({ group: grouped === field ? undefined : field }),
+                })),
+            }),
+          },
+        ]),
     {
       id: "order-by",
       title: "Order by",

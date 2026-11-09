@@ -834,7 +834,10 @@ export const displayMenu = (): MenuItem[] => [
     run: () => setDisplay({ layout }),
   })),
   "separator",
-  { label: "Group By", icon: icon(i.LayerIcon, 13), items: groupItems() },
+  // The inbox is grouped by its buckets.
+  ...(mailbox().kind === "inbox"
+    ? []
+    : [{ label: "Group By", icon: icon(i.LayerIcon, 13), items: groupItems() }]),
   { label: "Order By", icon: icon(i.Sorting01Icon, 13), items: orderItems() },
   {
     label: "Show Resolved",
@@ -1109,14 +1112,14 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
             <For each={listed().groups}>
               {(group) => (
                 <>
-                  <Show when={mailbox().kind === "inbox" || display().group}>
+                  <Show when={mailbox().kind === "inbox" || groupedBy()}>
                     <div
                       class={sx(s.groupHeader)}
                       onContextMenu={(e) => {
-                        if (group.bucket && !display().group) showMenu(e, bucketMenu(group.bucket));
+                        if (group.bucket && !groupedBy()) showMenu(e, bucketMenu(group.bucket));
                       }}
                     >
-                      <Show when={!display().group}>
+                      <Show when={!groupedBy()}>
                         <Icon
                           icon={
                             group.bucket

@@ -101,23 +101,43 @@ export type Display = {
   order?: Order;
   hideResolved?: boolean;
 };
-const keyOf = (box: Mailbox): string => box.kind + ("id" in box ? `:${box.id}` : "");
-const [displays, setDisplays] = createSignal<Record<string, Display>>(saved("layouts", {}));
+// One display for the whole app: whatever list you open looks as you last set it. A pinned list is the exception,
+// shown as it was pinned (and changing its display changes its pin's).
+const EVERYWHERE = "*";
+const keyOf = (box: Mailbox): string => (box.kind === "view" ? `view:${box.id}` : EVERYWHERE);
+const [displays, setDisplays] = createSignal<Record<string, Display>>(
+  ((): Record<string, Display> => {
+    const kept = saved<Record<string, Display>>("layouts", {});
+    // From when each list kept its own: the one you were on is how everything starts.
+    if (!kept[EVERYWHERE]) {
+      const box = chosen();
+      kept[EVERYWHERE] = (box.kind !== "view" &&
+        kept[box.kind + ("id" in box ? `:${box.id}` : "")]) || {
+        layout: "list",
+      };
+    }
+    return kept;
+  })(),
+);
 // A layout that's gone (a board, before it was taken out) shows as a list.
 export const display = (): Display => {
-  const shown = displays()[keyOf(chosen())];
+  const all = displays();
+  const shown = all[keyOf(chosen())] ?? all[EVERYWHERE];
   return { ...shown, layout: shown?.layout === "timeline" ? "timeline" : "list" };
 };
-// For the mailbox as last chosen (the signal reads its old one until its batch is done).
+// For the mailbox as last chosen (the signal reads its old one until its batch is done): everywhere, or a pinned
+// list's own.
 export function setDisplay(change: Partial<Display>): void {
-  const key = keyOf(chosenNow);
   setDisplays((all) => {
+    const key = all[keyOf(chosenNow)] ? keyOf(chosenNow) : EVERYWHERE;
     const next = { ...all, [key]: { ...(all[key] ?? { layout: "list" }), ...change } };
     save("layouts", next);
     return next;
   });
 }
-export const groupedBy = (): string | undefined => display().group;
+// The inbox is grouped by its buckets, whatever the rest are grouped by.
+export const groupedBy = (): string | undefined =>
+  chosen().kind === "inbox" ? undefined : display().group;
 // A new mailbox shown as the chosen one is (a view saved from it).
 export function keepDisplay(to: Mailbox): void {
   setDisplays((all) => {
