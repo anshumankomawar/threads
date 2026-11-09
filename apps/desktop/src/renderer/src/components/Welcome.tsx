@@ -592,12 +592,12 @@ export default function Welcome(): JSX.Element {
   const [choices, setChoices] = createSignal<Choices | null>(null);
   const [problem, setProblem] = createSignal<string | null>(null);
   const [made, setMade] = createSignal<{ id: string; name: string } | null>(null);
-  const load = (): void => {
-    setProblem(null);
-    void call("/onboarding").then(({ ok, body }) =>
-      ok ? setChoices(body as Choices) : setProblem("Couldn’t reach Arc. Check your connection."),
-    );
-  };
+  // Asked as it opens, and again from Try Again; the answer comes after, outside the component.
+  const load = (): void =>
+    void call("/onboarding").then(({ ok, body }) => {
+      setProblem(ok ? null : "Couldn’t reach Arc. Check your connection.");
+      if (ok) setChoices(body as Choices);
+    });
   if (!needsSignIn) load();
 
   return (
