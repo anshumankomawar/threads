@@ -40,8 +40,6 @@ import {
   listed,
   mailbox,
   mailboxTitle,
-  mineOnly,
-  toggleMine,
   sameMailbox,
   type Mailbox,
   display,
@@ -808,18 +806,6 @@ const orderItems = (): MenuItem[] =>
 
 // What a list can be narrowed by: each field's values, and resolved threads (hidden, they're a pill too).
 const filterItems = (): MenuItem[] => [
-  // Your own threads (owned or assigned), first: the filter most lists want.
-  ...(mailbox().kind === "personal"
-    ? []
-    : [
-        {
-          label: "Only Mine",
-          icon: icon(i.UserIcon, 13),
-          checked: mineOnly(),
-          run: toggleMine,
-        },
-        "separator" as const,
-      ]),
   ...Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
     label,
     icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),

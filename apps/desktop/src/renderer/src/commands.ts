@@ -12,14 +12,12 @@ import {
   display,
   groupedBy,
   mailbox,
-  mineOnly,
   ORDERS,
   type Order,
   setDisplay,
   type Zoom,
   ZOOMS,
   type Mailbox,
-  toggleMine,
 } from "./mail";
 import { FIELDS } from "./filters";
 import { LAYOUTS } from "./components/Mail";
@@ -619,20 +617,6 @@ function creating(): Command[] {
       keywords: "new inbox sort",
       run: () => setDialog({ kind: "bucket" }),
     },
-    // Narrowed to your own threads, and back.
-    ...(mailbox().kind === "personal" || mailbox().kind === "drafts"
-      ? []
-      : [
-          {
-            id: "mine",
-            title: mineOnly() ? "Show everyone's threads" : "Show only my threads",
-            kind: "action" as const,
-            section,
-            icon: i.UserIcon,
-            keywords: "mine me my own owner assignee filter",
-            run: toggleMine,
-          },
-        ]),
     // The list's filter, kept as a view of its own.
     ...((narrowed.length > 0 && mailbox().kind !== "view") ||
     mailbox().kind === "label" ||

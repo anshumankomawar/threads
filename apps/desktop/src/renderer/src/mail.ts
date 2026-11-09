@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { Bucket, Draft, Label, PRIORITIES, Subspace, Thread, User, View } from "models";
 import { matches, type Filter } from "sync";
-import { FIELDS, isMine, MINE } from "./filters";
+import { FIELDS, MINE } from "./filters";
 import {
   edit,
   followOrder,
@@ -44,13 +44,6 @@ export function setConditions(next: Filter[]): void {
   const saved = box.kind === "view" ? store.findById(View, box.id) : undefined;
   if (saved) edit(saved, { filter: { and: next } });
   else setExtra(next);
-}
-
-// Narrowing the list to your own threads, and back: a filter like any other (it shows in the filter bar, and a
-// pinned list keeps it).
-export const mineOnly = (): boolean => conditions().some(isMine);
-export function toggleMine(): void {
-  setConditions(mineOnly() ? conditions().filter((c) => !isMine(c)) : [...conditions(), MINE]);
 }
 
 // What a mailbox's threads have in common, as a filter, so that saving its filtered list as a view keeps them.
