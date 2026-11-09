@@ -55,9 +55,10 @@ const daysBetween = (from: number, to: number): number => Math.round((to - from)
 // Only threads with a date are on the timeline; the rest are listed under it.
 const dated = (thread: Thread): boolean =>
   thread.dueAt !== undefined || thread.startAt !== undefined;
-// Where a thread's bar runs, in midnights: from its start (or creation) to the end of its due day (or its start day).
+// Where a thread's bar runs, in midnights, from only what was set: a start and a due date are a bar between them; a due date alone is a deadline, one day on its day
+// (dragging its left edge out gives it a start).
 function span(thread: Thread): { from: number; to: number } {
-  const from = startOfDay(thread.startAt ?? thread.createdAt);
+  const from = startOfDay(thread.startAt ?? thread.dueAt ?? thread.createdAt);
   const to = thread.dueAt ? addDays(startOfDay(thread.dueAt), 1) : addDays(from, 1);
   return { from: Math.min(from, to - DAY_MS), to: Math.max(to, from + DAY_MS) };
 }
@@ -229,8 +230,14 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
       const { from, to } = shown(thread);
       setDrag(null);
       if (d.days === 0) return;
-      const due = new Date(addDays(to, -1));
-      if (d.kind === "move") edit(thread, { startAt: new Date(from), dueAt: due }, "Change Dates");
+      const due = new Date(new Date(addDays(to, -1)).setHours(17, 0, 0, 0));
+      // A deadline moved stays a deadline; a span moves both ends.
+      if (d.kind === "move")
+        edit(
+          thread,
+          thread.startAt ? { startAt: new Date(from), dueAt: due } : { dueAt: due },
+          "Change Dates",
+        );
       else if (d.kind === "start") edit(thread, { startAt: new Date(from) }, "Change Dates");
       else edit(thread, { dueAt: due }, "Change Dates");
     };
