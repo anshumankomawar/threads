@@ -56,7 +56,7 @@ import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, motion, sidebarSpace } from "../styles/tokens.stylex";
-import { AppButtons } from "./TopButtons";
+import { AppButtons, HistoryButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
 import { progressOf } from "../links";
@@ -1008,6 +1008,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
         <Show when={!sidebarOpen()}>
           <AppButtons />
         </Show>
+        {/* Back and forward: here, where they always are, whatever's open beside the list. */}
+        <HistoryButtons />
         <span class={sx(s.listHeading)}>
           <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>

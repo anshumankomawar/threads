@@ -65,7 +65,7 @@ export const AppButtons = (): JSX.Element => (
   </>
 );
 
-// Back and forward through the pages you've opened, side by side before the reading pane's title.
+// Back and forward through the pages you've opened, side by side before the list's title.
 export const HistoryButtons = (): JSX.Element => (
   <span class={sx(s.history)}>
     <TopButton
