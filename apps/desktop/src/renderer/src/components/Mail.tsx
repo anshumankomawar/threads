@@ -404,6 +404,7 @@ onGoTo((at) => {
 });
 
 export function MailSidebar(): JSX.Element {
+  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   const pinned = (): View[] =>
     byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id));
   return (
@@ -421,8 +422,8 @@ export function MailSidebar(): JSX.Element {
           </button>
         </span>
       </div>
-      {/* One list, nothing behind a tab: where your mail is, your threads and everyone's, then the spaces, then
-          what you've pinned. */}
+      {/* One list, nothing behind a tab: your inbox and its buckets, your threads and everyone's, then the spaces,
+          then what you've pinned. */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
         <ul class={sx(s.mailboxes)}>
           <Mailbox
@@ -459,6 +460,19 @@ export function MailSidebar(): JSX.Element {
               indent
             />
           </Show>
+          {/* Your buckets, under the inbox they sort. */}
+          <For each={inbox().sections}>
+            {(section) => (
+              <Mailbox
+                box={{ kind: "bucket", id: section.bucket.id }}
+                label={section.bucket.name}
+                icon={icons().get(section.bucket.id) ?? i.InboxIcon}
+                count={section.items.length}
+                indent
+                menu={() => bucketMenu(section.bucket)}
+              />
+            )}
+          </For>
           <Mailbox box={{ kind: "personal" }} label="My Threads" icon={i.UserIcon} />
           <Mailbox box={{ kind: "all" }} label="Everything" icon={i.DashboardSquare01Icon} />
           <Show when={drafts().length > 0}>
