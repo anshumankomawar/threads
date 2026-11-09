@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
@@ -105,9 +105,8 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
 }
 
 const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
-const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 520 });
-// A timeline beside an open thread: wider than a list, so a few weeks show.
-const timelineColumn = resizable("mail-timeline-width", { initial: 600, min: 300, max: 1100 });
+// The list's column, as wide as a list or a timeline (switching between them keeps it); drag it wider for more weeks.
+const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 1100 });
 // A timeline takes the room a list leaves the reading pane.
 const wide = (): boolean => display().layout !== "list";
 
@@ -788,13 +787,30 @@ export const LAYOUTS: {
   },
 ];
 // List or timeline: a segmented pill floating at the foot of the list, as iOS's, one click and always in the same
-// place. Both named; the chosen one on its own ground.
+// place. Both named; the chosen one on a ground that slides to it.
 function LayoutPill(): JSX.Element {
+  const segments: HTMLButtonElement[] = [];
+  const [ground, setGround] = createSignal<{ left: number; width: number } | null>(null);
+  const place = (): void => {
+    const chosen = segments[LAYOUTS.findIndex((l) => l.layout === display().layout)];
+    if (chosen) setGround({ left: chosen.offsetLeft, width: chosen.offsetWidth });
+  };
+  createEffect(display, () => void requestAnimationFrame(place));
+  onSettled(() => void requestAnimationFrame(place));
   return (
     <div class={sx(s.pill)} role="tablist" aria-label="Layout">
+      <Show when={ground()}>
+        {(at) => (
+          <span
+            class={sx(s.pillGround)}
+            style={{ transform: `translateX(${at().left}px)`, width: `${at().width}px` }}
+          />
+        )}
+      </Show>
       <For each={LAYOUTS}>
-        {(choice) => (
+        {(choice, at) => (
           <button
+            ref={(el) => (segments[at()] = el)}
             class={sx(base.bare, s.pillSegment, display().layout === choice.layout && s.pillChosen)}
             role="tab"
             aria-selected={display().layout === choice.layout ? "true" : "false"}
@@ -1015,11 +1031,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
     <section
       class={sx(s.list, wide() && s.listTimeline, props.alone && s.listAlone)}
       style={{
-        width: props.alone
-          ? undefined
-          : wide()
-            ? `${timelineColumn.width()}px`
-            : `${listColumn.width()}px`,
+        width: props.alone ? undefined : `${listColumn.width()}px`,
       }}
       aria-label={mailboxTitle(mailbox())}
     >
@@ -1180,11 +1192,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
       <Show when={filterable()}>
         <LayoutPill />
       </Show>
-      <Show when={!wide()}>
+      <Show when={!props.alone}>
         <listColumn.Edge label="Resize list" />
-      </Show>
-      <Show when={wide() && active()}>
-        <timelineColumn.Edge label="Resize timeline" />
       </Show>
     </section>
   );
@@ -1420,7 +1429,20 @@ const s = stylex.create({
     backdropFilter: "blur(16px) saturate(1.4)",
     boxShadow: colors.shadowFloat,
   },
+  // The chosen segment's ground, sliding from one to the other.
+  pillGround: {
+    position: "absolute",
+    top: 3,
+    bottom: 3,
+    left: 0,
+    borderRadius: radii.pill,
+    backgroundColor: colors.bgTertiary,
+    transitionProperty: { default: "transform, width", [motion.reduced]: "none" },
+    transitionDuration: "320ms",
+    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+  },
   pillSegment: {
+    position: "relative",
     display: "flex",
     gap: 6,
     alignItems: "center",
@@ -1431,7 +1453,7 @@ const s = stylex.create({
     fontSize: fontSizes.body,
     cursor: "pointer",
   },
-  pillChosen: { color: colors.textPrimary, backgroundColor: colors.bgTertiary },
+  pillChosen: { color: colors.textPrimary },
   queryNew: {
     height: { default: 22, [stylex.when.ancestor(":is(*)", toolbarMarker)]: 24 },
     marginLeft: 0,
