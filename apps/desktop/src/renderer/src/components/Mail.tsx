@@ -1377,7 +1377,8 @@ const s = stylex.create({
   },
   querySpacer: { flex: 1 },
   // As tall as the chips beside it.
-  queryNew: { height: 22, marginLeft: 4, padding: "0 10px" },
+  // Spaced as the toolbar spaces everything, not as a dialog's buttons are.
+  queryNew: { height: 22, marginLeft: 0, padding: "0 10px" },
   // Sized as the macOS app's list: each size here is its points ÷ 1.1, for the renderer's 110% scale. Cards 8pt in
   // from the column's sides and 2pt apart.
   listScroll: {

@@ -7,7 +7,6 @@ import { progressOf } from "../links";
 import { display, groupedBy, listed, setDisplay, ZOOMS, type Group, type Zoom } from "../mail";
 import { edit, peek, peeked, save, saved, showMenu, threadMenu } from "../session";
 import { base } from "../styles/base";
-import { chip } from "../styles/controls";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
@@ -413,23 +412,26 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
               run: () => setDisplay({ zoom: z }),
             }))}
           />
-          <button
-            class={sx(base.bare, base.hover, styles.step)}
-            aria-label="Back"
-            onClick={() => step(-1)}
-          >
-            <Icon icon={i.ArrowLeft01Icon} size={14} aria-hidden="true" />
-          </button>
-          <button class={sx(base.bare, base.hover, chip.chip)} onClick={scrollToToday}>
-            Today
-          </button>
-          <button
-            class={sx(base.bare, base.hover, styles.step)}
-            aria-label="On"
-            onClick={() => step(1)}
-          >
-            <Icon icon={i.ArrowRight01Icon} size={14} aria-hidden="true" />
-          </button>
+          {/* Back, today and on: one control, bordered as the chips beside it. */}
+          <span class={sx(styles.stepper)}>
+            <button
+              class={sx(base.bare, base.hover, styles.step)}
+              aria-label="Back"
+              onClick={() => step(-1)}
+            >
+              <Icon icon={i.ArrowLeft01Icon} size={13} aria-hidden="true" />
+            </button>
+            <button class={sx(base.bare, base.hover, styles.stepToday)} onClick={scrollToToday}>
+              Today
+            </button>
+            <button
+              class={sx(base.bare, base.hover, styles.step)}
+              aria-label="On"
+              onClick={() => step(1)}
+            >
+              <Icon icon={i.ArrowRight01Icon} size={13} aria-hidden="true" />
+            </button>
+          </span>
         </Show>
         {props.end}
       </div>
@@ -683,14 +685,32 @@ const styles = stylex.create({
     padding: "2.31px 12px 0",
   },
   toolbarSpacer: { flex: 1 },
+  stepper: {
+    display: "inline-flex",
+    alignItems: "center",
+    height: 22,
+    padding: 1,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.strokeTertiary,
+    borderRadius: radii.control,
+  },
   step: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 4,
     color: colors.textSecondary,
+    cursor: "pointer",
+  },
+  stepToday: {
+    height: 18,
+    padding: "0 5px",
+    borderRadius: 4,
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
     cursor: "pointer",
   },
 
