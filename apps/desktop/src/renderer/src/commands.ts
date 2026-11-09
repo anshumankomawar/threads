@@ -22,7 +22,7 @@ import {
   type Mailbox,
   fieldsHere,
 } from "./mail";
-import { deleteView, LAYOUTS } from "./components/Mail";
+import { deleteView, LAYOUTS, toggleResolved } from "./components/Mail";
 import { showToday } from "./components/Timeline";
 import {
   account,
@@ -543,12 +543,12 @@ function listing(): Command[] {
     },
     {
       id: "toggle-resolved",
-      title: display().hideResolved ? "Show resolved threads" : "Hide resolved threads",
+      title: display().hideResolved ? "Show Resolved Threads" : "Hide Resolved Threads",
       kind: "action",
       section,
       icon: i.CheckmarkCircle02Icon,
       keywords: "completed done closed display",
-      run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
+      run: toggleResolved,
     },
   ];
 }

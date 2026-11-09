@@ -2,6 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
+import type { Filter } from "sync";
 import { Bucket, Draft, Label, Subspace, Thread, User, View } from "models";
 import {
   active,
@@ -838,13 +839,18 @@ function LayoutPill(): JSX.Element {
 
 // The ways to group and order a list, and a timeline's scales: in the Display menu, the query bar and ⌘K. Grouping
 // toggles: choosing the one it's grouped by ungroups it.
+// A field filtered to one value (a status, a priority, an owner) has nothing left to group or choose between.
+const pinnedTo = (field: string, compare: string): boolean =>
+  compare === "eq" && conditions().some((c) => field in c);
 const groupItems = (): MenuItem[] =>
-  fieldsHere().map(([field, { label }]) => ({
-    label,
-    icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
-    checked: groupedBy() === field,
-    run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
-  }));
+  fieldsHere()
+    .filter(([field, { compare }]) => !pinnedTo(field, compare))
+    .map(([field, { label }]) => ({
+      label,
+      icon: icon(FIELD_ICONS[field] ?? i.FilterIcon, 13),
+      checked: groupedBy() === field,
+      run: () => setDisplay({ group: groupedBy() === field ? undefined : field }),
+    }));
 const orderItems = (): MenuItem[] =>
   (Object.keys(ORDERS) as Order[]).map((order) => ({
     label: ORDERS[order],
@@ -852,7 +858,28 @@ const orderItems = (): MenuItem[] =>
     run: () => setDisplay({ order: order === "updated" ? undefined : order }),
   }));
 
-// What a list can be narrowed by: each field's values, and resolved threads (hidden, they're a pill too).
+// One value of a field as a filter: on (ticked) or off. Choosing it again takes it off; a field that holds one value
+// (status, priority, owner) takes one, so another replaces it; and asking for resolved threads shows them.
+const sameCondition = (a: Filter, b: Filter): boolean => JSON.stringify(a) === JSON.stringify(b);
+const filtered = (field: string, compare: string, value: string): boolean =>
+  conditions().some((c) => sameCondition(c, { [field]: { [compare]: value } }));
+function toggleFilter(field: string, compare: string, value: string): void {
+  const one: Filter = { [field]: { [compare]: value } };
+  if (filtered(field, compare, value))
+    return setConditions(conditions().filter((c) => !sameCondition(c, one)));
+  const rest = compare === "eq" ? conditions().filter((c) => !(field in c)) : conditions();
+  setConditions([...rest, one]);
+  if (field === "state" && value === "resolved") setDisplay({ hideResolved: undefined });
+}
+// Hiding resolved threads takes off a filter that asks for them.
+export function toggleResolved(): void {
+  const hide = !display().hideResolved;
+  if (hide && filtered("state", "eq", "resolved"))
+    setConditions(conditions().filter((c) => !sameCondition(c, { state: { eq: "resolved" } })));
+  setDisplay({ hideResolved: hide || undefined });
+}
+
+// What a list can be narrowed by: each field's values (the ones on, ticked), and resolved threads.
 const filterItems = (): MenuItem[] => [
   ...fieldsHere().map(([field, { label, compare, values }]) => ({
     label,
@@ -860,7 +887,8 @@ const filterItems = (): MenuItem[] => [
     items: values().map(([value, name]) => ({
       label: name,
       icon: valueIcon(field, value),
-      run: () => setConditions([...conditions(), { [field]: { [compare]: value } }]),
+      checked: filtered(field, compare, value),
+      run: () => toggleFilter(field, compare, value),
     })),
   })),
   "separator",
@@ -868,7 +896,7 @@ const filterItems = (): MenuItem[] => [
     label: "Show Resolved",
     icon: icon(i.CheckmarkCircle02Icon, 13),
     checked: !display().hideResolved,
-    run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
+    run: toggleResolved,
   },
   // What's filtered, kept as a view.
   ...(savable()
@@ -891,7 +919,7 @@ export const displayMenu = (): MenuItem[] => [
     label: "Show Resolved",
     icon: icon(i.CheckmarkCircle02Icon, 13),
     checked: !display().hideResolved,
-    run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
+    run: toggleResolved,
   },
 ];
 
