@@ -209,10 +209,10 @@ const effects: ServerOptions["effects"] = {
       for (const line of describeChanges(before!, after!, db))
         logActivity(db, after!, userId, line);
     if (kind === "create") {
-      // Assigned to someone else from the start, it's in its owner's Sent.
-      const assigned = after!.assigneeIds as string[];
+      // Its owner gets it in their inbox only if they're on it; otherwise it's in their My Threads (or Sent, handed
+      // to someone else).
       const owner = after!.ownerId as string | null;
-      if (owner != null && (assigned.length === 0 || assigned.includes(owner)))
+      if (owner != null && (after!.assigneeIds as string[]).includes(owner))
         deliver(db, owner, after!.id);
       const blocks =
         after!.blocksId != null ? db.get("Thread", after!.blocksId as string) : undefined;

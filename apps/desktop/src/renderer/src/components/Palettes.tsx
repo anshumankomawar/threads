@@ -174,7 +174,7 @@ const people = (query: string, run: (user: User) => void, from = others()): Row[
     .map((u) => ({ label: u.name, seed: u.id, run: () => run(u) }));
 
 // The one way a thread is made: ⌘N, ⌘⇧N, /blocked and a # branch all come here. Anyone in `assignees` gets it in
-// their inbox (rules.ts); with nobody else, it's in yours.
+// their inbox (rules.ts), you only if you're one of them; otherwise it's in My Threads.
 export function createThread(fields: {
   title: string;
   description?: string;

@@ -89,6 +89,7 @@ test("a membership puts the workspace in the person's workspaceIds, and its remo
 
 test("you write only your own User (not its workspaces), Bucket, Draft and InboxItem rows", () => {
   const server = setup();
+  run(server, arjun, message("m0", { authorId: "arjun", body: at("anshu") }));
   const [item] = inboxOf(server, "anshu");
   expect(
     run(
@@ -190,19 +191,29 @@ test("a message with no @mention tells nobody and assigns nobody", () => {
   expect(assignees(server)).toEqual(["arjun"]);
 });
 
-test("a new thread is in its owner's inbox until they hand it off; an @mention brings it back to stay", () => {
+test("a new thread is in its owner's inbox only if they're on it", () => {
   const server = setup();
-  expect(inInbox(server, "anshu")).toBe(true);
-  run(server, anshu, message("m1", { body: "a note" }));
-  expect(inInbox(server, "anshu")).toBe(true);
-  run(server, anshu, message("m2", { body: `${at("arjun")} yours` }));
+  // "t" is Anshu's, with nobody on it: it's in their My Threads, not their inbox.
   expect(inInbox(server, "anshu")).toBe(false);
-  run(server, arjun, message("m3", { authorId: "arjun", body: `${at("anshu")} a question` }));
-  expect(inInbox(server, "anshu")).toBe(true);
-  // Now they're involved, mentioning someone else doesn't take it out of their inbox.
-  run(server, anshu, message("m4", { body: `${at("kk")} can you help` }));
-  expect(inInbox(server, "anshu")).toBe(true);
-  expect(assignees(server)).toEqual(["arjun", "anshu", "kk"]);
+  run(server, anshu, thread("s", { assigneeIds: ["anshu"] }));
+  expect(inboxOf(server, "anshu").map((item) => item.threadId)).toEqual(["s"]);
+});
+
+test("an owner on their thread has it until they hand it off; an @mention brings it back to stay", () => {
+  const server = setup();
+  run(server, anshu, thread("s", { assigneeIds: ["anshu"] }));
+  const inS = () =>
+    inboxOf(server, "anshu").some((item) => item.threadId === "s" && item.doneAt == null);
+  const on = (id: string, fields: Record<string, unknown>) =>
+    message(id, { threadId: "s", ...fields });
+  run(server, anshu, on("m1", { body: "a note" }));
+  expect(inS()).toBe(true);
+  run(server, arjun, on("m3", { authorId: "arjun", body: `${at("anshu")} a question` }));
+  expect(inS()).toBe(true);
+  // Mentioning someone else doesn't take it out of the inbox of someone on it.
+  run(server, anshu, on("m4", { body: `${at("kk")} can you help` }));
+  expect(inS()).toBe(true);
+  expect(row(server, "Thread", "s")!.assigneeIds).toEqual(["anshu", "kk"]);
 });
 
 test("someone who isn't the owner keeps it when they mention someone else", () => {
@@ -359,6 +370,7 @@ test("a blocked thread says what it's blocked on, and when it's unblocked", () =
 
 test("what was in a deleted bucket is sorted again", () => {
   const server = setup();
+  run(server, arjun, message("m0", { authorId: "arjun", body: at("anshu") }));
   const [item] = inboxOf(server, "anshu");
   run(
     server,
