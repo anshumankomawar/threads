@@ -496,15 +496,15 @@ function ViewAs(): JSX.Element {
   );
 }
 
-// Pinning a list (its filter) to the sidebar, named.
+// Saving a list's filter as a view of your own, named (and pinned to the sidebar).
 function NewView(props: { filter: Filter }): JSX.Element {
   return (
     <Picker
-      placeholder="Name it"
+      placeholder="Name the view"
       rows={(query) =>
-        entry(query, "Pin", (name) => {
+        entry(query, "Save View", (name) => {
           let id = "";
-          undoable("Pin", () => {
+          undoable("Save View", () => {
             id = store.create(View, {
               name,
               filter: props.filter,

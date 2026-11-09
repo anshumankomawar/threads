@@ -101,6 +101,18 @@ export type Display = {
   order?: Order;
   hideResolved?: boolean;
 };
+// Whether a view is in your sidebar: a state of yours, kept on this Mac. A view starts pinned; unpinning keeps it
+// (⌘K still goes to it), deleting it is something else.
+const [unpinned, setUnpinned] = createSignal<string[]>(saved("unpinned-views", []));
+export const isPinned = (view: { id: string }): boolean => !unpinned().includes(view.id);
+export function setPinned(view: { id: string }, on: boolean): void {
+  setUnpinned((ids) => {
+    const next = on ? ids.filter((id) => id !== view.id) : [...new Set([...ids, view.id])];
+    save("unpinned-views", next);
+    return next;
+  });
+}
+
 // One display for the whole app: whatever list you open looks as you last set it. A pinned list is the exception,
 // shown as it was pinned (and changing its display changes its pin's).
 const EVERYWHERE = "*";

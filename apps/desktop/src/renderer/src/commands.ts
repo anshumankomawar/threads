@@ -12,6 +12,8 @@ import {
   display,
   groupedBy,
   mailbox,
+  isPinned,
+  setPinned,
   ORDERS,
   type Order,
   setDisplay,
@@ -20,7 +22,7 @@ import {
   type Mailbox,
 } from "./mail";
 import { FIELDS } from "./filters";
-import { LAYOUTS } from "./components/Mail";
+import { deleteView, LAYOUTS } from "./components/Mail";
 import { showToday } from "./components/Timeline";
 import {
   account,
@@ -35,7 +37,6 @@ import {
   myBuckets,
   open,
   otherSources,
-  undoable,
   peek,
   placeIn,
   setDialog,
@@ -433,7 +434,7 @@ function places(): Command[] {
     place("personal", "My Threads", i.UserIcon, { kind: "personal" }, "mine personal"),
     place("all", "All Spaces", i.Layers01Icon, { kind: "all" }, "everything workspace all threads"),
     ...byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id)).map((v) =>
-      place(v.id, v.name, i.PinIcon, { kind: "view", id: v.id }, "pinned view"),
+      place(v.id, v.name, i.FilterIcon, { kind: "view", id: v.id }, "view saved pinned"),
     ),
     ...byName(store.all(Subspace)).map((sub) =>
       place(
@@ -600,11 +601,11 @@ function creating(): Command[] {
       ? [
           {
             id: "save-view",
-            title: "Pin This List to the Sidebar",
+            title: "Save as View",
             kind: "action" as const,
             section,
-            icon: i.PinIcon,
-            keywords: "pin save view saved filter query",
+            icon: i.FilterAddIcon,
+            keywords: "save view saved filter query pin",
             run: () =>
               setDialog({
                 kind: "newView",
@@ -613,24 +614,35 @@ function creating(): Command[] {
           },
         ]
       : []),
-    // A pinned list of yours, taken out of the sidebar.
+    // The view shown: in the sidebar or out of it, or gone.
     ...(() => {
       const box = mailbox();
       const saved = box.kind === "view" ? store.findById(View, box.id) : undefined;
-      if (saved?.ownerId !== me().id) return [];
+      if (!saved) return [];
+      const pinned = isPinned(saved);
       return [
         {
-          id: "unpin",
-          title: "Unpin This List from the Sidebar",
+          id: "pin",
+          title: pinned ? "Unpin from Sidebar" : "Pin to Sidebar",
           kind: "action" as const,
           section,
-          icon: i.PinOffIcon,
-          keywords: "unpin remove delete view saved",
-          run: () => {
-            chooseMailbox({ kind: "all" });
-            undoable("Unpin", () => void saved.delete());
-          },
+          icon: pinned ? i.PinOffIcon : i.PinIcon,
+          keywords: "pin unpin sidebar view",
+          run: () => setPinned(saved, !pinned),
         },
+        ...(saved.ownerId === me().id
+          ? [
+              {
+                id: "delete-view",
+                title: "Delete View",
+                kind: "action" as const,
+                section,
+                icon: i.Delete02Icon,
+                keywords: "remove view saved",
+                run: () => deleteView(saved),
+              },
+            ]
+          : []),
       ];
     })(),
   ];

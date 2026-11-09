@@ -40,6 +40,8 @@ import {
   listed,
   mailbox,
   mailboxTitle,
+  isPinned,
+  setPinned,
   sameMailbox,
   type Mailbox,
   display,
@@ -406,7 +408,7 @@ onGoTo((at) => {
 export function MailSidebar(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   const pinned = (): View[] =>
-    byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id));
+    byName(store.all(View).filter((v) => (v.shared || v.ownerId === me().id) && isPinned(v)));
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
       <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
@@ -502,7 +504,7 @@ export function MailSidebar(): JSX.Element {
             )}
           </For>
         </Section>
-        {/* Lists pinned from the filter bar (a filtered list, a label's, a person's): here once there's one. */}
+        {/* The views you've pinned: here once there's one. */}
         <Show when={pinned().length > 0}>
           <Section title="Pinned">
             <For each={pinned()}>
@@ -510,24 +512,29 @@ export function MailSidebar(): JSX.Element {
                 <Mailbox
                   box={{ kind: "view", id: saved.id }}
                   label={saved.name}
-                  icon={i.PinIcon}
-                  menu={() =>
-                    saved.ownerId === me().id
+                  icon={i.FilterIcon}
+                  menu={() => [
+                    {
+                      label: "Unpin from Sidebar",
+                      icon: icon(i.PinOffIcon, 13),
+                      run: () => setPinned(saved, false),
+                    },
+                    ...(saved.ownerId === me().id
                       ? [
                           {
-                            label: "Edit",
+                            label: "View Settings",
                             icon: icon(i.Settings02Icon, 13),
                             run: () => open({ view: saved.id }),
                           },
                           "separator" as const,
                           {
-                            label: "Unpin",
-                            icon: icon(i.PinOffIcon, 13),
-                            run: () => unpin(saved),
+                            label: "Delete View",
+                            icon: icon(i.Delete02Icon, 13),
+                            run: () => deleteView(saved),
                           },
                         ]
-                      : []
-                  }
+                      : []),
+                  ]}
                 />
               )}
             </For>
@@ -747,7 +754,7 @@ const pageLabel = (box: Mailbox): string =>
   box.kind === "subspace"
     ? "Space settings"
     : box.kind === "view"
-      ? "Pinned List Settings"
+      ? "View Settings"
       : box.kind === "bucket"
         ? "Bucket settings"
         : "Profile";
@@ -946,17 +953,21 @@ function QueryBar(): JSX.Element {
   );
 }
 
-// Pinning: a filtered list, or one the sidebar doesn't have (a label's, a person's), kept in the sidebar's Pinned.
-// A pinned list unpins.
-const pinnable = (): boolean =>
+// Views: a filtered list, or one the sidebar doesn't have (a label's, a person's), saved as a view (pinned to the
+// sidebar to start with). A view pins and unpins; deleting it is in its menu and settings.
+const savable = (): boolean =>
   (conditions().length > 0 && mailbox().kind !== "view") ||
   mailbox().kind === "label" ||
   mailbox().kind === "person";
-const pinList = (): void =>
+const saveView = (): void =>
   setDialog({ kind: "newView", filter: { and: [...baseFilter(mailbox()), ...conditions()] } });
-const unpin = (saved: View): void => {
-  if (sameMailbox(mailbox(), { kind: "view", id: saved.id })) chooseMailbox({ kind: "all" });
-  undoable("Unpin", () => void saved.delete());
+export const deleteView = (saved: View): void => {
+  if (sameMailbox(mailbox(), { kind: "view", id: saved.id })) chooseMailbox({ kind: "inbox" });
+  undoable("Delete View", () => void saved.delete());
+};
+const shownView = (): View | undefined => {
+  const box = mailbox();
+  return box.kind === "view" ? store.findById(View, box.id) : undefined;
 };
 
 // `alone`: nothing's open beside it, so it takes the room.
@@ -1066,31 +1077,25 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               />
             </Show>
           </Show>
-          <Show when={pinnable()}>
+          <Show when={savable()}>
             <button
               class={sx(topbar.button)}
-              aria-label="Pin to the Sidebar"
-              title="Pin to the Sidebar"
-              onClick={pinList}
+              aria-label="Save as View"
+              title="Save as View"
+              onClick={saveView}
             >
-              <Icon icon={i.PinIcon} {...ICON} />
+              <Icon icon={i.FilterAddIcon} {...ICON} />
             </button>
           </Show>
-          <Show
-            when={(() => {
-              const box = mailbox();
-              const saved = box.kind === "view" ? store.findById(View, box.id) : undefined;
-              return saved?.ownerId === me().id ? saved : undefined;
-            })()}
-          >
+          <Show when={shownView()}>
             {(saved) => (
               <button
                 class={sx(topbar.button)}
-                aria-label="Unpin from the Sidebar"
-                title="Unpin from the Sidebar"
-                onClick={() => unpin(saved())}
+                aria-label={isPinned(saved()) ? "Unpin from Sidebar" : "Pin to Sidebar"}
+                title={isPinned(saved()) ? "Unpin from Sidebar" : "Pin to Sidebar"}
+                onClick={() => setPinned(saved(), !isPinned(saved()))}
               >
-                <Icon icon={i.PinOffIcon} {...ICON} />
+                <Icon icon={isPinned(saved()) ? i.PinOffIcon : i.PinIcon} {...ICON} />
               </button>
             )}
           </Show>

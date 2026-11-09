@@ -182,22 +182,22 @@ export function SavedView(props: { view: View }): JSX.Element {
     tab: SETTINGS,
     body: (
       <Settings>
-        <Setting name="Shared" hint="Everyone in the workspace sees it pinned in their sidebar.">
+        <Setting name="Shared" hint="Everyone in the workspace can find it and pin it.">
           <MenuChip
-            label={v().shared ? "Everyone" : "Only You"}
+            label={v().shared ? "Workspace" : "Only You"}
             items={[
               { label: "Only You", run: () => edit(v(), { shared: false }) },
-              { label: "Everyone", run: () => edit(v(), { shared: true }) },
+              { label: "Workspace", run: () => edit(v(), { shared: true }) },
             ]}
           />
         </Setting>
-        <Setting name="Unpin" hint="It comes out of the sidebar; its threads stay as they are.">
-          <button
-            class={sx(base.hover, chip.chip)}
-            onClick={() => (open({ thread: null }), undoable("Unpin", () => void v().delete()))}
-          >
-            Unpin
-          </button>
+        <Setting name="Delete View" hint="Its threads stay as they are.">
+          <Delete
+            onClick={() => (
+              open({ thread: null }),
+              undoable("Delete View", () => void v().delete())
+            )}
+          />
         </Setting>
       </Settings>
     ),
