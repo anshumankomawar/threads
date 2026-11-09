@@ -423,7 +423,7 @@ function threadCommands(thread: Thread): Command[] {
   ];
 }
 
-// ── Places ──
+// ── Going somewhere ──
 
 const place = (
   id: string,
@@ -435,7 +435,7 @@ const place = (
   id: `go:${id}`,
   title: `Go to ${title}`,
   kind: "place",
-  section: "Places",
+  section: "Go to",
   icon,
   keywords,
   run: () => chooseMailbox(box),

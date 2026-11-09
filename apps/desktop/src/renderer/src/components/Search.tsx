@@ -88,10 +88,10 @@ const close = (): void => setDialog(null);
 // The kinds each tab shows, and the character that picks it as you start typing.
 const CATEGORIES: { label: string; kinds: Kind[]; prefix?: string }[] = [
   { label: "All", kinds: ["action", "place", "person", "thread"] },
-  { label: "Commands", kinds: ["action"], prefix: ">" },
+  // Going somewhere is a command like any other ("Go to Design").
+  { label: "Commands", kinds: ["action", "place"], prefix: ">" },
   { label: "Threads", kinds: ["thread"], prefix: "#" },
   { label: "People", kinds: ["person"], prefix: "@" },
-  { label: "Places", kinds: ["place"], prefix: "/" },
 ];
 
 // How well `text` matches a typed word, 0 for not at all: the whole of it, its start, a word's start, then anywhere in
