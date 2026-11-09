@@ -46,7 +46,7 @@ import { HistoryButtons } from "./components/TopButtons";
 import { DraftView } from "./components/DraftView";
 import { Peek } from "./components/Peek";
 import { MailSidebar, MessageList, NothingOpen, ThreadActions } from "./components/Mail";
-import { display, mailbox } from "./mail";
+import { display } from "./mail";
 
 const styles = stylex.create({
   // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
@@ -121,18 +121,10 @@ function Waiting(): JSX.Element {
 }
 
 export default function App(): JSX.Element {
-  // With no thread open, the chosen mailbox's own page: a space's, a view's or a label's settings.
-  const chosenId = (kind: "subspace" | "view" | "label" | "bucket"): string | undefined => {
-    const shownNow = view();
-    const box = mailbox();
-    return "thread" in shownNow && shownNow.thread === null && box.kind === kind
-      ? box.id
-      : undefined;
-  };
-  const bucket = () => store.findById(Bucket, shown("bucket") ?? chosenId("bucket") ?? "");
-  const label = () => store.findById(Label, shown("label") ?? chosenId("label") ?? "");
-  const subspace = () => store.findById(Subspace, shown("subspace") ?? chosenId("subspace") ?? "");
-  const savedView = () => store.findById(View, shown("view") ?? chosenId("view") ?? "");
+  const bucket = () => store.findById(Bucket, shown("bucket") ?? "");
+  const label = () => store.findById(Label, shown("label") ?? "");
+  const subspace = () => store.findById(Subspace, shown("subspace") ?? "");
+  const savedView = () => store.findById(View, shown("view") ?? "");
   const person = () => store.findById(User, shown("person") ?? "");
   const timelineAlone = (): boolean => {
     const shownNow = view();
