@@ -7,7 +7,7 @@ import { base } from "../styles/base";
 import { chip, chipTone, menu as look } from "../styles/controls";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
-import { colors, fontSizes } from "../styles/tokens.stylex";
+import { colors } from "../styles/tokens.stylex";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { holdFocus, openFrom } from "./InlineForm";
@@ -74,9 +74,6 @@ export function OptionButton(props: {
   );
 }
 
-// A menu's rows, as macOS lays them out: an icon column (a toggle's check goes there too), titles in one column after it,
-// and a chevron on a row with `items`, whose submenu opens beside it while you're on it.
-// `leftward`, as a menu hanging from a toolbar's right end: its submenus open to the left.
 // A menu's field row (MenuField), focused as the menu opens, and the line under it.
 function FieldRow(props: { field: MenuField; close: () => void }): JSX.Element {
   const [typed, setTyped] = createSignal("");
@@ -85,7 +82,7 @@ function FieldRow(props: { field: MenuField; close: () => void }): JSX.Element {
       <label class={sx(look.entry, combo.field)}>
         <input
           ref={(el) => queueMicrotask(() => el.focus())}
-          class={sx(base.bare, combo.input)}
+          class={sx(base.bare, look.input)}
           placeholder={props.field.placeholder}
           spellcheck={false}
           value={typed()}
@@ -97,13 +94,16 @@ function FieldRow(props: { field: MenuField; close: () => void }): JSX.Element {
           }}
         />
         {/* As the inline forms have it: Enter, always there, so nothing moves as you type. */}
-        <span class={sx(combo.enter)}>↵</span>
+        <span class={sx(look.enter)}>↵</span>
       </label>
       <hr class={sx(look.entrySeparator)} />
     </>
   );
 }
 
+// A menu's rows, as macOS lays them out: an icon column (a toggle's check goes there too), titles in one column after it,
+// and a chevron on a row with `items`, whose submenu opens beside it while you're on it.
+// `leftward`, as a menu hanging from a toolbar's right end: its submenus open to the left.
 function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean }): JSX.Element {
   // A menu where no row has an icon (or a check) has no icon column at all.
   const gutter = (): boolean =>
@@ -205,7 +205,7 @@ function Items(props: { items: MenuItem[]; close: () => void; leftward?: boolean
         {(open) => (
           <div
             ref={(panel) => place(panel, open.row)}
-            class={sx(base.panel, look.menu, look.compact, look.submenu)}
+            class={sx(base.panel, look.menu, look.compact, look.context)}
             style={{ left: `${open.row.right + 4}px`, top: `${open.row.top - 4.5}px` }}
             role="menu"
           >
@@ -319,15 +319,6 @@ const combo = stylex.create({
   },
   // What you type, as a row of the menu itself: a field in the first entry's place.
   field: { cursor: "text" },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    outline: "none",
-    "::placeholder": { color: colors.textTertiary },
-  },
-  enter: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   list: { display: "flex", flexDirection: "column" },
   empty: { color: colors.textTertiary, cursor: "default" },
 });
@@ -379,7 +370,7 @@ export function ComboButton(props: {
           <span class={sx(look.entryIcon)}>{icon(i.Search01Icon, 12)}</span>
           <input
             ref={input}
-            class={sx(base.bare, combo.input)}
+            class={sx(base.bare, look.input)}
             role="combobox"
             aria-expanded="true"
             aria-controls={`${id}-list`}

@@ -40,8 +40,10 @@ export const FIELDS: Record<
 export const MINE: Filter = {
   or: [{ ownerId: { eq: "$me" } }, { assigneeIds: { contains: "$me" } }],
 };
-export const isMine = (condition: Filter): boolean =>
-  JSON.stringify(condition) === JSON.stringify(MINE);
+// Whether two conditions test the same thing the same way.
+export const sameCondition = (a: Filter, b: Filter): boolean =>
+  JSON.stringify(a) === JSON.stringify(b);
+const isMine = (condition: Filter): boolean => sameCondition(condition, MINE);
 
 // One field's test, as the filter bar shows it: "Status: Open". Either of several ("Owner: Me or Assignee: Me") reads
 // as each joined, and a field it doesn't offer by its own name, so a view made elsewhere still shows.

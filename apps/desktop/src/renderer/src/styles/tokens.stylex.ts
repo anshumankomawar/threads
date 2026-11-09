@@ -35,6 +35,8 @@ const DARK = {
   avatarRing: "transparent",
   // Mail's unread dot.
   systemBlue: "#0a84ff",
+  // A high priority's mark: the system's orange.
+  priority: "#ff9f0a",
   // Shadows under floating panels (menus, palettes) and floating bars (toasts, a draft's bar): deep on dark, where a
   // shadow has little to show against, and light on light.
   shadowPanel: "0 4px 12px rgb(0 0 0 / 28%)",
@@ -67,6 +69,7 @@ export const lightTheme = stylex.createTheme(colors, {
   urgent: "oklch(0.58 0.2 12.651)",
   avatarRing: "rgb(0 0 0 / 14%)",
   systemBlue: "#007aff",
+  priority: "#ff9500",
   shadowPanel: "0 2px 8px rgb(0 0 0 / 8%)",
   shadowFloat: "0 4px 14px rgb(0 0 0 / 9%)",
 });
@@ -94,6 +97,8 @@ export const layers = stylex.defineConsts({
 // floating panels.
 export const radii = stylex.defineConsts({
   control: "6px",
+  // A sidebar row and your profile under them (8pt).
+  item: "7.27px",
   row: "10px",
   panel: "14px",
   // A capsule: chips and fields whose ends are fully round, whatever their height.
@@ -110,6 +115,11 @@ export const fontSizes = stylex.defineConsts({
   input: "12.73px", // 14pt
   message: "14.55px", // 16pt, a message
   pageTitle: "18.18px", // 20pt, a title
+});
+
+// The sidebar's and the list's one step (8pt): rows in from their ends, an icon from its name, a column from its edge.
+export const space = stylex.defineConsts({
+  inset: "7.27px",
 });
 
 // Animations stop for anyone who asks the system for less motion.

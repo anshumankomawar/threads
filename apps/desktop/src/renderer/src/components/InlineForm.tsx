@@ -118,15 +118,6 @@ const styles = stylex.create({
     backgroundColor: { default: "transparent", ":focus-within": colors.panelSelected },
     cursor: "text",
   },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    outline: "none",
-    "::placeholder": { color: colors.textTertiary },
-  },
-  hint: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   // The entry it came from, where its label was: the icon's gap after it, as a menu entry has.
   title: {
     display: "flex",
@@ -200,7 +191,7 @@ export function InlineForm(): JSX.Element {
                   <label class={sx(styles.row, !!ask.title && styles.rowUnderTitle)}>
                     <input
                       ref={(el) => (inputs[n()] = el)}
-                      class={sx(base.bare, styles.input)}
+                      class={sx(base.bare, look.input)}
                       aria-label={field.label}
                       placeholder={field.placeholder}
                       value={field.value ?? ""}
@@ -211,7 +202,7 @@ export function InlineForm(): JSX.Element {
                         enter(n());
                       }}
                     />
-                    <span class={sx(styles.hint)}>↵</span>
+                    <span class={sx(look.enter)}>↵</span>
                   </label>
                 )}
               </For>

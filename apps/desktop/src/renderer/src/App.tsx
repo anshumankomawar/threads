@@ -19,7 +19,6 @@ import {
   switchTo,
   undo,
   setUndo,
-  allThreads,
   view,
   otherSources,
   shown,
@@ -180,7 +179,6 @@ export default function App(): JSX.Element {
                   bucket()?.name ??
                   subspace()?.name ??
                   savedView()?.name ??
-                  (allThreads() ? "Spaces" : undefined) ??
                   (shown("draft") !== undefined ? "Draft" : undefined) ??
                   ("settings" in view() ? "Settings" : undefined) ??
                   person()?.name}

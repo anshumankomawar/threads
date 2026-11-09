@@ -22,7 +22,13 @@ type Ask = {
 };
 
 const [asked, setAsked] = createSignal<Ask | null>(null);
-export const pickDate = (ask: Ask): void => void setAsked(ask);
+// What asked for the picker a press elsewhere just closed: pressing that again is to close it, not to open it anew.
+let dismissed: { at: Ask["at"]; time: number } | null = null;
+export const pickDate = (ask: Ask): void => {
+  const again = dismissed?.at === ask.at && performance.now() - dismissed.time < 500;
+  dismissed = null;
+  if (!again) setAsked(ask);
+};
 
 export function DatePicker(): JSX.Element {
   return (
@@ -150,6 +156,10 @@ function Panel(props: { ask: Ask }): JSX.Element {
       class={sx(base.panel, look.popover, s.panel)}
       role="dialog"
       aria-label="Pick a date"
+      // Before the click that closed it runs (toggle comes after), so that click can tell.
+      onBeforeToggle={(event) => {
+        if (event.newState === "closed") dismissed = { at: props.ask.at, time: performance.now() };
+      }}
       onToggle={(event) => event.newState === "closed" && asked() === props.ask && setAsked(null)}
       // Enter saves, except on a button, which does its own thing (a day picks it, No Date clears).
       onKeyDown={(event) => {

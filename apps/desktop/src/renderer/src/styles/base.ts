@@ -13,6 +13,8 @@ export const base = stylex.create({
     textAlign: "left",
     backgroundColor: "transparent",
   },
+  // A list with none of the browser's bullets or indent.
+  list: { margin: 0, padding: 0, listStyle: "none" },
   // One line, cut off at the edge.
   clip: { minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
   ellipsis: { minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },

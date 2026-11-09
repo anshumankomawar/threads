@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { Label, PRIORITIES, STATES, Subspace, Thread, User, View } from "models";
+import { Bucket, Label, PRIORITIES, STATES, Subspace, Thread, User, View } from "models";
 import { bucketIcons } from "./bucketIcons";
 import { branchesOf, isUnder } from "./links";
 import type { IconSvgElement } from "./components/Icon";
@@ -20,8 +20,10 @@ import {
   type Mailbox,
 } from "./mail";
 import {
+  askDeleteBucket,
   deleteView,
   groupFields,
+  moveBucket,
   LAYOUTS,
   savable,
   saveView,
@@ -38,15 +40,17 @@ import {
   hotkeyAction,
   inbox,
   itemFor,
+  markAllRead,
   me,
   myBuckets,
   open,
   otherSources,
   peek,
-  placeIn,
+  bucketChoices,
   setDialog,
   setState,
   signOut,
+  sortAllForMe,
   SOURCES,
   store,
   switchTo,
@@ -182,22 +186,15 @@ function threadCommands(thread: Thread): Command[] {
             icon: i.Folder01Icon,
             keywords: "sort file",
             page: () =>
-              choices(thread, "Move to Bucket", i.Folder01Icon, [
-                ...myBuckets().map((b) => ({
-                  id: b.id,
-                  title: b.name,
-                  icon: icons.get(b.id) ?? i.InboxIcon,
-                  on: item.bucket === b,
-                  run: () => placeIn(item, b),
+              choices(
+                thread,
+                "Move to Bucket",
+                i.Folder01Icon,
+                bucketChoices(item).map(({ bucket, ...choice }) => ({
+                  ...choice,
+                  icon: bucket ? (icons.get(bucket.id) ?? i.InboxIcon) : i.SparklesIcon,
                 })),
-                {
-                  id: "auto",
-                  title: "Sort It for Me",
-                  icon: i.SparklesIcon,
-                  on: false,
-                  run: () => placeIn(item),
-                },
-              ]),
+              ),
           },
         ]
       : []),
@@ -414,12 +411,14 @@ const place = (
   icon: IconSvgElement,
   box: Mailbox,
   keywords?: string,
+  hotkey?: HotkeyId,
 ): Command => ({
   id: `go:${id}`,
   title: `Go to ${title}`,
   kind: "place",
   section: "Go to",
   icon,
+  keys: hotkey && keysFor(hotkey),
   keywords,
   run: () => chooseMailbox(box),
 });
@@ -427,7 +426,7 @@ const place = (
 function places(): Command[] {
   const icons = bucketIcons(myBuckets());
   return [
-    place("inbox", "Inbox", i.InboxIcon, { kind: "inbox" }, "mail buckets all"),
+    place("inbox", "Inbox", i.InboxIcon, { kind: "inbox" }, "mail buckets all", "goInbox"),
     ...inbox().sections.map((s) =>
       place(
         s.bucket.id,
@@ -441,9 +440,16 @@ function places(): Command[] {
       ),
     ),
     place("sent", "Sent", i.SentIcon, { kind: "sent" }),
-    place("drafts", "Drafts", i.NoteEditIcon, { kind: "drafts" }),
-    place("personal", "My Threads", i.UserIcon, { kind: "personal" }, "mine personal"),
-    place("all", "All Spaces", i.Layers01Icon, { kind: "all" }, "everything workspace all threads"),
+    place("drafts", "Drafts", i.NoteEditIcon, { kind: "drafts" }, undefined, "goDrafts"),
+    place("personal", "My Threads", i.UserIcon, { kind: "personal" }, "mine personal", "goMine"),
+    place(
+      "all",
+      "All Spaces",
+      i.Layers01Icon,
+      { kind: "all" },
+      "everything workspace all threads",
+      "goEverything",
+    ),
     ...byName(store.all(View).filter((v) => v.shared || v.ownerId === me().id)).map((v) =>
       place(v.id, v.name, i.FilterIcon, { kind: "view", id: v.id }, "view saved pinned"),
     ),
@@ -468,6 +474,8 @@ function listing(): Command[] {
   const section = "This list";
   const grouped = groupedBy();
   return [
+    ...hotkey("next", "Open the Next Thread", section, i.ArrowDown01Icon, "down below j"),
+    ...hotkey("previous", "Open the Previous Thread", section, i.ArrowUp01Icon, "up above k"),
     // The other layouts.
     ...LAYOUTS.filter(({ layout }) => layout !== display().layout).map(
       ({ layout, title, icon, keywords }): Command => ({
@@ -652,6 +660,97 @@ function creating(): Command[] {
   ];
 }
 
+// ── The list you're on: what its own menu (the sidebar's right-click) offers ──
+
+// Where a form ⌘K asks for grows from, as a menu entry's would: under where ⌘K was.
+const underSearch = (): DOMRect => new DOMRect(innerWidth / 2 - 160, innerHeight * 0.2, 320, 0);
+
+function here(): Command[] {
+  const section = "This list";
+  const box = mailbox();
+  const action = (
+    id: string,
+    title: string,
+    icon: IconSvgElement,
+    run: () => void,
+    keywords?: string,
+  ): Command => ({ id, title, kind: "action", section, icon, keywords, run });
+  if (box.kind === "inbox")
+    return [
+      action("read-all", "Mark All as Read", i.MailOpen01Icon, markAllRead, "seen clear"),
+      ...(inbox().order.some((t) => itemFor(t)?.manual)
+        ? [action("sort-all", "Sort All for Me", i.SparklesIcon, sortAllForMe, "auto buckets")]
+        : []),
+    ];
+  if (box.kind === "bucket") {
+    const bucket = store.findById(Bucket, box.id);
+    if (!bucket) return [];
+    const at = myBuckets().indexOf(bucket);
+    return [
+      action("edit-bucket", "Edit Bucket", i.PencilEdit01Icon, () =>
+        setDialog({ kind: "bucket", bucket }),
+      ),
+      ...(at > 0
+        ? [action("bucket-up", "Move Bucket Up", i.ArrowUp01Icon, () => moveBucket(bucket, -1))]
+        : []),
+      ...(at < myBuckets().length - 1
+        ? [
+            action("bucket-down", "Move Bucket Down", i.ArrowDown01Icon, () =>
+              moveBucket(bucket, 1),
+            ),
+          ]
+        : []),
+      // Sorting needs somewhere to put things.
+      ...(myBuckets().length > 1
+        ? [
+            action("delete-bucket", "Delete Bucket", i.Delete02Icon, () =>
+              askDeleteBucket(underSearch(), bucket),
+            ),
+          ]
+        : []),
+    ];
+  }
+  if (box.kind === "subspace") {
+    const space = store.findById(Subspace, box.id);
+    if (!space) return [];
+    return [
+      action("space-settings", "Open Space Settings", i.Settings02Icon, () =>
+        open({ subspace: space.id }),
+      ),
+      action("add-member", "Add Member to This Space", i.UserAdd01Icon, () =>
+        setDialog({ kind: "addMember", subspace: space }),
+      ),
+    ];
+  }
+  if (box.kind === "label")
+    return [
+      action("label-settings", "Open Label Settings", i.Settings02Icon, () =>
+        open({ label: box.id }),
+      ),
+    ];
+  if (box.kind === "view") {
+    const saved = store.findById(View, box.id);
+    if (!saved) return [];
+    return [
+      action("view-settings", "Open View Settings", i.Settings02Icon, () =>
+        open({ view: saved.id }),
+      ),
+      ...(saved.ownerId === me().id
+        ? [
+            saved.shared
+              ? action("share-view", "Share View with Only You", i.SquareLock02Icon, () =>
+                  edit(saved, { shared: false }, "Share View"),
+                )
+              : action("share-view", "Share View with the Workspace", i.UserMultipleIcon, () =>
+                  edit(saved, { shared: true }, "Share View"),
+                ),
+          ]
+        : []),
+    ];
+  }
+  return [];
+}
+
 // ── The app ──
 
 function app(): Command[] {
@@ -670,7 +769,8 @@ function app(): Command[] {
     ...(store.undo.nextRedo()
       ? hotkey("redo", `Redo ${store.undo.nextRedo()}`, section, i.ArrowTurnForwardIcon, "again")
       : []),
-    ...hotkey("settings", "Open Settings", section, i.Settings02Icon, "preferences hotkeys"),
+    ...hotkey("settings", "Open Settings", section, i.Settings02Icon, "preferences"),
+    ...hotkey("hotkeys", "Show Hotkeys", section, i.KeyboardIcon, "shortcuts keys keyboard"),
     ...hotkey("sidebar", "Show or Hide the Sidebar", section, i.PanelLeftIcon, "toggle"),
     ...hotkey("back", "Go Back", section, i.ArrowLeft01Icon, "history previous"),
     ...hotkey("forward", "Go Forward", section, i.ArrowRight01Icon, "history next"),
@@ -756,6 +856,7 @@ export function commands(): Command[] {
   return [
     ...(thread ? threadCommands(thread) : []),
     ...places(),
+    ...here(),
     ...listing(),
     ...creating(),
     ...app(),

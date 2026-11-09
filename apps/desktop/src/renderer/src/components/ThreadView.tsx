@@ -50,7 +50,7 @@ import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { whenFields } from "../when";
+import { startOfDay, whenFields } from "../when";
 import { pickDate } from "./DatePicker";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
@@ -863,7 +863,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
       </Show>
       <Show when={c().dueAt || c().startAt}>
         <button
-          class={sx(value, c().dueAt && c().dueAt!.getTime() < Date.now() && chipTone.urgent)}
+          class={sx(value, c().dueAt && c().dueAt! < startOfDay(new Date()) && chipTone.urgent)}
           title="When"
           onClick={(event) => pickWhen(event.currentTarget)}
         >

@@ -65,14 +65,13 @@ export const menu = stylex.create({
     animationDuration: "90ms",
     animationTimingFunction: "ease-out",
   },
+  // A context menu, or a submenu beside the row that opens it.
   context: { position: "fixed", zIndex: layers.contextMenu, minWidth: 160 },
   // A context menu as macOS draws one (measured off Mail's, in points, ÷ 1.1 for the window's 110%): 5pt in from the
   // panel's top and bottom, 24pt rows inset 5pt from its sides, icons 18pt in, titles in one column 39pt in whether
   // or not a row has an icon, separators 11pt tall inset 17pt, and a 12pt corner.
   // (5pt less the panel's 1px border.)
   compact: { maxHeight: 480, padding: "3.6px 0", borderRadius: 11 },
-  // A submenu, beside the row that opens it.
-  submenu: { position: "fixed", zIndex: layers.contextMenu, minWidth: 160 },
   entry: {
     display: "flex",
     flexShrink: 0,
@@ -124,6 +123,16 @@ export const menu = stylex.create({
   itemIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
   label: { flex: 1 },
   hint: { marginLeft: 6, color: colors.textTertiary },
+  // What you type in a menu (its field row, a combo box's, an inline form's), and the ↵ always after it.
+  input: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    outline: "none",
+    "::placeholder": { color: colors.textTertiary },
+  },
+  enter: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   accent: { color: colors.accent },
 });
 

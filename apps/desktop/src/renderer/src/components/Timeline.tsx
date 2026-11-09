@@ -9,7 +9,7 @@ import { edit, peek, peeked, save, saved, shortDate, showMenu, threadMenu } from
 import { base } from "../styles/base";
 import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, radii } from "../styles/tokens.stylex";
+import { colors, fontSizes, radii, space } from "../styles/tokens.stylex";
 import { Icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
@@ -36,6 +36,7 @@ const DAY: Record<Zoom, number> = { weeks: 34, months: 12, quarters: 4 };
 // `max`.
 const NAMES = { min: 120, fit: 260, max: 420 };
 const ROW = 29.09;
+// space.inset (8pt), for the arithmetic.
 const INSET = 7.27;
 const BAR = 22;
 const GROUP = 33.1;
@@ -649,13 +650,20 @@ const styles = stylex.create({
   // The grid while the unscheduled tab's shown: kept, out of sight.
   away: { display: "none" },
   // Those without dates, as the sidebar's rows: 30pt, 8pt in, 13pt names.
-  backlog: { flex: 1, minHeight: 0, overflowY: "auto", padding: "4px 7.27px 56px" },
+  backlog: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingTop: 4,
+    paddingInline: space.inset,
+    paddingBottom: 56,
+  },
   backlogRow: {
     display: "flex",
     gap: 8,
     alignItems: "center",
     height: 29.09,
-    padding: "0 7.27px",
+    paddingInline: space.inset,
   },
   backlogTitle: {
     display: "flex",
@@ -675,13 +683,13 @@ const styles = stylex.create({
     gap: 6,
     alignItems: "center",
     height: 22,
-    padding: "0 7.27px",
+    paddingInline: space.inset,
     borderRadius: radii.control,
     color: colors.textTertiary,
     fontSize: fontSizes.body,
     cursor: "pointer",
   },
-  backlogEmpty: { padding: "24px 7.27px", color: colors.textTertiary },
+  backlogEmpty: { paddingBlock: 24, paddingInline: space.inset, color: colors.textTertiary },
   toolbar: {
     display: "flex",
     flexShrink: 0,
@@ -798,8 +806,8 @@ const styles = stylex.create({
     alignItems: "center",
     height: 27.27,
     marginTop: 0.91,
-    padding: `0 ${INSET}px`,
-    borderRadius: 7.27,
+    paddingInline: space.inset,
+    borderRadius: radii.item,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     textAlign: "left",

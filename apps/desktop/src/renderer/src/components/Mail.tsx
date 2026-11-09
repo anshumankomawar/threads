@@ -11,7 +11,6 @@ import {
   itemFor,
   loaded,
   toggled,
-  edit,
   markAllRead,
   menuFrom,
   me,
@@ -19,6 +18,7 @@ import {
   open,
   save,
   saved,
+  newThreadHere,
   setDialog,
   shortDate,
   shown,
@@ -54,15 +54,16 @@ import {
   type Layout,
   setDisplay,
   fieldsHere,
+  saveBucket,
 } from "../mail";
 import { bucketIcons } from "../bucketIcons";
-import { describe, subspacesIn } from "../filters";
+import { describe, sameCondition, subspacesIn } from "../filters";
 import { base } from "../styles/base";
 import { button, topbar } from "../styles/controls";
 import { page } from "../styles/page";
 import { toolbarMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
+import { colors, fontSizes, motion, radii, sidebarSpace, space } from "../styles/tokens.stylex";
 import { AppButtons, HistoryButtons } from "./TopButtons";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { askInline, InlineForm } from "./InlineForm";
@@ -130,7 +131,7 @@ function Mailbox(props: {
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
-    <li class={sx(s.mailboxItem)}>
+    <li>
       <div
         role="button"
         tabindex={0}
@@ -236,7 +237,7 @@ function Section(props: { title: string; add?: Add; children: JSX.Element }): JS
         </Show>
       </div>
       <Collapse open={!shut()}>
-        <ul class={sx(s.mailboxes)}>{props.children}</ul>
+        <ul class={sx(base.list, s.stack)}>{props.children}</ul>
       </Collapse>
     </section>
   );
@@ -293,20 +294,7 @@ function askBucket(from: DOMRect, bucket?: Bucket): void {
         value: bucket?.description,
       },
     ],
-    submit: ([name, description]) => {
-      if (bucket) return edit(bucket, { name: name.slice(0, 40), description }, "Edit Bucket");
-      const position = Math.max(-1, ...myBuckets().map((b) => b.position)) + 1;
-      let id = "";
-      undoable("New Bucket", () => {
-        id = store.create(Bucket, {
-          user: me(),
-          name: name.slice(0, 40),
-          description: description.slice(0, 500),
-          position,
-        }).id;
-      });
-      chooseMailbox({ kind: "bucket", id });
-    },
+    submit: ([name, description]) => saveBucket(bucket, name, description),
   });
 }
 
@@ -326,18 +314,21 @@ export function askDeleteBucket(from: DOMRect, bucket: Bucket): void {
   });
 }
 
+// A bucket a place up (-1) or down (1) among yours, if there's one there to swap with.
+export function moveBucket(bucket: Bucket, by: number): void {
+  const buckets = myBuckets();
+  const other = buckets[buckets.indexOf(bucket) + by];
+  if (!other) return;
+  undoable("Move Bucket", () => {
+    [bucket.position, other.position] = [other.position, bucket.position];
+    bucket.save();
+    other.save();
+  });
+}
+
 // What right-clicking a bucket offers, in the sidebar and on its heading in the inbox.
 function bucketMenu(bucket: Bucket): MenuItem[] {
-  const move = (by: number) => () => {
-    const buckets = myBuckets();
-    const other = buckets[buckets.indexOf(bucket) + by];
-    if (!other) return;
-    undoable("Move Bucket", () => {
-      [bucket.position, other.position] = [other.position, bucket.position];
-      bucket.save();
-      other.save();
-    });
-  };
+  const move = (by: number) => () => moveBucket(bucket, by);
   return [
     {
       label: "Edit Bucket",
@@ -394,7 +385,7 @@ export function MailSidebar(): JSX.Element {
             class={sx(topbar.button)}
             aria-label="New Thread"
             title="New Thread (⌘N)"
-            onClick={() => setDialog({ kind: "newThread" })}
+            onClick={newThreadHere}
           >
             <Icon icon={i.PencilEdit02Icon} {...ICON} />
           </button>
@@ -403,7 +394,7 @@ export function MailSidebar(): JSX.Element {
       {/* One list, nothing behind a tab: your inbox and its buckets, then the spaces, then what you've pinned (every
           space's threads at once are ⌘3 and ⌘K's All Spaces). */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
-        <ul class={sx(s.mailboxes)}>
+        <ul class={sx(base.list, s.stack)}>
           <Mailbox
             box={{ kind: "inbox" }}
             label="Inbox"
@@ -453,7 +444,7 @@ export function MailSidebar(): JSX.Element {
           </For>
         </ul>
         {/* What you've written: sent, and not yet; just apart from the inbox. */}
-        <ul class={sx(s.mailboxes, s.nearby)}>
+        <ul class={sx(base.list, s.stack, s.nearby)}>
           <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
           <Mailbox
             box={{ kind: "drafts" }}
@@ -572,7 +563,7 @@ function Row(props: { thread: Thread }): JSX.Element {
     if (shown) row.scrollIntoView({ block: "nearest" });
   });
   return (
-    <li class={sx(s.rowItem, stylex.defaultMarker())} data-on={on() ? "" : undefined}>
+    <li class={sx(stylex.defaultMarker())} data-on={on() ? "" : undefined}>
       <div
         ref={row}
         role="button"
@@ -656,7 +647,7 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
     props.draft.draft?.title ? props.draft.text : lines().slice(1).join(" ");
   return (
     <li
-      class={sx(s.rowItem, stylex.defaultMarker())}
+      class={sx(stylex.defaultMarker())}
       data-on={shown("draft") === props.draft.id ? "" : undefined}
     >
       <div
@@ -827,7 +818,6 @@ const orderItems = (): MenuItem[] =>
 
 // One value of a field as a filter: on (ticked) or off. Choosing it again takes it off; a field that holds one value
 // (status, priority, owner) takes one, so another replaces it; and asking for resolved threads shows them.
-const sameCondition = (a: Filter, b: Filter): boolean => JSON.stringify(a) === JSON.stringify(b);
 const filtered = (field: string, compare: string, value: string): boolean =>
   conditions().some((c) => sameCondition(c, { [field]: { [compare]: value } }));
 function toggleFilter(field: string, compare: string, value: string): void {
@@ -876,7 +866,7 @@ const filterItems = (): MenuItem[] => [
 
 // How the list is shown (mail.ts' display, kept on this Mac): rows or a timeline; grouped by any field a filter can test;
 // a timeline's scale; its order; and whether resolved threads show. In ⌘K too.
-export const displayMenu = (): MenuItem[] => [
+const displayMenu = (): MenuItem[] => [
   // The inbox is grouped by its buckets.
   ...(mailbox().kind === "inbox"
     ? []
@@ -920,19 +910,10 @@ function QueryFilters(): JSX.Element {
   );
 }
 
-// The one main action here, as Notion's New: a thread in this list (its space or label).
+// The one main action here, as Notion's New: a thread in this list (its space, label or person).
 function NewButton(): JSX.Element {
   return (
-    <button
-      class={sx(base.bare, button.solid, s.queryNew)}
-      onClick={() =>
-        setDialog({
-          kind: "newThread",
-          subspaceId: mailbox().kind === "subspace" ? (mailbox() as { id: string }).id : undefined,
-          labelId: mailbox().kind === "label" ? (mailbox() as { id: string }).id : undefined,
-        })
-      }
-    >
+    <button class={sx(base.bare, button.solid, s.queryNew)} onClick={newThreadHere}>
       New
     </button>
   );
@@ -985,13 +966,9 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               ? { kind: "person", id: shown.person }
               : "draft" in shown
                 ? { kind: "drafts" }
-                : "personal" in shown
-                  ? { kind: "personal" }
-                  : "view" in shown
-                    ? shown.view === null
-                      ? { kind: "all" }
-                      : { kind: "view", id: shown.view }
-                    : undefined;
+                : "view" in shown
+                  ? { kind: "view", id: shown.view }
+                  : undefined;
     if (next) showMailbox(next);
   });
   // A list whose space, label, view, bucket or person is gone (deleted here or elsewhere, or a creation undone) goes back
@@ -1118,7 +1095,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               class={sx(topbar.button)}
               aria-label="New Thread"
               title="New Thread (⌘N)"
-              onClick={() => setDialog({ kind: "newThread" })}
+              onClick={newThreadHere}
             >
               <Icon icon={i.PencilEdit02Icon} {...ICON} />
             </button>
@@ -1167,7 +1144,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
                       <span class={sx(s.groupCount)}>{group.threads.length}</span>
                     </div>
                   </Show>
-                  <ul class={sx(s.rows)}>
+                  <ul class={sx(base.list, s.stack)}>
                     <For each={group.threads}>{(thread) => <Row thread={thread} />}</For>
                   </ul>
                 </>
@@ -1175,7 +1152,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
             </For>
           }
         >
-          <ul class={sx(s.rows)}>
+          <ul class={sx(base.list, s.stack)}>
             <For each={drafts()}>{(draft) => <DraftRow draft={draft} />}</For>
           </ul>
         </Show>
@@ -1264,30 +1241,23 @@ const s = stylex.create({
   nav: {
     flex: 1,
     minHeight: 0,
-    padding: "8.37px 7.27px 12px",
+    paddingTop: 8.37,
+    paddingInline: space.inset,
+    paddingBottom: 12,
     overflowY: "auto",
   },
   // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
   selected: { backgroundColor: colors.bgTertiary },
   // A little space between rows, so neighbouring fills (a space and its open thread) don't run together.
-  mailboxes: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1.82,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
-  },
-  mailboxItem: { listStyle: "none" },
+  stack: { display: "flex", flexDirection: "column", gap: 1.82 },
   // 30pt tall, rounded 8pt, 8pt in from its ends, its icon in an 18pt column 8pt before its 13pt name.
   mailbox: {
     display: "flex",
-    gap: 7.27,
+    gap: space.inset,
     alignItems: "center",
     height: 27.27,
-    paddingLeft: 7.27,
-    paddingRight: 7.27,
-    borderRadius: 7.27,
+    paddingInline: space.inset,
+    borderRadius: radii.item,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
     cursor: "default",
@@ -1320,15 +1290,14 @@ const s = stylex.create({
     fontVariantNumeric: "tabular-nums",
   },
   // Just apart from the rows above.
-  nearby: { marginTop: 7.27 },
+  nearby: { marginTop: space.inset },
   // Apart from the places above and from each other.
   section: { marginTop: 18.18 },
   sectionHeader: {
     display: "flex",
     alignItems: "center",
     height: 16.73,
-    paddingLeft: 7.27,
-    paddingRight: 7.27,
+    paddingInline: space.inset,
     marginBottom: 3.64,
   },
   sectionTitle: {
@@ -1360,16 +1329,18 @@ const s = stylex.create({
     flexShrink: 0,
     gap: 4,
     alignItems: "center",
-    margin: "0 7.27px 4.55px",
+    marginInline: space.inset,
+    marginBottom: 4.55,
   },
   profile: {
     display: "flex",
     flex: 1,
     minWidth: 0,
-    gap: 7.27,
+    gap: space.inset,
     alignItems: "center",
-    padding: "6.36px 7.27px",
-    borderRadius: 7.27,
+    paddingBlock: 6.36,
+    paddingInline: space.inset,
+    borderRadius: radii.item,
     color: colors.textSecondary,
     fontSize: fontSizes.body,
     backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
@@ -1472,7 +1443,9 @@ const s = stylex.create({
     overflowY: "auto",
     // Its first line as far below the top bar as every page's (17pt).
     // Its last row clear of the layout pill over its foot.
-    padding: "5.18px 7.27px 56px",
+    paddingTop: 5.18,
+    paddingInline: space.inset,
+    paddingBottom: 56,
     outline: "none",
   },
   // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.
@@ -1487,15 +1460,6 @@ const s = stylex.create({
   },
   groupCount: { fontWeight: 400 },
   // No hairlines between rows: compact cards, set apart by the space between them.
-  rows: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 1.82,
-    margin: 0,
-    padding: 0,
-    listStyle: "none",
-  },
-  rowItem: { listStyle: "none" },
   // A card: 12pt in from its sides and 10pt from its top and bottom, rounded 10pt, its two parts 5pt apart.
   row: {
     display: "flex",
@@ -1515,7 +1479,7 @@ const s = stylex.create({
   },
   rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 4.55, minWidth: 0 },
   // The first line, at 14pt: the title (after its priority's marks), then at least 8pt on, the unread dot and when.
-  rowTop: { display: "flex", gap: 7.27, alignItems: "center", fontSize: 12.73 },
+  rowTop: { display: "flex", gap: space.inset, alignItems: "center", fontSize: 12.73 },
   // Who wrote last, at the start of the preview: a little stronger than their words.
   from: { color: colors.textSecondary, fontWeight: 500 },
   stamp: {
@@ -1529,13 +1493,13 @@ const s = stylex.create({
   subjectLine: { display: "flex", flex: 1, gap: 4.55, alignItems: "center", minWidth: 0 },
   subject: { fontWeight: 600, lineHeight: "17.27px" },
   subjectResolved: { color: colors.textTertiary },
-  priority: { flexShrink: 0, color: "#ff9f0a", fontWeight: 700 },
+  priority: { flexShrink: 0, color: colors.priority, fontWeight: 700 },
   urgent: { color: colors.urgent },
   stateMark: { display: "flex", flexShrink: 0, color: colors.textTertiary },
   // The rest at 13pt: the preview's column, then its due date and label, 8pt apart, on its last line.
   second: {
     display: "flex",
-    gap: 7.27,
+    gap: space.inset,
     alignItems: "last baseline",
     fontSize: fontSizes.body,
     lineHeight: "14.55px",

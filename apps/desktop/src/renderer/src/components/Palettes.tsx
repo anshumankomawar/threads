@@ -8,8 +8,6 @@ import {
   dialogBack,
   byName,
   dialog,
-  edit,
-  myBuckets,
   me,
   memberIn,
   open,
@@ -23,7 +21,7 @@ import {
   workspace,
   undoable,
 } from "../session";
-import { keepDisplay } from "../mail";
+import { keepDisplay, saveBucket } from "../mail";
 import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
@@ -426,13 +424,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
   const [name, setName] = createSignal(untrack(() => props.bucket?.name ?? ""));
   const save = (description: string): void => {
     setDialog(null);
-    if (props.bucket) return edit(props.bucket, { name: name(), description }, "Edit Bucket");
-    const mine = myBuckets();
-    const position = Math.max(-1, ...mine.map((bucket) => bucket.position)) + 1;
-    undoable(
-      "New Bucket",
-      () => void store.create(Bucket, { user: me(), name: name(), description, position }),
-    );
+    saveBucket(props.bucket, name(), description);
   };
   return (
     <Picker
@@ -451,7 +443,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
       rows={(text) =>
         naming()
           ? next(text, `Step 1 of 2 · ${props.bucket ? "Rename" : "New Bucket"}`, () => {
-              setName(text.slice(0, 40));
+              setName(text);
               setNaming(false);
               setTyped(props.bucket?.description ?? "");
             })
@@ -460,7 +452,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
                 label: props.bucket ? "Save Bucket" : "Create Bucket",
                 hint: "↵",
                 section: `Step 2 of 2 · Describe “${name()}” so threads are sorted into it`,
-                run: () => save(text.slice(0, 500)),
+                run: () => save(text),
               },
             ]
       }

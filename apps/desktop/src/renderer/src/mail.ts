@@ -8,6 +8,7 @@ import {
   inbox,
   lastActive,
   me,
+  myBuckets,
   open,
   save,
   saved,
@@ -15,6 +16,7 @@ import {
   step,
   store,
   trackMailbox,
+  undoable,
 } from "./session";
 
 // ── Mail's layout: a sidebar of mailboxes, the chosen one's threads beside it, and the open thread beside them ──
@@ -101,6 +103,18 @@ export function chooseMailbox(next: Mailbox): void {
     setMailbox(next);
     open({ thread: null });
   });
+}
+
+// A bucket named and described (the model sorts by what goes in it): saved, or made as your last and shown.
+export function saveBucket(bucket: Bucket | undefined, name: string, description: string): void {
+  const fields = { name: name.slice(0, 40), description: description.slice(0, 500) };
+  if (bucket) return edit(bucket, fields, "Edit Bucket");
+  const position = Math.max(-1, ...myBuckets().map((b) => b.position)) + 1;
+  let id = "";
+  undoable("New Bucket", () => {
+    id = store.create(Bucket, { user: me(), ...fields, position }).id;
+  });
+  chooseMailbox({ kind: "bucket", id });
 }
 
 // How a mailbox's list is shown, on this Mac only (it's how you look at it, not part of it): as rows or a timeline;

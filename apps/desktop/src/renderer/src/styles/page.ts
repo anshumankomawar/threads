@@ -83,7 +83,6 @@ export const page = stylex.create({
   header: { display: "flex", gap: 14, alignItems: "center" },
   // Small building blocks the pages combine, after the `base` styles.
   pointer: { cursor: "pointer" },
-  list: { margin: 0, padding: 0, listStyle: "none" },
   small: { color: muted, fontSize: size.body },
   narrow: { maxWidth: 640 },
   itemBody: { display: "flex", flex: 1, flexDirection: "column", gap: 2, minWidth: 0 },

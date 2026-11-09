@@ -136,16 +136,15 @@ export const draftWith = async (
 };
 
 // ── What's on screen ──
-// A thread, or a page of threads: a label's, a person's, a subspace's, a saved view's, or all of them (`view: null`).
+// A thread, or a page: a label's, a person's, a space's, a bucket's, a view's, Settings, or a draft.
 export type View =
   | { thread: string | null }
   | { label: string }
   | { person: string }
   | { subspace: string }
   | { bucket: string }
-  | { view: string | null }
+  | { view: string }
   | { settings: null }
-  | { personal: null }
   // A kept draft, open as a page like the thread it will be.
   | { draft: string };
 // An item runs something, or opens its own `items` in the menu's place. One with `checked` is a toggle: it shows a check
@@ -369,7 +368,6 @@ export const active = (): Thread | undefined => store.findById(Thread, activeId(
 export const shown = (
   key: "label" | "person" | "subspace" | "bucket" | "view" | "draft",
 ): string | undefined => (view() as Record<string, string | null | undefined>)[key] ?? undefined;
-export const allThreads = (): boolean => "view" in view() && shown("view") === undefined;
 
 function markSeen(thread: Thread | undefined): void {
   const item = thread && itemFor(thread);
@@ -494,12 +492,29 @@ function markDone(item: InboxItem): void {
 }
 
 // Into one of your buckets by hand, or back to the model.
-export const placeIn = (item: InboxItem, bucket?: Bucket): void =>
+const placeIn = (item: InboxItem, bucket?: Bucket): void =>
   undoable(bucket ? "Move to Bucket" : "Sort It for Me", () => {
     item.bucket = bucket;
     item.manual = bucket !== undefined;
     item.save();
   });
+
+// Where an inbox item can go, as its menus and ⌘K list them: each of your buckets (the one it's in ticked), then back
+// to the model to sort, once you've placed it by hand.
+export const bucketChoices = (
+  item: InboxItem,
+): { id: string; bucket?: Bucket; title: string; on: boolean; run: () => void }[] => [
+  ...myBuckets().map((bucket) => ({
+    id: bucket.id,
+    bucket,
+    title: bucket.name,
+    on: bucket === item.bucket,
+    run: () => placeIn(item, bucket),
+  })),
+  ...(item.manual
+    ? [{ id: "auto", title: "Sort It for Me", on: false, run: () => placeIn(item) }]
+    : []),
+];
 
 // Everything in your inbox marked read, as Mail's Mark All as Read does.
 export function markAllRead(): void {
@@ -562,23 +577,18 @@ export function threadMenu(thread: Thread): MenuItem[] {
           {
             label: "Move to Bucket",
             icon: icon(i.Folder01Icon, 13),
-            items: [
-              ...myBuckets().map((bucket) => ({
-                label: bucket.name,
-                icon: bucket === item.bucket ? icon(i.Tick02Icon, 13) : undefined,
-                run: () => placeIn(item, bucket),
-              })),
-              ...(item.manual
-                ? [
-                    "separator" as const,
-                    {
-                      label: "Sort It for Me",
-                      icon: icon(i.SparklesIcon, 13),
-                      run: () => placeIn(item),
-                    },
-                  ]
-                : []),
-            ],
+            items: bucketChoices(item).flatMap((choice): MenuItem[] => [
+              ...(choice.bucket ? [] : ["separator" as const]),
+              {
+                label: choice.title,
+                icon: choice.bucket
+                  ? choice.on
+                    ? icon(i.Tick02Icon, 13)
+                    : undefined
+                  : icon(i.SparklesIcon, 13),
+                run: choice.run,
+              },
+            ]),
           },
         ]
       : []),
@@ -610,6 +620,20 @@ const goToPlace = (at: number) => (): void => {
   setSidebarOpen(true);
   goTo(at);
 };
+
+// A new thread in the space, label or person's list you're on (or whose page is open).
+export function newThreadHere(): void {
+  const shown = view();
+  const box = mailboxes.now() as { kind: string; id?: string } | null;
+  const of = (kind: string): string | undefined => (box?.kind === kind ? box.id : undefined);
+  const person = "person" in shown ? shown.person : of("person");
+  setDialog({
+    kind: "newThread",
+    labelId: "label" in shown ? shown.label : of("label"),
+    subspaceId: "subspace" in shown ? shown.subspace : of("subspace"),
+    to: person ? store.findById(User, person) : undefined,
+  });
+}
 
 // What each hotkey does (hotkeys.ts has their keys, which Settings rebinds), given whether you're typing and whether a
 // dialog or menu is open: plain keys only when you're not typing, and none of the reading ones over a dialog or menu.
@@ -645,21 +669,13 @@ function hotkeyActions(
     goMine: free && goToPlace(1),
     goEverything: free && goToPlace(2),
     goDrafts: free && goToPlace(3),
-    // In the space, label or person's list you're on (or whose page is open).
-    newThread: () => {
-      const shown = view();
-      const box = mailboxes.now() as { kind: string; id?: string } | null;
-      const of = (kind: string): string | undefined => (box?.kind === kind ? box.id : undefined);
-      const person = "person" in shown ? shown.person : of("person");
-      setDialog({
-        kind: "newThread",
-        labelId: "label" in shown ? shown.label : of("label"),
-        subspaceId: "subspace" in shown ? shown.subspace : of("subspace"),
-        to: person ? store.findById(User, person) : undefined,
-      });
-    },
+    newThread: newThreadHere,
     compose: () => setDialog({ kind: "compose" }),
-    next: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
+    next:
+      reading &&
+      order.length > 0 &&
+      at < order.length - 1 &&
+      (() => open({ thread: order[at + 1].id })),
     previous: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
     done: free && current && toggleDone,
     reply: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
