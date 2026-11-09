@@ -15,7 +15,8 @@ import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
 import { Tabs, type Tab } from "./Tabs";
 import { dot } from "./ThreadView";
-import { describeWhen, parseWhen, whenFields, type When } from "../when";
+import { whenFields, type When } from "../when";
+import { pickDate } from "./DatePicker";
 
 // The list as a timeline, after TeamGantt: the threads named down the left, and beside each its bar, a slim card with
 // its status's dot, from its start to its due date, its owner just past its end. A thread with branches fills its
@@ -471,7 +472,8 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
                 {(tick) => (
                   <span
                     class={sx(styles.tick)}
-                    style={{ left: `${x(tick.at)}px`, width: `${tick.width}px` }}
+                    // Centred on the line where its day begins, which is where bars starting that day start.
+                    style={{ left: `${x(tick.at) - tick.width / 2}px`, width: `${tick.width}px` }}
                   >
                     <span class={sx(tick.at === today() && styles.tickToday)}>
                       {tick.at === today()
@@ -537,7 +539,7 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
               </For>
               <span
                 class={sx(styles.todayLine)}
-                style={{ left: `${x(today()) + day() / 2}px` }}
+                style={{ left: `${x(today())}px` }}
                 aria-hidden="true"
               />
               <svg class={sx(styles.links)} width={width()} height={height()} aria-hidden="true">
@@ -597,45 +599,18 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   );
 }
 
-// Where a day's typed, as Linear's: "fri", "next week", "mar 14", "mon to fri". What it's understood as shows as
-// it's typed; Enter gives it, and the next row's field takes over (this one's row has gone to the timeline).
+// A date for a thread without one: picked on the calendar under the button (it moves to the timeline).
 function DateField(props: { onDate: (when: When) => void }): JSX.Element {
-  const [text, setText] = createSignal("");
-  const when = (): When | null => parseWhen(text());
-  const give = (input: HTMLInputElement): void => {
-    const chosen = when();
-    if (!chosen) return;
-    const fields = [...document.querySelectorAll<HTMLInputElement>("[data-date-field]")];
-    const at = fields.indexOf(input);
-    props.onDate(chosen);
-    setText("");
-    queueMicrotask(() => {
-      const left = [...document.querySelectorAll<HTMLInputElement>("[data-date-field]")];
-      left[Math.min(at, left.length - 1)]?.focus();
-    });
-  };
   return (
-    <label class={sx(styles.dateField)}>
-      <input
-        data-date-field
-        class={sx(styles.dateInput)}
-        placeholder="Add a date"
-        value={text()}
-        onInput={(e) => setText(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") give(e.currentTarget);
-          if (e.key === "Escape") {
-            setText("");
-            e.currentTarget.blur();
-          }
-        }}
-      />
-      <Show when={text().trim()}>
-        <span class={sx(styles.dateSeen, !when() && styles.dateUnseen)}>
-          {when() ? describeWhen(when()!) : "Not a date"}
-        </span>
-      </Show>
-    </label>
+    <button
+      class={sx(base.bare, base.hover, styles.dateButton)}
+      onClick={(event) =>
+        pickDate({ at: event.currentTarget, pick: (when) => when && props.onDate(when) })
+      }
+    >
+      <Icon icon={i.Calendar03Icon} size={12} aria-hidden="true" />
+      Add a Date
+    </button>
   );
 }
 
@@ -673,21 +648,18 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   // A field as plain as the text by it: its words quiet until something's typed, what that means just after.
-  // As wide as whatever's typed, so nothing moves as it's understood.
-  dateField: { display: "flex", flexShrink: 0, gap: 8, alignItems: "center", width: 240 },
-  dateInput: {
-    width: 110,
-    padding: 0,
-    borderStyle: "none",
-    outline: "none",
-    backgroundColor: "transparent",
-    color: colors.textPrimary,
-    fontFamily: "inherit",
+  dateButton: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 6,
+    alignItems: "center",
+    height: 22,
+    padding: "0 7.27px",
+    borderRadius: 6,
+    color: colors.textTertiary,
     fontSize: 11.82,
-    "::placeholder": { color: colors.textTertiary },
+    cursor: "pointer",
   },
-  dateSeen: { color: colors.textSecondary, fontSize: fontSizes.small, whiteSpace: "nowrap" },
-  dateUnseen: { color: colors.textTertiary },
   backlogEmpty: { padding: "24px 7.27px", color: colors.textTertiary },
   toolbar: {
     display: "flex",

@@ -42,7 +42,7 @@ import {
   workspace,
 } from "../session";
 import { base } from "../styles/base";
-import { link, menu as look } from "../styles/controls";
+import { chipTone, link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { AVATAR, thread, TURN_GAP } from "../styles/thread";
@@ -50,7 +50,8 @@ import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { parseWhen, whenFields } from "../when";
+import { whenFields } from "../when";
+import { pickDate } from "./DatePicker";
 import { MenuChip, moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
 import { branchesOf, progressOf } from "../links";
@@ -266,9 +267,6 @@ function Meta(props: {
   );
 }
 
-// Due-date shortcuts, at 5pm.
-const dueAt = (days: number): Date =>
-  new Date(new Date(Date.now() + days * 86_400_000).setHours(17, 0, 0, 0));
 export const LABELS = {
   open: "Open",
   resolved: "Resolved",
@@ -705,18 +703,15 @@ function Properties(props: { thread: Thread }): JSX.Element {
       icon: c()[field].includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
       run: () => edit(c(), { [field]: toggled(c()[field], record.id) }),
     }));
-  // When: today, tomorrow, next week, or typed ("fri", "mon to fri"), or none.
-  const whenItems = (): MenuItem[] => [
-    { label: "Today", run: change({ startAt: undefined, dueAt: dueAt(0) }) },
-    { label: "Tomorrow", run: change({ startAt: undefined, dueAt: dueAt(1) }) },
-    { label: "Next Week", run: change({ startAt: undefined, dueAt: dueAt(7) }) },
-    ...(c().dueAt || c().startAt
-      ? [
-          "separator" as const,
-          { label: "No Date", run: change({ startAt: undefined, dueAt: undefined }) },
-        ]
-      : []),
-  ];
+  // When: picked on the calendar, under what asked (the date's chip, or Add's row).
+  const pickWhen = (at: Element | DOMRect): void =>
+    pickDate({
+      at,
+      start: c().startAt,
+      end: c().dueAt,
+      pick: (when) =>
+        edit(c(), when ? whenFields(when) : { startAt: undefined, dueAt: undefined }, "When"),
+    });
   // A label typed: one there is goes on (or comes off), a new one is made and goes on.
   const labelNamed = (text: string): Label | undefined =>
     store.all(Label).find((l) => l.name.toLowerCase() === text.trim().toLowerCase());
@@ -734,15 +729,6 @@ function Properties(props: { thread: Thread }): JSX.Element {
           c().save();
         });
       return true;
-    },
-  };
-  // Typed first: "fri", "next week", "mon to fri"; Enter sets it.
-  const whenField: MenuField = {
-    placeholder: "Type a date",
-    submit: (text) => {
-      const when = parseWhen(text);
-      if (when) edit(c(), whenFields(when));
-      return when !== null;
     },
   };
   const when = (): string => {
@@ -794,7 +780,13 @@ function Properties(props: { thread: Thread }): JSX.Element {
         ]
       : []),
     ...(!c().dueAt && !c().startAt
-      ? [{ label: "When", icon: icon(i.Calendar03Icon, 13), field: whenField, items: whenItems() }]
+      ? [
+          {
+            label: "When",
+            icon: icon(i.Calendar03Icon, 13),
+            run: (from: DOMRect) => pickWhen(from),
+          },
+        ]
       : []),
   ];
   return (
@@ -854,15 +846,14 @@ function Properties(props: { thread: Thread }): JSX.Element {
         />
       </Show>
       <Show when={c().dueAt || c().startAt}>
-        <MenuChip
-          look={value}
-          icon={icon(i.Calendar03Icon, 13)}
+        <button
+          class={sx(value, c().dueAt && c().dueAt!.getTime() < Date.now() && chipTone.urgent)}
           title="When"
-          label={<span class={sx(base.ellipsis)}>{when()}</span>}
-          tone={c().dueAt && c().dueAt!.getTime() < Date.now() ? "urgent" : undefined}
-          items={whenItems()}
-          field={whenField}
-        />
+          onClick={(event) => pickWhen(event.currentTarget)}
+        >
+          {icon(i.Calendar03Icon, 13)}
+          <span class={sx(base.ellipsis)}>{when()}</span>
+        </button>
       </Show>
       <Show when={unset().length > 0}>
         <MenuChip

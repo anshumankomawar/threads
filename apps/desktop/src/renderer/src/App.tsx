@@ -32,6 +32,7 @@ import { ThreadView } from "./components/ThreadView";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
 import { Icon } from "./components/Icon";
 import { ContextMenu } from "./components/Menus";
+import { DatePicker } from "./components/DatePicker";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
 import {
@@ -285,6 +286,7 @@ export default function App(): JSX.Element {
         <Palettes />
         <MentionToasts />
         <ContextMenu />
+        <DatePicker />
         <Peek />
       </Show>
     </>
