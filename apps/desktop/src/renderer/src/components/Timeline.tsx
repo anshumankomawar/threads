@@ -715,13 +715,8 @@ const styles = stylex.create({
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
   },
-  corner: {
-    position: "sticky",
-    left: 0,
-    zIndex: 2,
-    flexShrink: 0,
-    backgroundColor: colors.chrome,
-  },
+  // Over the names, holding their room in the header: clear, so the days run on across the top behind it.
+  corner: { flexShrink: 0 },
   scale: { position: "relative", flexShrink: 0 },
   // Linear's: each month's name, small and spaced, from its first day.
   month: {
