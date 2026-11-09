@@ -97,7 +97,7 @@ export const subspacesWithMembers = (): Subspace[] =>
   store.all(Subspace).filter((sub) => sub.members.length > 0);
 export const memberIn = (sub: Subspace, userId: string) =>
   sub.members.filter((m) => m.userId === userId)[0];
-export const membersHint = (sub: Subspace): string => `Subspace · ${sub.members.length}`;
+export const membersHint = (sub: Subspace): string => `Space · ${sub.members.length}`;
 export const myBuckets = (): Bucket[] =>
   store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
 export const signedIn = (): boolean =>
@@ -627,13 +627,17 @@ function hotkeyActions(
     goMine: free && goToPlace(1),
     goEverything: free && goToPlace(2),
     goDrafts: free && goToPlace(3),
+    // In the space, label or person's list you're on (or whose page is open).
     newThread: () => {
       const shown = view();
+      const box = mailboxes.now() as { kind: string; id?: string } | null;
+      const of = (kind: string): string | undefined => (box?.kind === kind ? box.id : undefined);
+      const person = "person" in shown ? shown.person : of("person");
       setDialog({
         kind: "newThread",
-        labelId: "label" in shown ? shown.label : undefined,
-        subspaceId: "subspace" in shown ? shown.subspace : undefined,
-        to: "person" in shown ? store.findById(User, shown.person) : undefined,
+        labelId: "label" in shown ? shown.label : of("label"),
+        subspaceId: "subspace" in shown ? shown.subspace : of("subspace"),
+        to: person ? store.findById(User, person) : undefined,
       });
     },
     compose: () => setDialog({ kind: "compose" }),

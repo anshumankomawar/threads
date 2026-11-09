@@ -42,7 +42,7 @@ export function conditions(): Filter[] {
 export function setConditions(next: Filter[]): void {
   const box = chosen();
   const saved = box.kind === "view" ? store.findById(View, box.id) : undefined;
-  if (saved) edit(saved, { filter: { and: next } });
+  if (saved) edit(saved, { filter: { and: next } }, "Change Filter");
   else setExtra(next);
 }
 
@@ -156,15 +156,23 @@ export const display = (): Display => {
 // list's own.
 export function setDisplay(change: Partial<Display>): void {
   setDisplays((all) => {
-    const key = all[keyOf(chosenNow)] ? keyOf(chosenNow) : EVERYWHERE;
-    const next = { ...all, [key]: { ...(all[key] ?? { layout: "list" }), ...change } };
+    // A view's its own from its first change (one shared with you starts as everywhere's).
+    const key = keyOf(chosenNow);
+    const next = {
+      ...all,
+      [key]: { ...(all[key] ?? all[EVERYWHERE] ?? { layout: "list" }), ...change },
+    };
     save("layouts", next);
     return next;
   });
 }
 // The inbox is grouped by its buckets, whatever the rest are grouped by.
-export const groupedBy = (): string | undefined =>
-  chosen().kind === "inbox" ? undefined : display().group;
+// Nor is a list grouped by what it's made of (a space's by space).
+export const groupedBy = (): string | undefined => {
+  const group = display().group;
+  if (chosen().kind === "inbox" || !group) return undefined;
+  return fieldsHere().some(([field]) => field === group) ? group : undefined;
+};
 // A new mailbox shown as the chosen one is (a view saved from it).
 export function keepDisplay(to: Mailbox): void {
   setDisplays((all) => {

@@ -22,7 +22,7 @@ export const HOTKEYS = [
   { id: "goEverything", label: "All Spaces", section: "Sidebar", keys: "⌘3" },
   { id: "goDrafts", label: "Drafts", section: "Sidebar", keys: "⌘4" },
   { id: "newThread", label: "New Thread", section: "Create", keys: "⌘N" },
-  { id: "compose", label: "Write a Thread as a Message", section: "Create", keys: "⇧⌘N" },
+  { id: "compose", label: "Create a Thread from a Message", section: "Create", keys: "⇧⌘N" },
   { id: "next", label: "Next Thread", section: "Inbox", keys: "J" },
   { id: "previous", label: "Previous Thread", section: "Inbox", keys: "K" },
   { id: "done", label: "Mark Done", section: "Inbox", keys: "⌘E" },

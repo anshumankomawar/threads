@@ -311,7 +311,16 @@ function ListChip(props: {
         ...byName(props.records).map((record) => ({
           label: record.name,
           icon: ids().includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
-          run: () => edit(props.thread, { [props.field]: toggled(ids(), record.id) }),
+          run: () =>
+            edit(
+              props.thread,
+              { [props.field]: toggled(ids(), record.id) },
+              {
+                labelIds: "Change Labels",
+                subspaceIds: "Change Spaces",
+                assigneeIds: "Change Assignees",
+              }[props.field],
+            ),
         })),
         ...(props.more ?? []),
       ]}
@@ -403,7 +412,7 @@ function Branches(props: { thread: Thread }): JSX.Element {
                     {
                       label: "Remove from Branches",
                       icon: icon(i.Cancel01Icon, 13),
-                      run: () => edit(t, { branchedFrom: undefined }),
+                      run: () => edit(t, { branchedFrom: undefined }, "Remove from Branches"),
                     },
                   ])
                 }
@@ -696,12 +705,24 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 const value = [base.bare, base.hover, styles.value];
 function Properties(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
-  const change = (fields: Partial<Thread>) => () => edit(c(), fields);
+  const change =
+    (fields: Partial<Thread>, label = "Edit") =>
+    () =>
+      edit(c(), fields, label);
   const listItems = (field: ListField, records: { id: string; name: string }[]): MenuItem[] =>
     byName(records).map((record) => ({
       label: record.name,
       icon: c()[field].includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
-      run: () => edit(c(), { [field]: toggled(c()[field], record.id) }),
+      run: () =>
+        edit(
+          c(),
+          { [field]: toggled(c()[field], record.id) },
+          {
+            labelIds: "Change Labels",
+            subspaceIds: "Change Spaces",
+            assigneeIds: "Change Assignees",
+          }[field],
+        ),
     }));
   // When: picked on the calendar, under what asked (the date's chip, or Add's row).
   const pickWhen = (at: Element | DOMRect): void =>
@@ -774,7 +795,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
             icon: icon(i.Flag01Icon, 13),
             items: PRIORITIES.filter((p) => p !== "none").map((priority) => ({
               label: LABELS[priority],
-              run: change({ priority }),
+              run: change({ priority }, "Change Priority"),
             })),
           },
         ]
@@ -841,7 +862,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
           tone={c().priority === "urgent" ? "urgent" : undefined}
           items={PRIORITIES.map((priority) => ({
             label: LABELS[priority],
-            run: change({ priority }),
+            run: change({ priority }, "Change Priority"),
           }))}
         />
       </Show>

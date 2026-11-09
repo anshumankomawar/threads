@@ -336,7 +336,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
                 .filter((sub) => sub.members.length > 0)
                 .map((sub) => ({
                   label: sub.name,
-                  hint: `Subspace · ${sub.members.length}`,
+                  hint: `Space · ${sub.members.length}`,
                   run: () =>
                     create(
                       sub.members.filter((m) => m.userId !== me().id).map((m) => m.user),
@@ -400,12 +400,12 @@ function NewLabel(props: { thread?: Thread }): JSX.Element {
     <Picker
       placeholder="Name the label"
       rows={(query) =>
-        entry(query, "Make label", (name) => {
+        entry(query, "Create Label", (name) => {
           const thread = props.thread;
           let id = "";
           undoable("New Label", () => {
             id = store.create(Label, { name, workspace: workspace() }).id;
-            if (thread) edit(thread, { labelIds: [...thread.labelIds, id] });
+            if (thread) edit(thread, { labelIds: [...thread.labelIds, id] }, "Add Label");
           });
           if (!thread) open({ label: id });
         })
@@ -453,7 +453,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
   const [name, setName] = createSignal(untrack(() => props.bucket?.name ?? ""));
   const save = (description: string): void => {
     setDialog(null);
-    if (props.bucket) return edit(props.bucket, { name: name(), description });
+    if (props.bucket) return edit(props.bucket, { name: name(), description }, "Edit Bucket");
     const mine = myBuckets();
     const position = Math.max(-1, ...mine.map((bucket) => bucket.position)) + 1;
     undoable(
@@ -477,14 +477,14 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
       }}
       rows={(text) =>
         naming()
-          ? next(text, `Step 1 of 2 · ${props.bucket ? "Rename" : "New bucket"}`, () => {
+          ? next(text, `Step 1 of 2 · ${props.bucket ? "Rename" : "New Bucket"}`, () => {
               setName(text.slice(0, 40));
               setNaming(false);
               setTyped(props.bucket?.description ?? "");
             })
           : [
               {
-                label: props.bucket ? "Save bucket" : "Create bucket",
+                label: props.bucket ? "Save Bucket" : "Create Bucket",
                 hint: "↵",
                 section: `Step 2 of 2 · Describe “${name()}” so threads are sorted into it`,
                 run: () => save(text.slice(0, 500)),

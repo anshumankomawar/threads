@@ -186,8 +186,8 @@ export function SavedView(props: { view: View }): JSX.Element {
           <MenuChip
             label={v().shared ? "Workspace" : "Only You"}
             items={[
-              { label: "Only You", run: () => edit(v(), { shared: false }) },
-              { label: "Workspace", run: () => edit(v(), { shared: true }) },
+              { label: "Only You", run: () => edit(v(), { shared: false }, "Share View") },
+              { label: "Workspace", run: () => edit(v(), { shared: true }, "Share View") },
             ]}
           />
         </Setting>
@@ -230,7 +230,7 @@ export function BucketView(props: { bucket: Bucket }): JSX.Element {
             onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
             onBlur={(event) => {
               const name = event.currentTarget.value.trim().slice(0, 40);
-              if (name && name !== b().name) edit(b(), { name });
+              if (name && name !== b().name) edit(b(), { name }, "Rename Bucket");
             }}
           />
         </Setting>
@@ -242,7 +242,7 @@ export function BucketView(props: { bucket: Bucket }): JSX.Element {
             value={b().description}
             onBlur={(event) => {
               const description = event.currentTarget.value.trim().slice(0, 500);
-              if (description !== b().description) edit(b(), { description });
+              if (description !== b().description) edit(b(), { description }, "Edit Bucket");
             }}
           />
         </Setting>
@@ -372,8 +372,14 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
             label={isPrivate() ? "Private" : "Open"}
             icon={icon(isPrivate() ? i.SquareLock01Icon : i.ViewIcon)}
             items={[
-              { label: "Open: anyone can join", run: () => edit(s(), { visibility: "open" }) },
-              { label: "Private: members only", run: () => edit(s(), { visibility: "private" }) },
+              {
+                label: "Open: anyone can join",
+                run: () => edit(s(), { visibility: "open" }, "Change Visibility"),
+              },
+              {
+                label: "Private: members only",
+                run: () => edit(s(), { visibility: "private" }, "Change Visibility"),
+              },
             ]}
           />
         </Setting>
@@ -406,9 +412,11 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
           rows={1}
           value={s().description ?? ""}
           onKeyDown={(event) => event.key === "Escape" && event.currentTarget.blur()}
-          onBlur={(event) =>
-            edit(s(), { description: event.currentTarget.value.trim() || undefined })
-          }
+          onBlur={(event) => {
+            // Only a change is a step to undo.
+            const description = event.currentTarget.value.trim() || undefined;
+            if (description !== s().description) edit(s(), { description }, "Edit Description");
+          }}
         />
       </Show>
       <PageTabs pages={isMember() ? [people, settings] : [people]} />

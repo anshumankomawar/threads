@@ -550,7 +550,7 @@ export function MailSidebar(): JSX.Element {
         <button
           class={sx(base.bare, s.profile)}
           aria-label="Profile and Settings"
-          title="Profile and settings (⌘,)"
+          title="Profile and Settings (⌘,)"
           onClick={() => open({ settings: null })}
         >
           <Identicon seed={me().id} size={18.18} />
@@ -755,11 +755,11 @@ function valueIcon(field: string, value: string): JSX.Element | undefined {
 // The list's button to a mailbox's page: a space's or view's settings (a gear), or someone's profile.
 const pageLabel = (box: Mailbox): string =>
   box.kind === "subspace"
-    ? "Space settings"
+    ? "Space Settings"
     : box.kind === "view"
       ? "View Settings"
       : box.kind === "bucket"
-        ? "Bucket settings"
+        ? "Bucket Settings"
         : "Profile";
 
 // What a mailbox's page shows beside its list: a space's description, members and settings, a saved view's settings,
@@ -985,9 +985,9 @@ function QueryBar(): JSX.Element {
 // Views: a filtered list, or one the sidebar doesn't have (a label's, a person's), saved as a view (pinned to the
 // sidebar to start with). A view pins and unpins; deleting it is in its menu and settings.
 const savable = (): boolean =>
-  (conditions().length > 0 && mailbox().kind !== "view") ||
-  mailbox().kind === "label" ||
-  mailbox().kind === "person";
+  // Your inbox, a bucket or Sent isn't a filter, so a view can't keep it.
+  !["view", "inbox", "unsorted", "bucket", "sent", "drafts"].includes(mailbox().kind) &&
+  (conditions().length > 0 || mailbox().kind === "label" || mailbox().kind === "person");
 const saveView = (): void =>
   setDialog({ kind: "newView", filter: { and: [...baseFilter(mailbox()), ...conditions()] } });
 export const deleteView = (saved: View): void => {
