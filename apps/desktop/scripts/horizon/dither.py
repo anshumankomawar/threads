@@ -1,7 +1,7 @@
 # The welcome screen's scene, as Devin draws theirs: the photo shrunk to one pixel per cell and each colour channel
-# ordered-dithered (Bayer 4×4, the same threshold for all three) down to a few levels on pure black. Every cell is a
-# solid square, and where the channels switch together the dark turns to sparse grey dots in a cross-hatch, the colour
-# showing only where the photo has it. The app draws each pixel as a square of whole screen pixels (Welcome.tsx).
+# ordered-dithered (Bayer 4×4, the same threshold for all three) on pure black. Every cell is a solid square; with
+# enough levels that neighbours differ only a little, the photo reads through and the pattern is grain on it, and where
+# the channels switch together the dark is faint grey static, the colour showing only where the photo has it. The app draws each pixel as a square of whole screen pixels (Welcome.tsx).
 #
 # python3 dither.py clean.png horizon.png COLS ROWS CROP LEVELS GAMMA GAIN SATURATION FLOOR NOISE GRAIN
 #   CROP is x,y,w,h in the source; GAMMA deepens the dark, GAIN dims the highlights, SATURATION is a multiplier;
