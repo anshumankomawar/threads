@@ -20,8 +20,8 @@ import { d1, Directory, suggestedName, type Membership } from "./directory.ts";
 import { workersAiComposer } from "./compose.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
-// The workspaces made before the directory, seeded rather than made by their first member.
-const SEEDED = ["local", "sample"];
+// The demo workspace (local development only), seeded rather than made by its first member.
+const SAMPLE = "sample";
 const ADMIN: Session = { admin: true };
 // The Worker passes the session it resolved to the workspace's object in this header, replacing any the request came
 // with. Only the Worker reaches the objects, so they trust it.
@@ -85,11 +85,11 @@ export class Workspace extends DurableObject<Env> {
     return this.ctx.id.name!;
   }
 
-  // Loaded from storage on first use; the first workspaces are seeded, others are made by `admit`.
+  // Loaded from storage on first use; the sample is seeded, every other workspace is made by `admit`.
   #load(): SyncServer {
     if (this.#server !== undefined) return this.#server;
     const server = threadsServer(sqliteStorage(this.ctx.storage), () => this.#sockets());
-    if (server.deltas(ADMIN, 0).lastSyncId === 0 && SEEDED.includes(this.#workspace))
+    if (server.deltas(ADMIN, 0).lastSyncId === 0 && this.#workspace === SAMPLE)
       server.action(ADMIN, "seed", this.#workspace);
     const { AI: ai } = this.env as { AI?: Ai };
     if (ai !== undefined)
@@ -170,7 +170,7 @@ type Ctx = Context<{ Bindings: Env }>;
 const tokenOf = (c: Ctx): string => c.req.header("Authorization")?.replace(/^Bearer\s*/, "") ?? "";
 // The socket can't send headers, so it names its workspace with `?workspace=`.
 const workspaceOf = (c: Ctx): string =>
-  c.req.header("X-Workspace") ?? c.req.query("workspace") ?? "local";
+  c.req.header("X-Workspace") ?? c.req.query("workspace") ?? "";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -186,8 +186,7 @@ app.get("/", (c) => c.html(SIGNED_IN_PAGE));
 
 // The directory of workspaces (directory.ts), once per isolate.
 let directory: Directory | undefined;
-const directoryOf = (env: Env): Directory =>
-  (directory ??= new Directory(d1(env.AUTH_DB), env.INVITES));
+const directoryOf = (env: Env): Directory => (directory ??= new Directory(d1(env.AUTH_DB)));
 
 // Who's signed in with Better Auth (its cookie), or null.
 async function signedIn(c: Ctx) {
@@ -324,9 +323,9 @@ app.post("/ai/compose", async (c) => {
 app.on(["GET", "POST"], ["/sync/*", "/actions/*"], async (c) => {
   const workspace = workspaceOf(c);
   const known =
-    workspace === "sample"
+    workspace === SAMPLE
       ? c.env.SAMPLE_WORKSPACE === "on"
-      : SEEDED.includes(workspace) || (await directoryOf(c.env).exists(workspace));
+      : await directoryOf(c.env).exists(workspace);
   if (!known) return c.json({ error: `Unknown workspace: ${workspace}` }, 404);
   const forwarded = new Request(c.req.raw);
   if (c.req.path !== "/sync/socket") {

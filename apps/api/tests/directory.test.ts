@@ -19,14 +19,6 @@ test("a company's domain names its workspace; a personal address has none", () =
   expect(suggestedName("ada@gmail.com")).toBe("");
 });
 
-test("the invite list's people are members of the first workspace", async () => {
-  const directory = new Directory(sqlite(), "Anshu@Example.com=anshu, arjun@example.com=arjun");
-  const { workspaces } = await directory.choices("anshu@example.com");
-  expect(workspaces.map((w) => [w.id, w.personId, w.role, w.members])).toEqual([
-    ["local", "anshu", "admin", 2],
-  ]);
-});
-
 test("a workspace open to its domain is offered to anyone there, and joined as a new person", async () => {
   const directory = new Directory(sqlite());
   const made = await directory.create("ada@acme.com", "Acme", true);

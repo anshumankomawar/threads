@@ -843,7 +843,7 @@ function workspaces(): Command[] {
       keywords: "invite add team member teammate email",
       run: () => setDialog({ kind: "invite" }),
     },
-    ...(account.workspaces ?? [])
+    ...account.workspaces
       .filter((w) => w.id !== server.workspace)
       .map((w): Command => ({
         id: `workspace:${w.id}`,

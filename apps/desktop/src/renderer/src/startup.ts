@@ -42,7 +42,7 @@ export const needsSignIn = source !== "sample" && signedIn === null;
 export const needsWorkspace =
   (signedIn !== null && "onboarding" in signedIn) ||
   (account !== null && location.hash === "#workspaces");
-if (account?.workspace) save(workspaceKey, account.workspace);
+if (account) save(workspaceKey, account.workspace);
 
 export const server = {
   // VITE_LOCAL_API_URL points Local and Sample at another local API (a second one, on its own port).
@@ -50,8 +50,7 @@ export const server = {
     source === "cloudflare"
       ? HOSTED_URL!
       : (import.meta.env.VITE_LOCAL_API_URL ?? "http://127.0.0.1:3030"),
-  // An API from before workspaces could be made doesn't say which: then it's the team's first one.
-  workspace: account?.workspace ?? (source === "sample" ? "sample" : "local"),
+  workspace: account?.workspace ?? source,
 };
 
 // Into another of your workspaces, or the one you just made or joined.

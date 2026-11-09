@@ -15,7 +15,7 @@ export const DEFAULT_BUCKETS = [
   },
 ];
 
-// Anshu, Arjun and KK are real; everyone else is made up, so the workspace has people in it.
+// The "local" workspace's people, which the rules tests (packages/models/tests) are written against.
 const LOCAL_PEOPLE: [string, string][] = [
   ["anshu", "Anshu"],
   ["arjun", "Arjun"],

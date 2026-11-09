@@ -89,43 +89,19 @@ export function suggestedName(email: string): string {
     .join(" ");
 }
 
-// The team's first workspace, from `INVITES` (`email=personId` pairs): its people were seeded with these ids.
-export const FIRST = { id: "local", name: "Local" };
-
 export class Directory {
   readonly #sql: Sql;
   #ready: Promise<void> | undefined;
-  readonly #invites: string;
   readonly #known = new Set<string>();
 
-  constructor(sql: Sql, invites = "") {
+  constructor(sql: Sql) {
     this.#sql = sql;
-    this.#invites = invites;
   }
 
-  // The tables, made the first time, and everyone `INVITES` names in the first workspace.
+  // The tables, made the first time.
   ready(): Promise<void> {
     this.#ready ??= (async () => {
       for (const table of TABLES) await this.#sql.run(table);
-      const pairs = this.#invites
-        .split(",")
-        .map((pair) => pair.split("=").map((part) => part.trim()))
-        .filter(([email, personId]) => email && personId);
-      if (pairs.length === 0) return;
-      await this.#sql.run(
-        "INSERT OR IGNORE INTO workspaces (id, name, domain, createdAt) VALUES (?, ?, NULL, ?)",
-        FIRST.id,
-        FIRST.name,
-        Date.now(),
-      );
-      for (const [email, personId] of pairs)
-        await this.#sql.run(
-          `INSERT OR IGNORE INTO members (workspaceId, email, personId, role, createdAt) VALUES (?, ?, ?, 'admin', ?)`,
-          FIRST.id,
-          normal(email),
-          personId,
-          Date.now(),
-        );
     })().catch((error: unknown) => {
       this.#ready = undefined;
       throw error;

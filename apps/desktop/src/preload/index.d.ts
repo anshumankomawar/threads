@@ -16,8 +16,8 @@ declare global {
             personId: string;
             email: string;
             token: string;
-            workspace?: string;
-            workspaces?: { id: string; name: string }[];
+            workspace: string;
+            workspaces: { id: string; name: string }[];
           }
         | { onboarding: true }
         | null

@@ -118,9 +118,10 @@ The desktop app signs in only with Google, through [Better
 Auth](https://www.better-auth.com) in the Worker (`apps/api/src/auth.ts`) and its Electron plugin in the app's main
 process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: the API is all there is.
 
-- **The sign-in screen**: signed out of Local or Cloudflare, the whole window is the sign-in screen, as in Linear
-  (`components/SignIn.tsx`; `main.tsx` loads it instead of the app, so no store is made). Sample has none: it's viewed as
-  anyone (⌘U).
+- **The welcome screen**: signed out of Local or Cloudflare, or signed in with no workspace yet, the whole window is the
+  welcome screen (`components/Welcome.tsx`; `main.tsx` loads it instead of the app, so no store is made): logging in,
+  then joining a workspace you're invited to or one open to your company's domain, or making one and inviting your
+  team. Sample has none: it's viewed as anyone (⌘U).
 - **Google** (Continue with Google) opens the browser straight at Google (`/api/auth/electron/
   init-oauth-proxy`, with the app's PKCE request), which returns to the API (`<BETTER_AUTH_URL>/api/auth/callback/google`),
   which lands the browser on the API's own page at `/` (`SIGNED_IN_PAGE`). That page opens the app on
@@ -132,11 +133,19 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
   The window only ever gets the Threads token, from `POST /auth/token` (`window.threads.signedIn()`): hosted, a signed
   session token; locally, the person's id. Signed in, you're that person and ⌘U is off;
   signing out returns to View As. Calls from the main process carry `origin: com.threads.arc:/`, which the API trusts.
-- **Only invited emails get in.** `INVITES` (a secret: `email=personId` pairs, separated by commas) is the invite list
-  and says which Person each email is. An uninvited email can't get an account (a `user.create` hook refuses it).
+- **Workspaces are in a directory** (`apps/api/src/directory.ts`), in the same D1 database: each workspace (and the
+  company domain anyone at may join it from, if its maker allowed that), its members (an email and the Person they are
+  there) and who's invited. Anyone can log in. `GET /onboarding` says where you can go, `POST /workspaces` makes one,
+  `POST /workspaces/:id/join` joins one and `/workspaces/:id/invites` lists and adds invites (no email is sent; they see
+  it when they log in). Each of these, and `POST /auth/token`, runs the workspace's `admit` action (`rules.ts`), which
+  makes whatever's missing of the member's Workspace, Person and membership in its Durable Object, so the directory is
+  the one record of who's a member. The window reaches these routes through the main process
+  (`window.threads.call`), which holds the session; `/auth/token` takes `{ workspace }` and answers 409 when you have
+  none yet. The app remembers the workspace you were last in, per source; ⌘K switches, invites, and makes or joins
+  another.
 - **Better Auth keeps its own users and sessions** in a D1 database (`AUTH_DB`), apart from the workspaces. Its tables
   are made the first time the Worker signs anyone in (`getMigrations`), so there's no migration step to run.
-- **Settings**: `INVITES`, `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the API's own origin,
+- **Settings**: `BETTER_AUTH_SECRET` (local default otherwise), `BETTER_AUTH_URL` (the API's own origin,
   `http://127.0.0.1:3030` by default), `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` (Google is offered only with both;
   its redirect URI is `<BETTER_AUTH_URL>/api/auth/callback/google`). Locally they go in
   `apps/api/.dev.vars`; hosted, they're secrets.
@@ -150,7 +159,8 @@ process (`apps/desktop/src/main/signIn.ts`). There's no separate sign-in site: t
 ## Running and testing
 
 - `vp run api#dev` serves the API on `http://127.0.0.1:3030` (needs `cf` logged in to the Threads account for Workers
-  AI; `THREADS_LOCAL_AI=off` leaves sorting out). A new workspace seeds itself. State lives in
+  AI; `THREADS_LOCAL_AI=off` leaves sorting out). The sample workspace seeds itself; any other is made by its first
+  member. State lives in
   `apps/api/.cloudflare/state`. A local workspace whose data was written under other models starts over by itself
   (the `Workspace` object keeps the schema hash in a `schema` table), so changing the models needs no reset by hand;
   hosted data is never thrown away. Deleting `v3/do` (API stopped) still starts over on demand.

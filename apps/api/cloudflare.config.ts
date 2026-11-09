@@ -27,9 +27,6 @@ export default defineConfig(({ mode }) => ({
       // Signing in (src/auth.ts): Better Auth's users and sessions, and its settings. Locally the secrets come from
       // apps/api/.dev.vars; they have local defaults or are optional.
       AUTH_DB: bindings.d1({ name: "threads-auth" }),
-      // The first workspace's people, from before workspaces could be made: `email=personId` pairs, separated by
-      // commas. The directory (src/directory.ts) takes them in.
-      INVITES: bindings.secret(),
       BETTER_AUTH_SECRET: bindings.secret(),
       // This API's own origin, which Google redirects back to (http://127.0.0.1:3030 locally, its default).
       BETTER_AUTH_URL: bindings.secret(),
