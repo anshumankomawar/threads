@@ -5,21 +5,26 @@ import { equal, write, type Core } from "./model";
 import { cell } from "./signals";
 import type { TransactionQueue } from "./transactions";
 
-// What one transaction did, kept for undoing it: its kind, its model, and the values it changed from and to.
-type Change = Pick<TxRecord, "kind" | "model" | "modelId" | "changes" | "original">;
+// What one transaction did, kept for undoing it: its kind, its model, and the values it changed from and to (and which
+// transaction it was, so a correction to it reaches it here).
+type Change = Pick<TxRecord, "kind" | "model" | "modelId" | "changes" | "original"> & {
+  txId?: string;
+};
 // One undo step: what the UI called it, and the changes made within it, in order.
 type Step = { label: string; changes: Change[] };
 
 const LIMIT = 100;
 
-// The original isn't copied: the queue corrects it where it must (an earlier transaction refused, or a rebase onto
-// the server's latest), and undoing should go back to that, not to a value the server refused.
-const copy = ({ kind, model, modelId, changes, original }: TxRecord): Change => ({
+// A copy, so a rebase (which refills a pending transaction's original from the pool, the server's echo of it included)
+// can't make it undo to itself. The one correction it does need, an earlier transaction refused, comes from the
+// queue's onCorrect.
+const copy = ({ id, kind, model, modelId, changes, original }: TxRecord): Change => ({
+  txId: id,
   kind,
   model,
   modelId,
   changes: changes && { ...changes },
-  original,
+  original: original && { ...original },
 });
 
 // Undo and redo, as Linear's UndoQueue: built on transactions. `group` listens to the transaction queue while its
@@ -42,6 +47,13 @@ export class UndoStack {
   constructor(core: Core, queue: TransactionQueue) {
     this.#core = core;
     this.#queue = queue;
+    // A refused transaction rolled back under a later one: that one now undoes past the refused value too.
+    queue.onCorrect((txId, field, value) => {
+      for (const step of [...this.#undos, ...this.#redos])
+        for (const change of step.changes)
+          if (change.txId === txId && change.original && field in change.original)
+            change.original[field] = value;
+    });
   }
 
   // Runs `fn`, and makes everything it queues one undo step called `label`. Inside another group, it's part of that
@@ -150,7 +162,8 @@ export class UndoStack {
         }
         if (Object.keys(back).length === 0) return null;
         for (const [field, value] of Object.entries(back)) write(model, field, value);
-        enqueue("update", model, back, was);
+        // The queue keeps its own (it refills them as it rebases); these are this step's, for reversing it again.
+        enqueue("update", model, { ...back }, { ...was });
         return made("update", back, was);
       }
     }

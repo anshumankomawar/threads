@@ -171,8 +171,9 @@ Built on transactions, as Linear's undo queue is (`undo.ts`):
   redo reverses them in turn. Undo and redo record no step themselves, and a new step clears what could be redone.
 - A change is only reversed where it still holds: a field changed since (by someone else, or a later edit) is left
   as it is, a model that's gone is skipped, and so is a rejected transaction, which the queue has already rolled back.
-  A step with nothing left to reverse is dropped, and the one before it is undone instead. A step's old values are
-  the queue's, so they follow its rollbacks and rebases: undoing never brings back a value the server refused.
+  A step with nothing left to reverse is dropped, and the one before it is undone instead. A step keeps its own copy
+  of each change's old values (so the server echoing a pending edit back can't make it undo to itself), and the queue
+  tells it when a refused transaction's rollback changes one: undoing never brings back a value the server refused.
 - The stacks are this session's, in memory, at most 100 steps.
 
 ### Server actions
@@ -211,7 +212,7 @@ Five internal pieces sit behind the developer API: the model registry, object po
 
 The registry is shared code: the server reads the same metadata to validate mutations and build tables.
 
-Transactions and queue rules, taken from Linear's queue: save to the outbox before sending; send in order; never run two transactions for the same model (or a model and one it references) at once; at most 40 in flight per request; on a network error put the batch back at the front; on a rejection roll back and reject result(), and drop what waits on a refused create, before sending anything else; a transaction is done only when lastSyncId reaches its sync id. Only a transaction's own refusal, or a 400, 403, 409 or 422 for the whole request, is a rejection: a 401, 408 or 429 (like a 5xx or a dropped connection) is retried after a backoff, with the edits kept. A refused create of a model the local database still has (undoing a delete the server refused or hadn't run yet) leaves the server's copy in place. After a reload the outbox is replayed ahead of anything queued while loading.
+Transactions and queue rules, taken from Linear's queue: save to the outbox before sending; send in order; never run two transactions for the same model (or a model and one it references) at once; at most 40 in flight per request; on a network error put the batch back at the front; on a rejection roll back and reject result(), and drop what waits on a refused create, before sending anything else; a transaction is done only when lastSyncId reaches its sync id. Only a transaction's own refusal, or a 400, 403, 409, 413 or 422 for the whole request, is a rejection: a 401, 408 or 429 (like a 5xx or a dropped connection) is retried after a backoff, with the edits kept. A refused create of a model the local database still has (undoing a delete the server refused or hadn't run yet) leaves the server's copy in place. After a reload the outbox is replayed ahead of anything queued while loading.
 
 applyDelta order: drop a packet older than lastSyncId; if its groups differ from the ones the local data holds, change
 groups (v2) instead; check the first sync id equals lastSyncId + 1 (otherwise fetch the gap); write each action to the local database; update the object pool; call queue.onDelta to rebase pending edits on top; advance lastSyncId; resolve waiters.

@@ -242,3 +242,119 @@ test("undoing a delete before the server answers it keeps the model, whatever th
   expect(c2?.isPersisted).toBe(true);
   expect(store.pendingCount()).toBe(0);
 });
+
+test("an edit the server echoes back while it's pending still undoes to what it was", async () => {
+  const { store, transport } = await setup(seed);
+  const c1 = store.findById(Conversation, "c1")!;
+  store.undo.group("Rename", () => {
+    c1.title = "A";
+    c1.save();
+  });
+  await tick();
+  // The server's delta of this very edit arrives before its answer does: the edit is rebased onto it.
+  transport.send({
+    type: "delta",
+    groups: [],
+    actions: [
+      {
+        id: 1,
+        txId: "x1",
+        model: "Conversation",
+        modelId: "c1",
+        action: "U",
+        data: row("c1", { title: "A", state: "open", teamId: "t1" }),
+      },
+    ],
+    lastSyncId: 1,
+  });
+  await tick();
+  const [request] = transport.requests;
+  request.resolve({
+    results: request.request.transactions.map((tx) => ({
+      txId: tx.id,
+      ok: true as const,
+      syncId: 1,
+    })),
+  });
+  await tick();
+  expect(store.undo.undo()).toBe("Rename");
+  expect(c1.title).toBe("One");
+});
+
+test("redo after the server has echoed both the edit and its undo makes the edit again", async () => {
+  const { store, transport } = await setup(seed);
+  const c1 = store.findById(Conversation, "c1")!;
+  const echo = (id: number, title: string): void =>
+    transport.send({
+      type: "delta",
+      groups: [],
+      actions: [
+        {
+          id,
+          txId: `x${id}`,
+          model: "Conversation",
+          modelId: "c1",
+          action: "U",
+          data: row("c1", { title, state: "open", teamId: "t1" }),
+        },
+      ],
+      lastSyncId: id,
+    });
+  const answer = async (at: number): Promise<void> => {
+    await tick();
+    const { request, resolve } = transport.requests[at];
+    resolve({
+      results: request.transactions.map((tx) => ({
+        txId: tx.id,
+        ok: true as const,
+        syncId: at + 1,
+      })),
+    });
+    await tick();
+  };
+  store.undo.group("Rename", () => {
+    c1.title = "A";
+    c1.save();
+  });
+  await answer(0);
+  echo(1, "A");
+  await tick();
+  expect(store.undo.undo()).toBe("Rename");
+  await answer(1);
+  echo(2, "One");
+  await tick();
+  expect(c1.title).toBe("One");
+  expect(store.undo.redo()).toBe("Rename");
+  expect(c1.title).toBe("A");
+});
+
+test("an undo the server echoes back while it's pending can still be redone", async () => {
+  const { store, transport } = await setup(seed);
+  const c1 = store.findById(Conversation, "c1")!;
+  store.undo.group("Rename", () => {
+    c1.title = "A";
+    c1.save();
+  });
+  await tick();
+  store.undo.undo();
+  await tick();
+  // The undo's own change comes back from the server before it's answered.
+  transport.send({
+    type: "delta",
+    groups: [],
+    actions: [
+      {
+        id: 1,
+        txId: "x1",
+        model: "Conversation",
+        modelId: "c1",
+        action: "U",
+        data: row("c1", { title: "One", state: "open", teamId: "t1" }),
+      },
+    ],
+    lastSyncId: 1,
+  });
+  await tick();
+  expect(store.undo.redo()).toBe("Rename");
+  expect(c1.title).toBe("A");
+});

@@ -74,6 +74,7 @@ export class TransactionQueue {
   #entries: Entry[] = [];
   #created: Entry[] = [];
   #listeners = new Set<(record: TxRecord) => void>();
+  #corrections = new Set<(txId: string, field: string, value: unknown) => void>();
   #busy = false;
   #attempt = 0;
 
@@ -94,6 +95,13 @@ export class TransactionQueue {
   listen(listener: (record: TxRecord) => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  // Hears when a refused transaction's rollback changes what a later one changed a field from (that field now goes back
+  // past the refused value): how an undo step keeps from bringing the refused value back.
+  onCorrect(listener: (txId: string, field: string, value: unknown) => void): () => void {
+    this.#corrections.add(listener);
+    return () => this.#corrections.delete(listener);
   }
 
   onDelta(modelId: string, lastSyncId: number): void {
@@ -262,14 +270,20 @@ export class TransactionQueue {
     if (model) {
       // Edits made on top of it, saved or not, now undo to what was there before it.
       const later = this.#entries.slice(this.#entries.findIndex((e) => e.record === record) + 1);
-      const above = [model.__original];
+      const above: { original: Record<string, unknown>; txId?: string }[] = [
+        { original: model.__original },
+      ];
       for (const { record: other } of later)
-        if (other.modelId === record.modelId && other.original) above.push(other.original);
+        if (other.modelId === record.modelId && other.original)
+          above.push({ original: other.original, txId: other.id });
       for (const [field, value] of Object.entries(record.original!)) {
         const rejected = record.changes![field];
         if (equal(model.__data[field], rejected)) write(model, field, value);
-        for (const original of above)
-          if (field in original && equal(original[field], rejected)) original[field] = value;
+        for (const { original, txId } of above)
+          if (field in original && equal(original[field], rejected)) {
+            original[field] = value;
+            if (txId) for (const listener of this.#corrections) listener(txId, field, value);
+          }
       }
     }
   }
