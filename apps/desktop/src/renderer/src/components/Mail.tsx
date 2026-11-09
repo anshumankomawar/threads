@@ -869,6 +869,13 @@ const filterItems = (): MenuItem[] => [
     checked: !display().hideResolved,
     run: () => setDisplay({ hideResolved: !display().hideResolved || undefined }),
   },
+  // What's filtered, kept as a view.
+  ...(savable()
+    ? [
+        "separator" as const,
+        { label: "Save as View", icon: icon(i.FilterAddIcon, 13), run: saveView },
+      ]
+    : []),
 ];
 
 // How the list is shown (mail.ts' display, kept on this Mac): rows or a timeline; grouped by any field a filter can test;
@@ -913,13 +920,6 @@ function QueryFilters(): JSX.Element {
           <Icon icon={i.Cancel01Icon} size={11} aria-hidden="true" />
         </button>
       </Show>
-      <MenuChip
-        title="Filter"
-        tone="muted"
-        icon={<Icon icon={i.FilterIcon} size={12} aria-hidden="true" />}
-        label="Filter"
-        items={filterItems()}
-      />
     </>
   );
 }
@@ -942,13 +942,12 @@ function NewButton(): JSX.Element {
   );
 }
 
-// The query over a filtered list, in a bar above it: its filters, then New. Over a timeline they're in its toolbar.
+// The filters applied to a list, in a row above it, each with its × to take it off. Over a timeline they're in its
+// toolbar.
 function QueryBar(): JSX.Element {
   return (
     <div class={sx(s.query)}>
       <QueryFilters />
-      <span class={sx(s.querySpacer)} />
-      <NewButton />
     </div>
   );
 }
@@ -1004,13 +1003,11 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
     (ids) => ids.forEach((id) => store.subscribe(`subspace:${id}`)),
   );
   const filterable = (): boolean => mailbox().kind !== "drafts";
-  // The query bar, over a filtered list (a timeline has its filters on its own toolbar); with either showing them,
-  // the top bar's Filter goes.
+  // The filters applied, in a row over a list (a timeline has them on its own toolbar).
   const queryShown = (): boolean =>
     filterable() &&
     display().layout !== "timeline" &&
     (conditions().length > 0 || display().hideResolved === true);
-  const filtersShown = (): boolean => queryShown() || display().layout === "timeline";
   const total = (): number =>
     mailbox().kind === "drafts" ? drafts().length : listed().order.length;
   const unreadCount = (): number =>
@@ -1067,25 +1064,14 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               items={displayMenu()}
             />
           </Show>
+          {/* Filter: always here, whatever's applied (the row under the bar only shows them). */}
           <Show when={filterable()}>
-            <Show when={!filtersShown()}>
-              <MenuChip
-                look={topbar.button}
-                title="Filter"
-                label={<Icon icon={i.FilterIcon} {...ICON} />}
-                items={filterItems()}
-              />
-            </Show>
-          </Show>
-          <Show when={savable()}>
-            <button
-              class={sx(topbar.button)}
-              aria-label="Save as View"
-              title="Save as View"
-              onClick={saveView}
-            >
-              <Icon icon={i.FilterAddIcon} {...ICON} />
-            </button>
+            <MenuChip
+              look={topbar.button}
+              title="Filter"
+              label={<Icon icon={i.FilterIcon} {...ICON} />}
+              items={filterItems()}
+            />
           </Show>
           <Show when={shownView()}>
             {(saved) => (
@@ -1417,7 +1403,6 @@ const s = stylex.create({
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
   },
-  querySpacer: { flex: 1 },
   // As tall as the chips beside it.
   // Spaced as the toolbar spaces everything, not as a dialog's buttons are.
   // Over the list's foot, in the middle: a little glass, a soft shadow, fully round.
