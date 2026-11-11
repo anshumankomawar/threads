@@ -2,7 +2,17 @@ import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, Show, untrack, type Signal } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Label, Message, Subspace, SubspaceMember, Thread, User, View } from "models";
+import {
+  Bucket,
+  Draft,
+  Label,
+  Message,
+  Subspace,
+  SubspaceMember,
+  Thread,
+  User,
+  View,
+} from "models";
 import type { Filter } from "sync";
 import {
   dialogBack,
@@ -15,7 +25,6 @@ import {
   say,
   setDialog,
   store,
-  summary,
   toggled,
   switchTo,
   type Dialog,
@@ -29,7 +38,8 @@ import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
-import { icon } from "./Icon";
+import { icon, type IconSvgElement } from "./Icon";
+import { page } from "../styles/page";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
 import { Search } from "./Search";
@@ -212,17 +222,121 @@ export function send(thread: Thread, body: string): void {
   });
 }
 
-type Step = "write" | "describe" | "pick" | "labels";
+// ⌘N: a thread as one short form. Each field is a row, the one you're on taking what you type and the rest showing
+// what's set; Enter moves down a row (and on Assign To, picking someone makes it), Tab and ⇧Tab move between rows, a
+// click goes back to one. ⌘↵ makes it as it stands from any row, ⌘S keeps it in Drafts, and Escape goes back a row (or
+// closes). Started from a space, a label or someone (their page or list, or a view filtered to one), it's there already.
+type Field = "title" | "description" | "assign" | "labels";
+const FIELDS: Field[] = ["title", "description", "assign", "labels"];
+const FIELD_NAMES: Record<Field, string> = {
+  title: "Title",
+  description: "Description",
+  assign: "Assign To",
+  labels: "Labels",
+};
+const FIELD_ICONS: Record<Field, IconSvgElement> = {
+  title: i.TextFontIcon,
+  description: i.TextAlignLeftIcon,
+  assign: i.UserIcon,
+  labels: i.Tag01Icon,
+};
+const PLACEHOLDERS: Record<Field, string> = {
+  title: "What do you need?",
+  description: "Add details (optional)",
+  assign: "Find someone or a space",
+  labels: "Find or make a label",
+};
 
-// Starting a thread: its title, an optional description, then who it's assigned to (a person, or everyone in a
-// subspace, which it then goes in); there Tab picks labels. Started from a label's, a subspace's or a person's page, it's
-// in that label or subspace, or that person is first in the list.
+const form = stylex.create({
+  fields: { display: "flex", flexDirection: "column", padding: "6px 0" },
+  // A field: its name on the left (an icon and a word), what's set or being typed on the right.
+  field: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 10,
+    alignItems: "center",
+    minHeight: 34,
+    margin: "0 8px",
+    padding: "0 6px",
+    borderRadius: radii.row,
+    cursor: "default",
+    backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
+  },
+  current: { backgroundColor: { default: colors.bgTertiary, ":hover": colors.bgTertiary } },
+  name: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 6,
+    alignItems: "center",
+    width: 104,
+    color: colors.textTertiary,
+    fontSize: fontSizes.body,
+  },
+  value: { flex: 1, minWidth: 0, color: colors.textPrimary, fontSize: fontSizes.input },
+  unset: { color: colors.textTertiary },
+  // The title reads as the thread's: a little larger and heavier.
+  titleValue: { fontWeight: 500 },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    height: 34,
+    color: { default: colors.textPrimary, "::placeholder": colors.textTertiary },
+    fontSize: fontSizes.input,
+    outline: "none",
+  },
+  clear: {
+    display: "grid",
+    flexShrink: 0,
+    placeItems: "center",
+    width: 20,
+    height: 20,
+    borderRadius: radii.control,
+    color: colors.iconTertiary,
+    cursor: "pointer",
+    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
+  },
+  options: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minHeight: 0,
+    padding: "6px 0 8px",
+    overflowY: "auto",
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: colors.panelBorder,
+  },
+  // What the keys do, quietly, along the bottom, with the two ways out on the right.
+  footer: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 14,
+    alignItems: "center",
+    height: 32,
+    padding: "0 14px",
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: colors.panelBorder,
+    color: colors.textTertiary,
+    fontSize: fontSizes.label,
+  },
+  end: { display: "flex", gap: 14, marginLeft: "auto" },
+  key: { marginRight: 5, color: colors.textSecondary },
+  hintButton: {
+    cursor: "pointer",
+    color: { default: colors.textTertiary, ":hover": colors.textPrimary },
+  },
+});
+
 function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }): JSX.Element {
-  const [step, setStep] = createSignal<Step>("write");
-  const query = createSignal("");
-  const setTyped = query[1];
+  const [field, setField] = createSignal<Field>("title");
+  const [typed, setTyped] = createSignal("");
   const [title, setTitle] = createSignal("");
   const [description, setDescription] = createSignal("");
+  const [assignees, setAssignees] = createSignal<User[]>(
+    untrack(() => (props.to ? [props.to] : [])),
+  );
+  const [spaceId, setSpaceId] = createSignal<string | undefined>(untrack(() => props.subspaceId));
   // Labels by name, since one you make here doesn't exist until the thread does.
   const [names, setNames] = createSignal<string[]>(
     untrack(() => {
@@ -230,142 +344,292 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       return label ? [label.name] : [];
     }),
   );
-  const go = (next: Step, text = ""): void => {
-    setStep(next);
-    setTyped(text);
+  const [at, setAt] = createSignal(0);
+  let input!: HTMLInputElement;
+  const space = (): Subspace | undefined => store.findById(Subspace, spaceId() ?? "");
+
+  // What a text field holds: what's typed while you're on it, else what was kept when you left it.
+  const titleNow = (): string => (field() === "title" ? typed() : title()).trim();
+  const descriptionNow = (): string => (field() === "description" ? typed() : description()).trim();
+  // Leaving a text field keeps what was typed in it; arriving at one puts its text back to edit.
+  const go = (next: Field): void => {
+    if (field() === "title") setTitle(typed());
+    if (field() === "description") setDescription(typed());
+    setField(next);
+    setTyped(next === "title" ? title() : next === "description" ? description() : "");
+    setAt(0);
+    queueMicrotask(() => input?.focus());
   };
-  const back = (): void => {
-    if (step() === "describe") go("write", title());
-    else if (step() === "pick") go("describe", description());
-    else if (step() === "labels") go("pick");
-    else dialogBack();
+  const step = (by: number): void => {
+    const next = FIELDS[FIELDS.indexOf(field()) + by];
+    if (next) go(next);
   };
-  const create = (assignees: User[], subspace?: Subspace): void => {
+
+  // The thread's labels: the ones named that exist, the rest made with it.
+  const labelIds = (): string[] => {
+    const labels = store.all(Label);
+    return names().map(
+      (name) =>
+        (
+          labels.find((l) => l.name === name) ??
+          store.create(Label, { name, workspace: workspace() })
+        ).id,
+    );
+  };
+  // Makes it as it stands (or with who was just picked); without a title it waits on the title.
+  const create = (to = assignees(), inSpace = spaceId()): void => {
+    if (!titleNow()) return go("title");
+    const fields = { title: titleNow(), description: descriptionNow() || undefined };
     let made!: Thread;
     undoable("New Thread", () => {
-      const labels = store.all(Label);
-      const labelIds = names().map(
-        (name) =>
-          (
-            labels.find((l) => l.name === name) ??
-            store.create(Label, { name, workspace: workspace() })
-          ).id,
-      );
-      const subspaceIds = [
-        ...new Set([
-          ...(props.subspaceId ? [props.subspaceId] : []),
-          ...(subspace ? [subspace.id] : []),
-        ]),
-      ];
       setDialog(null);
       made = createThread({
-        title: title(),
-        description: description(),
-        assignees,
-        labelIds,
-        subspaceIds,
+        ...fields,
+        assignees: to,
+        labelIds: labelIds(),
+        subspaceIds: inSpace ? [inSpace] : [],
       });
     });
     open({ thread: made.id });
   };
-  const toggle = (name: string): void => {
+  // Keeps it in Drafts, everything set so far with it, to finish and send later.
+  const saveDraft = (): void => {
+    const text = [titleNow(), descriptionNow()].filter(Boolean).join("\n\n");
+    if (!text) return;
+    undoable("Save Draft", () => {
+      store.create(Draft, {
+        user: me(),
+        text,
+        draft: {
+          title: titleNow(),
+          context: descriptionNow(),
+          asks: [],
+          assigneeIds: assignees().map((u) => u.id),
+          subspaceIds: spaceId() ? [spaceId()!] : [],
+          labelIds: labelIds(),
+        },
+      });
+    });
+    setDialog(null);
+    say("Saved to Drafts");
+  };
+
+  const toggleLabel = (name: string): void => {
     setNames((all) => toggled(all, name));
     setTyped("");
   };
-  const steps: Record<Step, [string, (query: string) => Row[]]> = {
-    write: [
-      untrack(() => (props.to ? `What do you need from ${props.to.name}?` : "What do you need?")),
-      (text) =>
-        next(text, "Step 1 of 3", () => {
-          setTitle(text);
-          go("describe", description());
-        }),
-    ],
-    describe: [
-      "Add a description (optional)",
-      (text) => [
-        {
-          label: text === "" ? "Skip the description" : "Next",
-          hint: "↵",
-          section: `Step 2 of 3 · ${title()}`,
-          run: () => {
-            setDescription(text);
-            go("pick");
-          },
-        },
-      ],
-    ],
-    pick: [
-      "Assign to",
-      (text) => {
-        const section = `Step 3 of 3 · ${title()}`;
-        const first = props.to?.id;
-        return [
-          ...(
-            [
-              { label: "Unassigned", run: () => create([]) },
-              ...people(text, (u) => create([u])),
-              { label: "Me", seed: me().id, run: () => create([me()]) },
-              ...store
-                .all(Subspace)
-                .filter((sub) => sub.members.length > 0)
-                .map((sub) => ({
-                  label: sub.name,
-                  hint: `Space · ${sub.members.length}`,
-                  run: () =>
-                    create(
-                      sub.members.filter((m) => m.userId !== me().id).map((m) => m.user),
-                      sub,
-                    ),
-                })),
-            ] as Row[]
-          )
-            .filter((row) => matches(row.label, text))
-            .toSorted(
-              (a, b) => Number(!!first && b.seed === first) - Number(!!first && a.seed === first),
-            )
-            .map((row) => ({ ...row, section })),
-          {
-            label: summary(names(), "No labels"),
-            hint: "⇥",
-            section: "Labels",
-            run: () => go("labels"),
-          },
-        ];
-      },
-    ],
-    labels: [
-      "Find or make a label",
-      (text) => {
-        const all = byName(store.all(Label));
-        const exists = [...all.map((l) => l.name), ...names()].some(
-          (name) => name.toLowerCase() === text.toLowerCase(),
-        );
-        return [
-          ...all
-            .filter((l) => matches(l.name, text))
-            .map((l) => ({
-              label: l.name,
-              hint: names().includes(l.name) ? "✓" : undefined,
-              run: () => toggle(l.name),
+  // What the field you're on offers under the form: people and spaces to assign, or labels.
+  const options = createMemo((): Row[] => {
+    const text = typed().trim();
+    if (field() === "assign") {
+      const first = props.to?.id;
+      return (
+        [
+          { label: "Unassigned", run: () => create([]) },
+          ...people(text, (u) => create([u])),
+          { label: "Me", seed: me().id, run: () => create([me()]) },
+          ...store
+            .all(Subspace)
+            .filter((sub) => sub.members.length > 0)
+            .map((sub) => ({
+              label: sub.name,
+              hint: `Space · ${sub.members.length}`,
+              icon: sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon,
+              run: () =>
+                create(
+                  sub.members.filter((m) => m.userId !== me().id).map((m) => m.user),
+                  sub.id,
+                ),
             })),
-          ...names()
-            .filter((name) => !all.some((l) => l.name === name) && matches(name, text))
-            .map((name) => ({ label: name, hint: "✓", run: () => toggle(name) })),
-          ...(text !== "" && !exists ? [{ label: `Make “${text}”`, run: () => toggle(text) }] : []),
-          { label: "Done", hint: "esc", section: "Labels", run: () => go("pick") },
-        ];
-      },
-    ],
+        ] as Row[]
+      )
+        .filter((row) => matches(row.label, text))
+        .toSorted(
+          (a, b) => Number(!!first && b.seed === first) - Number(!!first && a.seed === first),
+        );
+    }
+    if (field() === "labels") {
+      const all = byName(store.all(Label));
+      const exists = [...all.map((l) => l.name), ...names()].some(
+        (name) => name.toLowerCase() === text.toLowerCase(),
+      );
+      return [
+        ...all
+          .filter((l) => matches(l.name, text))
+          .map((l) => ({
+            label: l.name,
+            icon: i.Tag01Icon,
+            hint: names().includes(l.name) ? "✓" : undefined,
+            run: () => toggleLabel(l.name),
+          })),
+        ...names()
+          .filter((name) => !all.some((l) => l.name === name) && matches(name, text))
+          .map((name) => ({
+            label: name,
+            icon: i.Tag01Icon,
+            hint: "✓",
+            run: () => toggleLabel(name),
+          })),
+        ...(text !== "" && !exists
+          ? [{ label: `Make “${text}”`, icon: i.Add01Icon, run: () => toggleLabel(text) }]
+          : []),
+      ];
+    }
+    return [];
+  });
+  const index = (): number => Math.min(at(), options().length - 1);
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    const key = event.key;
+    const empty = input.value === "";
+    const moveTo = moved(key, index(), options().length);
+    if (event.metaKey && key === "Enter") create();
+    else if (event.metaKey && key.toLowerCase() === "s") saveDraft();
+    else if (moveTo !== undefined && options().length > 0) setAt(moveTo);
+    else if (key === "Enter" && !event.isComposing) {
+      if (field() === "title") {
+        if (titleNow()) go("description");
+      } else if (field() === "description") go("assign");
+      else options()[index()]?.run();
+    } else if (key === "Tab") step(event.shiftKey ? -1 : 1);
+    else if (key === "Escape" || (key === "Backspace" && empty && field() !== "title")) {
+      if (field() === "title") dialogBack();
+      else step(-1);
+    } else return;
+    event.preventDefault();
   };
+
+  // A field's row: its name, then the input while you're on it, else what's set (a click goes back to it).
+  const value = (f: Field): JSX.Element => {
+    if (f === "title") return title() || <span class={sx(form.unset)}>Untitled</span>;
+    if (f === "description") return description() || <span class={sx(form.unset)}>None</span>;
+    if (f === "assign")
+      return (
+        <span class={sx(page.inCell)}>
+          <Show
+            when={assignees().length > 0}
+            fallback={<span class={sx(form.unset)}>Unassigned</span>}
+          >
+            {assignees()
+              .map((u) => u.name)
+              .join(", ")}
+          </Show>
+        </span>
+      );
+    return names().length > 0 ? names().join(", ") : <span class={sx(form.unset)}>None</span>;
+  };
+  const Row_ = (rowProps: { field: Field }): JSX.Element => {
+    const f = rowProps.field;
+    return (
+      <div
+        class={sx(form.field, field() === f && form.current)}
+        onMouseDown={(event) => field() !== f && (event.preventDefault(), go(f))}
+      >
+        <span class={sx(form.name)}>
+          {icon(FIELD_ICONS[f], 13)}
+          {FIELD_NAMES[f]}
+        </span>
+        <Show
+          when={field() === f}
+          fallback={
+            <span class={sx(base.ellipsis, form.value, f === "title" && form.titleValue)}>
+              {value(f)}
+            </span>
+          }
+        >
+          <input
+            ref={(el) => ((input = el), focusOnShow(el))}
+            class={sx(base.bare, form.input, f === "title" && form.titleValue)}
+            placeholder={
+              f === "title" && props.to
+                ? `What do you need from ${props.to.name}?`
+                : PLACEHOLDERS[f]
+            }
+            spellcheck={f !== "assign" && f !== "labels"}
+            value={typed()}
+            onInput={(event) => (setTyped(event.currentTarget.value), setAt(0))}
+            onKeyDown={onKeyDown}
+          />
+        </Show>
+        <Show when={f === "assign" && assignees().length > 0 && field() !== f}>
+          <button
+            class={sx(base.bare, form.clear)}
+            aria-label="Unassign"
+            onMouseDown={(event) => (
+              event.preventDefault(),
+              event.stopPropagation(),
+              setAssignees([])
+            )}
+          >
+            {icon(i.Cancel01Icon, 11)}
+          </button>
+        </Show>
+      </div>
+    );
+  };
+
   return (
-    <Picker
-      placeholder={steps[step()][0]}
-      rows={(text) => steps[step()][1](text)}
-      query={query}
-      onBack={back}
-      onTab={() => step() === "pick" && go("labels")}
-    />
+    <>
+      <div class={sx(form.fields)}>
+        <For each={FIELDS}>{(f) => <Row_ field={f} />}</For>
+        {/* Where it goes: shown once it's in a space (started from one, or by assigning one). */}
+        <Show when={space()}>
+          {(sub) => (
+            <div class={sx(form.field)}>
+              <span class={sx(form.name)}>
+                {icon(i.Layers01Icon, 13)}
+                Space
+              </span>
+              <span class={sx(base.ellipsis, form.value)}>{sub().name}</span>
+              <button
+                class={sx(base.bare, form.clear)}
+                aria-label="Take Out of Space"
+                onMouseDown={(event) => (event.preventDefault(), setSpaceId(undefined))}
+              >
+                {icon(i.Cancel01Icon, 11)}
+              </button>
+            </div>
+          )}
+        </Show>
+      </div>
+      <Show when={options().length > 0}>
+        <div class={sx(form.options)} role="listbox">
+          <For each={options()}>
+            {(row, n) => (
+              <OptionButton
+                option={row}
+                selected={n() === index()}
+                onHover={() => setAt(n())}
+                inset
+              />
+            )}
+          </For>
+        </div>
+      </Show>
+      <div class={sx(form.footer)}>
+        <span>
+          <span class={sx(form.key)}>↵</span>
+          {field() === "assign" ? "Assign and Create" : field() === "labels" ? "Add Label" : "Next"}
+        </span>
+        <span>
+          <span class={sx(form.key)}>⇥</span>Next Field
+        </span>
+        <span class={sx(form.end)}>
+          <button
+            class={sx(base.bare, form.hintButton)}
+            onMouseDown={(event) => (event.preventDefault(), saveDraft())}
+          >
+            <span class={sx(form.key)}>⌘S</span>Save Draft
+          </button>
+          <button
+            class={sx(base.bare, form.hintButton)}
+            onMouseDown={(event) => (event.preventDefault(), create())}
+          >
+            <span class={sx(form.key)}>⌘↵</span>Create
+          </button>
+        </span>
+      </div>
+    </>
   );
 }
 

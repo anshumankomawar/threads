@@ -30,7 +30,7 @@ import {
 import { askDeleteBucket } from "./Mail";
 import { ago, dot } from "./ThreadView";
 import { base } from "../styles/base";
-import { button, chip, chipTone } from "../styles/controls";
+import { chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
@@ -417,6 +417,8 @@ function overviewOf(s: () => Subspace): { counts: () => JSX.Element; body: JSX.E
           ? "Urgent"
           : "High priority";
   const counts = (): JSX.Element => {
+    // An empty space says so where its threads would be, not with a count of none.
+    if (threads().length === 0) return null;
     const blocked = unresolved().filter((t) => t.state === "blocked").length;
     const late = unresolved().filter(overdue).length;
     const soon = unresolved().filter(dueSoon).length;
@@ -446,16 +448,17 @@ function overviewOf(s: () => Subspace): { counts: () => JSX.Element; body: JSX.E
       <Show
         when={threads().length > 0}
         fallback={
-          <div class={sx(overview.empty)}>
-            <span class={sx(page.itemName)}>Nothing in this space yet</span>
-            <span class={sx(page.small)}>Threads you start here show up for everyone in it.</span>
+          <section class={sx(overview.section)}>
+            <h2 class={sx(overview.heading)}>Threads</h2>
             <button
-              class={sx(base.bare, button.solid, overview.emptyButton)}
+              class={sx(base.bare, overview.line, overview.newLine)}
               onClick={() => setDialog({ kind: "newThread", subspaceId: s().id })}
             >
-              New Thread
+              {icon(i.Add01Icon, 13)}
+              <span class={sx(overview.lineTitle)}>New Thread</span>
+              <span class={sx(overview.when)}>⌘N</span>
             </button>
-          </div>
+          </section>
         }
       >
         <Lines title="Needs attention" threads={needs()} why={why} />
@@ -533,7 +536,7 @@ const overview = stylex.create({
     backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
   },
   lock: { display: "flex", color: colors.iconTertiary },
-  settings: { marginLeft: "auto" },
+  settings: { marginLeft: "auto", marginRight: -6 },
   settingsButton: {
     display: "grid",
     placeItems: "center",
@@ -575,14 +578,10 @@ const overview = stylex.create({
     textAlign: "end",
     fontVariantNumeric: "tabular-nums",
   },
-  empty: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 4,
-    marginTop: 24,
-  },
-  emptyButton: { marginTop: 8 },
+  // The first thread's row, where the threads will be: quiet until the pointer's on it.
+  newLine: { color: { default: colors.textTertiary, ":hover": colors.textPrimary } },
+  // The header as wide as the sections under it, so its menu lines up with their buttons.
+  header: { maxWidth: 720 },
   // Under the description: how its threads stand.
   meta: {
     display: "flex",
@@ -633,7 +632,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   ];
   return (
     <div class={sx(page.page)}>
-      <header class={sx(page.titleRow)}>
+      <header class={sx(page.titleRow, overview.header)}>
         <h1 class={sx(page.title)}>{s().name}</h1>
         <Show when={isPrivate()}>
           <span class={sx(overview.lock)} title="Private: members only">

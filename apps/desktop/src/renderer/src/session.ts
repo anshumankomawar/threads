@@ -10,6 +10,7 @@ import {
   InboxItem,
   Thread,
   User,
+  View as SavedView,
   Workspace,
   type ComposeDraft,
   type ComposeRequest,
@@ -633,16 +634,25 @@ const goToPlace = (at: number) => (): void => {
   goTo(at);
 };
 
-// A new thread in the space, label or person's list you're on (or whose page is open).
+// A new thread in the space, label or person's list you're on (or whose page is open, or a view filtered to one).
 export function newThreadHere(): void {
   const shown = view();
   const box = mailboxes.now() as { kind: string; id?: string } | null;
   const of = (kind: string): string | undefined => (box?.kind === kind ? box.id : undefined);
   const person = "person" in shown ? shown.person : of("person");
+  // A saved view filtered to a space or a label (its page open, or its list) starts the thread there.
+  const viewId = "view" in shown ? shown.view : of("view");
+  const filtered = (field: "subspaceIds" | "labelIds"): string | undefined => {
+    for (const condition of store.findById(SavedView, viewId ?? "")?.filter.and ?? []) {
+      const contains = (condition[field] as { contains?: string } | undefined)?.contains;
+      if (contains) return contains;
+    }
+    return undefined;
+  };
   setDialog({
     kind: "newThread",
-    labelId: "label" in shown ? shown.label : of("label"),
-    subspaceId: "subspace" in shown ? shown.subspace : of("subspace"),
+    labelId: "label" in shown ? shown.label : (of("label") ?? filtered("labelIds")),
+    subspaceId: "subspace" in shown ? shown.subspace : (of("subspace") ?? filtered("subspaceIds")),
     to: person ? store.findById(User, person) : undefined,
   });
 }
@@ -705,9 +715,13 @@ function hotkeyActions(
 export const hotkeyAction = (id: HotkeyId): (() => void) | undefined =>
   hotkeyActions(true, false)[id] || undefined;
 
+// Keys an editor kept from itself for the app (the reply's ⌘ keys): handled there, but still the app's to run.
+const forApp = new WeakSet<Event>();
+export const leaveToApp = (event: Event): void => void forApp.add(event);
+
 window.addEventListener("keydown", (event) => {
   // Already handled (an Escape that closed Peek or a menu).
-  if (!signedIn() || event.defaultPrevented) return;
+  if (!signedIn() || (event.defaultPrevented && !forApp.has(event))) return;
   const target = event.target as HTMLElement;
   // A form grown out of the sidebar or a menu keeps its keys (InlineForm).
   if (target.closest("[data-holds-keys]")) return;

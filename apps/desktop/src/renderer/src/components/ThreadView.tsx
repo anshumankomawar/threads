@@ -30,6 +30,7 @@ import {
   setDialog,
   peek,
   setState,
+  leaveToApp,
   shortDate,
   showMenu,
   store,
@@ -641,7 +642,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
               if (onMenuKey(event)) return true;
               // The app's ⌘ keys before the editor's own (⌘E is Mark Done, not code): the window's handler runs them.
               const keys = keysOf(event);
-              if (keys?.includes("⌘") && commandFor(keys)) return true;
+              if (keys?.includes("⌘") && commandFor(keys)) return (leaveToApp(event), true);
               if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
               const body = editor.getText({ blockSeparator: "\n" }).trim();
               if (!body) return true;

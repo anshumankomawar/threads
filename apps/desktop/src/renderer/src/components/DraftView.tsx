@@ -113,7 +113,14 @@ export function DraftView(props: { draft: Draft }): JSX.Element {
     const title = made.title.trim() || plainDraft(d().text).title || "New thread";
     let created!: Thread;
     undoable("New Thread", () => {
-      created = createThread({ title, description: made.context.trim() || undefined });
+      created = createThread({
+        title,
+        description: made.context.trim() || undefined,
+        // As ⌘N's form left it, if that's where it was saved from.
+        assignees: (made.assigneeIds ?? []).flatMap((id) => store.findById(User, id) ?? []),
+        subspaceIds: made.subspaceIds,
+        labelIds: made.labelIds,
+      });
       for (const { personIds, text } of made.asks)
         send(created, [...personIds.map(mention), text].join(" "));
       void d().delete();

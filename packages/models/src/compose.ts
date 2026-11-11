@@ -15,4 +15,8 @@ export type ComposeDraft = {
   // What the asks share: links, background. Empty when the asks say it all.
   context: string;
   asks: ComposeAsk[];
+  // Kept from ⌘N's form when it's saved as a draft rather than made: who it's assigned to, its space and labels.
+  assigneeIds?: string[];
+  subspaceIds?: string[];
+  labelIds?: string[];
 };

@@ -150,12 +150,17 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
     return out;
   };
 
-  // The groups to head, when it's grouped (by the mailbox, as the inbox's buckets, or by a field).
-  const headed = (): boolean => listed().groups.length > 1 || groupedBy() !== undefined;
+  // Headed only when you've grouped it by a field: a mailbox's own groups (the inbox's buckets) are one run of bars
+  // here, each thread once.
+  const headed = (): boolean => groupedBy() !== undefined;
   const lines = createMemo((): Line[] => {
     const out: Line[] = [];
     let y = TOP;
-    for (const all of listed().groups) {
+    const groups = headed()
+      ? listed().groups
+      : [{ ...listed().groups[0], threads: [...new Set(listed().order)] }];
+    for (const all of groups) {
+      if (!all) continue;
       const group = { ...all, threads: all.threads.filter(dated) };
       if (group.threads.length === 0) continue;
       if (headed()) {
