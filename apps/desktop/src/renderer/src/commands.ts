@@ -445,7 +445,7 @@ function places(): Command[] {
         "bucket",
       ),
     ),
-    place("sent", "Sent", i.SentIcon, { kind: "sent" }),
+    place("sent", "Outbox", i.SentIcon, { kind: "sent" }, "sent waiting"),
     place("drafts", "Drafts", i.NoteEditIcon, { kind: "drafts" }, undefined, "goDrafts"),
     place("personal", "My Threads", i.UserIcon, { kind: "personal" }, "mine personal", "goMine"),
     place(

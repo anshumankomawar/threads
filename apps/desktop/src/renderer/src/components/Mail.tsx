@@ -500,7 +500,7 @@ export function MailSidebar(): JSX.Element {
         </ul>
         {/* What you've written: sent, and not yet; just apart from the inbox. */}
         <ul class={sx(base.list, s.stack, s.nearby)}>
-          <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} count={sent().length} />
+          <Mailbox box={{ kind: "sent" }} label="Outbox" icon={i.SentIcon} count={sent().length} />
           <Mailbox
             box={{ kind: "drafts" }}
             label="Drafts"
@@ -996,7 +996,7 @@ function QueryBar(): JSX.Element {
 // Views: a filtered list, or one the sidebar doesn't have (a label's, a person's), saved as a view (pinned to the
 // sidebar to start with). A view pins and unpins; deleting it is in its menu and settings.
 export const savable = (): boolean =>
-  // Your inbox, a bucket or Sent isn't a filter, so a view can't keep it.
+  // Your inbox, a bucket or Outbox isn't a filter, so a view can't keep it.
   !["view", "inbox", "unsorted", "bucket", "sent", "drafts"].includes(mailbox().kind) &&
   (conditions().length > 0 || mailbox().kind === "label" || mailbox().kind === "person");
 export const saveView = (): void =>

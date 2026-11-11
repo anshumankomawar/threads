@@ -376,7 +376,7 @@ export function mailboxTitle(box: Mailbox): string {
     case "unsorted":
       return "Sorting";
     case "sent":
-      return "Sent";
+      return "Outbox";
     case "drafts":
       return "Drafts";
     case "all":

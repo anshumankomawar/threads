@@ -63,7 +63,7 @@ loads only when you look at it.
   `blocks` (made with `/blocked`) keeps that thread blocked until this one is resolved.
 - **Making a thread**: `createThread` (`components/Palettes.tsx`) is the only way, from ⌘N (title, description, assignee,
   and labels on Tab), ⌘⇧N (written as one message; the model drafts it and you can edit the draft), `/blocked` and a `#`
-  branch. A thread assigned to someone else from the start is in their inbox and its owner's Sent.
+  branch. A thread assigned to someone else from the start is in their inbox and its owner’s Outbox.
 - **Assignees**: a thread has one owner and any number of assignees. `@mention`ing someone in a message assigns them
   (the server reads the mentions), and the thread stays in their inbox until they mark it done or it's resolved. A
   message that mentions nobody tells nobody. Mentioning them again brings it back.
@@ -98,7 +98,7 @@ its workspace to the person's `workspaceIds` (its removal takes it out); a new t
 message's `@mentions` (and everyone in an `@mentioned` subspace) become assignees and each gets an InboxItem (or clears `doneAt`/`snoozedUntil`), and its
 `workspaceId` and `subspaceIds` must be its thread's; a thread moved between subspaces moves its messages and activity;
 a deleted subspace's threads leave it and its memberships go; assigning from the thread does the same and unassigning marks their item done; an
-owner who hasn't been mentioned has their own item marked done when they mention someone else, so it's in their Sent; a
+owner who hasn't been mentioned has their own item marked done when they mention someone else, so it’s in their Outbox; a
 deleted bucket's items are sorted again; a thread made with `blocks` blocks that one, and
 resolving the last open blocker reopens it; a new user gets the default buckets.
 
