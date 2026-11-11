@@ -269,19 +269,21 @@ const form = stylex.create({
   },
   // The input's row: one line, growing to five as the details run on.
   inputRow: { display: "flex", flexShrink: 0, gap: 8, alignItems: "flex-start", padding: "0 14px" },
+  // Its space above and below is outside it, so text scrolled out of it is cut off clear of the chips and the footer.
   input: {
     display: "block",
-    padding: "11px 0",
+    marginBlock: 11,
+    padding: 0,
     lineHeight: "16px",
     resize: "none",
     fieldSizing: "content",
-    // Five lines and its padding.
     boxSizing: "border-box",
-    maxHeight: 16 * 5 + 22,
+    // Five lines, then it scrolls.
+    maxHeight: 16 * 5,
     overflowY: "auto",
   },
   // The details start two lines tall, so they read as room to write in.
-  details: { minHeight: 16 * 2 + 22 },
+  details: { minHeight: 16 * 2 },
   // Which field the input is on, before it.
   step: {
     flexShrink: 0,
