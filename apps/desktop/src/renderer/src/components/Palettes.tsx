@@ -223,11 +223,11 @@ export function send(thread: Thread, body: string): void {
 }
 
 // ⌘N: a thread in one input, a field at a time: its title, details, who it's for, its labels. What's set sits above
-// the input as chips (a click goes back to one, ✕ takes it off). ⌘↵ moves on a field, and from the last makes it; ⌘⇧↵
-// makes it from anywhere. Enter is a new line in the title and details, and on a list toggles the highlighted choice
-// (several people, a space, labels). Tab and ⇧Tab move between fields, ⌘S keeps it in Drafts, and Escape goes back a
-// field (or closes). Started from a space, a label or someone (their page or list, or a view filtered to one), that's
-// set already.
+// the input as chips (a click goes back to one, ✕ takes it off). ⌘↵ moves on a field, and only the last makes it.
+// Enter goes on from the title, is a new line in the details, and on a list toggles the highlighted choice (several
+// people, a space, labels). Tab and ⇧Tab move between fields, ⌘S keeps it in Drafts, and Escape goes back a field (or
+// closes). Started from a space, a label or someone (their page or list, or a view filtered to one), that's set
+// already.
 type Field = "title" | "description" | "assign" | "labels";
 const FIELDS: Field[] = ["title", "description", "assign", "labels"];
 const PLACEHOLDERS: Record<Field, string> = {
@@ -267,7 +267,7 @@ const form = stylex.create({
     color: { default: colors.iconTertiary, ":hover": colors.textPrimary },
     cursor: "pointer",
   },
-  // The input's row: one line, growing to five as the title or details run on.
+  // The input's row: one line, growing to five as the details run on.
   inputRow: { display: "flex", flexShrink: 0, gap: 8, alignItems: "flex-start", padding: "0 14px" },
   input: {
     display: "block",
@@ -280,6 +280,8 @@ const form = stylex.create({
     maxHeight: 16 * 5 + 22,
     overflowY: "auto",
   },
+  // The details start two lines tall, so they read as room to write in.
+  details: { minHeight: 16 * 2 + 22 },
   // Which field the input is on, before it.
   step: {
     flexShrink: 0,
@@ -301,6 +303,7 @@ const form = stylex.create({
   },
   end: { display: "flex", gap: 14, marginLeft: "auto" },
   key: { marginRight: 5, color: colors.textSecondary },
+  primary: { color: { default: colors.textSecondary, ":hover": colors.textPrimary } },
   hintButton: {
     cursor: "pointer",
     color: { default: colors.textTertiary, ":hover": colors.textPrimary },
@@ -328,7 +331,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
   const space = (): Subspace | undefined => store.findById(Subspace, spaceId() ?? "");
 
   // What a text field holds: what's typed while you're on it, else what was kept when you left it.
-  // A title is one line however it was typed: its line breaks are spaces.
+  // A title is one line (Enter goes on from it), however it got its text.
   const titleNow = (): string =>
     (field() === "title" ? typed() : title()).replace(/\s*\n\s*/g, " ").trim();
   const descriptionNow = (): string => (field() === "description" ? typed() : description()).trim();
@@ -471,16 +474,20 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
 
   const text = (): boolean => field() === "title" || field() === "description";
   const last = (): boolean => field() === FIELDS.at(-1);
-  // ⌘↵ goes on to the next field, and from the last makes it; ⌘⇧↵ makes it from anywhere. Enter is a new line in the
-  // title and details (they grow to five lines), and toggles the highlighted choice in a list.
+  // On to the next field (not past an empty title), and from the last, made.
+  const next = (): void => {
+    if (last()) create();
+    else if (field() !== "title" || titleNow()) step(1);
+  };
+  // ⌘↵ goes on to the next field, and from the last makes it. Enter goes on from the title, is a new line in the
+  // details (which grow to five lines), and toggles the highlighted choice in a list.
   const onKeyDown = (event: KeyboardEvent): void => {
     const key = event.key;
     const moveTo = text() ? undefined : moved(key, index(), options().length);
-    if (event.metaKey && key === "Enter") {
-      if (event.shiftKey || last()) create();
-      else if (field() !== "title" || titleNow()) step(1);
-    } else if (event.metaKey && key.toLowerCase() === "s") saveDraft();
+    if (event.metaKey && key === "Enter") next();
+    else if (event.metaKey && key.toLowerCase() === "s") saveDraft();
     else if (moveTo !== undefined && options().length > 0) setAt(moveTo);
+    else if (key === "Enter" && field() === "title" && !event.isComposing) next();
     else if (key === "Enter" && !text() && !event.isComposing) options()[index()]?.run();
     else if (key === "Tab") step(event.shiftKey ? -1 : 1);
     else if (key === "Escape") {
@@ -572,7 +579,12 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
         <textarea
           ref={(el) => ((input = el), focusOnShow(el))}
           rows={1}
-          class={sx(base.bare, palette.input, form.input)}
+          class={sx(
+            base.bare,
+            palette.input,
+            form.input,
+            field() === "description" && form.details,
+          )}
           placeholder={
             field() === "title" && props.to
               ? `Thread title for ${props.to.name}`
@@ -580,7 +592,12 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
           }
           spellcheck={field() === "title" || field() === "description"}
           value={typed()}
-          onInput={(event) => (setTyped(event.currentTarget.value), setAt(0))}
+          onInput={(event) => {
+            // A title is one line: a pasted line break is a space.
+            const value = event.currentTarget.value;
+            setTyped(field() === "title" ? value.replace(/\n/g, " ") : value);
+            setAt(0);
+          }}
           onKeyDown={onKeyDown}
         />
       </div>
@@ -598,15 +615,8 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
           </For>
         </div>
       </Show>
+      {/* Keeping it for later, and the one way on: Next, until the last field makes it. */}
       <div class={sx(form.footer)}>
-        <span>
-          <span class={sx(form.key)}>⌘↵</span>
-          {last() ? "Create" : `Next: ${STEP_NAMES[FIELDS[FIELDS.indexOf(field()) + 1]]}`}
-        </span>
-        <span>
-          <span class={sx(form.key)}>↵</span>
-          {text() ? "New Line" : "Toggle"}
-        </span>
         <span class={sx(form.end)}>
           <button
             class={sx(base.bare, form.hintButton)}
@@ -615,10 +625,11 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
             <span class={sx(form.key)}>⌘S</span>Save Draft
           </button>
           <button
-            class={sx(base.bare, form.hintButton)}
-            onMouseDown={(event) => (event.preventDefault(), create())}
+            class={sx(base.bare, form.hintButton, form.primary)}
+            onMouseDown={(event) => (event.preventDefault(), next())}
           >
-            <span class={sx(form.key)}>⌘⇧↵</span>Create
+            <span class={sx(form.key)}>⌘↵</span>
+            {last() ? "Create" : "Next"}
           </button>
         </span>
       </div>
