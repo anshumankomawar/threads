@@ -258,11 +258,11 @@ const form = stylex.create({
     minHeight: 34,
     margin: "0 8px",
     padding: "0 6px",
-    borderRadius: radii.row,
     cursor: "default",
-    backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
   },
-  current: { backgroundColor: { default: colors.bgTertiary, ":hover": colors.bgTertiary } },
+  // No grounds, on the field you're on or under the pointer: the one you're on has its name brightened and the cursor.
+  current: { cursor: "text" },
+  currentName: { color: colors.textPrimary },
   name: {
     display: "flex",
     flexShrink: 0,
@@ -525,7 +525,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
         class={sx(form.field, field() === f && form.current)}
         onMouseDown={(event) => field() !== f && (event.preventDefault(), go(f))}
       >
-        <span class={sx(form.name)}>
+        <span class={sx(form.name, field() === f && form.currentName)}>
           {icon(FIELD_ICONS[f], 13)}
           {FIELD_NAMES[f]}
         </span>
