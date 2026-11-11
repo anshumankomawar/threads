@@ -1,11 +1,23 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createSignal, For, onCleanup, Show, untrack } from "solid-js";
+import { createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Label, Subspace, SubspaceMember, User, View, WorkspaceMember } from "models";
 import {
+  Bucket,
+  Label,
+  Subspace,
+  SubspaceMember,
+  Thread,
+  User,
+  View,
+  WorkspaceMember,
+} from "models";
+import {
+  byLastActive,
   me,
   memberOf,
+  setDialog,
+  shortDate,
   myBuckets,
   open,
   store,
@@ -15,6 +27,7 @@ import {
   workspace,
 } from "../session";
 import { askDeleteBucket } from "./Mail";
+import { ago, dot } from "./ThreadView";
 import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
@@ -63,6 +76,7 @@ function Setting(props: { name: string; hint: string; children: JSX.Element }): 
     </li>
   );
 }
+const OVERVIEW: Tab = { label: "Overview", icon: i.DashboardSquare01Icon };
 const MEMBERS: Tab = { label: "Members", icon: i.UserMultipleIcon };
 const SETTINGS: Tab = { label: "Settings", icon: i.Settings02Icon };
 
@@ -312,6 +326,221 @@ export function LabelView(props: { label: Label }): JSX.Element {
   );
 }
 
+// ── A space's overview: how it's doing at a glance ──
+
+const DAY = 86_400_000;
+const startOfToday = (): number => new Date().setHours(0, 0, 0, 0);
+// Due before today, and not done.
+const overdue = (t: Thread): boolean =>
+  t.isOpen && t.dueAt !== undefined && t.dueAt.getTime() < startOfToday();
+// Due from today through the next seven days.
+const dueSoon = (t: Thread): boolean =>
+  t.isOpen &&
+  t.dueAt !== undefined &&
+  t.dueAt.getTime() >= startOfToday() &&
+  t.dueAt.getTime() < startOfToday() + 7 * DAY;
+const pressing = (t: Thread): boolean => t.priority === "urgent" || t.priority === "high";
+// Why a thread needs a look, most pressing first: blocked, late, then urgent or high.
+const attention = (t: Thread): number =>
+  !t.isOpen ? -1 : t.state === "blocked" ? 0 : overdue(t) ? 1 : pressing(t) ? 2 : -1;
+
+// A number and what it counts.
+function Stat(props: { label: string; value: number; tone?: "urgent" }): JSX.Element {
+  return (
+    <div class={sx(overview.stat)}>
+      <span class={sx(overview.statValue, props.tone && props.value > 0 && overview.urgent)}>
+        {props.value}
+      </span>
+      <span class={sx(overview.statLabel)}>{props.label}</span>
+    </div>
+  );
+}
+
+// A thread as a line of the overview: its status, title, who's on it, and when (due, or last active).
+function ThreadLine(props: { thread: Thread; why?: string }): JSX.Element {
+  const t = (): Thread => props.thread;
+  const when = (): string =>
+    t().dueAt && t().isOpen ? `Due ${shortDate(t().dueAt!)}` : ago(t().updatedAt);
+  return (
+    <li>
+      <button class={sx(base.bare, overview.line)} onClick={() => open({ thread: t().id })}>
+        {dot(t().state)}
+        <span class={sx(base.ellipsis, overview.lineTitle)}>{t().title}</span>
+        <Show when={props.why}>
+          <span class={sx(overview.why)}>{props.why}</span>
+        </Show>
+        <span class={sx(page.avatars)}>
+          <For each={t().assigneeIds.slice(0, 3)}>
+            {(id) => <Identicon seed={id} size={16} class={sx(page.avatar)} />}
+          </For>
+        </span>
+        <span class={sx(overview.when, overdue(t()) && overview.urgent)}>{when()}</span>
+      </button>
+    </li>
+  );
+}
+
+function Lines(props: {
+  title: string;
+  threads: Thread[];
+  why?: (t: Thread) => string;
+}): JSX.Element {
+  return (
+    <Show when={props.threads.length > 0}>
+      <section class={sx(overview.section)}>
+        <h2 class={sx(overview.heading)}>{props.title}</h2>
+        <ul class={sx(base.list)}>
+          <For each={props.threads}>{(t) => <ThreadLine thread={t} why={props.why?.(t)} />}</For>
+        </ul>
+      </section>
+    </Show>
+  );
+}
+
+function overviewOf(s: () => Subspace): Page {
+  const threads = createMemo(() => store.all(Thread).filter((t) => t.subspaceIds.includes(s().id)));
+  const unresolved = createMemo(() => threads().filter((t) => t.isOpen));
+  const needs = createMemo(() =>
+    unresolved()
+      .filter((t) => attention(t) >= 0)
+      .sort(
+        (a, b) =>
+          attention(a) - attention(b) ||
+          (a.dueAt?.getTime() ?? Infinity) - (b.dueAt?.getTime() ?? Infinity),
+      )
+      .slice(0, 6),
+  );
+  const upcoming = createMemo(() =>
+    unresolved()
+      .filter(dueSoon)
+      .sort((a, b) => a.dueAt!.getTime() - b.dueAt!.getTime())
+      .slice(0, 6),
+  );
+  const recent = createMemo(() => byLastActive([...threads()]).slice(0, 6));
+  // Late shows in its date, in red; the rest say why.
+  const why = (t: Thread): string =>
+    t.state === "blocked"
+      ? "Blocked"
+      : overdue(t)
+        ? ""
+        : t.priority === "urgent"
+          ? "Urgent"
+          : "High priority";
+  return {
+    tab: OVERVIEW,
+    body: (
+      <Show
+        when={threads().length > 0}
+        fallback={
+          <div class={sx(overview.empty)}>
+            <span class={sx(page.itemName)}>Nothing in this space yet</span>
+            <span class={sx(page.small)}>Threads you start here show up for everyone in it.</span>
+            <button
+              class={sx(base.bare, button.solid, overview.emptyButton)}
+              onClick={() => setDialog({ kind: "newThread", subspaceId: s().id })}
+            >
+              New Thread
+            </button>
+          </div>
+        }
+      >
+        <div class={sx(overview.stats)}>
+          <Stat label="Open" value={unresolved().length} />
+          <Stat
+            label="Blocked"
+            value={unresolved().filter((t) => t.state === "blocked").length}
+            tone="urgent"
+          />
+          <Stat label="Overdue" value={unresolved().filter(overdue).length} tone="urgent" />
+          <Stat label="Due this week" value={unresolved().filter(dueSoon).length} />
+        </div>
+        <Lines title="Needs attention" threads={needs()} why={why} />
+        <Lines title="Coming up" threads={upcoming()} />
+        <Lines title="Recently active" threads={recent()} />
+      </Show>
+    ),
+  };
+}
+
+const overview = stylex.create({
+  stats: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 8,
+    maxWidth: 720,
+    marginTop: 16,
+  },
+  stat: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: "10px 12px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.strokeTertiary,
+    borderRadius: radii.row,
+  },
+  statValue: {
+    color: colors.textPrimary,
+    fontSize: fontSizes.pageTitle,
+    fontWeight: 600,
+    fontVariantNumeric: "tabular-nums",
+    lineHeight: "24px",
+  },
+  statLabel: { color: colors.textTertiary, fontSize: fontSizes.small },
+  urgent: { color: colors.urgent },
+  section: { maxWidth: 720, marginTop: 24 },
+  heading: {
+    margin: "0 0 4px",
+    color: colors.textTertiary,
+    fontSize: fontSizes.caption,
+    fontWeight: 500,
+  },
+  line: {
+    display: "flex",
+    gap: 8,
+    alignItems: "center",
+    width: "100%",
+    height: 30,
+    margin: "0 -8px",
+    padding: "0 8px",
+    boxSizing: "content-box",
+    borderRadius: radii.row,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    textAlign: "start",
+    cursor: "default",
+    backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
+  },
+  lineTitle: { flex: 1, minWidth: 0 },
+  why: { flexShrink: 0, color: colors.urgent, fontSize: fontSizes.small },
+  when: {
+    flexShrink: 0,
+    minWidth: 64,
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+    textAlign: "end",
+    fontVariantNumeric: "tabular-nums",
+  },
+  empty: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 4,
+    marginTop: 24,
+  },
+  emptyButton: { marginTop: 8 },
+  // Under the description: who can see it, who's in it, and how much is open.
+  meta: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+});
+
 // A subspace: who's in it and whether it's private (its threads are listed beside). Members add or remove people; anyone
 // joins an open one.
 export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
@@ -363,6 +592,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
       </Show>
     ),
   });
+  const summary = overviewOf(s);
   const settings: Page = {
     tab: SETTINGS,
     body: (
@@ -419,7 +649,21 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
           }}
         />
       </Show>
-      <PageTabs pages={isMember() ? [people, settings] : [people]} />
+      <div class={sx(overview.meta)}>
+        {pill(
+          isPrivate() ? "Private" : "Open",
+          icon(isPrivate() ? i.SquareLock01Icon : i.ViewIcon, 12),
+        )}
+        <span class={sx(page.avatars)}>
+          <For each={s().members.sorted("createdAt").slice(0, 5)}>
+            {(m) => <Identicon seed={m.userId} size={18} class={sx(page.avatar)} />}
+          </For>
+        </span>
+        <span class={sx(page.small)}>
+          {s().members.length} {s().members.length === 1 ? "member" : "members"}
+        </span>
+      </div>
+      <PageTabs pages={isMember() ? [summary, people, settings] : [summary, people]} />
     </div>
   );
 }

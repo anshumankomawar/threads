@@ -96,12 +96,12 @@ export function showMailbox(next: Mailbox): void {
   if (!sameMailbox(next, chosenNow)) setMailbox(next);
 }
 
-// Choosing a mailbox shows it: its list, with nothing open beside it (not whatever thread was open before). Both are
-// one step back.
+// Choosing a mailbox shows it: its list, with nothing open beside it (not whatever thread was open before), or for a
+// space its overview. Both are one step back.
 export function chooseMailbox(next: Mailbox): void {
   step(() => {
     setMailbox(next);
-    open({ thread: null });
+    open(next.kind === "subspace" ? { subspace: next.id } : { thread: null });
   });
 }
 

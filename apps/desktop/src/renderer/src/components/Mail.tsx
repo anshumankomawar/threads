@@ -775,7 +775,7 @@ function valueIcon(field: string, value: string): JSX.Element | undefined {
 // The list's button to a mailbox's page: a space's or view's settings (a gear), or someone's profile.
 const pageLabel = (box: Mailbox): string =>
   box.kind === "subspace"
-    ? "Space Settings"
+    ? "Space Overview"
     : box.kind === "view"
       ? "View Settings"
       : box.kind === "bucket"
@@ -1148,7 +1148,11 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
                 onClick={() => open(page())}
               >
                 <Icon
-                  icon={mailbox().kind === "person" ? i.InformationCircleIcon : i.Settings02Icon}
+                  icon={
+                    mailbox().kind === "person" || mailbox().kind === "subspace"
+                      ? i.InformationCircleIcon
+                      : i.Settings02Icon
+                  }
                   {...ICON}
                 />
               </button>
