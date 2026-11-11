@@ -233,14 +233,8 @@ const FIELDS: Field[] = ["title", "description", "assign", "labels"];
 const PLACEHOLDERS: Record<Field, string> = {
   title: "Thread title",
   description: "Add details",
-  assign: "People or a space",
-  labels: "Find or make a label",
-};
-const STEP_NAMES: Record<Field, string> = {
-  title: "Title",
-  description: "Details",
-  assign: "Assign",
-  labels: "Labels",
+  assign: "Assign to people or a space",
+  labels: "Add labels",
 };
 
 const form = stylex.create({
@@ -284,14 +278,6 @@ const form = stylex.create({
   },
   // The details start two lines tall, so they read as room to write in.
   details: { minHeight: 16 * 2 },
-  // Which field the input is on, before it.
-  step: {
-    flexShrink: 0,
-    paddingTop: 11,
-    color: colors.textTertiary,
-    fontSize: fontSizes.body,
-    lineHeight: "16px",
-  },
   // What the keys do, quietly, along the bottom, with the two ways out on the right.
   footer: {
     display: "flex",
@@ -575,10 +561,6 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
         </div>
       </Show>
       <div class={sx(form.inputRow)}>
-        {/* The text fields say what they are in their placeholders; a list's names what it picks. */}
-        <Show when={!text()}>
-          <span class={sx(form.step)}>{STEP_NAMES[field()]}</span>
-        </Show>
         <textarea
           ref={(el) => ((input = el), focusOnShow(el))}
           rows={1}
