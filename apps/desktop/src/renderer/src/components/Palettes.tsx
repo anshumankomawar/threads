@@ -223,10 +223,11 @@ export function send(thread: Thread, body: string): void {
 }
 
 // ⌘N: a thread in one input, a field at a time: its title, details, who it's for, its labels. What's set sits above
-// the input as chips (a click goes back to one, ✕ takes it off). Enter moves on from a text field, and on a list
-// toggles the highlighted choice (several people, a space, labels); Tab and ⇧Tab move between fields. ⌘↵ makes it from
-// anywhere, ⌘S keeps it in Drafts, and Escape goes back a field (or closes). Started from a space, a label or someone
-// (their page or list, or a view filtered to one), that's set already.
+// the input as chips (a click goes back to one, ✕ takes it off). ⌘↵ moves on a field, and from the last makes it; ⌘⇧↵
+// makes it from anywhere. Enter is a new line in the title and details, and on a list toggles the highlighted choice
+// (several people, a space, labels). Tab and ⇧Tab move between fields, ⌘S keeps it in Drafts, and Escape goes back a
+// field (or closes). Started from a space, a label or someone (their page or list, or a view filtered to one), that's
+// set already.
 type Field = "title" | "description" | "assign" | "labels";
 const FIELDS: Field[] = ["title", "description", "assign", "labels"];
 const PLACEHOLDERS: Record<Field, string> = {
@@ -266,8 +267,27 @@ const form = stylex.create({
     color: { default: colors.iconTertiary, ":hover": colors.textPrimary },
     cursor: "pointer",
   },
+  // The input's row: one line, growing to five as the title or details run on.
+  inputRow: { display: "flex", flexShrink: 0, gap: 8, alignItems: "flex-start", padding: "0 14px" },
+  input: {
+    display: "block",
+    padding: "11px 0",
+    lineHeight: "16px",
+    resize: "none",
+    fieldSizing: "content",
+    // Five lines and its padding.
+    boxSizing: "border-box",
+    maxHeight: 16 * 5 + 22,
+    overflowY: "auto",
+  },
   // Which field the input is on, before it.
-  step: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.body },
+  step: {
+    flexShrink: 0,
+    paddingTop: 11,
+    color: colors.textTertiary,
+    fontSize: fontSizes.body,
+    lineHeight: "16px",
+  },
   // What the keys do, quietly, along the bottom, with the two ways out on the right.
   footer: {
     display: "flex",
@@ -304,11 +324,13 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     }),
   );
   const [at, setAt] = createSignal(0);
-  let input!: HTMLInputElement;
+  let input!: HTMLTextAreaElement;
   const space = (): Subspace | undefined => store.findById(Subspace, spaceId() ?? "");
 
   // What a text field holds: what's typed while you're on it, else what was kept when you left it.
-  const titleNow = (): string => (field() === "title" ? typed() : title()).trim();
+  // A title is one line however it was typed: its line breaks are spaces.
+  const titleNow = (): string =>
+    (field() === "title" ? typed() : title()).replace(/\s*\n\s*/g, " ").trim();
   const descriptionNow = (): string => (field() === "description" ? typed() : description()).trim();
   // Leaving a text field keeps what was typed in it; arriving at one puts its text back to edit.
   const go = (next: Field): void => {
@@ -447,18 +469,20 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
   });
   const index = (): number => Math.min(at(), options().length - 1);
 
+  const text = (): boolean => field() === "title" || field() === "description";
+  const last = (): boolean => field() === FIELDS.at(-1);
+  // ⌘↵ goes on to the next field, and from the last makes it; ⌘⇧↵ makes it from anywhere. Enter is a new line in the
+  // title and details (they grow to five lines), and toggles the highlighted choice in a list.
   const onKeyDown = (event: KeyboardEvent): void => {
     const key = event.key;
-    const moveTo = moved(key, index(), options().length);
-    if (event.metaKey && key === "Enter") create();
-    else if (event.metaKey && key.toLowerCase() === "s") saveDraft();
+    const moveTo = text() ? undefined : moved(key, index(), options().length);
+    if (event.metaKey && key === "Enter") {
+      if (event.shiftKey || last()) create();
+      else if (field() !== "title" || titleNow()) step(1);
+    } else if (event.metaKey && key.toLowerCase() === "s") saveDraft();
     else if (moveTo !== undefined && options().length > 0) setAt(moveTo);
-    else if (key === "Enter" && !event.isComposing) {
-      if (field() === "title") {
-        if (titleNow()) go("description");
-      } else if (field() === "description") go("assign");
-      else options()[index()]?.run();
-    } else if (key === "Tab") step(event.shiftKey ? -1 : 1);
+    else if (key === "Enter" && !text() && !event.isComposing) options()[index()]?.run();
+    else if (key === "Tab") step(event.shiftKey ? -1 : 1);
     else if (key === "Escape") {
       if (field() === "title") dialogBack();
       else step(-1);
@@ -541,13 +565,14 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
           </For>
         </div>
       </Show>
-      <div class={sx(palette.inputRow, styles.inputRow)}>
+      <div class={sx(form.inputRow)}>
         <Show when={field() !== "title"}>
           <span class={sx(form.step)}>{STEP_NAMES[field()]}</span>
         </Show>
-        <input
+        <textarea
           ref={(el) => ((input = el), focusOnShow(el))}
-          class={sx(base.bare, palette.input)}
+          rows={1}
+          class={sx(base.bare, palette.input, form.input)}
           placeholder={
             field() === "title" && props.to
               ? `Thread title for ${props.to.name}`
@@ -575,14 +600,12 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       </Show>
       <div class={sx(form.footer)}>
         <span>
-          <span class={sx(form.key)}>↵</span>
-          {field() === "assign" || field() === "labels" ? "Toggle" : "Next"}
+          <span class={sx(form.key)}>⌘↵</span>
+          {last() ? "Create" : `Next: ${STEP_NAMES[FIELDS[FIELDS.indexOf(field()) + 1]]}`}
         </span>
         <span>
-          <span class={sx(form.key)}>⇥</span>
-          {field() === "labels"
-            ? "Back to Title"
-            : `${STEP_NAMES[FIELDS[FIELDS.indexOf(field()) + 1]]}`}
+          <span class={sx(form.key)}>↵</span>
+          {text() ? "New Line" : "Toggle"}
         </span>
         <span class={sx(form.end)}>
           <button
@@ -595,7 +618,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
             class={sx(base.bare, form.hintButton)}
             onMouseDown={(event) => (event.preventDefault(), create())}
           >
-            <span class={sx(form.key)}>⌘↵</span>Create
+            <span class={sx(form.key)}>⌘⇧↵</span>Create
           </button>
         </span>
       </div>
