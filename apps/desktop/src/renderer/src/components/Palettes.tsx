@@ -39,7 +39,7 @@ import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
 import { icon, type IconSvgElement } from "./Icon";
-import { page } from "../styles/page";
+import { Identicon } from "./Identicon";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
 import { Search } from "./Search";
@@ -222,101 +222,60 @@ export function send(thread: Thread, body: string): void {
   });
 }
 
-// ⌘N: a thread as one short form. Each field is a row, the one you're on taking what you type and the rest showing
-// what's set; Enter moves down a row (and on Assign To, picking someone makes it), Tab and ⇧Tab move between rows, a
-// click goes back to one. ⌘↵ makes it as it stands from any row, ⌘S keeps it in Drafts, and Escape goes back a row (or
-// closes). Started from a space, a label or someone (their page or list, or a view filtered to one), it's there already.
+// ⌘N: a thread in one input, a field at a time: its title, details, who it's for, its labels. What's set sits above
+// the input as chips (a click goes back to one, ✕ takes it off). Enter moves on from a text field, and on a list
+// toggles the highlighted choice (several people, a space, labels); Tab and ⇧Tab move between fields. ⌘↵ makes it from
+// anywhere, ⌘S keeps it in Drafts, and Escape goes back a field (or closes). Started from a space, a label or someone
+// (their page or list, or a view filtered to one), that's set already.
 type Field = "title" | "description" | "assign" | "labels";
 const FIELDS: Field[] = ["title", "description", "assign", "labels"];
-const FIELD_NAMES: Record<Field, string> = {
-  title: "Title",
-  description: "Description",
-  assign: "Assign To",
-  labels: "Labels",
-};
-const FIELD_ICONS: Record<Field, IconSvgElement> = {
-  title: i.TextFontIcon,
-  description: i.TextAlignLeftIcon,
-  assign: i.UserIcon,
-  labels: i.Tag01Icon,
-};
 const PLACEHOLDERS: Record<Field, string> = {
-  title: "What do you need?",
+  title: "Thread title",
   description: "Add details (optional)",
-  assign: "Find someone or a space",
+  assign: "People or a space",
   labels: "Find or make a label",
+};
+const STEP_NAMES: Record<Field, string> = {
+  title: "Title",
+  description: "Details",
+  assign: "Assign",
+  labels: "Labels",
 };
 
 const form = stylex.create({
-  fields: { display: "flex", flexDirection: "column", padding: "6px 0" },
-  // A field: its name on the left (an icon and a word), what's set or being typed on the right.
-  field: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 10,
+  // What's set, in a line that wraps, over the input.
+  chips: { display: "flex", flexWrap: "wrap", gap: 4, padding: "10px 14px 0" },
+  chip: {
+    display: "inline-flex",
+    gap: 5,
     alignItems: "center",
-    minHeight: 34,
-    margin: "0 8px",
-    padding: "0 6px",
+    maxWidth: 260,
+    height: 22,
+    paddingInline: 7,
+    borderRadius: radii.control,
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    backgroundColor: colors.bgTertiary,
     cursor: "default",
   },
-  // No grounds, on the field you're on or under the pointer: the one you're on has its name brightened and the cursor.
-  current: { cursor: "text" },
-  currentName: { color: colors.textPrimary },
-  name: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 6,
-    alignItems: "center",
-    width: 104,
-    color: colors.textTertiary,
-    fontSize: fontSizes.body,
-  },
-  value: { flex: 1, minWidth: 0, color: colors.textPrimary, fontSize: fontSizes.input },
-  unset: { color: colors.textTertiary },
-  // The title reads as the thread's: a little larger and heavier.
-  titleValue: { fontWeight: 500 },
-  input: {
-    flex: 1,
-    minWidth: 0,
-    height: 34,
-    color: { default: colors.textPrimary, "::placeholder": colors.textTertiary },
-    fontSize: fontSizes.input,
-    outline: "none",
-  },
-  clear: {
+  titleChip: { color: colors.textPrimary, fontWeight: 500 },
+  remove: {
     display: "grid",
-    flexShrink: 0,
     placeItems: "center",
-    width: 20,
-    height: 20,
-    borderRadius: radii.control,
-    color: colors.iconTertiary,
+    marginRight: -3,
+    color: { default: colors.iconTertiary, ":hover": colors.textPrimary },
     cursor: "pointer",
-    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
   },
-  options: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    minHeight: 0,
-    padding: "6px 0 8px",
-    overflowY: "auto",
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: colors.panelBorder,
-  },
+  // Which field the input is on, before it.
+  step: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.body },
   // What the keys do, quietly, along the bottom, with the two ways out on the right.
   footer: {
     display: "flex",
     flexShrink: 0,
     gap: 14,
     alignItems: "center",
-    height: 32,
+    height: 30,
     padding: "0 14px",
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: colors.panelBorder,
     color: colors.textTertiary,
     fontSize: fontSizes.label,
   },
@@ -376,8 +335,8 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
         ).id,
     );
   };
-  // Makes it as it stands (or with who was just picked); without a title it waits on the title.
-  const create = (to = assignees(), inSpace = spaceId()): void => {
+  // Makes it as it stands; without a title it waits on the title.
+  const create = (): void => {
     if (!titleNow()) return go("title");
     const fields = { title: titleNow(), description: descriptionNow() || undefined };
     let made!: Thread;
@@ -385,9 +344,9 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       setDialog(null);
       made = createThread({
         ...fields,
-        assignees: to,
+        assignees: assignees(),
         labelIds: labelIds(),
-        subspaceIds: inSpace ? [inSpace] : [],
+        subspaceIds: spaceId() ? [spaceId()!] : [],
       });
     });
     open({ thread: made.id });
@@ -414,33 +373,42 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     say("Saved to Drafts");
   };
 
+  const toggleAssignee = (user: User): void => {
+    setAssignees((all) => (all.includes(user) ? all.filter((u) => u !== user) : [...all, user]));
+    setTyped("");
+  };
+  const toggleSpace = (id: string): void => {
+    setSpaceId((now) => (now === id ? undefined : id));
+    setTyped("");
+  };
   const toggleLabel = (name: string): void => {
     setNames((all) => toggled(all, name));
     setTyped("");
   };
-  // What the field you're on offers under the form: people and spaces to assign, or labels.
+  const tick = (on: boolean): string | undefined => (on ? "✓" : undefined);
+  // What the field you're on offers: people (you first) and spaces, or labels; Enter or a click toggles one.
   const options = createMemo((): Row[] => {
     const text = typed().trim();
     if (field() === "assign") {
       const first = props.to?.id;
       return (
         [
-          { label: "Unassigned", run: () => create([]) },
-          ...people(text, (u) => create([u])),
-          { label: "Me", seed: me().id, run: () => create([me()]) },
-          ...store
-            .all(Subspace)
-            .filter((sub) => sub.members.length > 0)
-            .map((sub) => ({
-              label: sub.name,
-              hint: `Space · ${sub.members.length}`,
-              icon: sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon,
-              run: () =>
-                create(
-                  sub.members.filter((m) => m.userId !== me().id).map((m) => m.user),
-                  sub.id,
-                ),
-            })),
+          {
+            label: "Me",
+            seed: me().id,
+            hint: tick(assignees().includes(me())),
+            run: () => toggleAssignee(me()),
+          },
+          ...people(text, toggleAssignee).map((row) => ({
+            ...row,
+            hint: tick(assignees().some((u) => u.id === row.seed)),
+          })),
+          ...store.all(Subspace).map((sub) => ({
+            label: sub.name,
+            hint: spaceId() === sub.id ? "✓" : "Space",
+            icon: sub.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon,
+            run: () => toggleSpace(sub.id),
+          })),
         ] as Row[]
       )
         .filter((row) => matches(row.label, text))
@@ -459,7 +427,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
           .map((l) => ({
             label: l.name,
             icon: i.Tag01Icon,
-            hint: names().includes(l.name) ? "✓" : undefined,
+            hint: tick(names().includes(l.name)),
             run: () => toggleLabel(l.name),
           })),
         ...names()
@@ -481,7 +449,6 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
 
   const onKeyDown = (event: KeyboardEvent): void => {
     const key = event.key;
-    const empty = input.value === "";
     const moveTo = moved(key, index(), options().length);
     if (event.metaKey && key === "Enter") create();
     else if (event.metaKey && key.toLowerCase() === "s") saveDraft();
@@ -492,108 +459,108 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       } else if (field() === "description") go("assign");
       else options()[index()]?.run();
     } else if (key === "Tab") step(event.shiftKey ? -1 : 1);
-    else if (key === "Escape" || (key === "Backspace" && empty && field() !== "title")) {
+    else if (key === "Escape") {
       if (field() === "title") dialogBack();
       else step(-1);
     } else return;
     event.preventDefault();
   };
 
-  // A field's row: its name, then the input while you're on it, else what's set (a click goes back to it).
-  const value = (f: Field): JSX.Element => {
-    if (f === "title") return title() || <span class={sx(form.unset)}>Untitled</span>;
-    if (f === "description") return description() || <span class={sx(form.unset)}>None</span>;
-    if (f === "assign")
-      return (
-        <span class={sx(page.inCell)}>
-          <Show
-            when={assignees().length > 0}
-            fallback={<span class={sx(form.unset)}>Unassigned</span>}
+  // A chip for what's set: a click goes back to its field, ✕ (if it has one) takes it off.
+  const Chip = (chip: {
+    field: Field;
+    text: string;
+    seed?: string;
+    icon?: IconSvgElement;
+    title?: boolean;
+    remove?: () => void;
+  }): JSX.Element => (
+    <span
+      class={sx(form.chip, chip.title && form.titleChip)}
+      onMouseDown={(event) => (event.preventDefault(), go(chip.field))}
+    >
+      <Show when={chip.seed} fallback={chip.icon && icon(chip.icon, 12)}>
+        {(seed) => <Identicon seed={seed()} size={13} />}
+      </Show>
+      <span class={sx(base.ellipsis)}>{chip.text}</span>
+      <Show when={chip.remove}>
+        {(remove) => (
+          <span
+            class={sx(form.remove)}
+            role="button"
+            aria-label={`Remove ${chip.text}`}
+            onMouseDown={(event) => (event.preventDefault(), event.stopPropagation(), remove()())}
           >
-            {assignees()
-              .map((u) => u.name)
-              .join(", ")}
-          </Show>
-        </span>
-      );
-    return names().length > 0 ? names().join(", ") : <span class={sx(form.unset)}>None</span>;
-  };
-  const Row_ = (rowProps: { field: Field }): JSX.Element => {
-    const f = rowProps.field;
-    return (
-      <div
-        class={sx(form.field, field() === f && form.current)}
-        onMouseDown={(event) => field() !== f && (event.preventDefault(), go(f))}
-      >
-        <span class={sx(form.name, field() === f && form.currentName)}>
-          {icon(FIELD_ICONS[f], 13)}
-          {FIELD_NAMES[f]}
-        </span>
-        <Show
-          when={field() === f}
-          fallback={
-            <span class={sx(base.ellipsis, form.value, f === "title" && form.titleValue)}>
-              {value(f)}
-            </span>
-          }
-        >
-          <input
-            ref={(el) => ((input = el), focusOnShow(el))}
-            class={sx(base.bare, form.input, f === "title" && form.titleValue)}
-            placeholder={
-              f === "title" && props.to
-                ? `What do you need from ${props.to.name}?`
-                : PLACEHOLDERS[f]
-            }
-            spellcheck={f !== "assign" && f !== "labels"}
-            value={typed()}
-            onInput={(event) => (setTyped(event.currentTarget.value), setAt(0))}
-            onKeyDown={onKeyDown}
-          />
-        </Show>
-        <Show when={f === "assign" && assignees().length > 0 && field() !== f}>
-          <button
-            class={sx(base.bare, form.clear)}
-            aria-label="Unassign"
-            onMouseDown={(event) => (
-              event.preventDefault(),
-              event.stopPropagation(),
-              setAssignees([])
-            )}
-          >
-            {icon(i.Cancel01Icon, 11)}
-          </button>
-        </Show>
-      </div>
-    );
-  };
+            {icon(i.Cancel01Icon, 10)}
+          </span>
+        )}
+      </Show>
+    </span>
+  );
+  const anySet = (): boolean =>
+    (field() !== "title" && !!title()) ||
+    (field() !== "description" && !!description()) ||
+    assignees().length > 0 ||
+    !!space() ||
+    names().length > 0;
 
   return (
     <>
-      <div class={sx(form.fields)}>
-        <For each={FIELDS}>{(f) => <Row_ field={f} />}</For>
-        {/* Where it goes: shown once it's in a space (started from one, or by assigning one). */}
-        <Show when={space()}>
-          {(sub) => (
-            <div class={sx(form.field)}>
-              <span class={sx(form.name)}>
-                {icon(i.Layers01Icon, 13)}
-                Space
-              </span>
-              <span class={sx(base.ellipsis, form.value)}>{sub().name}</span>
-              <button
-                class={sx(base.bare, form.clear)}
-                aria-label="Take Out of Space"
-                onMouseDown={(event) => (event.preventDefault(), setSpaceId(undefined))}
-              >
-                {icon(i.Cancel01Icon, 11)}
-              </button>
-            </div>
-          )}
+      <Show when={anySet()}>
+        <div class={sx(form.chips)}>
+          <Show when={field() !== "title" && title()}>
+            <Chip field="title" text={title()} title />
+          </Show>
+          <Show when={field() !== "description" && description()}>
+            <Chip field="description" text={description()} icon={i.TextAlignLeftIcon} />
+          </Show>
+          <For each={assignees()}>
+            {(u) => (
+              <Chip field="assign" text={u.name} seed={u.id} remove={() => toggleAssignee(u)} />
+            )}
+          </For>
+          <Show when={space()}>
+            {(sub) => (
+              <Chip
+                field="assign"
+                text={sub().name}
+                icon={sub().visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
+                remove={() => setSpaceId(undefined)}
+              />
+            )}
+          </Show>
+          <For each={names()}>
+            {(name) => (
+              <Chip
+                field="labels"
+                text={name}
+                icon={i.Tag01Icon}
+                remove={() => toggleLabel(name)}
+              />
+            )}
+          </For>
+        </div>
+      </Show>
+      <div class={sx(palette.inputRow, styles.inputRow)}>
+        <Show when={field() !== "title"}>
+          <span class={sx(form.step)}>{STEP_NAMES[field()]}</span>
         </Show>
+        <input
+          ref={(el) => ((input = el), focusOnShow(el))}
+          class={sx(base.bare, palette.input)}
+          placeholder={
+            field() === "title" && props.to
+              ? `Thread title for ${props.to.name}`
+              : PLACEHOLDERS[field()]
+          }
+          spellcheck={field() === "title" || field() === "description"}
+          value={typed()}
+          onInput={(event) => (setTyped(event.currentTarget.value), setAt(0))}
+          onKeyDown={onKeyDown}
+        />
       </div>
       <Show when={options().length > 0}>
-        <div class={sx(form.options)} role="listbox">
+        <div class={sx(palette.results)} role="listbox">
           <For each={options()}>
             {(row, n) => (
               <OptionButton
@@ -609,10 +576,13 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       <div class={sx(form.footer)}>
         <span>
           <span class={sx(form.key)}>↵</span>
-          {field() === "assign" ? "Assign and Create" : field() === "labels" ? "Add Label" : "Next"}
+          {field() === "assign" || field() === "labels" ? "Toggle" : "Next"}
         </span>
         <span>
-          <span class={sx(form.key)}>⇥</span>Next Field
+          <span class={sx(form.key)}>⇥</span>
+          {field() === "labels"
+            ? "Back to Title"
+            : `${STEP_NAMES[FIELDS[FIELDS.indexOf(field()) + 1]]}`}
         </span>
         <span class={sx(form.end)}>
           <button

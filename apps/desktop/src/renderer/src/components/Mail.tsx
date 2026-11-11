@@ -393,7 +393,7 @@ function WorkspacePicker(): JSX.Element {
                 <>
                   <Identicon seed={server.workspace} size={16} />
                   <span class={sx(base.ellipsis, s.mailboxName)}>{current()}</span>
-                  <span class={sx(s.mailboxIcon)}>
+                  <span class={sx(s.workspaceChevron)}>
                     <Icon icon={i.UnfoldMoreIcon} {...ICON} />
                   </span>
                 </>
@@ -1362,6 +1362,8 @@ const s = stylex.create({
     color: colors.iconTertiary,
   },
   mailboxName: { flex: 1 },
+  // Its right edge on the counts' under it: the icon's own blank margin hangs past the row's padding.
+  workspaceChevron: { display: "flex", flexShrink: 0, marginRight: -3, color: colors.iconTertiary },
   // Apart from Inbox under it, as a section is.
   workspace: { marginBottom: space.inset },
   // A mailbox row's size, its name in the semibold of a heading.
