@@ -375,7 +375,7 @@ onGoTo((at) => {
 });
 
 // Above Inbox: the workspace you're in, and the others you're a member of to go to (one you're only invited to is
-// joined from Create or Join a Workspace). Sample has no account, so none.
+// joined from Add Workspace). Sample has no account, so none.
 function WorkspacePicker(): JSX.Element {
   return (
     <Show when={account}>
@@ -411,7 +411,7 @@ function WorkspacePicker(): JSX.Element {
                   run: () => setDialog({ kind: "invite" }),
                 },
                 {
-                  label: "Create or Join a Workspace",
+                  label: "Add Workspace",
                   icon: icon(i.Add01Icon, 13),
                   run: chooseWorkspace,
                 },

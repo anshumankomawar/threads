@@ -860,11 +860,11 @@ function workspaces(): Command[] {
       })),
     {
       id: "choose-workspace",
-      title: "Create or Join a Workspace",
+      title: "Add Workspace",
       kind: "action",
       section,
       icon: i.Add01Icon,
-      keywords: "new workspace team company",
+      keywords: "new create join invited workspace team company",
       run: chooseWorkspace,
     },
     // Nothing to show once every step's done.
