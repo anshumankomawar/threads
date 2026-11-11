@@ -232,7 +232,7 @@ type Field = "title" | "description" | "assign" | "labels";
 const FIELDS: Field[] = ["title", "description", "assign", "labels"];
 const PLACEHOLDERS: Record<Field, string> = {
   title: "Thread title",
-  description: "Add details (optional)",
+  description: "Add details",
   assign: "People or a space",
   labels: "Find or make a label",
 };
@@ -573,7 +573,8 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
         </div>
       </Show>
       <div class={sx(form.inputRow)}>
-        <Show when={field() !== "title"}>
+        {/* The text fields say what they are in their placeholders; a list's names what it picks. */}
+        <Show when={!text()}>
           <span class={sx(form.step)}>{STEP_NAMES[field()]}</span>
         </Show>
         <textarea
