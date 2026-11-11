@@ -344,18 +344,6 @@ const pressing = (t: Thread): boolean => t.priority === "urgent" || t.priority =
 const attention = (t: Thread): number =>
   !t.isOpen ? -1 : t.state === "blocked" ? 0 : overdue(t) ? 1 : pressing(t) ? 2 : -1;
 
-// A number and what it counts.
-function Stat(props: { label: string; value: number; tone?: "urgent" }): JSX.Element {
-  return (
-    <div class={sx(overview.stat)}>
-      <span class={sx(overview.statValue, props.tone && props.value > 0 && overview.urgent)}>
-        {props.value}
-      </span>
-      <span class={sx(overview.statLabel)}>{props.label}</span>
-    </div>
-  );
-}
-
 // A thread as a line of the overview: its status, title, who's on it, and when (due, or last active).
 function ThreadLine(props: { thread: Thread; why?: string }): JSX.Element {
   const t = (): Thread => props.thread;
@@ -397,7 +385,8 @@ function Lines(props: {
   );
 }
 
-function overviewOf(s: () => Subspace): Page {
+// The overview's tab, and its counts as one line for the header: how many are open, then only what's not nothing.
+function overviewOf(s: () => Subspace): Page & { counts: () => JSX.Element } {
   const threads = createMemo(() => store.all(Thread).filter((t) => t.subspaceIds.includes(s().id)));
   const unresolved = createMemo(() => threads().filter((t) => t.isOpen));
   const needs = createMemo(() =>
@@ -426,8 +415,30 @@ function overviewOf(s: () => Subspace): Page {
         : t.priority === "urgent"
           ? "Urgent"
           : "High priority";
+  const counts = (): JSX.Element => {
+    const blocked = unresolved().filter((t) => t.state === "blocked").length;
+    const late = unresolved().filter(overdue).length;
+    const soon = unresolved().filter(dueSoon).length;
+    const parts: [string, boolean][] = [
+      [`${unresolved().length} open`, false],
+      ...(blocked ? [[`${blocked} blocked`, true] as [string, boolean]] : []),
+      ...(late ? [[`${late} overdue`, true] as [string, boolean]] : []),
+      ...(soon ? [[`${soon} due this week`, false] as [string, boolean]] : []),
+    ];
+    return (
+      <For each={parts}>
+        {([text, urgent]) => (
+          <>
+            <span class={sx(overview.dot)}>·</span>
+            <span class={sx(page.small, urgent && overview.urgent)}>{text}</span>
+          </>
+        )}
+      </For>
+    );
+  };
   return {
     tab: OVERVIEW,
+    counts,
     body: (
       <Show
         when={threads().length > 0}
@@ -444,16 +455,6 @@ function overviewOf(s: () => Subspace): Page {
           </div>
         }
       >
-        <div class={sx(overview.stats)}>
-          <Stat label="Open" value={unresolved().length} />
-          <Stat
-            label="Blocked"
-            value={unresolved().filter((t) => t.state === "blocked").length}
-            tone="urgent"
-          />
-          <Stat label="Overdue" value={unresolved().filter(overdue).length} tone="urgent" />
-          <Stat label="Due this week" value={unresolved().filter(dueSoon).length} />
-        </div>
         <Lines title="Needs attention" threads={needs()} why={why} />
         <Lines title="Coming up" threads={upcoming()} />
         <Lines title="Recently active" threads={recent()} />
@@ -463,33 +464,9 @@ function overviewOf(s: () => Subspace): Page {
 }
 
 const overview = stylex.create({
-  stats: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: 8,
-    maxWidth: 720,
-    marginTop: 16,
-  },
-  stat: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-    padding: "10px 12px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.strokeTertiary,
-    borderRadius: radii.row,
-  },
-  statValue: {
-    color: colors.textPrimary,
-    fontSize: fontSizes.pageTitle,
-    fontWeight: 600,
-    fontVariantNumeric: "tabular-nums",
-    lineHeight: "24px",
-  },
-  statLabel: { color: colors.textTertiary, fontSize: fontSizes.small },
   urgent: { color: colors.urgent },
-  section: { maxWidth: 720, marginTop: 24 },
+  dot: { color: colors.textTertiary },
+  section: { maxWidth: 720, marginTop: 20 },
   heading: {
     margin: "0 0 4px",
     color: colors.textTertiary,
@@ -530,7 +507,7 @@ const overview = stylex.create({
     marginTop: 24,
   },
   emptyButton: { marginTop: 8 },
-  // Under the description: who can see it, who's in it, and how much is open.
+  // Under the description: who's in it and how its threads stand.
   meta: {
     display: "flex",
     flexWrap: "wrap",
@@ -650,10 +627,6 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         />
       </Show>
       <div class={sx(overview.meta)}>
-        {pill(
-          isPrivate() ? "Private" : "Open",
-          icon(isPrivate() ? i.SquareLock01Icon : i.ViewIcon, 12),
-        )}
         <span class={sx(page.avatars)}>
           <For each={s().members.sorted("createdAt").slice(0, 5)}>
             {(m) => <Identicon seed={m.userId} size={18} class={sx(page.avatar)} />}
@@ -662,6 +635,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         <span class={sx(page.small)}>
           {s().members.length} {s().members.length === 1 ? "member" : "members"}
         </span>
+        {summary.counts()}
       </div>
       <PageTabs pages={isMember() ? [summary, people, settings] : [summary, people]} />
     </div>
