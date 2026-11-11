@@ -239,22 +239,60 @@ const PLACEHOLDERS: Record<Field, string> = {
 
 const form = stylex.create({
   // What's set, in a line that wraps, over the input.
-  // What's set, a line each, in the input's own type and on its edge: the form as it was filled in, above where it goes
-  // on.
-  filled: { display: "flex", flexDirection: "column", gap: 6, padding: "11px 14px 0" },
+  // The form, a field a line, in the input's own type and on its edge, the one you're on where it falls.
+  column: {
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+    padding: "6px 14px",
+    overflowY: "auto",
+  },
+  // Every row of it the same height (26px), a line of text or a row of tags, so it steps down evenly.
   line: {
     display: "flex",
     gap: 6,
     alignItems: "center",
+    flexShrink: 0,
     minWidth: 0,
+    height: 16,
+    marginBlock: 5,
     color: { default: colors.textSecondary, ":hover": colors.textPrimary },
     fontSize: fontSizes.input,
     lineHeight: "16px",
     cursor: "pointer",
   },
+  tags: { display: "flex", flexShrink: 0, flexWrap: "wrap", gap: 4, marginBlock: 2 },
+  tag: {
+    display: "inline-flex",
+    gap: 5,
+    alignItems: "center",
+    maxWidth: 260,
+    height: 22,
+    paddingInline: 7,
+    borderRadius: radii.control,
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    backgroundColor: colors.bgTertiary,
+    cursor: "pointer",
+  },
+  tagRemove: {
+    display: "grid",
+    placeItems: "center",
+    marginRight: -3,
+    color: { default: colors.iconTertiary, ":hover": colors.textPrimary },
+    cursor: "pointer",
+  },
   titleLine: { color: colors.textPrimary, fontWeight: 500 },
-  lineIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
+  lineIcon: {
+    display: "flex",
+    flexShrink: 0,
+    alignItems: "center",
+    height: 16,
+    color: colors.iconTertiary,
+  },
   lineText: { flex: 1, minWidth: 0 },
+  // Out to the palette's edges, as its rows are.
+  options: { display: "flex", flexDirection: "column", gap: 2, marginInline: -14, paddingBlock: 6 },
   // ✕ at the end of a line under the pointer, to take it off.
   remove: {
     display: "grid",
@@ -264,12 +302,11 @@ const form = stylex.create({
     cursor: "pointer",
     opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1 },
   },
-  // The input's row: one line, growing to five as the details run on.
-  inputRow: { display: "flex", flexShrink: 0, gap: 8, alignItems: "flex-start", padding: "0 14px" },
   // Its space above and below is outside it, so text scrolled out of it is cut off clear of the lines above it and the footer.
   input: {
     display: "block",
-    marginBlock: 11,
+    flexShrink: 0,
+    marginBlock: 5,
     padding: 0,
     lineHeight: "16px",
     resize: "none",
@@ -518,99 +555,146 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       </Show>
     </div>
   );
-  const anySet = (): boolean =>
-    (field() !== "title" && !!title()) ||
-    (field() !== "description" && !!description()) ||
-    assignees().length > 0 ||
-    !!space() ||
-    names().length > 0;
+  // What a list holds, a tag each: a click goes back to its field, its ✕ takes it off.
+  const Tags = (tags: {
+    field: Field;
+    items: { key: string; text: string; mark: JSX.Element; remove: () => void }[];
+  }): JSX.Element => (
+    <Show when={tags.items.length > 0}>
+      <div class={sx(form.tags)}>
+        <For each={tags.items}>
+          {(item) => (
+            <span
+              class={sx(form.tag)}
+              onMouseDown={(event) => (event.preventDefault(), go(tags.field))}
+            >
+              {item.mark}
+              <span class={sx(base.ellipsis)}>{item.text}</span>
+              <span
+                class={sx(form.tagRemove)}
+                role="button"
+                aria-label={`Remove ${item.text}`}
+                onMouseDown={(event) => (
+                  event.preventDefault(),
+                  event.stopPropagation(),
+                  item.remove()
+                )}
+              >
+                {icon(i.Cancel01Icon, 10)}
+              </span>
+            </span>
+          )}
+        </For>
+      </div>
+    </Show>
+  );
+  // Who it's for and where it goes, then its labels, as tags.
+  const forTags = () => [
+    ...assignees().map((u) => ({
+      key: u.id,
+      text: u.name,
+      mark: <Identicon seed={u.id} size={13} />,
+      remove: () => toggleAssignee(u),
+    })),
+    ...(space()
+      ? [
+          {
+            key: space()!.id,
+            text: space()!.name,
+            mark: icon(space()!.visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon, 12),
+            remove: () => setSpaceId(undefined),
+          },
+        ]
+      : []),
+  ];
+  const labelTags = () =>
+    names().map((name) => ({
+      key: name,
+      text: name,
+      mark: icon(i.Tag01Icon, 12),
+      remove: () => toggleLabel(name),
+    }));
+
+  // Where you type into the field you're on: a line, and for the details up to five.
+  const Input = (): JSX.Element => (
+    <textarea
+      ref={(el) => ((input = el), focusOnShow(el))}
+      rows={1}
+      class={sx(base.bare, palette.input, form.input, field() === "description" && form.details)}
+      placeholder={
+        field() === "title" && props.to
+          ? `Thread title for ${props.to.name}`
+          : PLACEHOLDERS[field()]
+      }
+      spellcheck={field() === "title" || field() === "description"}
+      value={typed()}
+      onInput={(event) => {
+        // A title is one line: a pasted line break is a space.
+        const value = event.currentTarget.value;
+        setTyped(field() === "title" ? value.replace(/\n/g, " ") : value);
+        setAt(0);
+      }}
+      onKeyDown={onKeyDown}
+    />
+  );
+  // A list's choices, under its input, on the palette's edges.
+  const Options = (): JSX.Element => (
+    <Show when={options().length > 0}>
+      <div class={sx(form.options)} role="listbox">
+        <For each={options()}>
+          {(row, n) => (
+            <OptionButton
+              option={row}
+              selected={n() === index()}
+              onHover={() => setAt(n())}
+              inset
+            />
+          )}
+        </For>
+      </div>
+    </Show>
+  );
 
   return (
     <>
-      <Show when={anySet()}>
-        <div class={sx(form.filled)}>
-          <Show when={field() !== "title" && title()}>
-            <Line field="title" title>
-              {title()}
-            </Line>
-          </Show>
-          <Show when={field() !== "description" && description()}>
-            <Line field="description" icon={icon(i.TextAlignLeftIcon, 13)}>
-              {description().replace(/\s*\n\s*/g, " ")}
-            </Line>
-          </Show>
-          <Show when={assignees().length > 0}>
-            <Line
-              field="assign"
-              icon={<Identicon seed={assignees()[0].id} size={13} />}
-              remove={() => setAssignees([])}
-            >
-              {assignees()
-                .map((u) => u.name)
-                .join(", ")}
-            </Line>
-          </Show>
-          <Show when={space()}>
-            {(sub) => (
-              <Line
-                field="assign"
-                icon={icon(
-                  sub().visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon,
-                  13,
-                )}
-                remove={() => setSpaceId(undefined)}
-              >
-                {sub().name}
+      {/* The form in its order, whichever field you're on: each field's line, or where you're typing into it (a
+          list's choices open under it). */}
+      <div class={sx(form.column)}>
+        <Show
+          when={field() === "title"}
+          fallback={
+            <Show when={title()}>
+              <Line field="title" title>
+                {title()}
               </Line>
-            )}
-          </Show>
-          <Show when={names().length > 0}>
-            <Line field="labels" icon={icon(i.Tag01Icon, 13)} remove={() => setNames([])}>
-              {names().join(", ")}
-            </Line>
-          </Show>
-        </div>
-      </Show>
-      <div class={sx(form.inputRow)}>
-        <textarea
-          ref={(el) => ((input = el), focusOnShow(el))}
-          rows={1}
-          class={sx(
-            base.bare,
-            palette.input,
-            form.input,
-            field() === "description" && form.details,
-          )}
-          placeholder={
-            field() === "title" && props.to
-              ? `Thread title for ${props.to.name}`
-              : PLACEHOLDERS[field()]
+            </Show>
           }
-          spellcheck={field() === "title" || field() === "description"}
-          value={typed()}
-          onInput={(event) => {
-            // A title is one line: a pasted line break is a space.
-            const value = event.currentTarget.value;
-            setTyped(field() === "title" ? value.replace(/\n/g, " ") : value);
-            setAt(0);
-          }}
-          onKeyDown={onKeyDown}
-        />
+        >
+          <Input />
+        </Show>
+        <Show
+          when={field() === "description"}
+          fallback={
+            <Show when={description()}>
+              <Line field="description" icon={icon(i.TextAlignLeftIcon, 13)}>
+                {description().replace(/\s*\n\s*/g, " ")}
+              </Line>
+            </Show>
+          }
+        >
+          <Input />
+        </Show>
+        <Tags field="assign" items={forTags()} />
+        <Show when={field() === "assign"}>
+          <Input />
+          <Options />
+        </Show>
+        <Tags field="labels" items={labelTags()} />
+        <Show when={field() === "labels"}>
+          <Input />
+          <Options />
+        </Show>
       </div>
-      <Show when={options().length > 0}>
-        <div class={sx(palette.results)} role="listbox">
-          <For each={options()}>
-            {(row, n) => (
-              <OptionButton
-                option={row}
-                selected={n() === index()}
-                onHover={() => setAt(n())}
-                inset
-              />
-            )}
-          </For>
-        </div>
-      </Show>
       {/* Keeping it for later, and the one way on: Next, until the last field makes it. */}
       <div class={sx(form.footer)}>
         <span class={sx(form.end)}>
