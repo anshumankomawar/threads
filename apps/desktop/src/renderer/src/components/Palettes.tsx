@@ -1,5 +1,14 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createMemo, createSignal, For, Show, untrack, type Signal } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  For,
+  onCleanup,
+  Show,
+  untrack,
+  type Signal,
+} from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import {
@@ -223,11 +232,11 @@ export function send(thread: Thread, body: string): void {
 }
 
 // ⌘N: a thread in one input, a field at a time: its title, details, who it's for, its labels. What's set sits above
-// the input, a line each as it was filled in (a click goes back to one, ✕ takes it off). ⌘↵ moves on a field, and only the last makes it.
-// Enter goes on from the title, is a new line in the details, and on a list toggles the highlighted choice (several
-// people, a space, labels). Tab and ⇧Tab move between fields, ⌘S keeps it in Drafts, and Escape goes back a field (or
-// closes). Started from a space, a label or someone (their page or list, or a view filtered to one), that's set
-// already.
+// the input, a line each as it was filled in (a click goes back to one, ✕ takes it off). ⌘↵ moves on a field, wherever
+// the focus is, and only the last makes it. Enter does nothing in the title, is a new line in the details, and on a list
+// toggles the highlighted choice (several people, a space, labels). Tab and ⇧Tab move between fields, ⌘S keeps it in
+// Drafts, and Escape goes back a field (or closes). Started from a space, a label or someone (their page or list, or a
+// view filtered to one), that's set already.
 type Field = "title" | "description" | "assign" | "labels";
 const FIELDS: Field[] = ["title", "description", "assign", "labels"];
 const PLACEHOLDERS: Record<Field, string> = {
@@ -507,16 +516,17 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     if (last()) create();
     else if (field() !== "title" || titleNow()) step(1);
   };
-  // ⌘↵ goes on to the next field, and from the last makes it. Enter goes on from the title, is a new line in the
+  // ⌘↵ goes on to the next field, and from the last makes it. Enter does nothing in the title, is a new line in the
   // details (which grow to five lines), and toggles the highlighted choice in a list.
   const onKeyDown = (event: KeyboardEvent): void => {
     const key = event.key;
     const moveTo = text() ? undefined : moved(key, index(), options().length);
-    if (event.metaKey && key === "Enter") next();
-    else if (event.metaKey && key.toLowerCase() === "s") saveDraft();
-    else if (moveTo !== undefined && options().length > 0) setAt(moveTo);
-    else if (key === "Enter" && field() === "title" && !event.isComposing) next();
-    else if (key === "Enter" && !text() && !event.isComposing) options()[index()]?.run();
+    // (⌘↵ and ⌘S are the form's, wherever the focus is: below.)
+    if (event.metaKey && (key === "Enter" || key.toLowerCase() === "s")) return;
+    if (moveTo !== undefined && options().length > 0) setAt(moveTo);
+    // The title is one line: Enter isn't a new line in it, and ⌘↵ is what goes on.
+    else if (key === "Enter" && field() === "title") {
+    } else if (key === "Enter" && !text() && !event.isComposing) options()[index()]?.run();
     else if (key === "Tab") step(event.shiftKey ? -1 : 1);
     else if (key === "Escape") {
       if (field() === "title") dialogBack();
@@ -524,6 +534,18 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     } else return;
     event.preventDefault();
   };
+
+  // ⌘↵ on (and from the last field, made) and ⌘S kept, whether the input has the focus or not.
+  const formKeys = (event: KeyboardEvent): void => {
+    if (!event.metaKey || event.isComposing) return;
+    if (event.key === "Enter") next();
+    else if (event.key.toLowerCase() === "s") saveDraft();
+    else return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  window.addEventListener("keydown", formKeys, true);
+  onCleanup(() => window.removeEventListener("keydown", formKeys, true));
 
   // A line for what's set: a click goes back to its field, ✕ (if it has one) takes it off.
   const Line = (line: {
