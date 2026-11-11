@@ -8,6 +8,7 @@ import {
   active,
   byName,
   inbox,
+  sent,
   itemFor,
   loaded,
   toggled,
@@ -154,7 +155,8 @@ function Mailbox(props: {
           <Icon icon={props.icon} {...ICON} />
         </span>
         <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
-        <Show when={props.count}>
+        {/* Even none, so a mailbox reads as empty rather than uncounted. */}
+        <Show when={props.count !== undefined}>
           <span class={sx(s.count)}>{props.count}</span>
         </Show>
       </div>
@@ -498,7 +500,7 @@ export function MailSidebar(): JSX.Element {
         </ul>
         {/* What you've written: sent, and not yet; just apart from the inbox. */}
         <ul class={sx(base.list, s.stack, s.nearby)}>
-          <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} />
+          <Mailbox box={{ kind: "sent" }} label="Sent" icon={i.SentIcon} count={sent().length} />
           <Mailbox
             box={{ kind: "drafts" }}
             label="Drafts"
