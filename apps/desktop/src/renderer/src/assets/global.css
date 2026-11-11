@@ -136,11 +136,11 @@
     margin: 0;
   }
 
-  /* At the line's end, where the reply's right-aligned caret is. */
+  /* Where the caret is, at the line's start. */
   .reply p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
     position: absolute;
-    right: 0;
+    left: 0;
     white-space: nowrap;
     color: light-dark(
       color-mix(in srgb, oklch(0.21 0 0) 55%, transparent),

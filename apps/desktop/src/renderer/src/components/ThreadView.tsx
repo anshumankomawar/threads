@@ -74,12 +74,8 @@ const styles = stylex.create({
   },
   // An activity's mark, in the avatar's column.
   eventDot: { width: 6, height: 6, borderRadius: "50%", backgroundColor: colors.iconTertiary },
-  // Yours, on the right: avatar and byline at the far edge, the text in a column that leaves the left open.
-  mine: { flexDirection: "row-reverse" },
   // A message carrying on the one before keeps the avatar's column but not its height, so one line is one line tall.
   noAvatar: { height: 0, marginTop: 0 },
-  mineBody: { alignItems: "flex-end" },
-  mineText: { maxWidth: "80%", textAlign: "right" },
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
   // Pulled out by a value's padding, so the first one's icon lines up with the title.
@@ -146,8 +142,6 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   reply: { display: "flex", flex: 1, minWidth: 0 },
-  // As wide as your messages can be, so what you type wraps where it will once it's sent.
-  replyMine: { width: "80%", flex: "none", textAlign: "right" },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
   caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: CARET_MENU_WIDTH },
   linkSelf: { color: colors.textSecondary },
@@ -455,10 +449,9 @@ function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Elemen
 
 function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): JSX.Element {
   const m = (): Message => props.message;
-  const mine = (): boolean => m().authorId === me().id;
   return (
     <div
-      class={sx(thread.block, mine() && styles.mine)}
+      class={sx(thread.block)}
       style={pulled(props.turn)}
       onContextMenu={(event) =>
         showMenu(event, [
@@ -485,11 +478,11 @@ function MessageBlock(props: { message: Message; thread: Thread; turn: Turn }): 
           <Identicon seed={m().authorId} size={AVATAR} />
         </Show>
       </span>
-      <div class={sx(thread.body, mine() && styles.mineBody)}>
+      <div class={sx(thread.body)}>
         <Show when={props.turn === "avatar"}>
           <Meta user={m().author} at={m().createdAt} />
         </Show>
-        <div class={sx(thread.text, mine() && styles.mineText)}>
+        <div class={sx(thread.text)}>
           <LinkedText text={m().body} current={props.thread.id} />
         </div>
       </div>
@@ -659,16 +652,15 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     return () => editor.destroy();
   });
   return (
-    // Yours, so on the right as your messages are.
-    <div class={sx(thread.block, styles.mine)} onClick={() => editor.commands.focus()}>
+    <div class={sx(thread.block)} onClick={() => editor.commands.focus()}>
       <span class={sx(thread.avatar)}>
         <Identicon seed={me().id} size={AVATAR} />
       </span>
-      <div class={sx(thread.body, styles.mineBody)}>
+      <div class={sx(thread.body)}>
         <div class={sx(thread.meta)}>
           <span class={sx(thread.author)}>{me().name}</span>
         </div>
-        <div ref={element} class={sx(styles.reply, styles.replyMine)} />
+        <div ref={element} class={sx(styles.reply)} />
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (
