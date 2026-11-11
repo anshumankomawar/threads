@@ -74,6 +74,7 @@ import { MenuChip } from "./Menus";
 import { makeSubspace } from "./Palettes";
 import { dot, plain } from "./ThreadView";
 import { Timeline } from "./Timeline";
+import { account, chooseWorkspace, openWorkspace, server } from "../startup";
 
 // Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
@@ -373,6 +374,56 @@ onGoTo((at) => {
   if (place) chooseMailbox(place);
 });
 
+// Above Inbox: the workspace you're in, and the others you're a member of to go to (one you're only invited to is
+// joined from Create or Join a Workspace). Sample has no account, so none.
+function WorkspacePicker(): JSX.Element {
+  return (
+    <Show when={account}>
+      {(you) => {
+        const current = (): string =>
+          you().workspaces.find((w) => w.id === server.workspace)?.name ?? "Workspace";
+        return (
+          <div class={sx(s.workspace)}>
+            <MenuChip
+              look={s.workspaceButton}
+              title="Switch Workspace"
+              label={
+                <>
+                  <Identicon seed={server.workspace} size={16} />
+                  <span class={sx(base.ellipsis, s.mailboxName)}>{current()}</span>
+                  <span class={sx(s.mailboxIcon)}>
+                    <Icon icon={i.UnfoldMoreIcon} {...ICON} />
+                  </span>
+                </>
+              }
+              items={[
+                ...you().workspaces.map((w): MenuItem => ({
+                  label: w.name,
+                  checked: w.id === server.workspace,
+                  run: () => {
+                    if (w.id !== server.workspace) openWorkspace(w.id);
+                  },
+                })),
+                "separator",
+                {
+                  label: "Invite People",
+                  icon: icon(i.UserAdd01Icon, 13),
+                  run: () => setDialog({ kind: "invite" }),
+                },
+                {
+                  label: "Create or Join a Workspace",
+                  icon: icon(i.Add01Icon, 13),
+                  run: chooseWorkspace,
+                },
+              ]}
+            />
+          </div>
+        );
+      }}
+    </Show>
+  );
+}
+
 export function MailSidebar(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   const pinned = (): View[] =>
@@ -395,6 +446,7 @@ export function MailSidebar(): JSX.Element {
       {/* One list, nothing behind a tab: your inbox and its buckets, then the spaces, then what you've pinned (every
           space's threads at once are ⌘3 and ⌘K's All Spaces). */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
+        <WorkspacePicker />
         <ul class={sx(base.list, s.stack)}>
           <Mailbox
             box={{ kind: "inbox" }}
@@ -1304,6 +1356,26 @@ const s = stylex.create({
     color: colors.iconTertiary,
   },
   mailboxName: { flex: 1 },
+  // Apart from Inbox under it, as a section is.
+  workspace: { marginBottom: space.inset },
+  // A mailbox row's size, its name in the semibold of a heading.
+  workspaceButton: {
+    display: "flex",
+    gap: space.inset,
+    alignItems: "center",
+    width: "100%",
+    height: 27.27,
+    paddingInline: space.inset,
+    borderRadius: radii.item,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    fontWeight: 600,
+    textAlign: "start",
+    borderStyle: "none",
+    backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
+    cursor: "default",
+    outline: "none",
+  },
   count: {
     flexShrink: 0,
     color: colors.textTertiary,
