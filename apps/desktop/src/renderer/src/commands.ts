@@ -43,6 +43,7 @@ import {
   applyTheme,
   byName,
   edit,
+  undoable,
   hotkeyAction,
   inbox,
   itemFor,
@@ -720,12 +721,23 @@ function here(): Command[] {
     const space = store.findById(Subspace, box.id);
     if (!space) return [];
     return [
-      action("space-settings", "Open Space Settings", i.Settings02Icon, () =>
+      action("space-overview", "Open Space Overview", i.InformationCircleIcon, () =>
         open({ subspace: space.id }),
       ),
       action("add-member", "Add Member to This Space", i.UserAdd01Icon, () =>
         setDialog({ kind: "addMember", subspace: space }),
       ),
+      space.visibility === "private"
+        ? action("space-visibility", "Make Space Open", i.ViewIcon, () =>
+            edit(space, { visibility: "open" }, "Change Visibility"),
+          )
+        : action("space-visibility", "Make Space Private", i.SquareLock02Icon, () =>
+            edit(space, { visibility: "private" }, "Change Visibility"),
+          ),
+      action("delete-space", "Delete Space", i.Delete02Icon, () => {
+        open({ thread: null });
+        undoable("Delete Space", () => void space.delete());
+      }),
     ];
   }
   if (box.kind === "label")

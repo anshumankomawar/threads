@@ -23,6 +23,7 @@ import {
   store,
   edit,
   memberIn,
+  type MenuItem,
   undoable,
   workspace,
 } from "../session";
@@ -76,7 +77,6 @@ function Setting(props: { name: string; hint: string; children: JSX.Element }): 
     </li>
   );
 }
-const OVERVIEW: Tab = { label: "Overview", icon: i.DashboardSquare01Icon };
 const MEMBERS: Tab = { label: "Members", icon: i.UserMultipleIcon };
 const SETTINGS: Tab = { label: "Settings", icon: i.Settings02Icon };
 
@@ -385,8 +385,9 @@ function Lines(props: {
   );
 }
 
-// The overview's tab, and its counts as one line for the header: how many are open, then only what's not nothing.
-function overviewOf(s: () => Subspace): Page & { counts: () => JSX.Element } {
+// How a space's threads stand: its counts as one line for the header (how many are open, then only what's not
+// nothing), and its lists for under its members.
+function overviewOf(s: () => Subspace): { counts: () => JSX.Element; body: JSX.Element } {
   const threads = createMemo(() => store.all(Thread).filter((t) => t.subspaceIds.includes(s().id)));
   const unresolved = createMemo(() => threads().filter((t) => t.isOpen));
   const needs = createMemo(() =>
@@ -419,25 +420,27 @@ function overviewOf(s: () => Subspace): Page & { counts: () => JSX.Element } {
     const blocked = unresolved().filter((t) => t.state === "blocked").length;
     const late = unresolved().filter(overdue).length;
     const soon = unresolved().filter(dueSoon).length;
-    const parts: [string, boolean][] = [
-      [`${unresolved().length} open`, false],
-      ...(blocked ? [[`${blocked} blocked`, true] as [string, boolean]] : []),
-      ...(late ? [[`${late} overdue`, true] as [string, boolean]] : []),
-      ...(soon ? [[`${soon} due this week`, false] as [string, boolean]] : []),
+    const calendar = (): JSX.Element => icon(i.Calendar03Icon, 12);
+    const parts: { mark: () => JSX.Element; text: string; urgent?: boolean }[] = [
+      { mark: () => dot("open"), text: `${unresolved().length} open` },
+      ...(blocked
+        ? [{ mark: () => dot("blocked"), text: `${blocked} blocked`, urgent: true }]
+        : []),
+      ...(late ? [{ mark: calendar, text: `${late} overdue`, urgent: true }] : []),
+      ...(soon ? [{ mark: calendar, text: `${soon} due this week` }] : []),
     ];
     return (
       <For each={parts}>
-        {([text, urgent]) => (
-          <>
-            <span class={sx(overview.dot)}>·</span>
-            <span class={sx(page.small, urgent && overview.urgent)}>{text}</span>
-          </>
+        {(part) => (
+          <span class={sx(overview.count, part.urgent && overview.urgent)}>
+            {part.mark()}
+            {part.text}
+          </span>
         )}
       </For>
     );
   };
   return {
-    tab: OVERVIEW,
     counts,
     body: (
       <Show
@@ -465,8 +468,38 @@ function overviewOf(s: () => Subspace): Page & { counts: () => JSX.Element } {
 
 const overview = stylex.create({
   urgent: { color: colors.urgent },
-  dot: { color: colors.textTertiary },
-  section: { maxWidth: 720, marginTop: 20 },
+  // A count after its mark (a status's dot, a calendar), as a property is.
+  count: {
+    display: "inline-flex",
+    gap: 5,
+    alignItems: "center",
+    color: colors.textTertiary,
+    fontSize: fontSizes.body,
+  },
+  section: { maxWidth: 720, marginTop: 24 },
+  headingRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 28,
+  },
+  headingCount: { marginLeft: 4, color: colors.textTertiary, fontWeight: 400 },
+  // Ten rows, then it scrolls.
+  people: { maxHeight: 300, overflowY: "auto" },
+  person: { display: "flex", alignItems: "center" },
+  personLine: { flex: 1, minWidth: 0 },
+  email: { marginLeft: 8, color: colors.textTertiary },
+  remove: { flexShrink: 0, padding: "0 4px", fontSize: fontSizes.small, cursor: "pointer" },
+  lock: { display: "flex", color: colors.iconTertiary },
+  settings: { marginLeft: "auto" },
+  settingsButton: {
+    display: "grid",
+    placeItems: "center",
+    width: 24,
+    height: 24,
+    borderRadius: radii.row,
+    color: colors.iconTertiary,
+  },
   heading: {
     margin: "0 0 4px",
     color: colors.textTertiary,
@@ -507,19 +540,20 @@ const overview = stylex.create({
     marginTop: 24,
   },
   emptyButton: { marginTop: 8 },
-  // Under the description: who's in it and how its threads stand.
+  // Under the description: how its threads stand.
   meta: {
     display: "flex",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 16,
     alignItems: "center",
     marginTop: 10,
     marginBottom: 4,
   },
 });
 
-// A subspace: who's in it and whether it's private (its threads are listed beside). Members add or remove people; anyone
-// joins an open one.
+// A subspace, on one page: its name and description (members edit them in place) and how its threads stand; who's in
+// it (members add or remove people, anyone joins an open one); then what needs a look, what's coming up and what's been
+// active. Its visibility and deleting it are in the menu by its name.
 export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   const s = (): Subspace => props.subspace;
   const isMember = (): boolean => memberIn(s(), me().id) !== undefined;
@@ -531,79 +565,49 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
     });
   };
   const isPrivate = (): boolean => s().visibility === "private";
-  const people = members({
-    users: () =>
-      s()
-        .members.sorted("createdAt")
-        .flatMap((m) => m.user ?? []),
-    // Members add people from a list under the button; anyone else can join.
-    action: (
-      <Show
-        when={isMember()}
-        fallback={
-          <button class={sx(base.bare, button.solid)} onClick={() => toggle(me())}>
-            Join
-          </button>
-        }
-      >
-        <ComboButton
-          label="Add Member"
-          class={sx(base.bare, button.solid)}
-          placeholder="Add someone"
-          empty="Everyone's in it."
-          options={(query) =>
-            store
-              .all(User)
-              .filter((u) => !memberIn(s(), u.id) && u.name.toLowerCase().includes(query))
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((u) => ({ label: u.name, seed: u.id, run: () => toggle(u) }))
-          }
-        />
-      </Show>
-    ),
-    end: (u) => (
-      <Show when={isMember()}>
-        <button class={sx(base.bare, base.dim, page.pointer)} onClick={() => toggle(u)}>
-          {u.id === me().id ? "Leave" : "Remove"}
-        </button>
-      </Show>
-    ),
-  });
+  const people = (): User[] =>
+    s()
+      .members.sorted("createdAt")
+      .flatMap((m) => m.user ?? []);
   const summary = overviewOf(s);
-  const settings: Page = {
-    tab: SETTINGS,
-    body: (
-      <Settings>
-        <Setting name="Visibility" hint="Who can find it, see its threads and join.">
-          <MenuChip
-            label={isPrivate() ? "Private" : "Open"}
-            icon={icon(isPrivate() ? i.SquareLock01Icon : i.ViewIcon)}
-            items={[
-              {
-                label: "Open: anyone can join",
-                run: () => edit(s(), { visibility: "open" }, "Change Visibility"),
-              },
-              {
-                label: "Private: members only",
-                run: () => edit(s(), { visibility: "private" }, "Change Visibility"),
-              },
-            ]}
-          />
-        </Setting>
-        <Setting name="Delete Space" hint="Its threads stay, outside it.">
-          <Delete
-            onClick={() => (
-              open({ thread: null }),
-              undoable("Delete Space", () => void s().delete())
-            )}
-          />
-        </Setting>
-      </Settings>
-    ),
-  };
+  const settings = (): MenuItem[] => [
+    {
+      label: "Open: Anyone Can Join",
+      checked: !isPrivate(),
+      run: () => edit(s(), { visibility: "open" }, "Change Visibility"),
+    },
+    {
+      label: "Private: Members Only",
+      checked: isPrivate(),
+      run: () => edit(s(), { visibility: "private" }, "Change Visibility"),
+    },
+    "separator",
+    {
+      label: "Delete Space",
+      icon: icon(i.Delete02Icon, 13),
+      run: () => (open({ thread: null }), undoable("Delete Space", () => void s().delete())),
+    },
+  ];
   return (
     <div class={sx(page.page)}>
-      <Title name={s().name} />
+      <header class={sx(page.titleRow)}>
+        <h1 class={sx(page.title)}>{s().name}</h1>
+        <Show when={isPrivate()}>
+          <span class={sx(overview.lock)} title="Private: members only">
+            {icon(i.SquareLock01Icon, 14)}
+          </span>
+        </Show>
+        <Show when={isMember()}>
+          <span class={sx(overview.settings)}>
+            <MenuChip
+              look={[base.bare, base.hover, overview.settingsButton]}
+              title="Space Settings"
+              label={icon(i.MoreHorizontalIcon, 14)}
+              items={settings()}
+            />
+          </span>
+        </Show>
+      </header>
       <Show
         when={isMember()}
         fallback={
@@ -626,18 +630,65 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
           }}
         />
       </Show>
-      <div class={sx(overview.meta)}>
-        <span class={sx(page.avatars)}>
-          <For each={s().members.sorted("createdAt").slice(0, 5)}>
-            {(m) => <Identicon seed={m.userId} size={18} class={sx(page.avatar)} />}
+      <div class={sx(overview.meta)}>{summary.counts()}</div>
+      <section class={sx(overview.section)}>
+        <div class={sx(overview.headingRow)}>
+          <h2 class={sx(overview.heading)}>
+            Members <span class={sx(overview.headingCount)}>{people().length}</span>
+          </h2>
+          {/* Members add people from a list under the button; anyone else can join. */}
+          <Show
+            when={isMember()}
+            fallback={
+              <button class={sx(base.bare, button.solid)} onClick={() => toggle(me())}>
+                Join
+              </button>
+            }
+          >
+            <ComboButton
+              label="Add Member"
+              class={sx(base.bare, base.dim, page.quiet)}
+              placeholder="Add someone"
+              empty="Everyone's in it."
+              options={(query) =>
+                store
+                  .all(User)
+                  .filter((u) => !memberIn(s(), u.id) && u.name.toLowerCase().includes(query))
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((u) => ({ label: u.name, seed: u.id, run: () => toggle(u) }))
+              }
+            />
+          </Show>
+        </div>
+        {/* Ten at a time; more scroll. */}
+        <ul class={sx(base.list, overview.people)}>
+          <For each={people()}>
+            {(u) => (
+              <li class={sx(overview.person)}>
+                <button
+                  class={sx(base.bare, overview.line, overview.personLine)}
+                  onClick={() => open({ person: u.id })}
+                >
+                  <Identicon seed={u.id} size={18} />
+                  <span class={sx(base.ellipsis, overview.lineTitle)}>
+                    {u.name}
+                    <span class={sx(overview.email)}>{u.email}</span>
+                  </span>
+                </button>
+                <Show when={isMember()}>
+                  <button
+                    class={sx(base.bare, base.dim, overview.remove)}
+                    onClick={() => toggle(u)}
+                  >
+                    {u.id === me().id ? "Leave" : "Remove"}
+                  </button>
+                </Show>
+              </li>
+            )}
           </For>
-        </span>
-        <span class={sx(page.small)}>
-          {s().members.length} {s().members.length === 1 ? "member" : "members"}
-        </span>
-        {summary.counts()}
-      </div>
-      <PageTabs pages={isMember() ? [summary, people, settings] : [summary, people]} />
+        </ul>
+      </section>
+      {summary.body}
     </div>
   );
 }
