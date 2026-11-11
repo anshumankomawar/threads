@@ -38,7 +38,7 @@ import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
-import { icon, type IconSvgElement } from "./Icon";
+import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
@@ -223,7 +223,7 @@ export function send(thread: Thread, body: string): void {
 }
 
 // ⌘N: a thread in one input, a field at a time: its title, details, who it's for, its labels. What's set sits above
-// the input as chips (a click goes back to one, ✕ takes it off). ⌘↵ moves on a field, and only the last makes it.
+// the input, a line each as it was filled in (a click goes back to one, ✕ takes it off). ⌘↵ moves on a field, and only the last makes it.
 // Enter goes on from the title, is a new line in the details, and on a list toggles the highlighted choice (several
 // people, a space, labels). Tab and ⇧Tab move between fields, ⌘S keeps it in Drafts, and Escape goes back a field (or
 // closes). Started from a space, a label or someone (their page or list, or a view filtered to one), that's set
@@ -239,31 +239,34 @@ const PLACEHOLDERS: Record<Field, string> = {
 
 const form = stylex.create({
   // What's set, in a line that wraps, over the input.
-  chips: { display: "flex", flexWrap: "wrap", gap: 4, padding: "10px 14px 0" },
-  chip: {
-    display: "inline-flex",
-    gap: 5,
+  // What's set, a line each, in the input's own type and on its edge: the form as it was filled in, above where it goes
+  // on.
+  filled: { display: "flex", flexDirection: "column", gap: 6, padding: "11px 14px 0" },
+  line: {
+    display: "flex",
+    gap: 6,
     alignItems: "center",
-    maxWidth: 260,
-    height: 22,
-    paddingInline: 7,
-    borderRadius: radii.control,
-    color: colors.textSecondary,
-    fontSize: fontSizes.body,
-    backgroundColor: colors.bgTertiary,
-    cursor: "default",
+    minWidth: 0,
+    color: { default: colors.textSecondary, ":hover": colors.textPrimary },
+    fontSize: fontSizes.input,
+    lineHeight: "16px",
+    cursor: "pointer",
   },
-  titleChip: { color: colors.textPrimary, fontWeight: 500 },
+  titleLine: { color: colors.textPrimary, fontWeight: 500 },
+  lineIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
+  lineText: { flex: 1, minWidth: 0 },
+  // ✕ at the end of a line under the pointer, to take it off.
   remove: {
     display: "grid",
+    flexShrink: 0,
     placeItems: "center",
-    marginRight: -3,
     color: { default: colors.iconTertiary, ":hover": colors.textPrimary },
     cursor: "pointer",
+    opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1 },
   },
   // The input's row: one line, growing to five as the details run on.
   inputRow: { display: "flex", flexShrink: 0, gap: 8, alignItems: "flex-start", padding: "0 14px" },
-  // Its space above and below is outside it, so text scrolled out of it is cut off clear of the chips and the footer.
+  // Its space above and below is outside it, so text scrolled out of it is cut off clear of the lines above it and the footer.
   input: {
     display: "block",
     marginBlock: 11,
@@ -485,36 +488,35 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     event.preventDefault();
   };
 
-  // A chip for what's set: a click goes back to its field, ✕ (if it has one) takes it off.
-  const Chip = (chip: {
+  // A line for what's set: a click goes back to its field, ✕ (if it has one) takes it off.
+  const Line = (line: {
     field: Field;
-    text: string;
-    seed?: string;
-    icon?: IconSvgElement;
+    children: JSX.Element;
+    icon?: JSX.Element;
     title?: boolean;
     remove?: () => void;
   }): JSX.Element => (
-    <span
-      class={sx(form.chip, chip.title && form.titleChip)}
-      onMouseDown={(event) => (event.preventDefault(), go(chip.field))}
+    <div
+      class={sx(form.line, line.title && form.titleLine, stylex.defaultMarker())}
+      onMouseDown={(event) => (event.preventDefault(), go(line.field))}
     >
-      <Show when={chip.seed} fallback={chip.icon && icon(chip.icon, 12)}>
-        {(seed) => <Identicon seed={seed()} size={13} />}
+      <Show when={line.icon}>
+        <span class={sx(form.lineIcon)}>{line.icon}</span>
       </Show>
-      <span class={sx(base.ellipsis)}>{chip.text}</span>
-      <Show when={chip.remove}>
+      <span class={sx(base.ellipsis, form.lineText)}>{line.children}</span>
+      <Show when={line.remove}>
         {(remove) => (
           <span
             class={sx(form.remove)}
             role="button"
-            aria-label={`Remove ${chip.text}`}
+            aria-label="Remove"
             onMouseDown={(event) => (event.preventDefault(), event.stopPropagation(), remove()())}
           >
-            {icon(i.Cancel01Icon, 10)}
+            {icon(i.Cancel01Icon, 11)}
           </span>
         )}
       </Show>
-    </span>
+    </div>
   );
   const anySet = (): boolean =>
     (field() !== "title" && !!title()) ||
@@ -526,38 +528,47 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
   return (
     <>
       <Show when={anySet()}>
-        <div class={sx(form.chips)}>
+        <div class={sx(form.filled)}>
           <Show when={field() !== "title" && title()}>
-            <Chip field="title" text={title()} title />
+            <Line field="title" title>
+              {title()}
+            </Line>
           </Show>
           <Show when={field() !== "description" && description()}>
-            <Chip field="description" text={description()} icon={i.TextAlignLeftIcon} />
+            <Line field="description" icon={icon(i.TextAlignLeftIcon, 13)}>
+              {description().replace(/\s*\n\s*/g, " ")}
+            </Line>
           </Show>
-          <For each={assignees()}>
-            {(u) => (
-              <Chip field="assign" text={u.name} seed={u.id} remove={() => toggleAssignee(u)} />
-            )}
-          </For>
+          <Show when={assignees().length > 0}>
+            <Line
+              field="assign"
+              icon={<Identicon seed={assignees()[0].id} size={13} />}
+              remove={() => setAssignees([])}
+            >
+              {assignees()
+                .map((u) => u.name)
+                .join(", ")}
+            </Line>
+          </Show>
           <Show when={space()}>
             {(sub) => (
-              <Chip
+              <Line
                 field="assign"
-                text={sub().name}
-                icon={sub().visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon}
+                icon={icon(
+                  sub().visibility === "private" ? i.SquareLock02Icon : i.Layers01Icon,
+                  13,
+                )}
                 remove={() => setSpaceId(undefined)}
-              />
+              >
+                {sub().name}
+              </Line>
             )}
           </Show>
-          <For each={names()}>
-            {(name) => (
-              <Chip
-                field="labels"
-                text={name}
-                icon={i.Tag01Icon}
-                remove={() => toggleLabel(name)}
-              />
-            )}
-          </For>
+          <Show when={names().length > 0}>
+            <Line field="labels" icon={icon(i.Tag01Icon, 13)} remove={() => setNames([])}>
+              {names().join(", ")}
+            </Line>
+          </Show>
         </div>
       </Show>
       <div class={sx(form.inputRow)}>
