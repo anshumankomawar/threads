@@ -32,9 +32,10 @@ const DAY: Record<Zoom, number> = { weeks: 34, months: 12, quarters: 4 };
 // The names' column (as wide as it was left, within these), a row, a bar, a group's row, and the heading.
 // The names' column and its rows as the sidebar's (its points ÷ 1.1, for the 110% scale): 220px wide (180 to 320), rows
 // 30pt tall 2pt apart, inset and padded 8pt, rounded 8pt, names at 13pt.
-// The names column: fitted to its titles up to `fit` (longer ones end in an ellipsis), dragged anywhere from `min` to
-// `max`.
-const NAMES = { min: 120, fit: 260, max: 420 };
+// The names column, as shares of the timeline's width: fitted to its titles up to `fit` (longer ones end in an
+// ellipsis), dragged anywhere from `min` to `max`, so in a narrow list it leaves the days the room. Never under
+// `floor` px, where a title is a word or two.
+const NAMES = { min: 0.12, fit: 0.3, max: 0.6, floor: 72 };
 const ROW = 29.09;
 // space.inset (8pt), for the arithmetic.
 const INSET = 7.27;
@@ -80,13 +81,18 @@ type Line = { y: number } & ({ group: Group } | { thread: Thread });
 export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX.Element {
   // The names' width: as wide as the longest title (up to a limit), or as dragged by the edge on its right (a
   // double click puts it back to fitting).
-  const clamp = (px: number): number => Math.min(NAMES.max, Math.max(NAMES.min, Math.round(px)));
+  // How wide the timeline is (its scroller's width, kept as it's resized).
+  const [room, setRoom] = createSignal(0);
+  const limit = (share: number): number =>
+    Math.max(NAMES.floor, Math.round((room() || 800) * share));
+  const clamp = (px: number): number =>
+    Math.min(limit(NAMES.max), Math.max(limit(NAMES.min), Math.round(px)));
   const [dragged, setDragged] = createSignal<number | null>(
     saved<number | null>("timeline-names", null),
   );
   const fitted = (): number =>
     Math.min(
-      NAMES.fit,
+      limit(NAMES.fit),
       clamp(Math.max(0, ...threads().map((t) => textWidth(t.title))) + 4 * INSET + 2),
     );
   const names = (): number => clamp(dragged() ?? fitted());
@@ -281,7 +287,9 @@ export function Timeline(props: { start?: JSX.Element; end?: JSX.Element }): JSX
   // Today a third of the way in, at first, whenever it's resized (a thread opened beside it), and at a new scale.
   createEffect(day, () => void requestAnimationFrame(scrollToToday));
   onSettled(() => {
+    // It reports the width as it starts observing, and on every resize.
     const resized = new ResizeObserver(() => {
+      setRoom(scroller.clientWidth);
       scrollToToday();
     });
     resized.observe(scroller);
