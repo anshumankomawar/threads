@@ -8,6 +8,7 @@ import * as stylex from "@stylexjs/stylex";
 import {
   Label,
   Subspace,
+  SubspaceMember,
   Thread,
   type Activity,
   plainText,
@@ -754,6 +755,27 @@ function Properties(props: { thread: Thread }): JSX.Element {
       return true;
     },
   };
+  // The same for a space: one there is goes on (or comes off), a new one is made, with you in it, and the thread goes
+  // in it. With no spaces yet, this is all the menu has.
+  const spaceField: MenuField = {
+    placeholder: "Type a space",
+    submit: (text) => {
+      const name = text.trim();
+      if (!name) return false;
+      const found = store
+        .all(Subspace)
+        .find((sub) => sub.name.toLowerCase() === name.toLowerCase());
+      if (found) edit(c(), { subspaceIds: toggled(c().subspaceIds, found.id) }, "Change Spaces");
+      else
+        undoable("New Space", () => {
+          const made = store.create(Subspace, { name, visibility: "open", workspace: workspace() });
+          store.create(SubspaceMember, { subspace: made, user: me() });
+          c().subspaceIds = [...c().subspaceIds, made.id];
+          c().save();
+        });
+      return true;
+    },
+  };
   const when = (): string => {
     const due = c().dueAt;
     const start = c().startAt;
@@ -777,6 +799,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
           {
             label: "Space",
             icon: icon(i.Layers01Icon, 13),
+            field: spaceField,
             items: listItems("subspaceIds", store.all(Subspace)),
           },
         ]
@@ -843,6 +866,7 @@ function Properties(props: { thread: Thread }): JSX.Element {
           records={store.all(Subspace)}
           none=""
           icon={i.Layers01Icon}
+          typed={spaceField}
           title="Where it lives: its spaces' members see it, and only they when one is private"
         />
       </Show>
