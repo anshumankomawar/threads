@@ -31,6 +31,8 @@ export const page = stylex.create({
   summary: { margin: "2px 0 0", color: muted },
   // A subspace's description, under its name: plain text, which members edit in place.
   description: {
+    // The page is a column: it keeps its height rather than being squeezed by what's under it.
+    flexShrink: 0,
     maxWidth: 640,
     margin: "8px 0 0",
     color: colors.textSecondary,

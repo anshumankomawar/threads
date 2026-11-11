@@ -357,7 +357,7 @@ function ThreadLine(props: { thread: Thread; why?: string }): JSX.Element {
         <Show when={props.why}>
           <span class={sx(overview.why)}>{props.why}</span>
         </Show>
-        <span class={sx(page.avatars)}>
+        <span class={sx(page.avatars, overview.faces)}>
           <For each={t().assigneeIds.slice(0, 3)}>
             {(id) => <Identicon seed={id} size={16} class={sx(page.avatar)} />}
           </For>
@@ -476,7 +476,9 @@ const overview = stylex.create({
     color: colors.textTertiary,
     fontSize: fontSizes.body,
   },
-  section: { maxWidth: 720, marginTop: 24 },
+  section: { maxWidth: 720, marginTop: 24, containerType: "inline-size" },
+  // Who's on a thread, until the page is too narrow to spare them the room.
+  faces: { flexShrink: 0, display: { default: "flex", "@container (max-width: 420px)": "none" } },
   headingRow: {
     display: "flex",
     alignItems: "center",
@@ -485,11 +487,51 @@ const overview = stylex.create({
   },
   headingCount: { marginLeft: 4, color: colors.textTertiary, fontWeight: 400 },
   // Ten rows, then it scrolls.
-  people: { maxHeight: 300, overflowY: "auto" },
-  person: { display: "flex", alignItems: "center" },
-  personLine: { flex: 1, minWidth: 0 },
+  // Its rows' grounds reach 8px past the text, so it makes room for them on both sides (it scrolls, so it clips).
+  people: {
+    maxHeight: 300,
+    marginInline: -8,
+    paddingInline: 8,
+    overflowY: "auto",
+    overflowX: "hidden",
+  },
+  personName: {
+    display: "flex",
+    flex: 1,
+    gap: 8,
+    alignItems: "center",
+    minWidth: 0,
+    height: "100%",
+  },
   email: { marginLeft: 8, color: colors.textTertiary },
-  remove: { flexShrink: 0, padding: "0 4px", fontSize: fontSizes.small, cursor: "pointer" },
+  // Shown over the end of the row under the pointer (or reached by Tab), so it takes no room from the name.
+  remove: {
+    position: "absolute",
+    right: 4,
+    height: 22,
+    paddingInline: 6,
+    borderRadius: radii.control,
+    fontSize: fontSizes.small,
+    cursor: "pointer",
+    opacity: { default: 0, ":focus-visible": 1, [stylex.when.ancestor(":hover")]: 1 },
+    backgroundColor: { default: colors.bgTertiary, ":hover": colors.bgQuaternary },
+  },
+  person: { position: "relative" },
+  // A quiet button by a heading: an icon and a word, on a ground under the pointer.
+  headingButton: {
+    display: "inline-flex",
+    flexShrink: 0,
+    gap: 4,
+    alignItems: "center",
+    height: 24,
+    marginRight: -8,
+    paddingInline: 8,
+    borderRadius: radii.row,
+    color: { default: colors.textTertiary, ":hover": colors.textPrimary },
+    fontSize: fontSizes.small,
+    cursor: "pointer",
+    backgroundColor: { default: "transparent", ":hover": colors.bgTertiary },
+  },
   lock: { display: "flex", color: colors.iconTertiary },
   settings: { marginLeft: "auto" },
   settingsButton: {
@@ -506,15 +548,16 @@ const overview = stylex.create({
     fontSize: fontSizes.caption,
     fontWeight: 500,
   },
+  // A row whose ground reaches 8px past the text on both sides, so the text lines up with the headings.
   line: {
     display: "flex",
     gap: 8,
     alignItems: "center",
-    width: "100%",
+    boxSizing: "border-box",
+    width: "calc(100% + 16px)",
     height: 30,
-    margin: "0 -8px",
-    padding: "0 8px",
-    boxSizing: "content-box",
+    marginInline: -8,
+    paddingInline: 8,
     borderRadius: radii.row,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
@@ -640,14 +683,20 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
           <Show
             when={isMember()}
             fallback={
-              <button class={sx(base.bare, button.solid)} onClick={() => toggle(me())}>
+              <button class={sx(base.bare, overview.headingButton)} onClick={() => toggle(me())}>
+                {icon(i.Add01Icon, 12)}
                 Join
               </button>
             }
           >
             <ComboButton
-              label="Add Member"
-              class={sx(base.bare, base.dim, page.quiet)}
+              label={
+                <>
+                  {icon(i.Add01Icon, 12)}
+                  Add
+                </>
+              }
+              class={sx(base.bare, overview.headingButton)}
               placeholder="Add someone"
               empty="Everyone's in it."
               options={(query) =>
@@ -664,21 +713,21 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         <ul class={sx(base.list, overview.people)}>
           <For each={people()}>
             {(u) => (
-              <li class={sx(overview.person)}>
-                <button
-                  class={sx(base.bare, overview.line, overview.personLine)}
-                  onClick={() => open({ person: u.id })}
-                >
+              <li
+                class={sx(overview.line, overview.person, stylex.defaultMarker())}
+                onClick={() => open({ person: u.id })}
+              >
+                <span class={sx(overview.personName)}>
                   <Identicon seed={u.id} size={18} />
                   <span class={sx(base.ellipsis, overview.lineTitle)}>
                     {u.name}
                     <span class={sx(overview.email)}>{u.email}</span>
                   </span>
-                </button>
+                </span>
                 <Show when={isMember()}>
                   <button
                     class={sx(base.bare, base.dim, overview.remove)}
-                    onClick={() => toggle(u)}
+                    onClick={(event) => (event.stopPropagation(), toggle(u))}
                   >
                     {u.id === me().id ? "Leave" : "Remove"}
                   </button>
