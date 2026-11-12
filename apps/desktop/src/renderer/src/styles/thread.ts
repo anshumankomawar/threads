@@ -25,8 +25,11 @@ export const thread = stylex.create({
     display: "flex",
     flexDirection: "column",
     gap: TURN_GAP,
-    // Left-aligned, on the same edge as the other pages; in the reading pane, just under its toolbar.
+    // In the middle of the page, as Things sets a list, about as wide as one.
     maxWidth: 773,
+    width: "100%",
+    marginInline: "auto",
+    boxSizing: "border-box",
     padding: {
       default: "12px 32px 48px 52px",
       [stylex.when.ancestor(":is(*)", peekMarker)]: "16px 24px 32px",
@@ -56,8 +59,12 @@ export const thread = stylex.create({
     userSelect: "text",
     fontFeatureSettings: '"calt"',
   },
+  // The thread's name as a Things page's title: big and bold.
   headerTitle: {
     marginTop: { default: null, [stylex.when.siblingBefore(":is(*)", threadLineMarker)]: -6 },
+    fontSize: 22,
+    fontWeight: 700,
+    letterSpacing: "-0.01em",
   },
   description: { whiteSpace: "pre-wrap", userSelect: "text" },
   headerDescription: { marginTop: -4 },

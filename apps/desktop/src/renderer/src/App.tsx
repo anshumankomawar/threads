@@ -29,7 +29,7 @@ import {
 import { base } from "./styles/base";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
-import { colors, fontSizes, radii } from "./styles/tokens.stylex";
+import { colors, fontSizes, radii, sidebarSpace } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
 import { Compose } from "./components/Compose";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
@@ -47,7 +47,7 @@ import {
   SettingsView,
   SubspaceView,
 } from "./components/Pages";
-import { MessageList, Sidebar } from "./components/Sidebar";
+import { ListPage, Sidebar, Toolbar, useMailboxUpkeep } from "./components/Sidebar";
 
 const styles = stylex.create({
   // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
@@ -73,7 +73,9 @@ const styles = stylex.create({
     backgroundColor: colors.chrome,
   },
   // Beside the list: the reading pane's title 16px in, as the list's is.
-  topbarBesideList: { paddingLeft: 16 },
+  // Things' page has no title bar: just the strip the window drags by, with what's open closed from its end.
+  topbarBesideSidebar: { paddingLeft: 16 },
+  topbarAlone: { paddingLeft: sidebarSpace.afterLights },
   viewAs: {
     display: "flex",
     gap: 6,
@@ -151,6 +153,7 @@ export default function App(): JSX.Element {
     !store.findById(Draft, shown("draft") ?? "") &&
     !("settings" in view()) &&
     !("personal" in view());
+  useMailboxUpkeep();
   return (
     <>
       <Titlebar />
@@ -159,52 +162,43 @@ export default function App(): JSX.Element {
         <Show when={sidebarOpen()}>
           <Sidebar />
         </Show>
-        {/* Mail's columns: the mailboxes, the chosen one's threads, and the thread you're reading. */}
-        <MessageList alone={nothingOpen()} />
-        <Show when={!nothingOpen()}>
-          <main class={sx(styles.main)}>
-            {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
-            <Show when={store.rejection()}>
-              {(reason) => (
-                <div class={sx(styles.saveError)} role="alert">
-                  <span>That change wasn't saved: {reason()}.</span>
-                  <button
-                    class={sx(base.bare, styles.saveErrorDismiss)}
-                    aria-label="Dismiss"
-                    onClick={() => store.dismissRejection()}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-            </Show>
-            <div data-bar class={sx(topbar.bar, styles.topbarBesideList)}>
-              <span class={sx(base.ellipsis, topbar.title)}>
-                {active()?.title ??
-                  label()?.name ??
-                  subspace()?.name ??
-                  savedView()?.name ??
-                  (workspaceShown() ? "Workspace" : undefined) ??
-                  (shown("draft") !== undefined ? "Draft" : undefined) ??
-                  ("settings" in view() ? "Settings" : undefined) ??
-                  ("personal" in view() ? "Personal" : undefined) ??
-                  person()?.name}
-              </span>
-              <span class={sx(topbar.end)}>
+        {/* As Things: the places, then one page, the chosen place's list or what you've opened from it. */}
+        <main class={sx(styles.main)}>
+          {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
+          <Show when={store.rejection()}>
+            {(reason) => (
+              <div class={sx(styles.saveError)} role="alert">
+                <span>That change wasn't saved: {reason()}.</span>
                 <button
-                  class={sx(styles.viewAs)}
-                  disabled={account !== null}
-                  aria-label={`Viewing as ${me().name}. Switch user`}
-                  onClick={() => setDialog({ kind: "viewAs" })}
+                  class={sx(base.bare, styles.saveErrorDismiss)}
+                  aria-label="Dismiss"
+                  onClick={() => store.dismissRejection()}
                 >
-                  <span class={sx(styles.viewAsSource)}>
-                    {SOURCES[source]}
-                    {store.connection() === "offline" && " · Offline"}
-                  </span>
-                  <Identicon seed={me().id} size={14} />
-                  <span>{me().name}</span>
+                  ×
                 </button>
-                {/* Closes what's open, and the reading pane with it. */}
+              </div>
+            )}
+          </Show>
+          <div
+            data-bar
+            class={sx(topbar.bar, sidebarOpen() ? styles.topbarBesideSidebar : styles.topbarAlone)}
+          >
+            <span class={sx(topbar.end)}>
+              <button
+                class={sx(styles.viewAs)}
+                disabled={account !== null}
+                aria-label={`Viewing as ${me().name}. Switch user`}
+                onClick={() => setDialog({ kind: "viewAs" })}
+              >
+                <span class={sx(styles.viewAsSource)}>
+                  {SOURCES[source]}
+                  {store.connection() === "offline" && " · Offline"}
+                </span>
+                <Identicon seed={me().id} size={14} />
+                <span>{me().name}</span>
+              </button>
+              {/* Back to the list it was opened from. */}
+              <Show when={!nothingOpen()}>
                 <button
                   class={sx(topbar.button)}
                   aria-label="Close"
@@ -213,82 +207,83 @@ export default function App(): JSX.Element {
                 >
                   <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
                 </button>
-              </span>
-            </div>
-            <Switch>
-              <Match when={label()} keyed>
-                {(label) => <LabelView label={label} />}
-              </Match>
-              <Match when={subspace()} keyed>
-                {(subspace) => <SubspaceView subspace={subspace} />}
-              </Match>
-              <Match when={savedView()} keyed>
-                {(saved) => <SavedView view={saved} />}
-              </Match>
-              <Match when={workspaceShown()}>
-                <WorkspaceView />
-              </Match>
-              <Match when={person()} keyed>
-                {(user) => <PersonView user={user} />}
-              </Match>
-              <Match when={"settings" in view()}>
-                <SettingsView />
-              </Match>
-              <Match when={"personal" in view()}>
-                <PersonalView />
-              </Match>
-              <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
-                {(draft) => <Compose draftId={draft.id} page />}
-              </Match>
-              <Match when={active()} keyed>
-                {(thread) => (
-                  <div class={sx(styles.panes)}>
-                    <ThreadView thread={thread} autofocus={!itemFor(thread)} />
-                    <Show when={store.findById(Thread, split() ?? "")} keyed>
-                      {(beside) => (
-                        <section class={sx(styles.splitPane)} aria-label={beside.title}>
-                          <div data-bar class={sx(topbar.bar, styles.splitPaneBar)}>
-                            <span class={sx(base.ellipsis, topbar.title, styles.splitTitle)}>
-                              {beside.title}
-                            </span>
-                            <button
-                              class={sx(topbar.button)}
-                              aria-label="Open as the main thread"
-                              onClick={() => open({ thread: beside.id })}
-                            >
-                              <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
-                            </button>
-                            <button
-                              class={sx(topbar.button)}
-                              aria-label="Close"
-                              onClick={() => setSplit(null)}
-                            >
-                              <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
-                            </button>
-                          </div>
-                          <ThreadView thread={beside} />
-                        </section>
-                      )}
-                    </Show>
-                  </div>
-                )}
-              </Match>
-            </Switch>
-            <Show when={undo()}>
-              {(offered) => (
-                <div class={sx(base.panel, toast.undo)} role="status">
-                  <span>{offered().text}</span>
-                  <button
-                    class={sx(base.bare, toast.action)}
-                    onClick={() => (offered().run(), setUndo(null))}
-                  >
-                    Undo
-                  </button>
+              </Show>
+            </span>
+          </div>
+          <Switch fallback={<ListPage />}>
+            <Match when={label()} keyed>
+              {(label) => <LabelView label={label} />}
+            </Match>
+            <Match when={subspace()} keyed>
+              {(subspace) => <SubspaceView subspace={subspace} />}
+            </Match>
+            <Match when={savedView()} keyed>
+              {(saved) => <SavedView view={saved} />}
+            </Match>
+            <Match when={workspaceShown()}>
+              <WorkspaceView />
+            </Match>
+            <Match when={person()} keyed>
+              {(user) => <PersonView user={user} />}
+            </Match>
+            <Match when={"settings" in view()}>
+              <SettingsView />
+            </Match>
+            <Match when={"personal" in view()}>
+              <PersonalView />
+            </Match>
+            <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
+              {(draft) => <Compose draftId={draft.id} page />}
+            </Match>
+            <Match when={active()} keyed>
+              {(thread) => (
+                <div class={sx(styles.panes)}>
+                  <ThreadView thread={thread} autofocus={!itemFor(thread)} />
+                  <Show when={store.findById(Thread, split() ?? "")} keyed>
+                    {(beside) => (
+                      <section class={sx(styles.splitPane)} aria-label={beside.title}>
+                        <div data-bar class={sx(topbar.bar, styles.splitPaneBar)}>
+                          <span class={sx(base.ellipsis, topbar.title, styles.splitTitle)}>
+                            {beside.title}
+                          </span>
+                          <button
+                            class={sx(topbar.button)}
+                            aria-label="Open as the main thread"
+                            onClick={() => open({ thread: beside.id })}
+                          >
+                            <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
+                          </button>
+                          <button
+                            class={sx(topbar.button)}
+                            aria-label="Close"
+                            onClick={() => setSplit(null)}
+                          >
+                            <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
+                          </button>
+                        </div>
+                        <ThreadView thread={beside} />
+                      </section>
+                    )}
+                  </Show>
                 </div>
               )}
-            </Show>
-          </main>
-        </Show>
+            </Match>
+          </Switch>
+          <Show when={undo()}>
+            {(offered) => (
+              <div class={sx(base.panel, toast.undo)} role="status">
+                <span>{offered().text}</span>
+                <button
+                  class={sx(base.bare, toast.action)}
+                  onClick={() => (offered().run(), setUndo(null))}
+                >
+                  Undo
+                </button>
+              </div>
+            )}
+          </Show>
+          <Toolbar />
+        </main>
         <Palettes />
         <MentionToasts />
         <ContextMenu />

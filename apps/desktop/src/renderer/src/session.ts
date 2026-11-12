@@ -230,6 +230,7 @@ export type Mailbox =
   | { kind: "unsorted" }
   | { kind: "bucket"; id: string }
   | { kind: "all" }
+  | { kind: "done" }
   | { kind: "drafts" };
 const [chosenMailbox, setChosenMailbox] = createSignal<Mailbox>(
   saved<Mailbox>("mailbox", { kind: "inbox" }),
@@ -251,12 +252,22 @@ export const mailboxTitle = (box: Mailbox): string =>
         ? (store.findById(Bucket, box.id)?.name ?? "Buckets")
         : box.kind === "all"
           ? "All Threads"
-          : "Drafts";
+          : box.kind === "done"
+            ? "Done"
+            : "Drafts";
 
 export const drafts = store.view(() =>
   store
     .where(Draft, "userId", me().id)
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
+);
+
+// What you've marked done and hasn't come back, the latest first: Things' Logbook.
+export const doneItems = store.view(() =>
+  store
+    .where(InboxItem, "userId", me().id)
+    .filter((item) => item.thread && item.doneAt)
+    .sort((a, b) => b.doneAt!.getTime() - a.doneAt!.getTime()),
 );
 
 // The chosen mailbox's threads, in groups: the inbox by bucket (what's still being sorted first), the rest in one.
@@ -279,7 +290,9 @@ export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
           ? [{ threads: threads(sections.find((x) => x.bucket.id === box.id)?.items ?? []) }]
           : box.kind === "all"
             ? [{ threads: allThreads() }]
-            : [];
+            : box.kind === "done"
+              ? [{ threads: threads(doneItems()) }]
+              : [];
   return { groups, order: groups.flatMap((group) => group.threads) };
 });
 
@@ -354,6 +367,12 @@ function moveOn(thread: Thread): void {
     (c) => c !== thread,
   );
   open({ thread: next?.id ?? null });
+}
+
+// Back in your buckets, as if nothing had marked it done.
+export function markUndone(item: InboxItem): void {
+  item.doneAt = undefined;
+  item.save();
 }
 
 // ⌘E, or the inbox row's done button. Done with the open thread, the next one opens.

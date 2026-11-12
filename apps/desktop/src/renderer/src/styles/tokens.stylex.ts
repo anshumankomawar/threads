@@ -7,15 +7,17 @@ const mix = (base: string, percent: number): string =>
   `color-mix(in srgb, ${base} ${percent}%, transparent)`;
 
 const DARK = {
-  // The window's ground, opaque, as the macOS app's.
-  chrome: "#141414",
+  // The window's ground, opaque: Things' warm graphite.
+  chrome: "#2a2a2c",
+  // The sidebar's ground beside it: the same in dark, as Things has it, set apart by a hairline.
+  sidebar: "#2a2a2c",
   textPrimary: DARK_BASE,
   textSecondary: mix(DARK_BASE, 74),
   textTertiary: mix(DARK_BASE, 60),
   bgTertiary: mix(DARK_BASE, 9),
   bgQuaternary: mix(DARK_BASE, 5),
   iconTertiary: mix(DARK_BASE, 52),
-  strokeTertiary: mix(DARK_BASE, 8),
+  strokeTertiary: mix(DARK_BASE, 9),
   strokeFocused: mix(DARK_BASE, 15),
   // A column's resize edge while it's hovered or dragged: just stronger than the border it's on.
   resizeEdge: mix(DARK_BASE, 11),
@@ -45,7 +47,8 @@ const DARK = {
 export const colors = stylex.defineVars(DARK);
 
 export const lightTheme = stylex.createTheme(colors, {
-  chrome: "#fafafa",
+  chrome: "#ffffff",
+  sidebar: "#f5f5f7",
   textPrimary: LIGHT_BASE,
   textSecondary: mix(LIGHT_BASE, 72),
   textTertiary: mix(LIGHT_BASE, 55),
@@ -81,6 +84,7 @@ const ON_AUBERGINE = "#ffffff";
 export const slackSidebar = stylex.createTheme(colors, {
   ...DARK,
   chrome: AUBERGINE,
+  sidebar: AUBERGINE,
   textPrimary: ON_AUBERGINE,
   textSecondary: mix(ON_AUBERGINE, 82),
   textTertiary: mix(ON_AUBERGINE, 70),
