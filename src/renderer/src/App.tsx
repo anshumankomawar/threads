@@ -18,6 +18,7 @@ function useHotkeys() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey) return;
       const { rows, buckets, mark } = live.current;
       const view = currentView();
       const threadId = view.thread as Id<"threads"> | undefined;
