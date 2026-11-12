@@ -262,6 +262,16 @@ export function Sidebar(): JSX.Element {
       </div>
       {/* Your inbox and its buckets, then every thread, then your drafts. */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
+        {/* Thunderbird's search field, over the mailboxes: it opens search (⌘K). */}
+        <button
+          class={sx(base.bare, s.search)}
+          title={`Search (${keysFor("search")})`}
+          onClick={() => setDialog({ kind: "search" })}
+        >
+          <Icon icon="search" aria-hidden="true" />
+          <span class={sx(s.searchText)}>Search…</span>
+          <span class={sx(s.searchKeys)}>{keysFor("search")}</span>
+        </button>
         <ul class={sx(base.list, s.stack)}>
           <MailboxRow
             box={{ kind: "inbox" }}
@@ -318,6 +328,15 @@ export function Sidebar(): JSX.Element {
             count={drafts().length}
           />
         </ul>
+        {/* Thunderbird's primary button, under the mailboxes it files into. */}
+        <button
+          class={sx(base.bare, s.newMessage)}
+          title={`New Message (${keysFor("newThread")})`}
+          onClick={() => setDialog({ kind: "newThread" })}
+        >
+          <Icon icon="add" aria-hidden="true" />
+          New Message
+        </button>
       </nav>
       <div class={sx(s.footer)}>
         {/* You: one button to your profile and settings, on one page. */}
@@ -647,6 +666,48 @@ const s = stylex.create({
     paddingInline: space.inset,
     paddingBottom: 12,
     overflowY: "auto",
+  },
+  // Thunderbird's search bar: the page's white (or its dark) in a 1px grey-40 frame, 3px corners, the icon before the
+  // placeholder and the keys at the end.
+  search: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    width: "100%",
+    height: 25,
+    marginBottom: space.inset,
+    padding: "0 7px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "light-dark(#a1a1aa, #52525b)",
+    borderRadius: 3,
+    color: colors.textTertiary,
+    backgroundColor: "light-dark(#ffffff, #18181b)",
+    fontSize: fontSizes.body,
+    cursor: "text",
+  },
+  searchText: { flex: 1, textAlign: "left" },
+  searchKeys: { fontSize: fontSizes.small },
+  // Thunderbird's primary button: its accent (blue-60, lighter in dark) with the accent's text colour, 3px corners,
+  // darker under the pointer.
+  newMessage: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    width: "100%",
+    height: 25,
+    marginTop: 12,
+    borderRadius: 3,
+    color: "light-dark(#ffffff, #18181b)",
+    backgroundColor: {
+      default: "light-dark(#1373d9, #58c9ff)",
+      ":hover": "light-dark(#0f5cae, #46a1cc)",
+      ":active": "light-dark(#0d5098, #3d8db3)",
+    },
+    fontSize: fontSizes.body,
+    fontWeight: 600,
+    cursor: "default",
   },
   // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
   selected: { backgroundColor: colors.bgTertiary },
