@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, Show, untrack } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   Label,
@@ -25,32 +25,31 @@ import {
   firstName,
   memberIn,
   toggled,
+  workspace,
 } from "../session";
 import { save, saved } from "../startup";
+import {
+  bind,
+  caps,
+  changed,
+  HOTKEYS,
+  keysFor,
+  keysOf,
+  reset,
+  resetAll,
+  type Hotkey,
+  type HotkeyId,
+} from "../hotkeys";
 import { base } from "../styles/base";
-import { chip, chipTone } from "../styles/controls";
+import { button, chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
 import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
-import { iconTool, Table, Toolbar, tool, type Column } from "./Table";
+import { iconTool, Table, Toolbar, type Column } from "./Table";
 import type { Tab } from "./Tabs";
 import { ago, dot, LABELS } from "./ThreadView";
-
-// A page's name, and a lock when not everyone sees it (`locked` says who does).
-function Title(props: { name: string; locked?: string }): JSX.Element {
-  return (
-    <header class={sx(page.titleRow)}>
-      <h1 class={sx(page.title)}>{props.name}</h1>
-      <Show when={props.locked}>
-        <span class={sx(page.lock)} title={props.locked}>
-          {icon(i.SquareLock01Icon, 14)}
-        </span>
-      </Show>
-    </header>
-  );
-}
 
 // A page's settings: each a name and what it does on the left, its control on the right. Straight under the toolbar,
 // so the first one's name lines up with a table's header.
@@ -217,6 +216,30 @@ const MEMBER_COLUMNS: Column<User>[] = [
 ];
 const ROLE = { admin: "Admin", member: "Member" };
 
+// A search field for a tab's tools; Escape clears it.
+function SearchBox(props: {
+  label: string;
+  value: string;
+  onInput: (value: string) => void;
+}): JSX.Element {
+  return (
+    <label class={sx(page.search)}>
+      {icon(i.Search01Icon, 13)}
+      <input
+        class={sx(base.bare, page.searchInput)}
+        aria-label={props.label}
+        placeholder="Search"
+        spellcheck={false}
+        value={props.value}
+        onInput={(event) => props.onInput(event.currentTarget.value)}
+        onKeyDown={(event) =>
+          event.key === "Escape" && (props.onInput(""), event.currentTarget.blur())
+        }
+      />
+    </label>
+  );
+}
+
 // People as a page's tab: a table, with a search and `action` (Add member, Join) in its tools; `end` is what you can do
 // to each, at their row's end.
 function members(props: {
@@ -235,20 +258,7 @@ function members(props: {
     tab: MEMBERS,
     tools: (
       <>
-        <label class={sx(page.search)}>
-          {icon(i.Search01Icon, 13)}
-          <input
-            class={sx(base.bare, page.searchInput)}
-            aria-label="Search members"
-            placeholder="Search"
-            spellcheck={false}
-            value={search()}
-            onInput={(event) => setSearch(event.currentTarget.value)}
-            onKeyDown={(event) =>
-              event.key === "Escape" && (setSearch(""), event.currentTarget.blur())
-            }
-          />
-        </label>
+        <SearchBox label="Search members" value={search()} onInput={setSearch} />
         {props.action}
       </>
     ),
@@ -374,8 +384,8 @@ function threadsTab(props: {
           }))}
         />
         <button
-          class={sx(base.bare, tool.solid)}
-          title="New thread (⌘N)"
+          class={sx(base.bare, button.solid)}
+          title={`New thread (${keysFor("newThread")})`}
           onClick={() => setDialog(props.newThread)}
         >
           New
@@ -422,8 +432,8 @@ function threadsTab(props: {
   };
 }
 
-// Every thread you can see, to filter and save as a view.
-export function AllThreadsView(): JSX.Element {
+// Workspace: every thread you can see, to filter and save as a view.
+export function WorkspaceView(): JSX.Element {
   const threads = threadsTab({
     base: [],
     newThread: { kind: "newThread" },
@@ -431,7 +441,7 @@ export function AllThreadsView(): JSX.Element {
   });
   return (
     <div class={sx(page.page)}>
-      <h1 class={sx(page.title)}>All threads</h1>
+      <h1 class={sx(page.title)}>Workspace</h1>
       <PageTabs pages={[threads]} />
     </div>
   );
@@ -466,7 +476,7 @@ export function SavedView(props: { view: View }): JSX.Element {
   };
   return (
     <div class={sx(page.page)}>
-      <Title name={v().name} locked={v().shared ? undefined : "Only you see this view"} />
+      <h1 class={sx(page.title)}>{v().name}</h1>
       <PageTabs pages={v().ownerId === me().id ? [threads, settings] : [threads]} />
     </div>
   );
@@ -508,7 +518,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         .flatMap((m) => m.user ?? []),
     action: (
       <button
-        class={sx(base.bare, tool.solid)}
+        class={sx(base.bare, button.solid)}
         onClick={() =>
           isMember() ? setDialog({ kind: "addMember", subspace: s() }) : toggle(me())
         }
@@ -546,10 +556,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   };
   return (
     <div class={sx(page.page)}>
-      <Title
-        name={s().name}
-        locked={isPrivate() ? "Private: only its members see it" : undefined}
-      />
+      <h1 class={sx(page.title)}>{s().name}</h1>
       <Show
         when={isMember()}
         fallback={
@@ -575,17 +582,36 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
   );
 }
 
-// Someone and their role here, and the threads they own or are assigned. Yours also has the workspace's members.
+// The threads someone owns or is assigned: theirs on their page, yours (with "$me") in Personal.
+const involving = (id: string): Filter[] => [
+  { or: [{ ownerId: { eq: id } }, { assigneeIds: { contains: id } }] },
+];
+
+// Personal: the threads that are yours, a view every workspace has, beside Workspace.
+export function PersonalView(): JSX.Element {
+  const threads = threadsTab({
+    base: involving("$me"),
+    newThread: { kind: "newThread" },
+    empty: "Nothing's yours yet: threads you own or are assigned show here.",
+  });
+  return (
+    <div class={sx(page.page)}>
+      <h1 class={sx(page.title)}>Personal</h1>
+      <PageTabs pages={[threads]} />
+    </div>
+  );
+}
+
+// Someone and their role here, and the threads they own or are assigned.
 export function PersonView(props: { user: User }): JSX.Element {
   const u = (): User => props.user;
   const summary = (user: User): string =>
     [user.email, ROLE[memberOf(user)?.role ?? "member"]].filter(Boolean).join(" · ");
   const threads = threadsTab({
-    base: [{ or: [{ ownerId: { eq: u().id } }, { assigneeIds: { contains: u().id } }] }],
+    base: involving(u().id),
     newThread: { kind: "newThread", to: u() },
     empty: `No threads with ${firstName(u())} yet.`,
   });
-  const people = members({ users: () => store.all(WorkspaceMember).flatMap((m) => m.user ?? []) });
   return (
     <div class={sx(page.page)}>
       <header class={sx(page.header)}>
@@ -595,7 +621,121 @@ export function PersonView(props: { user: User }): JSX.Element {
           <p class={sx(page.summary)}>{summary(u())}</p>
         </div>
       </header>
-      <PageTabs pages={u().id === me().id ? [threads, people] : [threads]} />
+      <PageTabs pages={[threads]} />
+    </div>
+  );
+}
+
+// Keys as key caps, or a dash for a command you've left without any.
+function Keys(props: { keys: string }): JSX.Element {
+  return (
+    <Show when={props.keys} fallback={<span class={sx(page.small)}>—</span>}>
+      <span class={sx(page.caps)}>
+        <For each={caps(props.keys)}>{(cap) => <kbd class={sx(page.cap)}>{cap}</kbd>}</For>
+      </span>
+    </Show>
+  );
+}
+
+const HOTKEYS_TAB: Tab = { label: "Hotkeys", icon: i.KeyboardIcon };
+
+// How the app works for you, a tab for each kind of setting, and the workspace's members. Hotkeys: click one, then press its new
+// keys; Escape cancels and ⌫ leaves it without any. Keys another command has move to this one.
+export function SettingsView(): JSX.Element {
+  const [recording, setRecording] = createSignal<HotkeyId | null>(null);
+  const [search, setSearch] = createSignal("");
+  // Ahead of the app's own keys, so the keys you press while recording do nothing else.
+  const record = (event: KeyboardEvent): void => {
+    const id = recording();
+    const keys = id && keysOf(event);
+    if (!keys) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (keys !== "Esc") bind(id, keys === "⌫" || keys === "⌦" ? "" : keys);
+    setRecording(null);
+  };
+  window.addEventListener("keydown", record, true);
+  onCleanup(() => window.removeEventListener("keydown", record, true));
+  const columns: Column<Hotkey>[] = [
+    {
+      label: "Action",
+      icon: i.TextFontIcon,
+      width: 280,
+      sort: (h) => h.label,
+      cell: (h) => <span class={sx(page.titleText)}>{h.label}</span>,
+    },
+    {
+      label: "Section",
+      icon: i.Folder01Icon,
+      width: 140,
+      sort: (h) => HOTKEYS.findIndex((other) => other.section === h.section),
+      cell: (h) => h.section,
+    },
+    {
+      label: "Keys",
+      icon: i.CommandIcon,
+      width: 200,
+      sort: (h) => keysFor(h.id),
+      // The one thing to change here: a button of its own, not the row.
+      cell: (h) => (
+        <button
+          class={sx(
+            base.bare,
+            base.hover,
+            page.keysButton,
+            recording() === h.id && page.recordingButton,
+          )}
+          aria-label={`Change the keys for ${h.label}`}
+          onClick={() => setRecording(recording() === h.id ? null : h.id)}
+        >
+          <Show when={recording() === h.id} fallback={<Keys keys={keysFor(h.id)} />}>
+            <span class={sx(page.recording)}>Press keys…</span>
+          </Show>
+        </button>
+      ),
+    },
+  ];
+  const people = members({ users: () => store.all(WorkspaceMember).flatMap((m) => m.user ?? []) });
+  const hotkeys: Page = {
+    tab: HOTKEYS_TAB,
+    tools: (
+      <>
+        <SearchBox label="Search hotkeys" value={search()} onInput={setSearch} />
+        <Show when={HOTKEYS.some((h) => changed(h.id))}>
+          <button class={sx(base.bare, base.hover, base.dim, page.quiet)} onClick={resetAll}>
+            Reset all
+          </button>
+        </Show>
+      </>
+    ),
+    body: (
+      <Table
+        columns={columns}
+        rows={HOTKEYS.filter((h) =>
+          [h.label, h.section].some((text) =>
+            text.toLowerCase().includes(search().trim().toLowerCase()),
+          ),
+        )}
+        empty="No hotkey matches."
+        end={(h) => (
+          <Show when={changed(h.id)}>
+            <button class={sx(base.bare, base.dim, page.pointer)} onClick={() => reset(h.id)}>
+              Reset
+            </button>
+          </Show>
+        )}
+      />
+    ),
+  };
+  return (
+    <div class={sx(page.page)}>
+      <h1 class={sx(page.title)}>Settings</h1>
+      <p class={sx(page.description)}>
+        How Arc works for you, and who's in {workspace().name}. To change a hotkey, click it and
+        press the keys you want: Escape cancels, and ⌫ leaves it without any. Hotkeys are kept on
+        this Mac.
+      </p>
+      <PageTabs pages={[hotkeys, people]} />
     </div>
   );
 }

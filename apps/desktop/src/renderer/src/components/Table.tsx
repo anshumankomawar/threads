@@ -21,7 +21,7 @@ export type Column<T> = {
 
 const muted = colors.textTertiary;
 
-// A tool in a table's toolbar (an icon button), and its New: Notion's blue.
+// A tool in a table's toolbar: an icon button. Its New is `button.solid`.
 export const tool = stylex.create({
   icon: {
     display: "grid",
@@ -29,16 +29,6 @@ export const tool = stylex.create({
     width: 28,
     height: 28,
     borderRadius: radii.row,
-    cursor: "pointer",
-  },
-  solid: {
-    height: 28,
-    marginLeft: 6,
-    padding: "0 12px",
-    borderRadius: radii.row,
-    color: "white",
-    fontWeight: 600,
-    backgroundColor: { default: colors.primary, ":hover": colors.primaryHover },
     cursor: "pointer",
   },
 });
@@ -51,7 +41,8 @@ const s = stylex.create({
   tabs: { marginLeft: -6 },
   tools: { display: "flex", gap: 2, alignItems: "center", marginLeft: "auto", marginRight: -6 },
   // Wider than the page, the table scrolls sideways on its own.
-  scroll: { margin: "0 -6px", overflowX: "auto", paddingBottom: 24 },
+  // Its full height, so the page scrolls it rather than its box (which a page's flex column would shrink).
+  scroll: { flexShrink: 0, margin: "0 -6px", overflowX: "auto", paddingBottom: 24 },
   // As wide as the page; the columns' minimum widths make it wider (and scroll) when the page is narrower.
   table: {
     width: "100%",
@@ -93,7 +84,9 @@ const s = stylex.create({
     overflow: "hidden",
     color: colors.textPrimary,
     textOverflow: "ellipsis",
-    // The row's fill is its cells', rounded at its two ends: a step rounder than the sidebar's shorter rows.
+  },
+  // A row that opens: its fill is its cells', rounded at its two ends (a step rounder than the sidebar's shorter rows).
+  tdOpens: {
     backgroundColor: {
       default: "transparent",
       [stylex.when.ancestor(":hover")]: colors.bgQuaternary,
@@ -106,7 +99,8 @@ const s = stylex.create({
     transitionProperty: "background-color",
     transitionDuration: "120ms",
   },
-  row: { outline: "none", cursor: "pointer" },
+  row: { outline: "none" },
+  rowOpens: { cursor: "pointer" },
   dim: { opacity: 0.55 },
   // The last column takes the room left over, so the others keep their widths; a row's action sits in it, shown while
   // the row's hovered.
@@ -133,12 +127,14 @@ export function Toolbar(props: {
 }
 
 // Rows of any kind under columns, as Notion draws a table view: each header sorts (and, but for the first, hides) from
-// its menu, every row washes on hover and opens on a click or Enter. Until you sort, rows keep the order they come in.
+// its menu, and a row that opens something washes on hover and opens on a click or Enter. Until you sort, rows keep the order they come in.
 export function Table<T>(props: {
   columns: Column<T>[];
   rows: T[];
   empty: string;
-  open: (row: T) => void;
+  // A row that opens something fills on hover and opens on a click or Enter; without, only its cells' own controls do
+  // anything.
+  open?: (row: T) => void;
   menu?: (row: T) => MenuItem[];
   dim?: (row: T) => boolean;
   hide?: (label: string) => void;
@@ -206,17 +202,22 @@ export function Table<T>(props: {
           <For each={rows()}>
             {(row) => (
               <tr
-                class={sx(s.row, props.dim?.(row) && s.dim, stylex.defaultMarker())}
-                tabindex="0"
-                onClick={() => props.open(row)}
-                onKeyDown={(event) => event.key === "Enter" && props.open(row)}
+                class={sx(
+                  s.row,
+                  props.open && s.rowOpens,
+                  props.dim?.(row) && s.dim,
+                  stylex.defaultMarker(),
+                )}
+                tabindex={props.open ? "0" : undefined}
+                onClick={() => props.open?.(row)}
+                onKeyDown={(event) => event.key === "Enter" && props.open?.(row)}
                 onContextMenu={(event) => props.menu && showMenu(event, props.menu(row))}
               >
                 <For each={props.columns}>
-                  {(c) => <td class={sx(s.cell, s.td)}>{c.cell(row)}</td>}
+                  {(c) => <td class={sx(s.cell, s.td, props.open && s.tdOpens)}>{c.cell(row)}</td>}
                 </For>
                 <td
-                  class={sx(s.cell, s.td, s.end)}
+                  class={sx(s.cell, s.td, props.open && s.tdOpens, s.end)}
                   onClick={(event) => props.end && event.stopPropagation()}
                 >
                   <span class={sx(s.endShown)}>{props.end?.(row)}</span>

@@ -32,8 +32,8 @@ const fallAway = stylex.keyframes({
 const slideIn = stylex.keyframes({ from: { opacity: 0, transform: "translateY(6px)" } });
 const draw = stylex.keyframes({ from: { strokeDashoffset: 30 }, to: { strokeDashoffset: 0 } });
 const ring = stylex.keyframes({
-  from: { boxShadow: `0 0 0 0 color-mix(in srgb, ${colors.statusClosed} 55%, transparent)` },
-  to: { boxShadow: `0 0 0 14px color-mix(in srgb, ${colors.statusClosed} 0%, transparent)` },
+  from: { boxShadow: `0 0 0 0 color-mix(in srgb, ${colors.sunrise} 55%, transparent)` },
+  to: { boxShadow: `0 0 0 14px color-mix(in srgb, ${colors.sunrise} 0%, transparent)` },
 });
 const rise = stylex.keyframes({ from: { opacity: 0, transform: "translateY(72px)" } });
 const fadeIn = stylex.keyframes({ from: { opacity: 0 } });
@@ -221,7 +221,7 @@ const s = stylex.create({
     animationTimingFunction: "cubic-bezier(0.22, 1, 0.36, 1)",
     animationFillMode: "backwards",
   },
-  check: { flexShrink: 0, color: colors.statusClosed },
+  check: { flexShrink: 0, color: colors.sunrise },
   checkPath: {
     strokeDasharray: "30",
     animationName: { default: draw, [motion.reduced]: "none" },

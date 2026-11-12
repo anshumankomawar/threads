@@ -16,6 +16,7 @@ import {
 } from "models";
 
 import { account, save, saved, server, source, useSource, type Source } from "./startup";
+import { commandFor, keysOf, type HotkeyId } from "./hotkeys";
 
 export {
   account,
@@ -111,7 +112,10 @@ export type View =
   | { label: string }
   | { person: string }
   | { subspace: string }
-  | { view: string | null };
+  | { view: string | null }
+  | { settings: null }
+  | { personal: null }
+  | { draft: string };
 // An item runs something, or opens its own `items` in the menu's place. One with `checked` is a toggle: it shows a check
 // and leaves the menu open.
 export type MenuItem =
@@ -125,7 +129,7 @@ export type Dialog =
   | { kind: "newSubspace" }
   | { kind: "addMember"; subspace: Subspace }
   | { kind: "newLabel"; thread?: Thread }
-  | { kind: "compose"; draftId?: string }
+  | { kind: "compose" }
   | { kind: "bucket"; bucket?: Bucket }
   | { kind: "blocked"; thread: Thread };
 
@@ -136,6 +140,12 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
   null,
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
+// Which of the sidebar's tabs is open, by position (Inbox, Sent, Drafts, Spaces), so its hotkeys can choose one.
+export const [sidebarTab, setSidebarTab] = createSignal(0);
+function showTab(tab: number): void {
+  setSidebarOpen(true);
+  setSidebarTab(tab);
+}
 export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));
@@ -229,9 +239,10 @@ const activeId = (): string | null => {
 };
 export const active = (): Thread | undefined => store.findById(Thread, activeId() ?? "");
 // The id the view shows of one kind of page, if it's that kind.
-export const shown = (key: "label" | "person" | "subspace" | "view"): string | undefined =>
-  (view() as Record<string, string | null | undefined>)[key] ?? undefined;
-export const allThreads = (): boolean => "view" in view() && shown("view") === undefined;
+export const shown = (
+  key: "label" | "person" | "subspace" | "view" | "draft",
+): string | undefined => (view() as Record<string, string | null | undefined>)[key] ?? undefined;
+export const workspaceShown = (): boolean => "view" in view() && shown("view") === undefined;
 
 function markSeen(thread: Thread | undefined): void {
   const item = thread && itemFor(thread);
@@ -363,24 +374,45 @@ export function setState(thread: Thread, state: Thread["state"]): void {
 }
 
 // ── Keys ──
-// ⌘K search, ⌘[ ⌘] back and forward, ⌘N new thread, ⌘⇧N compose, ⌘U view as, ⌘+ ⌘- ⌘0 zoom. Superhuman's, never with a dialog or menu
-// open: ⌘E done (even while typing), and when not typing J/K next or previous, H snooze, R reply.
+// What each hotkey does (hotkeys.ts has their keys, which Settings rebinds). Plain keys only when you're not typing, and
+// none of the reading ones with a dialog or menu open.
 window.addEventListener("keydown", (event) => {
-  if (event.altKey || event.ctrlKey || !signedIn()) return;
-  const key = `${event.metaKey ? "⌘" : ""}${event.shiftKey ? "⇧" : ""}${event.key.toLowerCase()}`;
+  if (!signedIn()) return;
   const target = event.target as HTMLElement;
   const typing = target.closest("input, textarea, [contenteditable='true']") !== null;
   const free = !document.querySelector("dialog[open], :popover-open");
+  // Escape leaves the reply, unless it just closed one of the reply's menus.
+  if (
+    event.key === "Escape" &&
+    typing &&
+    free &&
+    !event.defaultPrevented &&
+    target.closest(".reply")
+  ) {
+    event.preventDefault();
+    return target.blur();
+  }
+  const keys = keysOf(event);
+  const id = keys && commandFor(keys);
+  if (!id || (typing && !/[⌘⌃]/.test(keys))) return;
   const order = inbox().order;
   const current = active();
   const at = current ? order.indexOf(current) : -1;
   const item = current && at !== -1 ? itemFor(current) : undefined;
   const reading = free && !typing;
-  const run: Record<string, (() => void) | false | undefined> = {
-    "⌘k": () => setDialog({ kind: "search" }),
-    "⌘[": free && goBack,
-    "⌘]": free && goForward,
-    "⌘n": () => {
+  const run: Record<HotkeyId, (() => void) | false | undefined> = {
+    search: () => setDialog({ kind: "search" }),
+    settings: () => (setDialog(null), open({ settings: null })),
+    hotkeys: free && (() => open({ settings: null })),
+    back: free && goBack,
+    forward: free && goForward,
+    sidebar: () => setSidebarOpen(!sidebarOpen()),
+    // Not in a dialog, where ⌘1… choose its own tabs.
+    inboxTab: free && (() => showTab(0)),
+    sentTab: free && (() => showTab(1)),
+    draftsTab: free && (() => showTab(2)),
+    spacesTab: free && (() => showTab(3)),
+    newThread: () => {
       const shown = view();
       setDialog({
         kind: "newThread",
@@ -389,27 +421,20 @@ window.addEventListener("keydown", (event) => {
         to: "person" in shown ? store.findById(User, shown.person) : undefined,
       });
     },
-    "⌘⇧n": () => setDialog({ kind: "compose" }),
+    compose: () => setDialog({ kind: "compose" }),
+    next: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
+    previous: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
+    done: free && item && (() => markDone(item)),
+    snooze: reading && item && (() => snooze(item)),
+    reply: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
+    resolve: free && current && (() => setState(current, current.isOpen ? "resolved" : "open")),
+    zoomIn: () => applyZoom(zoom() + 0.1),
+    zoomOut: () => applyZoom(zoom() - 0.1),
+    zoomReset: () => applyZoom(1),
     // Signed in, you're who you signed in as.
-    "⌘u": !account && (() => setDialog({ kind: "viewAs" })),
-    "⌘=": () => applyZoom(zoom() + 0.1),
-    "⌘⇧+": () => applyZoom(zoom() + 0.1),
-    "⌘-": () => applyZoom(zoom() - 0.1),
-    "⌘0": () => applyZoom(1),
-    "⌘e": free && item && (() => markDone(item)),
-    j: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
-    k: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
-    h: reading && item && (() => snooze(item)),
-    r: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
-    // Not when Escape just closed one of the reply's menus.
-    escape:
-      typing &&
-      free &&
-      !event.defaultPrevented &&
-      target.closest(".reply") !== null &&
-      (() => target.blur()),
+    viewAs: !account && (() => setDialog({ kind: "viewAs" })),
   };
-  const action = run[key];
+  const action = run[id];
   if (!action) return;
   event.preventDefault();
   action();

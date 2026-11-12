@@ -29,6 +29,7 @@ import {
 import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
+import { keysFor } from "../hotkeys";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
@@ -51,7 +52,9 @@ type Row = Option;
 // An input over rows that match it, in sections; arrows choose, Enter or a click runs the row.
 function Picker(props: {
   placeholder: string;
-  rows: (query: string) => Row[];
+  rows: (query: string, filter: number) => Row[];
+  // Tabs under the input that narrow the rows (⌘1, ⌘2…); `rows` gets the chosen one's index.
+  filters?: string[];
   // A form's steps share the one input, so the form holds what's typed.
   query?: Signal<string>;
   // Escape goes back a step instead of closing; Tab does whatever a step wants.
@@ -60,7 +63,8 @@ function Picker(props: {
 }): JSX.Element {
   const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
-  const rows = createMemo(() => props.rows(query().trim()));
+  const [filter, setFilter] = createSignal(0);
+  const rows = createMemo(() => props.rows(query().trim(), filter()));
   createEffect(rows, () => {
     setAt(0);
   });
@@ -79,6 +83,8 @@ function Picker(props: {
     else if (event.key === "Enter") rows()[index()]?.run();
     else if (event.key === "Escape" && props.onBack) props.onBack();
     else if (event.key === "Tab" && props.onTab) props.onTab();
+    else if (event.metaKey && props.filters?.[Number(event.key) - 1])
+      setFilter(Number(event.key) - 1);
     else return;
     event.preventDefault();
   };
@@ -95,6 +101,26 @@ function Picker(props: {
           onKeyDown={onKeyDown}
         />
       </div>
+      <Show when={props.filters}>
+        {(filters) => (
+          <div class={sx(palette.filters)} role="tablist">
+            <For each={filters()}>
+              {(label, i) => (
+                <button
+                  class={sx(base.bare, palette.filter, filter() === i() && palette.filterChosen)}
+                  role="tab"
+                  aria-selected={filter() === i() ? "true" : "false"}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => setFilter(i())}
+                >
+                  {label}
+                  <span class={sx(palette.filterKey)}>⌘ {i() + 1}</span>
+                </button>
+              )}
+            </For>
+          </div>
+        )}
+      </Show>
       <Show when={rows().length > 0}>
         <div class={sx(palette.results)} role="listbox">
           <For each={sections()}>
@@ -181,7 +207,7 @@ function Search(): JSX.Element {
   const commands = (): Row[] => [
     {
       label: "New thread",
-      hint: "⌘ N",
+      hint: keysFor("newThread"),
       section: "Quick actions",
       run: () => setDialog({ kind: "newThread" }),
     },
@@ -191,7 +217,14 @@ function Search(): JSX.Element {
       section: "Quick actions",
       run: () => setDialog({ kind: "newSubspace" }),
     },
-    { label: "All threads", section: "Views", run: done(() => open({ view: null })) },
+    { label: "Workspace", section: "Views", run: done(() => open({ view: null })) },
+    { label: "Personal", section: "Views", run: done(() => open({ personal: null })) },
+    {
+      label: "Settings",
+      hint: keysFor("settings"),
+      section: "Views",
+      run: done(() => open({ settings: null })),
+    },
     {
       label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
       section: "Views",
@@ -212,7 +245,7 @@ function Search(): JSX.Element {
       : [
           {
             label: "View as…",
-            hint: "⌘ U",
+            hint: keysFor("viewAs"),
             section: "Data",
             run: () => setDialog({ kind: "viewAs" }),
           },
@@ -226,31 +259,32 @@ function Search(): JSX.Element {
   return (
     <Picker
       placeholder="Search…"
-      rows={(query) =>
+      filters={["All", "Threads", "Spaces", "People"]}
+      rows={(query, filter) =>
         [
-          ...commands(),
-          ...store.all(User).map((u) => ({
+          ...(filter === 0 ? commands() : []),
+          ...(filter === 0 || filter === 3 ? store.all(User) : []).map((u) => ({
             label: u.name,
             section: "People",
             seed: u.id,
             run: done(() => open({ person: u.id })),
           })),
-          ...store.all(Subspace).map((sub) => ({
+          ...(filter === 0 || filter === 2 ? store.all(Subspace) : []).map((sub) => ({
             label: sub.name,
             section: "Subspaces",
             run: done(() => open({ subspace: sub.id })),
           })),
-          ...store.all(View).map((v) => ({
+          ...(filter === 0 || filter === 2 ? store.all(View) : []).map((v) => ({
             label: v.name,
             section: "Views",
             run: done(() => open({ view: v.id })),
           })),
-          ...store.all(Label).map((l) => ({
+          ...(filter === 0 || filter === 2 ? store.all(Label) : []).map((l) => ({
             label: l.name,
             section: "Labels",
             run: done(() => open({ label: l.id })),
           })),
-          ...store.all(Thread).map((t) => ({
+          ...(filter === 0 || filter === 1 ? store.all(Thread) : []).map((t) => ({
             label: t.title,
             section: "Threads",
             run: done(() => open({ thread: t.id })),

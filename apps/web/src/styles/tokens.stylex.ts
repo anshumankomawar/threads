@@ -24,6 +24,9 @@ const DARK = {
   accent: "#78aee7",
   accentFill: "#1f252c",
   statusClosed: "oklch(0.713 0.094 155.438)",
+  // The confirmation's colour, from the sunrise in the field itself (the band's orange, scripts/source): bright
+  // on the dark page, the band's deeper orange on the light one.
+  sunrise: "#ed8d38",
   urgent: "oklch(0.712 0.177 12.651)",
   avatarRing: "transparent",
   systemBlue: "#0a84ff",
@@ -56,6 +59,7 @@ const LIGHT_VALUES = {
   accent: "#2f6fb7",
   accentFill: "#e2ecf7",
   statusClosed: "oklch(0.55 0.11 155.438)",
+  sunrise: "#c04715",
   urgent: "oklch(0.58 0.2 12.651)",
   avatarRing: "rgb(0 0 0 / 14%)",
   systemBlue: "#007aff",
@@ -83,6 +87,7 @@ export const colors = stylex.defineVars({
   accent: DARK.accent,
   accentFill: DARK.accentFill,
   statusClosed: DARK.statusClosed,
+  sunrise: DARK.sunrise,
   urgent: DARK.urgent,
   avatarRing: DARK.avatarRing,
   // Mail's unread dot.

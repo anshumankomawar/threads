@@ -46,7 +46,7 @@ import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { thread } from "../styles/thread";
-import { colors, fontSizes, layers } from "../styles/tokens.stylex";
+import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
@@ -67,7 +67,28 @@ const styles = stylex.create({
   },
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
-  properties: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 4, marginTop: 4 },
+  // Pulled out by a value's padding, so the first one's icon lines up with the title.
+  properties: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 2,
+    alignItems: "center",
+    margin: "4px 0 0 -6px",
+  },
+  // A property's value: its menu, plain until you hover it.
+  value: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    minWidth: 0,
+    height: 26,
+    padding: "0 6px",
+    borderRadius: radii.row,
+    color: { default: colors.textSecondary, ":hover": colors.textPrimary },
+    fontSize: fontSizes.body,
+    whiteSpace: "nowrap",
+    cursor: "pointer",
+  },
   reply: { display: "flex", flex: 1, minWidth: 0 },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
   caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: 300 },
@@ -194,6 +215,7 @@ function ListChip(props: {
   title?: string;
   short?: (name: string) => string;
   more?: MenuItem[];
+  look?: stylex.StyleXStyles;
 }): JSX.Element {
   const ids = (): string[] => props.thread[props.field];
   const name = (id: string): string => {
@@ -202,10 +224,11 @@ function ListChip(props: {
   };
   return (
     <MenuChip
-      label={summary(ids().map(name), props.none)}
+      label={<span class={sx(base.ellipsis)}>{summary(ids().map(name), props.none)}</span>}
       icon={icon(props.icon, 13)}
       tone={ids().length === 0 ? "muted" : undefined}
       title={props.title}
+      look={props.look}
       items={[
         ...byName(props.records).map((record) => ({
           label: record.name,
@@ -220,11 +243,6 @@ function ListChip(props: {
 
 function Header(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
-  const item = (): ReturnType<typeof itemFor> => itemFor(c());
-  const change = (fields: Partial<Thread>) => () => edit(c(), fields);
-  const place = (bucket: Bucket | undefined) => () => placeIn(item()!, bucket);
-  const bucketIcon = (bucket?: Bucket): IconSvgElement =>
-    bucketIcons(myBuckets()).get(bucket?.id ?? "") ?? i.InboxIcon;
   return (
     <header class={sx(thread.block, thread.header)}>
       <span class={sx(thread.avatar)}>
@@ -256,94 +274,7 @@ function Header(props: { thread: Thread }): JSX.Element {
             </div>
           )}
         </Show>
-        <div class={sx(styles.properties)}>
-          <MenuChip
-            label={LABELS[c().state]}
-            icon={dot(c().state)}
-            items={STATES.map((state) => ({
-              label: LABELS[state],
-              icon: dot(state),
-              run: () => setState(c(), state),
-            }))}
-          />
-          <Show when={item()}>
-            {(it) => (
-              <MenuChip
-                label={it().bucket?.name ?? "Sorting…"}
-                icon={icon(bucketIcon(it().bucket), 13)}
-                tone={it().bucket ? undefined : "muted"}
-                title={
-                  it().bucket
-                    ? it().manual
-                      ? "Placed by you"
-                      : it().reason
-                    : "Being sorted into one of your buckets"
-                }
-                items={[
-                  ...myBuckets().map((b) => ({
-                    label: b.name,
-                    icon: icon(b === it().bucket ? i.Tick02Icon : bucketIcon(b), 13),
-                    run: place(b),
-                  })),
-                  ...(it().manual ? [{ label: "Sort it for me", run: place(undefined) }] : []),
-                ]}
-              />
-            )}
-          </Show>
-          <ListChip
-            thread={c()}
-            field="labelIds"
-            records={store.all(Label)}
-            none="No labels"
-            icon={i.Tag01Icon}
-            more={[
-              { label: "New label…", run: () => setDialog({ kind: "newLabel", thread: c() }) },
-            ]}
-          />
-          <ListChip
-            thread={c()}
-            field="subspaceIds"
-            records={store.all(Subspace)}
-            none="Everyone"
-            icon={i.Layers01Icon}
-            title="Where it lives: its subspaces' members see it, and only they when one is private"
-          />
-          <ListChip
-            thread={c()}
-            field="assigneeIds"
-            records={store.all(User)}
-            none="No assignees"
-            icon={i.UserMultipleIcon}
-            short={(name) => firstName({ name })}
-          />
-          <MenuChip
-            label={LABELS[c().priority]}
-            tone={
-              c().priority === "urgent" ? "urgent" : c().priority === "none" ? "muted" : undefined
-            }
-            items={PRIORITIES.map((priority) => ({
-              label: LABELS[priority],
-              run: change({ priority }),
-            }))}
-          />
-          <MenuChip
-            icon={icon(i.Calendar01Icon, 13)}
-            label={c().dueAt ? `Due ${shortDate(c().dueAt!)}` : "No due date"}
-            tone={
-              c().dueAt && c().dueAt!.getTime() < Date.now()
-                ? "urgent"
-                : c().dueAt
-                  ? undefined
-                  : "muted"
-            }
-            items={[
-              { label: "Today", run: change({ dueAt: dueAt(0) }) },
-              { label: "Tomorrow", run: change({ dueAt: dueAt(1) }) },
-              { label: "Next week", run: change({ dueAt: dueAt(7) }) },
-              { label: "No due date", run: change({ dueAt: undefined }) },
-            ]}
-          />
-        </div>
+        <Properties thread={c()} />
       </div>
     </header>
   );
@@ -559,6 +490,115 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 
 // A thread as a document: its heading, its messages, then the reply. Opened from your inbox it starts at the top
 // without taking the cursor, so the inbox keys keep working.
+
+// A thread's properties, under its title: a row of values, each a menu you change it from, plain until you hover it.
+const value = [base.bare, base.hover, styles.value];
+function Properties(props: { thread: Thread }): JSX.Element {
+  const c = (): Thread => props.thread;
+  const item = (): ReturnType<typeof itemFor> => itemFor(c());
+  const change = (fields: Partial<Thread>) => () => edit(c(), fields);
+  const place = (bucket: Bucket | undefined) => () => placeIn(item()!, bucket);
+  const bucketIcon = (bucket?: Bucket): IconSvgElement =>
+    bucketIcons(myBuckets()).get(bucket?.id ?? "") ?? i.InboxIcon;
+  return (
+    <div class={sx(styles.properties)} aria-label="Properties">
+      <MenuChip
+        look={value}
+        label={<span class={sx(base.ellipsis)}>{LABELS[c().state]}</span>}
+        icon={dot(c().state)}
+        items={STATES.map((state) => ({
+          label: LABELS[state],
+          icon: dot(state),
+          run: () => setState(c(), state),
+        }))}
+      />
+      <Show when={item()}>
+        {(it) => (
+          <MenuChip
+            look={value}
+            label={<span class={sx(base.ellipsis)}>{it().bucket?.name ?? "Sorting…"}</span>}
+            icon={icon(bucketIcon(it().bucket), 13)}
+            tone={it().bucket ? undefined : "muted"}
+            title={
+              it().bucket
+                ? it().manual
+                  ? "Placed by you"
+                  : it().reason
+                : "Being sorted into one of your buckets"
+            }
+            items={[
+              ...myBuckets().map((b) => ({
+                label: b.name,
+                icon: icon(b === it().bucket ? i.Tick02Icon : bucketIcon(b), 13),
+                run: place(b),
+              })),
+              ...(it().manual ? [{ label: "Sort it for me", run: place(undefined) }] : []),
+            ]}
+          />
+        )}
+      </Show>
+      <ListChip
+        look={value}
+        thread={c()}
+        field="labelIds"
+        records={store.all(Label)}
+        none="No labels"
+        icon={i.Tag01Icon}
+        more={[{ label: "New label…", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
+      />
+      <ListChip
+        look={value}
+        thread={c()}
+        field="subspaceIds"
+        records={store.all(Subspace)}
+        none="Everyone"
+        icon={i.Layers01Icon}
+        title="Where it lives: its subspaces' members see it, and only they when one is private"
+      />
+      <ListChip
+        look={value}
+        thread={c()}
+        field="assigneeIds"
+        records={store.all(User)}
+        none="No assignees"
+        icon={i.UserMultipleIcon}
+        short={(name) => firstName({ name })}
+      />
+      <MenuChip
+        look={value}
+        label={<span class={sx(base.ellipsis)}>{LABELS[c().priority]}</span>}
+        tone={c().priority === "urgent" ? "urgent" : c().priority === "none" ? "muted" : undefined}
+        items={PRIORITIES.map((priority) => ({
+          label: LABELS[priority],
+          run: change({ priority }),
+        }))}
+      />
+      <MenuChip
+        look={value}
+        icon={icon(i.Calendar01Icon, 13)}
+        label={
+          <span class={sx(base.ellipsis)}>
+            {c().dueAt ? `Due ${shortDate(c().dueAt!)}` : "No due date"}
+          </span>
+        }
+        tone={
+          c().dueAt && c().dueAt!.getTime() < Date.now()
+            ? "urgent"
+            : c().dueAt
+              ? undefined
+              : "muted"
+        }
+        items={[
+          { label: "Today", run: change({ dueAt: dueAt(0) }) },
+          { label: "Tomorrow", run: change({ dueAt: dueAt(1) }) },
+          { label: "Next week", run: change({ dueAt: dueAt(7) }) },
+          { label: "No due date", run: change({ dueAt: undefined }) },
+        ]}
+      />
+    </div>
+  );
+}
+
 export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.Element {
   let end!: HTMLDivElement;
   const messages = (): Message[] => props.thread.messages.sorted("createdAt");

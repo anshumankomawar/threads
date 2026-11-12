@@ -2,7 +2,7 @@ import * as i from "@hugeicons/core-free-icons";
 import { For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Label, Subspace, Thread, User, View } from "models";
+import { Draft, Label, Subspace, Thread, User, View } from "models";
 import {
   active,
   itemFor,
@@ -21,7 +21,8 @@ import {
   switchTo,
   undo,
   setUndo,
-  allThreads,
+  workspaceShown,
+  view,
   otherSources,
   shown,
 } from "./session";
@@ -30,13 +31,22 @@ import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
 import { colors, fontSizes, radii, sidebarSpace } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
+import { Compose } from "./components/Compose";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
 import { Icon } from "./components/Icon";
 import { Identicon } from "./components/Identicon";
 import { ContextMenu } from "./components/Menus";
 import { Palettes } from "./components/Palettes";
 import { MentionToasts } from "./components/MentionToasts";
-import { AllThreadsView, LabelView, PersonView, SavedView, SubspaceView } from "./components/Pages";
+import {
+  WorkspaceView,
+  LabelView,
+  PersonalView,
+  PersonView,
+  SavedView,
+  SettingsView,
+  SubspaceView,
+} from "./components/Pages";
 import { AppButtons, HistoryButtons, Sidebar } from "./components/Sidebar";
 
 const styles = stylex.create({
@@ -167,7 +177,10 @@ export default function App(): JSX.Element {
                 label()?.name ??
                 subspace()?.name ??
                 savedView()?.name ??
-                (allThreads() ? "All threads" : undefined) ??
+                (workspaceShown() ? "Workspace" : undefined) ??
+                (shown("draft") !== undefined ? "Draft" : undefined) ??
+                ("settings" in view() ? "Settings" : undefined) ??
+                ("personal" in view() ? "Personal" : undefined) ??
                 person()?.name}
             </span>
             <span class={sx(topbar.end)}>
@@ -196,11 +209,20 @@ export default function App(): JSX.Element {
             <Match when={savedView()} keyed>
               {(saved) => <SavedView view={saved} />}
             </Match>
-            <Match when={allThreads()}>
-              <AllThreadsView />
+            <Match when={workspaceShown()}>
+              <WorkspaceView />
             </Match>
             <Match when={person()} keyed>
               {(user) => <PersonView user={user} />}
+            </Match>
+            <Match when={"settings" in view()}>
+              <SettingsView />
+            </Match>
+            <Match when={"personal" in view()}>
+              <PersonalView />
+            </Match>
+            <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
+              {(draft) => <Compose draftId={draft.id} page />}
             </Match>
             <Match when={active()} keyed>
               {(thread) => (

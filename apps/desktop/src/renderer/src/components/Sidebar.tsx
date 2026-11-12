@@ -5,7 +5,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Bucket, Draft, InboxItem, Label, Subspace, Thread, View } from "models";
 import {
   active,
-  allThreads,
+  workspaceShown,
   byName,
   firstName,
   myBuckets,
@@ -19,6 +19,8 @@ import {
   sent,
   setDialog,
   setSidebarOpen,
+  setSidebarTab,
+  sidebarTab,
   sidebarOpen,
   canGoBack,
   canGoForward,
@@ -33,6 +35,7 @@ import {
   saved,
 } from "../session";
 import { bucketIcons } from "../bucketIcons";
+import { keysFor } from "../hotkeys";
 import { makeSubspace } from "./Palettes";
 import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
@@ -322,7 +325,7 @@ function InboxRow(props: { item: InboxItem }): JSX.Element {
         </span>
         <button
           class={sx(base.bare, base.hover, base.dim, s.done, on() && s.doneShown)}
-          title="Done (⌘E)"
+          title={`Done (${keysFor("done")})`}
           aria-label="Mark done"
           onClick={(event) => {
             event.stopPropagation();
@@ -556,7 +559,8 @@ function DraftsTab(): JSX.Element {
             label={draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft"}
             title={draft.text}
             meta={ago(draft.updatedAt)}
-            onClick={() => setDialog({ kind: "compose", draftId: draft.id })}
+            active={shown("draft") === draft.id}
+            onClick={() => open({ draft: draft.id })}
             onMenu={(e) => showMenu(e, [{ label: "Delete draft", run: () => void draft.delete() }])}
           />
         )}
@@ -636,9 +640,15 @@ function SpacesTab(): JSX.Element {
       <Section title="Views">
         <Row
           icon={i.Layers01Icon}
-          label="All threads"
-          active={allThreads()}
+          label="Workspace"
+          active={workspaceShown()}
           onClick={() => open({ view: null })}
+        />
+        <Row
+          icon={i.UserIcon}
+          label="Personal"
+          active={"personal" in view()}
+          onClick={() => open({ personal: null })}
         />
         <For each={byName(store.all(View))}>
           {(v) => (
@@ -736,14 +746,14 @@ export const AppButtons = (): JSX.Element => (
 export const HistoryButtons = (): JSX.Element => (
   <span class={sx(s.history)}>
     <TopButton
-      label="Back (⌘[)"
+      label={`Back (${keysFor("back")})`}
       icon={i.ArrowLeft01Icon}
       tight
       disabled={!canGoBack()}
       onClick={goBack}
     />
     <TopButton
-      label="Forward (⌘])"
+      label={`Forward (${keysFor("forward")})`}
       icon={i.ArrowRight01Icon}
       tight
       disabled={!canGoForward()}
@@ -754,8 +764,9 @@ export const HistoryButtons = (): JSX.Element => (
 
 // The top bar, the tabs, and the chosen tab's list.
 export function Sidebar(): JSX.Element {
-  const [chosen, choose] = createSignal(TABS[0]);
-  const profile = (): boolean => (view() as { person?: string }).person === me().id;
+  const chosen = (): (typeof TABS)[number] => TABS[sidebarTab()];
+  const choose = (t: (typeof TABS)[number]): void => void setSidebarTab(TABS.indexOf(t));
+  const settings = (): boolean => "settings" in view();
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${width()}px` }}>
       <div class={sx(topbar.bar, s.topbar)}>
@@ -771,11 +782,11 @@ export function Sidebar(): JSX.Element {
       <div class={sx(s.tabs)}>
         <Tabs label="Sidebar" tabs={TABS} chosen={chosen()} onChoose={choose} />
         <button
-          class={sx(base.bare, base.hover, tab.tab, s.end, profile() && tab.on)}
-          aria-pressed={profile() ? "true" : "false"}
-          aria-label="Your profile"
-          title="Your profile"
-          onClick={() => open({ person: me().id })}
+          class={sx(base.bare, base.hover, tab.tab, s.end, settings() && tab.on)}
+          aria-pressed={settings() ? "true" : "false"}
+          aria-label="Settings"
+          title={`Settings (${keysFor("settings")})`}
+          onClick={() => open({ settings: null })}
         >
           <Identicon seed={me().id} size={14} />
         </button>

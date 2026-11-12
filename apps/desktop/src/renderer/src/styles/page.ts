@@ -41,8 +41,6 @@ export const page = stylex.create({
     fieldSizing: "content",
     "::placeholder": { color: muted },
   },
-  titleRow: { display: "flex", gap: 6, alignItems: "center" },
-  lock: { display: "flex", color: muted },
   // A search field in a table's toolbar: an icon and the input in a bordered box.
   search: {
     display: "flex",
@@ -122,6 +120,34 @@ export const page = stylex.create({
     color: colors.textSecondary,
     backgroundColor: colors.bgTertiary,
   },
+  // Keys as key caps, as Superhuman shows them.
+  caps: { display: "inline-flex", gap: 3 },
+  cap: {
+    display: "inline-grid",
+    placeItems: "center",
+    minWidth: 20,
+    height: 20,
+    padding: "0 5px",
+    borderRadius: radii.control,
+    color: colors.textSecondary,
+    fontFamily: "inherit",
+    fontSize: size.label,
+    backgroundColor: colors.bgTertiary,
+  },
+  recording: { color: colors.accent },
+  // A hotkey's keys, which you click to change: a rounded fill of their own on hover.
+  keysButton: {
+    display: "flex",
+    alignItems: "center",
+    height: 26,
+    margin: "0 -6px",
+    padding: "0 6px",
+    borderRadius: radii.row,
+    cursor: "pointer",
+  },
+  recordingButton: { backgroundColor: colors.accentFill },
+  // A quiet text button among a tab's tools.
+  quiet: { height: 28, padding: "0 10px", borderRadius: radii.row, cursor: "pointer" },
   avatars: { display: "flex" },
   // Each face overlaps the one before it.
   avatar: { marginLeft: { default: -4, ":first-child": 0 } },
