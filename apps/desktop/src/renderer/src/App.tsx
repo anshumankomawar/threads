@@ -47,7 +47,7 @@ import {
   SettingsView,
   SubspaceView,
 } from "./components/Pages";
-import { MessageList, Sidebar, SpacesBar, UnifiedToolbar } from "./components/Sidebar";
+import { MessageList, Sidebar, UnifiedToolbar } from "./components/Sidebar";
 
 const styles = stylex.create({
   // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
@@ -163,12 +163,11 @@ export default function App(): JSX.Element {
       <Titlebar />
       <DragRegionResync />
       <Show when={signedIn()} fallback={<Waiting />}>
-        {/* Thunderbird's window: the unified toolbar across the top; under it the spaces bar, the folder pane, the
-            thread pane and the message pane. */}
+        {/* Thunderbird's window: the unified toolbar across the top; under it the folder pane, the thread pane and the
+            message pane. */}
         <div class={sx(styles.window)}>
           <UnifiedToolbar />
           <div class={sx(styles.panes3)}>
-            <SpacesBar />
             <Show when={sidebarOpen()}>
               <Sidebar />
             </Show>

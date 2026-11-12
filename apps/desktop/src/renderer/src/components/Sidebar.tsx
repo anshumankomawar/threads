@@ -43,8 +43,8 @@ import { TbIcon } from "./TbIcon";
 import type { TbIconName } from "../tbIcons";
 import { plain } from "./ThreadView";
 
-// Thunderbird's 3-pane window (comm-central's about3Pane.css, threadCard.css, tree-listbox.css, spacesToolbar.css and
-// unifiedToolbar.css): the spaces bar, the unified toolbar, the folder pane, the thread pane in card view, and (in App)
+// Thunderbird's 3-pane window (comm-central's about3Pane.css, threadCard.css, tree-listbox.css and unifiedToolbar.css):
+// the unified toolbar, the folder pane, the thread pane in card view, and (in App)
 // the message pane. Sizes are its pixels ÷ 1.1, for the renderer's 110% scale.
 
 // A pane the splitter on its right resizes, remembering its width.
@@ -152,59 +152,10 @@ export function UnifiedToolbar(): JSX.Element {
   );
 }
 
-// ── The spaces bar ──
-
-function SpaceButton(props: {
-  label: string;
-  icon: TbIconName;
-  current?: boolean;
-  onClick: () => void;
-}): JSX.Element {
-  return (
-    <button
-      class={sx(base.bare, s.space, props.current && s.spaceCurrent)}
-      aria-label={props.label}
-      aria-current={props.current ? "true" : undefined}
-      title={props.label}
-      onClick={() => props.onClick()}
-    >
-      <TbIcon name={props.icon} size={18.18} />
-    </button>
-  );
-}
-
-// Thunderbird's spaces down the window's left: Mail (where you are) and the Address Book, Settings at the foot.
-export function SpacesBar(): JSX.Element {
-  const inMail = (): boolean => !("settings" in view()) && !("person" in view());
-  return (
-    <nav class={sx(s.spaces)} aria-label="Spaces">
-      <div class={sx(s.spacesGroup)}>
-        <SpaceButton
-          label="Mail"
-          icon="mail-lg"
-          current={inMail()}
-          onClick={() => open({ thread: null })}
-        />
-        <SpaceButton
-          label="Address Book"
-          icon="address-book-lg"
-          current={"person" in view()}
-          onClick={() => open({ settings: null })}
-        />
-      </div>
-      <SpaceButton
-        label="Settings"
-        icon="settings-lg"
-        current={"settings" in view()}
-        onClick={() => open({ settings: null })}
-      />
-    </nav>
-  );
-}
-
 // ── The folder pane ──
 
-const [collapsed, setCollapsed] = createSignal<boolean>(saved("tb-buckets-collapsed", false));
+// Buckets start open; folding them is remembered.
+const [collapsed, setCollapsed] = createSignal<boolean>(saved("tb-buckets-folded", false));
 
 // A folder row: its twisty (when it has children), its coloured icon, its name, and its count badge.
 function Folder(props: {
@@ -297,7 +248,7 @@ const unreadIn = (threads: Thread[]): number =>
 export function Sidebar(): JSX.Element {
   const toggle = (): void => {
     setCollapsed(!collapsed());
-    save("tb-buckets-collapsed", collapsed());
+    save("tb-buckets-folded", collapsed());
   };
   return (
     <aside
@@ -305,31 +256,7 @@ export function Sidebar(): JSX.Element {
       style={{ width: `${folderPane.width()}px` }}
       aria-label="Folders"
     >
-      {/* #folderPaneHeaderBar: New Message, Thunderbird's primary button, and the pane's menu. */}
-      <div class={sx(s.folderHeader)}>
-        <button
-          class={sx(base.bare, s.primary)}
-          title={`New Message (${keysFor("newThread")})`}
-          onClick={() => setDialog({ kind: "newThread" })}
-        >
-          <TbIcon name="add" />
-          New Message
-        </button>
-        <button
-          class={sx(base.bare, s.toolbarIcon)}
-          aria-label="Folder pane options"
-          title="Folder pane options"
-          onClick={(e) =>
-            showMenu(e, [{ label: "New Bucket", run: () => setDialog({ kind: "bucket" }) }])
-          }
-        >
-          <TbIcon name="kebab" />
-        </button>
-      </div>
       <ul class={sx(base.list, s.tree)} role="tree">
-        <li>
-          <div class={sx(s.mode)}>All Folders</div>
-        </li>
         <Folder
           box={{ kind: "inbox" }}
           label="Buckets"
@@ -384,6 +311,17 @@ export function Sidebar(): JSX.Element {
           depth={0}
           total={drafts().length || undefined}
         />
+        {/* Thunderbird's primary button, under the folders it files into. */}
+        <li class={sx(s.newMessage)}>
+          <button
+            class={sx(base.bare, s.primary)}
+            title={`New Message (${keysFor("newThread")})`}
+            onClick={() => setDialog({ kind: "newThread" })}
+          >
+            <TbIcon name="add" />
+            New Message
+          </button>
+        </li>
       </ul>
       <folderPane.Splitter label="Resize folder pane" />
     </aside>
@@ -643,35 +581,6 @@ const s = stylex.create({
   searchPlaceholder: { flex: 1, textAlign: "left", lineHeight: 1 },
   searchKeys: { fontSize: fontSizes.small, lineHeight: 1 },
 
-  // spacesToolbar.css: 7px padding, 15px gaps, 20px icons in 5px of padding; the current space in the primary
-  // button's blue, its icon white. A faint gradient to its right edge, and a border.
-  spaces: {
-    display: "flex",
-    flexDirection: "column",
-    flexShrink: 0,
-    justifyContent: "space-between",
-    padding: 6.36,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
-    backgroundColor: tb.spaces,
-    backgroundImage: "linear-gradient(90deg, transparent 0%, rgb(0 0 0 / 5%) 100%)",
-  },
-  spacesGroup: { display: "flex", flexDirection: "column", gap: 13.64 },
-  space: {
-    display: "grid",
-    placeItems: "center",
-    padding: 4.55,
-    borderRadius: 3,
-    color: colors.textPrimary,
-    backgroundColor: { default: "transparent", ":hover": tb.bg3 },
-    cursor: "default",
-  },
-  spaceCurrent: {
-    color: tb.selectedText,
-    backgroundColor: { default: tb.selected, ":hover": tb.selected },
-  },
-
   // #folderPane: --sidebar-background (--layout-background-1).
   folderPane: {
     position: "relative",
@@ -684,7 +593,7 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  folderHeader: { display: "flex", gap: 4, alignItems: "center", padding: 6 },
+  newMessage: { display: "flex", padding: "10px 3px 0" },
   // The primary button: --selected-item-color with its text colour, 80% of it toward black under the pointer.
   primary: {
     display: "flex",
@@ -705,14 +614,7 @@ const s = stylex.create({
     fontWeight: 600,
     cursor: "default",
   },
-  tree: { flex: 1, minHeight: 0, padding: "0 3px 6px", overflowY: "auto" },
-  // .mode-name: 600 at 1.1rem, 6px above and below, 12px in.
-  mode: {
-    padding: "5.45px 0 5.45px 10.91px",
-    color: colors.textPrimary,
-    fontSize: 13,
-    fontWeight: 600,
-  },
+  tree: { flex: 1, minHeight: 0, padding: "6px 3px 6px", overflowY: "auto" },
   // A folder row: --list-item-min-height (26px), 3px corners; hover --treeitem-background-hover, chosen the accent.
   folder: {
     display: "flex",
