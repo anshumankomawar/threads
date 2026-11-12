@@ -460,7 +460,8 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
   );
 }
 
-export function MessageList(): JSX.Element {
+// `alone`, with nothing open beside it: it takes the window.
+export function MessageList(props: { alone?: boolean }): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   // Opening a draft (from ⌘K, say) lists the drafts.
   createEffect(view, (next) => {
@@ -505,8 +506,8 @@ export function MessageList(): JSX.Element {
   };
   return (
     <section
-      class={sx(s.list)}
-      style={{ width: `${listColumn.width()}px` }}
+      class={sx(s.list, props.alone && s.listAlone)}
+      style={{ width: props.alone ? undefined : `${listColumn.width()}px` }}
       aria-label={mailboxTitle(mailbox())}
     >
       <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
@@ -594,18 +595,10 @@ export function MessageList(): JSX.Element {
           </div>
         </Show>
       </div>
-      <listColumn.Edge label="Resize List" />
+      <Show when={!props.alone}>
+        <listColumn.Edge label="Resize List" />
+      </Show>
     </section>
-  );
-}
-
-// With nothing open: say so, and where to look.
-export function NothingOpen(): JSX.Element {
-  return (
-    <div class={sx(s.nothing)}>
-      <span class={sx(s.nothingTitle)}>No thread selected</span>
-      <span>{listed().order.length > 0 ? "Choose one from the list to read it here." : ""}</span>
-    </div>
   );
 }
 
@@ -718,6 +711,8 @@ const s = stylex.create({
     borderRightColor: colors.strokeTertiary,
   },
   listBar: { paddingLeft: 16 },
+  // Nothing open beside it: it takes the room, with no edge to divide.
+  listAlone: { flex: 1, borderRightWidth: 0 },
   listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
   listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
@@ -806,14 +801,4 @@ const s = stylex.create({
     textAlign: "center",
   },
   emptyTitle: { color: colors.textSecondary, fontSize: fontSizes.input, fontWeight: 600 },
-  nothing: {
-    display: "flex",
-    flex: 1,
-    flexDirection: "column",
-    gap: 6,
-    alignItems: "center",
-    justifyContent: "center",
-    color: colors.textTertiary,
-  },
-  nothingTitle: { color: colors.textSecondary, fontSize: fontSizes.pageTitle, fontWeight: 600 },
 });
