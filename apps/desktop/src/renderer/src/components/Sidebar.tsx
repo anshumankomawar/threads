@@ -723,9 +723,6 @@ const s = stylex.create({
     alignItems: "center",
     height: 34,
     paddingInline: 16,
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: colors.strokeTertiary,
   },
   // Nothing open beside it: it takes the room, with no edge to divide.
   listAlone: { flex: 1, borderRightWidth: 0 },
