@@ -415,11 +415,6 @@ small {
     color: var(--text-3);
     pointer-events: none;
   }
-  & .hint {
-    margin-top: 4px;
-    color: var(--text-3);
-    font-size: 11px;
-  }
   & .mentions {
     position: fixed;
     z-index: 2;
@@ -489,9 +484,6 @@ small {
       overflow-y: auto;
       font-size: 14px;
       line-height: 22px;
-    }
-    & .hint {
-      text-align: right;
     }
   }
   &.grow {

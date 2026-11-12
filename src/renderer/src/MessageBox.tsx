@@ -11,7 +11,6 @@ type Option = { id: string; label: string; hint?: string };
 
 export function MessageBox(props: {
   placeholder: string;
-  hint: string;
   autoFocus?: boolean;
   content?: JSONContent;
   onSend: (body: string) => void;
@@ -86,7 +85,6 @@ export function MessageBox(props: {
   return (
     <div className="message-box" onClick={() => editor?.commands.focus()}>
       <EditorContent editor={editor} />
-      <span className="hint">{props.hint}</span>
       {menu && rect && (
         <div
           className="panel options mentions"

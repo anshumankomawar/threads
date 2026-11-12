@@ -59,8 +59,7 @@ export function Thread({ threadId }: { threadId: Id<"threads"> }) {
             </div>
             <MessageBox
               key={threadId}
-              placeholder="Reply"
-              hint="@mention someone to bring them in, ⌘↵ to send"
+              placeholder="Reply, @mention someone to bring them in, ⌘↵ to send"
               onSend={(body) => void send(threadId, body)}
             />
           </div>
