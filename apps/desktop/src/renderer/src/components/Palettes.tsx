@@ -240,11 +240,19 @@ function Search(): JSX.Element {
       section: "Views",
       run: done(() => open({ settings: null })),
     },
-    {
-      label: theme() === "dark" ? "Switch to light mode" : "Switch to dark mode",
-      section: "Views",
-      run: done(() => applyTheme(theme() === "dark" ? "light" : "dark")),
-    },
+    ...(
+      [
+        ["dark", "Use Dark Theme"],
+        ["light", "Use Light Theme"],
+        ["slack", "Use Slack Theme"],
+      ] as const
+    )
+      .filter(([name]) => name !== theme())
+      .map(([name, label]) => ({
+        label,
+        section: "Views",
+        run: done(() => applyTheme(name)),
+      })),
     // Signed in, you're who you signed in as; only Sample is viewed as anyone.
     ...(account
       ? [

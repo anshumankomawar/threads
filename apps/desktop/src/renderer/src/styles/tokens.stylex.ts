@@ -74,6 +74,24 @@ export const lightTheme = stylex.createTheme(colors, {
   shadowFloat: "0 4px 14px rgb(0 0 0 / 9%)",
 });
 
+// Slack's look: an aubergine sidebar in white type, its chosen row blue, over the light theme (`slackSidebar` on the
+// sidebar, `lightTheme` on the root; `applyTheme`'s "slack").
+const AUBERGINE = "#3f0e40";
+const ON_AUBERGINE = "#ffffff";
+export const slackSidebar = stylex.createTheme(colors, {
+  ...DARK,
+  chrome: AUBERGINE,
+  textPrimary: ON_AUBERGINE,
+  textSecondary: mix(ON_AUBERGINE, 82),
+  textTertiary: mix(ON_AUBERGINE, 70),
+  bgTertiary: "#1164a3",
+  bgQuaternary: "#350d36",
+  iconTertiary: mix(ON_AUBERGINE, 72),
+  strokeTertiary: "#522653",
+  strokeFocused: mix(ON_AUBERGINE, 25),
+  resizeEdge: mix(ON_AUBERGINE, 20),
+});
+
 export const sidebarSpace = stylex.defineConsts({
   // Where the top bar's first button starts, beside the traffic lights: its centre lands where a fourth light would
   // (theirs are 23pt apart, the first's centre 18.75pt in), so it's 9pt from the last, as they are from each other.

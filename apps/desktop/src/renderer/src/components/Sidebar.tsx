@@ -26,6 +26,7 @@ import {
   setDialog,
   setSidebarOpen,
   shortDate,
+  theme,
   shown,
   showMenu,
   sidebarOpen,
@@ -41,7 +42,14 @@ import { keysFor } from "../hotkeys";
 import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, radii, sidebarSpace, space } from "../styles/tokens.stylex";
+import {
+  colors,
+  fontSizes,
+  radii,
+  sidebarSpace,
+  slackSidebar,
+  space,
+} from "../styles/tokens.stylex";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { plain } from "./ThreadView";
@@ -239,7 +247,10 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
 export function Sidebar(): JSX.Element {
   const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   return (
-    <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
+    <aside
+      class={stylex.attrs(s.sidebar, theme() === "slack" && slackSidebar).class}
+      style={{ width: `${sidebarColumn.width()}px` }}
+    >
       <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
         <AppButtons />
         <span class={sx(topbar.end)}>

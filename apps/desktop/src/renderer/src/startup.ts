@@ -45,15 +45,17 @@ export async function signOut(): Promise<void> {
   location.reload();
 }
 
-type Theme = "dark" | "light";
+// Slack is the light theme with an aubergine sidebar (Sidebar.tsx puts `slackSidebar` on it).
+export type Theme = "dark" | "light" | "slack";
 const [chosen, setChosen] = createSignal<Theme>(saved("theme", "dark"));
 export const theme = chosen;
 const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
 export function applyTheme(next: Theme): void {
   setChosen(next);
   save("theme", next);
-  document.documentElement.dataset.theme = next;
-  for (const name of LIGHT) document.documentElement.classList.toggle(name, next === "light");
-  window.electron?.ipcRenderer.send("set-theme", next);
+  const light = next !== "dark";
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+  for (const name of LIGHT) document.documentElement.classList.toggle(name, light);
+  window.electron?.ipcRenderer.send("set-theme", light ? "light" : "dark");
 }
 applyTheme(theme());
