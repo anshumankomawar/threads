@@ -252,16 +252,6 @@ export function Sidebar(): JSX.Element {
       </div>
       {/* Your inbox and its buckets, then every thread, then your drafts. */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
-        {/* Thunderbird's search field, over the mailboxes: it opens search (⌘K). */}
-        <button
-          class={sx(base.bare, s.search)}
-          title={`Search (${keysFor("search")})`}
-          onClick={() => setDialog({ kind: "search" })}
-        >
-          <Icon icon="search" aria-hidden="true" />
-          <span class={sx(s.searchText)}>Search…</span>
-          <span class={sx(s.searchKeys)}>{keysFor("search")}</span>
-        </button>
         <ul class={sx(base.list, s.stack)}>
           <MailboxRow
             box={{ kind: "inbox" }}
@@ -647,28 +637,6 @@ const s = stylex.create({
     paddingBottom: 12,
     overflowY: "auto",
   },
-  // Thunderbird's search bar: the page's white (or its dark) in a 1px grey-40 frame, the icon before the placeholder and
-  // the keys at the end.
-  search: {
-    display: "flex",
-    gap: 6,
-    alignItems: "center",
-    width: "100%",
-    height: 25,
-    marginBottom: space.inset,
-    padding: "0 7px",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "light-dark(#a1a1aa, #52525b)",
-    // The rows' own rounding, so it lines up with the chosen row's pill under it.
-    borderRadius: radii.item,
-    color: colors.textTertiary,
-    backgroundColor: "light-dark(#ffffff, #18181b)",
-    fontSize: fontSizes.body,
-    cursor: "text",
-  },
-  searchText: { flex: 1, textAlign: "left" },
-  searchKeys: { fontSize: fontSizes.small },
   // Thunderbird's primary button: its accent (blue-60, lighter in dark) with the accent's text colour, 3px corners,
   // darker under the pointer.
   newMessage: {
