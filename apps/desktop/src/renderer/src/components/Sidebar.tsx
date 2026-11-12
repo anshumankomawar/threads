@@ -149,10 +149,21 @@ export const HistoryButtons = (): JSX.Element => (
 // ── The sidebar: mailboxes ──
 
 // A mailbox in the sidebar: its icon, name and count.
+// Thunderbird's folder colours (folderColors.css), light and dark: the inbox blue, folders yellow, the archive brown,
+// drafts purple.
+const FOLDER = {
+  inbox: "light-dark(#1373d9, #58c9ff)",
+  folder: "light-dark(#eabd08, #fee78a)",
+  archive: "light-dark(#713f12, #fee78a)",
+  draft: "light-dark(#ae55f7, #ddb4fe)",
+};
+
 function MailboxRow(props: {
   box: Mailbox;
   label: string;
   icon: IconSvgElement;
+  // Its icon's colour (FOLDER).
+  color?: string;
   count?: number;
   indent?: boolean;
   // What right-clicking it offers.
@@ -177,7 +188,7 @@ function MailboxRow(props: {
           chooseMailbox(props.box);
         }}
       >
-        <span class={sx(s.mailboxIcon)}>
+        <span class={sx(s.mailboxIcon)} style={{ color: props.color }}>
           <Icon icon={props.icon} {...ICON} />
         </span>
         <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
@@ -257,6 +268,7 @@ export function Sidebar(): JSX.Element {
             box={{ kind: "inbox" }}
             label="Buckets"
             icon={i.InboxIcon}
+            color={FOLDER.inbox}
             count={inbox().order.length}
             menu={() => [
               {
@@ -271,6 +283,7 @@ export function Sidebar(): JSX.Element {
               box={{ kind: "unsorted" }}
               label="Sorting"
               icon={i.Folder01Icon}
+              color={FOLDER.folder}
               count={inbox().unsorted.length}
               indent
             />
@@ -282,6 +295,7 @@ export function Sidebar(): JSX.Element {
                 box={{ kind: "bucket", id: section.bucket.id }}
                 label={section.bucket.name}
                 icon={i.Folder01Icon}
+                color={FOLDER.folder}
                 count={section.items.length}
                 indent
                 menu={() => bucketMenu(section.bucket)}
@@ -294,12 +308,14 @@ export function Sidebar(): JSX.Element {
             box={{ kind: "all" }}
             label="All Threads"
             icon={i.Archive02Icon}
+            color={FOLDER.archive}
             count={allThreads().length}
           />
           <MailboxRow
             box={{ kind: "drafts" }}
             label="Drafts"
             icon={i.NoteEditIcon}
+            color={FOLDER.draft}
             count={drafts().length}
           />
         </ul>
