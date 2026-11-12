@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -6,65 +5,51 @@ import { Bucket, Draft, Message, Thread, User } from "models";
 import {
   active,
   allThreads,
-  canGoBack,
-  canGoForward,
   chooseMailbox,
   drafts,
-  goBack,
-  goForward,
   inbox,
   itemFor,
   listed,
   mailbox,
   mailboxTitle,
-  me,
   myBuckets,
   open,
   sameMailbox,
   save,
   saved,
   setDialog,
-  setSidebarOpen,
   shortDate,
-  theme,
   shown,
   showMenu,
   sidebarOpen,
   store,
+  theme,
   threadMenu,
   unread,
   view,
+  workspace,
   type Mailbox,
   type MenuItem,
 } from "../session";
-import { bucketIcons } from "../bucketIcons";
 import { keysFor } from "../hotkeys";
 import { base } from "../styles/base";
-import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
-import {
-  colors,
-  fontSizes,
-  radii,
-  sidebarSpace,
-  slackSidebar,
-  space,
-} from "../styles/tokens.stylex";
-import { icon, Icon, type IconSvgElement } from "./Icon";
-import { Identicon } from "./Identicon";
+import { colors, fontSizes, sidebarSpace, slackSidebar, tb } from "../styles/tokens.stylex";
+import { TbIcon } from "./TbIcon";
+import type { TbIconName } from "../tbIcons";
 import { plain } from "./ThreadView";
 
-// Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
+// Thunderbird's 3-pane window (comm-central's about3Pane.css, threadCard.css, tree-listbox.css, spacesToolbar.css and
+// unifiedToolbar.css): the spaces bar, the unified toolbar, the folder pane, the thread pane in card view, and (in App)
+// the message pane. Sizes are its pixels ÷ 1.1, for the renderer's 110% scale.
 
-const ICON = { size: 14, "aria-hidden": "true" } as const;
-
-// A column the edge on its right resizes, remembering its width.
+// A pane the splitter on its right resizes, remembering its width.
 function resizable(key: string, range: { initial: number; min: number; max: number }) {
-  const clamp = (px: number): number => Math.min(range.max, Math.max(range.min, Math.round(px)));
+  const clamp = (n: number): number => Math.min(range.max, Math.max(range.min, Math.round(n)));
   const [width, setWidth] = createSignal(clamp(saved(key, range.initial)));
-  const keep = (px: number): void => {
-    setWidth(px);
-    save(key, px);
+  const keep = (n: number): void => {
+    setWidth(n);
+    save(key, n);
   };
   const drag = (event: PointerEvent): void => {
     const edge = event.currentTarget as HTMLElement;
@@ -79,131 +64,194 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
     edge.addEventListener("pointermove", move);
     edge.addEventListener("pointerup", up, { once: true });
   };
-  const Edge = (props: { label: string }): JSX.Element => (
+  const Splitter = (props: { label: string }): JSX.Element => (
     <hr
-      class={sx(s.edge)}
+      class={sx(s.splitter)}
       aria-label={props.label}
       aria-orientation="vertical"
       onPointerDown={drag}
       onDblClick={() => keep(range.initial)}
     />
   );
-  return { width, Edge };
+  return { width, Splitter };
 }
 
-const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
-const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 600 });
+const folderPane = resizable("tb-folder-width", { initial: 230, min: 160, max: 380 });
+const threadPane = resizable("tb-thread-width", { initial: 380, min: 280, max: 700 });
 
-// ── The top bars' buttons ──
+// ── The unified toolbar ──
 
-const TopButton = (props: {
+function ToolbarButton(props: {
   label: string;
-  icon: IconSvgElement;
-  disabled?: boolean;
-  // Narrower, to sit tight against its neighbour.
-  tight?: boolean;
+  icon: TbIconName;
+  title?: string;
   onClick: () => void;
-}): JSX.Element => (
-  <button
-    class={sx(topbar.button, props.tight && s.tight)}
-    aria-label={props.label}
-    title={props.label}
-    disabled={props.disabled}
-    onClick={() => props.onClick()}
-  >
-    <Icon icon={props.icon} {...ICON} />
-  </button>
-);
+}): JSX.Element {
+  return (
+    <button
+      class={sx(base.bare, s.toolbarButton)}
+      title={props.title ?? props.label}
+      onClick={() => props.onClick()}
+    >
+      <TbIcon name={props.icon} />
+      <span>{props.label}</span>
+    </button>
+  );
+}
 
-// Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
-// darkest thing in the bar.
-const LEFT_PANE =
-  "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
-const sidebarIcon = (open: boolean): IconSvgElement =>
-  open
-    ? [
-        ...i.PanelLeftIcon,
-        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
-      ]
-    : i.PanelLeftIcon;
+// Across the window's top: Get Messages and Write, the search bar in the middle, and the app menu at the end.
+export function UnifiedToolbar(): JSX.Element {
+  return (
+    <div data-bar class={sx(s.toolbar)}>
+      <div class={sx(s.toolbarStart)}>
+        <ToolbarButton
+          label="Get Messages"
+          icon="mail"
+          title="Messages arrive as they're sent"
+          onClick={() => chooseMailbox({ kind: "inbox" })}
+        />
+        <ToolbarButton
+          label="Write"
+          icon="pencil"
+          title={`Write a new thread (${keysFor("newThread")})`}
+          onClick={() => setDialog({ kind: "newThread" })}
+        />
+      </div>
+      <button
+        class={sx(base.bare, s.search)}
+        title={`Search (${keysFor("search")})`}
+        onClick={() => setDialog({ kind: "search" })}
+      >
+        <TbIcon name="search" />
+        <span class={sx(s.searchPlaceholder)}>Search…</span>
+        <span class={sx(s.searchKeys)}>{keysFor("search")}</span>
+      </button>
+      <div class={sx(s.toolbarEnd)}>
+        <button
+          class={sx(base.bare, s.toolbarIcon)}
+          aria-label="Settings"
+          title={`Settings (${keysFor("settings")})`}
+          onClick={() => open({ settings: null })}
+        >
+          <TbIcon name="more" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
-// Beside the window's buttons: on the sidebar's top row, or the list's while it's hidden.
-export const AppButtons = (): JSX.Element => (
-  <>
-    <TopButton
-      label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
-      icon={sidebarIcon(sidebarOpen())}
-      onClick={() => setSidebarOpen(!sidebarOpen())}
-    />
-    <TopButton label="Search" icon={i.Search01Icon} onClick={() => setDialog({ kind: "search" })} />
-  </>
-);
+// ── The spaces bar ──
 
-// Back and forward through the pages you've opened, side by side before the list's title.
-export const HistoryButtons = (): JSX.Element => (
-  <span class={sx(s.history)}>
-    <TopButton
-      label={`Back (${keysFor("back")})`}
-      icon={i.ArrowLeft01Icon}
-      tight
-      disabled={!canGoBack()}
-      onClick={goBack}
-    />
-    <TopButton
-      label={`Forward (${keysFor("forward")})`}
-      icon={i.ArrowRight01Icon}
-      tight
-      disabled={!canGoForward()}
-      onClick={goForward}
-    />
-  </span>
-);
+function SpaceButton(props: {
+  label: string;
+  icon: TbIconName;
+  current?: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      class={sx(base.bare, s.space, props.current && s.spaceCurrent)}
+      aria-label={props.label}
+      aria-current={props.current ? "true" : undefined}
+      title={props.label}
+      onClick={() => props.onClick()}
+    >
+      <TbIcon name={props.icon} size={18.18} />
+    </button>
+  );
+}
 
-// ── The sidebar: mailboxes ──
+// Thunderbird's spaces down the window's left: Mail (where you are) and the Address Book, Settings at the foot.
+export function SpacesBar(): JSX.Element {
+  const inMail = (): boolean => !("settings" in view()) && !("person" in view());
+  return (
+    <nav class={sx(s.spaces)} aria-label="Spaces">
+      <div class={sx(s.spacesGroup)}>
+        <SpaceButton
+          label="Mail"
+          icon="mail-lg"
+          current={inMail()}
+          onClick={() => open({ thread: null })}
+        />
+        <SpaceButton
+          label="Address Book"
+          icon="address-book-lg"
+          current={"person" in view()}
+          onClick={() => open({ settings: null })}
+        />
+      </div>
+      <SpaceButton
+        label="Settings"
+        icon="settings-lg"
+        current={"settings" in view()}
+        onClick={() => open({ settings: null })}
+      />
+    </nav>
+  );
+}
 
-// A mailbox in the sidebar: its icon, name and count.
-function MailboxRow(props: {
+// ── The folder pane ──
+
+const [collapsed, setCollapsed] = createSignal<boolean>(saved("tb-buckets-collapsed", false));
+
+// A folder row: its twisty (when it has children), its coloured icon, its name, and its count badge.
+function Folder(props: {
   box: Mailbox;
   label: string;
-  icon: IconSvgElement;
+  icon: TbIconName;
+  color: string;
+  depth: number;
+  // Unread threads, in the grey (or, for new ones, blue) badge; `total` is a plain one (Drafts').
   count?: number;
-  indent?: boolean;
-  // What right-clicking it offers.
+  total?: number;
+  twisty?: "open" | "closed";
+  onTwisty?: () => void;
   menu?: () => MenuItem[];
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
     <li>
       <div
-        role="button"
+        role="treeitem"
         tabindex={0}
-        aria-current={on() ? "true" : undefined}
-        class={sx(s.mailbox, props.indent && s.indent, on() && s.selected)}
+        aria-selected={on() ? "true" : "false"}
+        class={sx(s.folder, on() && s.folderOn)}
+        style={{ "padding-inline-start": `${props.depth * 16}px` }}
         onClick={() => chooseMailbox(props.box)}
         onContextMenu={(e) => {
           const items = props.menu?.();
           if (items) showMenu(e, items);
         }}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          chooseMailbox(props.box);
-        }}
       >
-        <span class={sx(s.mailboxIcon)}>
-          <Icon icon={props.icon} {...ICON} />
+        <span class={sx(s.twisty)}>
+          <Show when={props.twisty}>
+            <button
+              class={sx(base.bare, s.twistyButton, props.twisty === "closed" && s.twistyClosed)}
+              aria-label={props.twisty === "open" ? "Collapse" : "Expand"}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.onTwisty?.();
+              }}
+            >
+              <TbIcon name="nav-down" size={10.91} />
+            </button>
+          </Show>
         </span>
-        <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
-        {/* Even none, so a mailbox reads as empty rather than uncounted. */}
-        <Show when={props.count !== undefined}>
-          <span class={sx(s.count)}>{props.count}</span>
+        <span class={sx(s.folderIcon)} style={{ color: on() ? undefined : props.color }}>
+          <TbIcon name={props.icon} />
+        </span>
+        <span class={sx(base.ellipsis, s.folderName, !!props.count && s.bold)}>{props.label}</span>
+        <Show when={props.count}>
+          <span class={sx(s.badge, s.badgeUnread)}>{props.count}</span>
+        </Show>
+        <Show when={!props.count && props.total}>
+          <span class={sx(s.badge, s.badgeTotal)}>{props.total}</span>
         </Show>
       </div>
     </li>
   );
 }
 
-// Swaps a bucket with its neighbour above (-1) or below (1).
 function moveBucket(bucket: Bucket, by: number): void {
   const buckets = myBuckets();
   const other = buckets[buckets.indexOf(bucket) + by];
@@ -217,138 +265,139 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   const buckets = myBuckets();
   const at = buckets.indexOf(bucket);
   return [
-    {
-      label: "Edit Bucket",
-      icon: icon(i.PencilEdit01Icon, 13),
-      run: () => setDialog({ kind: "bucket", bucket }),
-    },
-    {
-      label: "New Bucket",
-      icon: icon(i.Add01Icon, 13),
-      run: () => setDialog({ kind: "bucket" }),
-    },
+    { label: "Edit Bucket", run: () => setDialog({ kind: "bucket", bucket }) },
+    { label: "New Bucket", run: () => setDialog({ kind: "bucket" }) },
     "separator",
     ...(at > 0 ? [{ label: "Move Up", run: () => moveBucket(bucket, -1) }] : []),
     ...(at < buckets.length - 1 ? [{ label: "Move Down", run: () => moveBucket(bucket, 1) }] : []),
-    // Sorting needs somewhere to put things.
     ...(buckets.length > 1
-      ? [
-          "separator" as const,
-          {
-            label: "Delete Bucket",
-            icon: icon(i.Delete02Icon, 13),
-            run: () => void bucket.delete(),
-          },
-        ]
+      ? ["separator" as const, { label: "Delete Bucket", run: () => void bucket.delete() }]
       : []),
   ];
 }
 
+const unreadIn = (threads: Thread[]): number =>
+  threads.filter((t) => {
+    const it = itemFor(t);
+    return it !== undefined && !it.doneAt && unread(it);
+  }).length;
+
 export function Sidebar(): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
+  const toggle = (): void => {
+    setCollapsed(!collapsed());
+    save("tb-buckets-collapsed", collapsed());
+  };
   return (
     <aside
-      class={stylex.attrs(s.sidebar, theme() === "slack" && slackSidebar).class}
-      style={{ width: `${sidebarColumn.width()}px` }}
+      class={stylex.attrs(s.folderPane, theme() === "slack" && slackSidebar).class}
+      style={{ width: `${folderPane.width()}px` }}
+      aria-label="Folders"
     >
-      <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
-        <AppButtons />
-        <span class={sx(topbar.end)}>
-          <button
-            class={sx(topbar.button)}
-            aria-label="New Thread"
-            title={`New Thread (${keysFor("newThread")})`}
-            onClick={() => setDialog({ kind: "newThread" })}
-          >
-            <Icon icon={i.PencilEdit02Icon} {...ICON} />
-          </button>
-        </span>
+      {/* #folderPaneHeaderBar: New Message, Thunderbird's primary button, and the pane's menu. */}
+      <div class={sx(s.folderHeader)}>
+        <button
+          class={sx(base.bare, s.primary)}
+          title={`New Message (${keysFor("newThread")})`}
+          onClick={() => setDialog({ kind: "newThread" })}
+        >
+          <TbIcon name="add" />
+          New Message
+        </button>
+        <button
+          class={sx(base.bare, s.toolbarIcon)}
+          aria-label="Folder pane options"
+          title="Folder pane options"
+          onClick={(e) =>
+            showMenu(e, [{ label: "New Bucket", run: () => setDialog({ kind: "bucket" }) }])
+          }
+        >
+          <TbIcon name="kebab" />
+        </button>
       </div>
-      {/* Your inbox and its buckets, then every thread, then your drafts. */}
-      <nav class={sx(s.nav)} aria-label="Mailboxes">
-        <ul class={sx(base.list, s.stack)}>
-          <MailboxRow
-            box={{ kind: "inbox" }}
-            label="Buckets"
-            icon={i.InboxIcon}
-            count={inbox().order.length}
-            menu={() => [
-              {
-                label: "New Bucket",
-                icon: icon(i.Add01Icon, 13),
-                run: () => setDialog({ kind: "bucket" }),
-              },
-            ]}
-          />
+      <ul class={sx(base.list, s.tree)} role="tree">
+        <li>
+          <div class={sx(s.mode)}>All Folders</div>
+        </li>
+        {/* The account, bold, its folders under it. */}
+        <li>
+          <div class={sx(s.folder, s.account)}>
+            <span class={sx(s.twisty)} />
+            <span class={sx(s.folderIcon)}>
+              <TbIcon name="mail" />
+            </span>
+            <span class={sx(base.ellipsis, s.folderName, s.bold)}>{workspace().name}</span>
+          </div>
+        </li>
+        <Folder
+          box={{ kind: "inbox" }}
+          label="Buckets"
+          icon="inbox"
+          color={tb.inbox}
+          depth={1}
+          count={unreadIn(inbox().order) || undefined}
+          total={inbox().order.length || undefined}
+          twisty={collapsed() ? "closed" : "open"}
+          onTwisty={toggle}
+          menu={() => [{ label: "New Bucket", run: () => setDialog({ kind: "bucket" }) }]}
+        />
+        <Show when={!collapsed()}>
           <Show when={inbox().unsorted.length > 0}>
-            <MailboxRow
+            <Folder
               box={{ kind: "unsorted" }}
               label="Sorting"
-              icon={i.Clock01Icon}
-              count={inbox().unsorted.length}
-              indent
+              icon="folder"
+              color={tb.folder}
+              depth={2}
+              total={inbox().unsorted.length}
             />
           </Show>
-          {/* Your buckets, under the inbox they sort. */}
           <For each={inbox().sections}>
             {(section) => (
-              <MailboxRow
+              <Folder
                 box={{ kind: "bucket", id: section.bucket.id }}
                 label={section.bucket.name}
-                icon={icons().get(section.bucket.id) ?? i.InboxIcon}
-                count={section.items.length}
-                indent
+                icon="folder"
+                color={tb.folder}
+                depth={2}
+                count={unreadIn(section.items.map((it) => it.thread)) || undefined}
+                total={section.items.length || undefined}
                 menu={() => bucketMenu(section.bucket)}
               />
             )}
           </For>
-        </ul>
-        <ul class={sx(base.list, s.stack, s.nearby)}>
-          <MailboxRow
-            box={{ kind: "all" }}
-            label="All Threads"
-            icon={i.Message01Icon}
-            count={allThreads().length}
-          />
-          <MailboxRow
-            box={{ kind: "drafts" }}
-            label="Drafts"
-            icon={i.NoteEditIcon}
-            count={drafts().length}
-          />
-        </ul>
-      </nav>
-      <div class={sx(s.footer)}>
-        {/* You: one button to your profile and settings, on one page. */}
-        <button
-          class={sx(base.bare, s.profile)}
-          aria-label="Profile and Settings"
-          title={`Profile and Settings (${keysFor("settings")})`}
-          onClick={() => open({ settings: null })}
-        >
-          <Identicon seed={me().id} size={18.18} />
-          <span class={sx(base.ellipsis)}>{me().name}</span>
-        </button>
-      </div>
-      <sidebarColumn.Edge label="Resize Sidebar" />
+        </Show>
+        <Folder
+          box={{ kind: "all" }}
+          label="All Threads"
+          icon="archive"
+          color={tb.archive}
+          depth={1}
+          total={allThreads().length || undefined}
+        />
+        <Folder
+          box={{ kind: "drafts" }}
+          label="Drafts"
+          icon="draft"
+          color={tb.draft}
+          depth={1}
+          total={drafts().length || undefined}
+        />
+      </ul>
+      <folderPane.Splitter label="Resize folder pane" />
     </aside>
   );
 }
 
-// ── The list: the chosen mailbox's threads ──
+// ── The thread pane: cards ──
 
-// As Mail stamps a message: the time today, "Yesterday", then the date.
+// Thunderbird's dates: the time today, else the date.
 function stamp(date: Date): string {
-  const today = new Date();
-  const day = (d: Date): number => new Date(d).setHours(0, 0, 0, 0);
-  if (day(date) === day(today))
-    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  if (day(today) - day(date) === 86_400_000) return "Yesterday";
-  return shortDate(date);
+  const today = new Date().setHours(0, 0, 0, 0);
+  return new Date(date).setHours(0, 0, 0, 0) === today
+    ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : `${shortDate(date)}, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
-// What a message says, without the @mentions most start with (the list shows who it's from already).
-// Everyone's @name, once for every row rather than per row.
 const mentionNames = store.view(() => store.all(User).map((u) => `@${u.name} `));
 function preview(body: string): string {
   let text = plain(body);
@@ -361,109 +410,55 @@ function preview(body: string): string {
   return text;
 }
 
-// A thread as Mail lists a message: its title and when, then who wrote last and the start of what they wrote.
-function Row(props: { thread: Thread }): JSX.Element {
+// A thread card (threadCard.css): its read-status column (a green dot while unread), then the sender in semibold with
+// the date at the end, and the subject under it; unread, both bold.
+function Card(props: { thread: Thread }): JSX.Element {
   const t = (): Thread => props.thread;
   const on = (): boolean => active() === t();
   const isUnread = (): boolean => {
     const it = itemFor(t());
     return it !== undefined && !it.doneAt && unread(it);
   };
-  // Its latest message, found once (a pass, not a sort) for the places that show it.
   const last = createMemo(() => {
     let latest: Message | undefined;
     for (const message of t().messages)
       if (!latest || message.createdAt > latest.createdAt) latest = message;
     return latest;
   });
-  const from = () => last()?.author ?? t().owner;
-  let row!: HTMLDivElement;
-  // The open thread stays in view as J and K (or the arrows) move past the rows showing.
+  let row!: HTMLLIElement;
   createEffect(on, (shown) => {
     if (shown) row.scrollIntoView({ block: "nearest" });
   });
   return (
-    <li>
+    <li ref={row} class={sx(s.cardCell)}>
       <div
-        ref={row}
-        role="button"
+        role="row"
         tabindex={on() ? 0 : -1}
+        aria-selected={on() ? "true" : "false"}
         data-active={on() ? "" : undefined}
-        aria-current={on() ? "true" : undefined}
-        class={sx(s.row, on() && s.selected)}
+        class={sx(s.card, on() && s.cardOn)}
         onClick={() => open({ thread: t().id })}
         onContextMenu={(e) => showMenu(e, threadMenu(t()))}
       >
-        <span class={sx(s.rowBody)}>
-          {/* What it's about first, then who wrote last: the topic is what you scan a list for. */}
-          <span class={sx(s.rowTop)}>
-            <span class={sx(s.subjectLine)}>
-              <span class={sx(base.ellipsis, s.subject)}>{t().title}</span>
-            </span>
-            {/* Unread: a dot before when, on the right, so read rows lose no width to an empty column. */}
-            <span class={sx(s.stamp)}>
-              <Show when={isUnread()}>
-                <span class={sx(s.unreadDot)} aria-label="Unread" />
-              </Show>
-              {stamp(last()?.createdAt ?? t().createdAt)}
-            </span>
-          </span>
-          <span class={sx(s.second)}>
-            <span class={sx(s.preview)}>
-              <span class={sx(s.from)}>{from()?.name ?? ""}</span>
-              <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
-            </span>
-          </span>
+        <span class={sx(s.readStatus)}>
+          <Show when={isUnread()}>
+            <span class={sx(s.unreadDot)} aria-label="Unread" />
+          </Show>
         </span>
-      </div>
-    </li>
-  );
-}
-
-const draftTitle = (draft: Draft): string =>
-  draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft";
-
-// A draft in Drafts, which opens back in Compose.
-function DraftRow(props: { draft: Draft }): JSX.Element {
-  // Its drafted title, else its first line; the rest is the preview.
-  const lines = (): string[] => props.draft.text.split("\n");
-  const rest = (): string =>
-    props.draft.draft?.title ? props.draft.text : lines().slice(1).join(" ");
-  const on = (): boolean => shown("draft") === props.draft.id;
-  return (
-    <li>
-      <div
-        role="button"
-        tabindex={0}
-        data-active={on() ? "" : undefined}
-        aria-current={on() ? "true" : undefined}
-        class={sx(s.row, on() && s.selected)}
-        onClick={() => open({ draft: props.draft.id })}
-        onContextMenu={(e) =>
-          showMenu(e, [
-            {
-              label: "Open Draft",
-              icon: icon(i.NoteEditIcon, 13),
-              run: () => open({ draft: props.draft.id }),
-            },
-            "separator",
-            {
-              label: "Delete Draft",
-              icon: icon(i.Delete02Icon, 13),
-              run: () => void props.draft.delete(),
-            },
-          ])
-        }
-      >
-        <span class={sx(s.rowBody)}>
-          <span class={sx(s.rowTop)}>
-            <span class={sx(base.ellipsis, s.from)}>{draftTitle(props.draft)}</span>
-            <span class={sx(s.stamp)}>{stamp(props.draft.updatedAt)}</span>
-          </span>
-          <Show when={rest()}>
-            <span class={sx(s.second)}>
-              <span class={sx(s.preview)}>{rest()}</span>
+        <span class={sx(s.cardColumn)}>
+          <span class={sx(s.cardRow)}>
+            <span class={sx(base.ellipsis, s.sender, isUnread() && s.bold)}>
+              {last()?.author?.name ?? t().owner?.name ?? "Someone"}
             </span>
+            <span class={sx(s.date)}>{stamp(last()?.createdAt ?? t().createdAt)}</span>
+          </span>
+          <span class={sx(s.cardRow)}>
+            <span class={sx(base.ellipsis, s.subject, isUnread() && s.bold)}>{t().title}</span>
+          </span>
+          <Show when={last()}>
+            {(message) => (
+              <span class={sx(base.ellipsis, s.snippet)}>{preview(message().body)}</span>
+            )}
           </Show>
         </span>
       </div>
@@ -471,14 +466,39 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
   );
 }
 
-// `alone`, with nothing open beside it: it takes the window.
-export function MessageList(props: { alone?: boolean }): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
-  // Opening a draft (from ⌘K, say) lists the drafts.
+function DraftCard(props: { draft: Draft }): JSX.Element {
+  const title = (): string =>
+    props.draft.draft?.title || props.draft.text.split("\n")[0] || "(no subject)";
+  const on = (): boolean => shown("draft") === props.draft.id;
+  return (
+    <li class={sx(s.cardCell)}>
+      <div
+        role="row"
+        class={sx(s.card, on() && s.cardOn)}
+        onClick={() => open({ draft: props.draft.id })}
+        onContextMenu={(e) =>
+          showMenu(e, [{ label: "Delete Draft", run: () => void props.draft.delete() }])
+        }
+      >
+        <span class={sx(s.readStatus)} />
+        <span class={sx(s.cardColumn)}>
+          <span class={sx(s.cardRow)}>
+            <span class={sx(base.ellipsis, s.sender, s.draftLabel)}>Draft</span>
+            <span class={sx(s.date)}>{stamp(props.draft.updatedAt)}</span>
+          </span>
+          <span class={sx(s.cardRow)}>
+            <span class={sx(base.ellipsis, s.subject)}>{title()}</span>
+          </span>
+        </span>
+      </div>
+    </li>
+  );
+}
+
+export function MessageList(): JSX.Element {
   createEffect(view, (next) => {
     if ("draft" in next && mailbox().kind !== "drafts") chooseMailbox({ kind: "drafts" });
   });
-  // A bucket that's gone (deleted here or elsewhere) goes back to the inbox rather than an empty list with no name.
   createEffect(
     () => {
       const box = mailbox();
@@ -487,21 +507,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
     (gone) => void (gone && chooseMailbox({ kind: "inbox" })),
   );
   const isDrafts = (): boolean => mailbox().kind === "drafts";
-  const total = (): number => (isDrafts() ? drafts().length : listed().order.length);
-  const unreadCount = (): number =>
-    listed().order.filter((t) => {
-      const it = itemFor(t);
-      return it !== undefined && !it.doneAt && unread(it);
-    }).length;
-  const subtitle = (): string => {
-    const n = unreadCount();
-    if (n > 0) return `${n} unread`;
-    const count = total();
-    const noun = isDrafts() ? "draft" : "thread";
-    return `${count} ${noun}${count === 1 ? "" : "s"}`;
-  };
-  let list!: HTMLDivElement;
-  // ↑ and ↓ move through the list, as in Mail (J and K do too, anywhere).
+  const count = (): number => (isDrafts() ? drafts().length : listed().order.length);
+  let list!: HTMLUListElement;
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const order = listed().order;
@@ -517,200 +524,244 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
   };
   return (
     <section
-      class={sx(s.list, props.alone && s.listAlone)}
-      style={{ width: props.alone ? undefined : `${listColumn.width()}px` }}
+      class={sx(s.threadPane)}
+      style={{ width: `${threadPane.width()}px` }}
       aria-label={mailboxTitle(mailbox())}
     >
-      <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
-        <Show when={!sidebarOpen()}>
-          <AppButtons />
-        </Show>
-        {/* Back and forward: here, where they always are, whatever's open beside the list. */}
-        <HistoryButtons />
-        <span class={sx(s.listHeading)}>
-          <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
-          <span class={sx(s.listSubtitle)}>{subtitle()}</span>
+      {/* #threadPaneHeaderBar: the folder's name and how many, then the quick filter and view options. */}
+      <div class={sx(s.threadHeader, !sidebarOpen() && s.threadHeaderAlone)}>
+        <span class={sx(base.ellipsis, s.folderTitle)}>{mailboxTitle(mailbox())}</span>
+        <span class={sx(s.messageCount)}>
+          {count()} {isDrafts() ? "draft" : "thread"}
+          {count() === 1 ? "" : "s"}
         </span>
-        <Show when={!sidebarOpen()}>
-          <span class={sx(topbar.end)}>
-            <button
-              class={sx(topbar.button)}
-              aria-label="New Thread"
-              title={`New Thread (${keysFor("newThread")})`}
-              onClick={() => setDialog({ kind: "newThread" })}
-            >
-              <Icon icon={i.PencilEdit02Icon} {...ICON} />
-            </button>
-          </span>
-        </Show>
+        <span class={sx(s.threadHeaderEnd)}>
+          <button
+            class={sx(base.bare, s.headerButton)}
+            title={`Quick Filter (${keysFor("search")})`}
+            onClick={() => setDialog({ kind: "search" })}
+          >
+            <TbIcon name="search" />
+            Quick Filter
+          </button>
+        </span>
       </div>
-      <div
-        ref={list}
-        class={sx(s.listScroll)}
-        onMouseDown={() =>
-          queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
-        }
-        onKeyDown={onKeyDown}
-      >
+      <ul ref={list} class={sx(base.list, s.cards)} role="grid" onKeyDown={onKeyDown}>
         <Show
           when={isDrafts()}
-          fallback={
-            <For each={listed().groups}>
-              {(group) => (
-                <>
-                  <Show when={mailbox().kind === "inbox"}>
-                    <div
-                      class={sx(s.groupHeader)}
-                      onContextMenu={(e) => {
-                        if (group.bucket) showMenu(e, bucketMenu(group.bucket));
-                      }}
-                    >
-                      <Icon
-                        icon={
-                          group.bucket
-                            ? (icons().get(group.bucket.id) ?? i.InboxIcon)
-                            : i.Clock01Icon
-                        }
-                        size={11}
-                        aria-hidden="true"
-                      />
-                      {group.bucket?.name ?? group.title}
-                      <span class={sx(s.groupCount)}>{group.threads.length}</span>
-                    </div>
-                  </Show>
-                  <ul class={sx(base.list, s.stack)}>
-                    <For each={group.threads}>{(thread) => <Row thread={thread} />}</For>
-                  </ul>
-                </>
-              )}
-            </For>
-          }
+          fallback={<For each={listed().order}>{(thread) => <Card thread={thread} />}</For>}
         >
-          <ul class={sx(base.list, s.stack)}>
-            <For each={drafts()}>{(draft) => <DraftRow draft={draft} />}</For>
-          </ul>
+          <For each={drafts()}>{(draft) => <DraftCard draft={draft} />}</For>
         </Show>
-        <Show when={total() === 0}>
-          <div class={sx(s.empty)}>
-            <Icon
-              icon={mailbox().kind === "inbox" ? i.InboxCheckIcon : i.InboxIcon}
-              size={28}
-              aria-hidden="true"
-            />
-            <span class={sx(s.emptyTitle)}>
-              {mailbox().kind === "inbox" ? "All caught up" : "Nothing here"}
-            </span>
-            <Show when={mailbox().kind === "inbox"}>
-              <span>Nothing in your buckets needs you right now.</span>
-            </Show>
+      </ul>
+      {/* tree-listbox.css's placeholder: centred, faded, a heading and a line. */}
+      <Show when={count() === 0}>
+        <div class={sx(s.placeholder)}>
+          <div class={sx(s.placeholderTitle)}>
+            {mailbox().kind === "inbox" ? "No new messages" : "No messages"}
           </div>
-        </Show>
-      </div>
-      <Show when={!props.alone}>
-        <listColumn.Edge label="Resize List" />
+          <div>{mailbox().kind === "inbox" ? "Everything here is done." : "Nothing here yet."}</div>
+        </div>
       </Show>
+      <threadPane.Splitter label="Resize thread pane" />
     </section>
   );
 }
 
+const ACCENT_10 = `color-mix(in srgb, ${tb.selected} 10%, ${tb.page})`;
+const ACCENT_15 = `color-mix(in srgb, ${tb.selected} 15%, ${tb.page})`;
+
 const s = stylex.create({
-  // The resize edge on a column's right.
-  edge: {
+  splitter: {
     position: "absolute",
     top: 0,
     right: -3,
     bottom: 0,
-    zIndex: 1,
+    zIndex: 2,
     width: 5,
     margin: 0,
     borderStyle: "none",
-    // Invisible: only the cursor says it's there; the column's own border is the line.
     backgroundColor: "transparent",
-    cursor: "col-resize",
+    cursor: "ew-resize",
   },
-  history: { display: "flex", marginRight: 6 },
-  tight: { width: 18 },
 
-  sidebar: {
+  // unifiedToolbar.css: 4px of padding around 1lh + a button's border and padding, a 15% black line under it.
+  toolbar: {
+    position: "relative",
+    display: "grid",
+    gridTemplateColumns: "1fr minmax(200px, 420px) 1fr",
+    flexShrink: 0,
+    alignItems: "center",
+    gap: 6,
+    height: 36,
+    paddingLeft: sidebarSpace.afterLights,
+    paddingRight: 6,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: "rgb(0 0 0 / 15%)",
+    backgroundColor: colors.chrome,
+  },
+  toolbarStart: { display: "flex", gap: 2, alignItems: "center", minWidth: 0 },
+  toolbarEnd: { display: "flex", gap: 2, justifyContent: "flex-end" },
+  // A unified toolbar button: transparent, washed under the pointer, 3px corners, its icon and label.
+  toolbarButton: {
+    display: "flex",
+    gap: 5,
+    alignItems: "center",
+    height: 25,
+    padding: "0 6px",
+    borderRadius: 3,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    whiteSpace: "nowrap",
+    backgroundColor: { default: "transparent", ":hover": tb.bg3, ":active": tb.bg4 },
+    cursor: "default",
+    WebkitAppRegion: "no-drag",
+  },
+  toolbarIcon: {
+    display: "grid",
+    placeItems: "center",
+    width: 25,
+    height: 25,
+    borderRadius: 3,
+    color: colors.textPrimary,
+    backgroundColor: { default: "transparent", ":hover": tb.bg3, ":active": tb.bg4 },
+    cursor: "default",
+    WebkitAppRegion: "no-drag",
+  },
+  // The search bar: 1.45lh + 4px, a 1px #a1a1aa (--color-gray-40) border, the page's white, 3px corners.
+  search: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    height: 23,
+    padding: "0 7px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: tb.border1,
+    borderRadius: 3,
+    color: colors.textTertiary,
+    backgroundColor: tb.page,
+    fontSize: fontSizes.body,
+    cursor: "text",
+    WebkitAppRegion: "no-drag",
+  },
+  searchPlaceholder: { flex: 1, textAlign: "left" },
+  searchKeys: { fontSize: fontSizes.small },
+
+  // spacesToolbar.css: 7px padding, 15px gaps, 20px icons in 5px of padding; the current space in the primary
+  // button's blue, its icon white. A faint gradient to its right edge, and a border.
+  spaces: {
+    display: "flex",
+    flexDirection: "column",
+    flexShrink: 0,
+    justifyContent: "space-between",
+    padding: 6.36,
+    borderRightWidth: 1,
+    borderRightStyle: "solid",
+    borderRightColor: colors.strokeTertiary,
+    backgroundColor: tb.spaces,
+    backgroundImage: "linear-gradient(90deg, transparent 0%, rgb(0 0 0 / 5%) 100%)",
+  },
+  spacesGroup: { display: "flex", flexDirection: "column", gap: 13.64 },
+  space: {
+    display: "grid",
+    placeItems: "center",
+    padding: 4.55,
+    borderRadius: 3,
+    color: colors.textPrimary,
+    backgroundColor: { default: "transparent", ":hover": tb.bg3 },
+    cursor: "default",
+  },
+  spaceCurrent: {
+    color: tb.selectedText,
+    backgroundColor: { default: tb.selected, ":hover": tb.selected },
+  },
+
+  // #folderPane: --sidebar-background (--layout-background-1).
+  folderPane: {
     position: "relative",
     display: "flex",
     flexDirection: "column",
     flexShrink: 0,
+    minWidth: 0,
     backgroundColor: colors.chrome,
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  sidebarBar: { paddingLeft: sidebarSpace.afterLights },
-  // Under the top bar, its first line where every column's starts (17pt under the top bar). Each size here is the
-  // macOS app's points ÷ 1.1, for the 110% scale.
-  nav: {
-    flex: 1,
-    minHeight: 0,
-    paddingTop: 8.37,
-    paddingInline: space.inset,
-    paddingBottom: 12,
-    overflowY: "auto",
-  },
-  // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
-  selected: { backgroundColor: colors.bgTertiary },
-  // A little space between rows, so neighbouring fills don't run together.
-  stack: { display: "flex", flexDirection: "column", gap: 1.82 },
-  // 30pt tall, rounded 8pt, 8pt in from its ends, its icon in an 18pt column 8pt before its 13pt name.
-  mailbox: {
+  folderHeader: { display: "flex", gap: 4, alignItems: "center", padding: 6 },
+  // The primary button: --selected-item-color with its text colour, 80% of it toward black under the pointer.
+  primary: {
     display: "flex",
-    gap: space.inset,
+    flex: 1,
+    gap: 6,
     alignItems: "center",
-    height: 27.27,
-    paddingInline: space.inset,
-    borderRadius: radii.item,
+    justifyContent: "center",
+    height: 25,
+    padding: "0 10px",
+    borderRadius: 3,
+    color: tb.selectedText,
+    backgroundColor: {
+      default: tb.selected,
+      ":hover": `color-mix(in srgb, ${tb.selected} 80%, black)`,
+      ":active": `color-mix(in srgb, ${tb.selected} 70%, black)`,
+    },
+    fontSize: fontSizes.body,
+    fontWeight: 600,
+    cursor: "default",
+  },
+  tree: { flex: 1, minHeight: 0, padding: "0 3px 6px", overflowY: "auto" },
+  // .mode-name: 600 at 1.1rem, 6px above and below, 12px in.
+  mode: {
+    padding: "5.45px 0 5.45px 10.91px",
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  // A folder row: --list-item-min-height (26px), 3px corners; hover --treeitem-background-hover, chosen the accent.
+  folder: {
+    display: "flex",
+    alignItems: "center",
+    minHeight: 23.64,
+    paddingRight: 3,
+    borderRadius: 3,
     color: colors.textPrimary,
     fontSize: fontSizes.body,
+    backgroundColor: { default: "transparent", ":hover": tb.bg3 },
     cursor: "default",
     outline: "none",
   },
-  // A bucket under Inbox: indented by a margin, not padding, so its ground starts just before its icon.
-  indent: { marginLeft: 14 },
-  mailboxIcon: {
-    display: "flex",
-    flexShrink: 0,
-    justifyContent: "center",
-    width: 16.36,
-    color: colors.iconTertiary,
+  folderOn: {
+    color: tb.selectedText,
+    backgroundColor: { default: tb.selected, ":hover": tb.selected },
   },
-  mailboxName: { flex: 1 },
-  count: {
+  account: { backgroundColor: { default: "transparent", ":hover": "transparent" } },
+  twisty: { display: "grid", flexShrink: 0, placeItems: "center", width: 14.55, height: 14.55 },
+  twistyButton: { display: "grid", placeItems: "center", color: "inherit", cursor: "default" },
+  twistyClosed: { transform: "rotate(-90deg)" },
+  folderIcon: { display: "flex", flexShrink: 0, marginLeft: 2 },
+  // .name: 7px on either side.
+  folderName: { flex: 1, marginInline: 6.36 },
+  bold: { fontWeight: 700 },
+  // .folder-count-badge: a capsule, 1px 4px, 0.85em bold, 16px at least; unread grey-50 with white text, total
+  // grey-20 with near-black.
+  badge: {
     flexShrink: 0,
-    color: colors.textTertiary,
+    minWidth: 14.55,
+    marginRight: 5.45,
+    padding: "1px 3.64px",
+    borderRadius: 1000,
     fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
+    lineHeight: "normal",
+    textAlign: "center",
   },
-  // Just apart from the rows above.
-  nearby: { marginTop: space.inset },
-  // You 16pt in and 12pt up from the corner, at 20pt, 8pt before your 13pt name.
-  footer: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 4,
-    alignItems: "center",
-    marginInline: space.inset,
-    marginBottom: 4.55,
-  },
-  profile: {
-    display: "flex",
-    flex: 1,
-    minWidth: 0,
-    gap: space.inset,
-    alignItems: "center",
-    paddingBlock: 6.36,
-    paddingInline: space.inset,
-    borderRadius: radii.item,
-    color: colors.textSecondary,
-    fontSize: fontSizes.body,
-    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
-  },
+  badgeUnread: { color: "#ffffff", backgroundColor: tb.badge, fontWeight: 700 },
+  badgeTotal: { color: colors.textPrimary, backgroundColor: tb.bg3, fontWeight: 400 },
 
-  list: {
+  // #threadPane, its header bar, and the cards' ground.
+  threadPane: {
     position: "relative",
     display: "flex",
     flexDirection: "column",
@@ -720,96 +771,109 @@ const s = stylex.create({
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
+    containerType: "inline-size",
   },
-  listBar: { paddingLeft: 16 },
-  // Nothing open beside it: it takes the room, with no edge to divide.
-  listAlone: { flex: 1, borderRightWidth: 0 },
-  listBarAlone: { paddingLeft: sidebarSpace.afterLights },
-  // The mailbox's name and, after it on the same line, how many are unread (or listed).
-  listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
-  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
-  listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
-  // Cards 8pt in from the column's sides and 2pt apart.
-  listScroll: {
-    position: "relative",
-    isolation: "isolate",
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    paddingTop: 5.18,
-    paddingInline: space.inset,
-    paddingBottom: 24,
-    outline: "none",
-  },
-  // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.
-  groupHeader: {
+  threadHeader: {
     display: "flex",
     gap: 6,
     alignItems: "center",
-    padding: "9.09px 10.91px 1.82px",
-    color: colors.textTertiary,
-    fontSize: fontSizes.caption,
-    fontWeight: 500,
+    flexShrink: 0,
+    height: 34,
+    padding: "0 6px 0 9px",
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
   },
-  groupCount: { fontWeight: 400 },
-  // No hairlines between rows: compact cards, set apart by the space between them. A card: 12pt in from its sides and
-  // 10pt from its top and bottom, rounded 10pt, its two parts 5pt apart.
-  row: {
+  threadHeaderAlone: { paddingLeft: 9 },
+  folderTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: 700 },
+  messageCount: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.caption },
+  threadHeaderEnd: { display: "flex", gap: 2, marginLeft: "auto" },
+  headerButton: {
     display: "flex",
-    alignItems: "flex-start",
-    padding: "9.09px 10.91px",
-    borderRadius: 9.09,
+    gap: 5,
+    alignItems: "center",
+    height: 23,
+    padding: "0 6px",
+    borderRadius: 3,
     color: colors.textPrimary,
+    backgroundColor: { default: tb.button, ":hover": tb.buttonHover, ":active": tb.buttonActive },
+    fontSize: fontSizes.body,
+    whiteSpace: "nowrap",
+    cursor: "default",
+  },
+  // #threadTree[rows="thread-card"]: 2px above and below.
+  cards: { flex: 1, minHeight: 0, padding: "2px 0", overflowY: "auto", outline: "none" },
+  // .card-layout > td: 2px 3px around each card.
+  cardCell: { padding: "1.82px 2.73px" },
+  // .card-container: the page's white, a 1px --layout-border-0 line, 3px corners; hover the accent at 10% with a 70%
+  // border, chosen at 15% with the accent's border.
+  card: {
+    display: "grid",
+    gridTemplateColumns: "14.55px 1fr",
+    paddingInline: "3px 7.27px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: {
+      default: tb.cardBorder,
+      ":hover": `color-mix(in srgb, ${tb.selected} 70%, transparent)`,
+    },
+    borderRadius: 3,
+    color: colors.textPrimary,
+    backgroundColor: { default: tb.page, ":hover": ACCENT_10 },
     cursor: "default",
     outline: "none",
   },
+  cardOn: {
+    borderColor: { default: tb.selected, ":hover": tb.selected },
+    backgroundColor: { default: ACCENT_15, ":hover": ACCENT_15 },
+  },
+  readStatus: { display: "grid", placeItems: "start center", paddingTop: 7.27 },
+  // --read-status-fill and --read-status-stroke for an unread message: green-40 inside green-60.
   unreadDot: {
-    flexShrink: 0,
-    width: 6.36,
-    height: 6.36,
+    width: 7.27,
+    height: 7.27,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: tb.unreadStroke,
     borderRadius: "50%",
-    backgroundColor: colors.systemBlue,
+    backgroundColor: tb.unreadFill,
   },
-  rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 4.55, minWidth: 0 },
-  // The first line, at 14pt: the title, then at least 8pt on, the unread dot and when.
-  rowTop: { display: "flex", gap: space.inset, alignItems: "center", fontSize: 12.73 },
-  // Who wrote last, at the start of the preview: a little stronger than their words.
-  from: { color: colors.textSecondary, fontWeight: 500 },
-  stamp: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 4.55,
-    alignItems: "center",
-    color: colors.textTertiary,
-    fontVariantNumeric: "tabular-nums",
-  },
-  subjectLine: { display: "flex", flex: 1, gap: 4.55, alignItems: "center", minWidth: 0 },
-  subject: { fontWeight: 600, lineHeight: "17.27px" },
-  // The rest at 13pt: the preview, up to two lines.
-  second: {
-    display: "flex",
-    gap: space.inset,
-    alignItems: "last baseline",
-    fontSize: fontSizes.body,
-    lineHeight: "14.55px",
-  },
-  preview: {
-    display: "-webkit-box",
-    flex: 1,
-    minWidth: 0,
-    overflow: "hidden",
-    color: colors.textTertiary,
-    WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 2,
-  },
-  empty: {
+  // .thread-card-column: 3px between its rows and above and below them.
+  cardColumn: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
+    gap: 2.73,
+    minWidth: 0,
+    paddingBlock: 2.73,
+  },
+  // .thread-card-row: line-height 1.5, the sender and the date at either end.
+  cardRow: {
+    display: "flex",
+    gap: 2.73,
     alignItems: "center",
-    padding: "64px 24px",
+    justifyContent: "space-between",
+    lineHeight: 1.5,
+  },
+  // .sender: 600 at 0.95rem, 3px in. .date: 0.95rem at 85%.
+  sender: { flex: 1, paddingLeft: 2.73, fontSize: fontSizes.caption, fontWeight: 600 },
+  draftLabel: { color: colors.urgent },
+  date: { flexShrink: 0, fontSize: fontSizes.caption, opacity: 0.85, whiteSpace: "nowrap" },
+  subject: { flex: 1, paddingLeft: 2.73, fontSize: fontSizes.body },
+  snippet: {
+    paddingLeft: 2.73,
+    paddingBottom: 1,
     color: colors.textTertiary,
+    fontSize: fontSizes.caption,
+  },
+  // slot[name="placeholders"]: 60px down, faded to half, a 1.5rem semibold heading.
+  placeholder: {
+    position: "absolute",
+    insetInline: 0,
+    top: 100,
+    padding: "0 36px",
+    color: colors.textPrimary,
+    opacity: 0.5,
     textAlign: "center",
   },
-  emptyTitle: { color: colors.textSecondary, fontSize: fontSizes.input, fontWeight: 600 },
+  placeholderTitle: { marginBottom: 11, fontSize: 17.73, fontWeight: 600, lineHeight: 1.2 },
 });

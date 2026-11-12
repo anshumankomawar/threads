@@ -1,77 +1,130 @@
 import * as stylex from "@stylexjs/stylex";
 
 // Dark is the default; `lightTheme` (on the root, from `applyTheme`) is the same tokens for light.
-const DARK_BASE = "oklch(0.955 0 0)";
-const LIGHT_BASE = "oklch(0.21 0 0)";
 const mix = (base: string, percent: number): string =>
   `color-mix(in srgb, ${base} ${percent}%, transparent)`;
 
+// Thunderbird's palette (comm-central's colors.css and layout.css): its layout backgrounds (0 the page, 1 the panes,
+// 2-4 the washes), layout colours, neutral borders and the system accent, in dark first, then light.
 const DARK = {
-  // The window's ground, opaque, as the macOS app's.
-  chrome: "#141414",
-  textPrimary: DARK_BASE,
-  textSecondary: mix(DARK_BASE, 74),
-  textTertiary: mix(DARK_BASE, 60),
-  bgTertiary: mix(DARK_BASE, 9),
-  bgQuaternary: mix(DARK_BASE, 5),
-  iconTertiary: mix(DARK_BASE, 52),
-  strokeTertiary: mix(DARK_BASE, 8),
-  strokeFocused: mix(DARK_BASE, 15),
-  // A column's resize edge while it's hovered or dragged: just stronger than the border it's on.
-  resizeEdge: mix(DARK_BASE, 11),
-  panel: "#171717",
-  panelBorder: "#212121",
-  panelSelected: "#222222",
-  // A card on the ground (a timeline's bars): above it in either theme, white in light and lighter in dark.
-  raised: "#1e1e1e",
-  raisedBorder: "#2a2a2a",
-  accent: "#78aee7",
-  accentFill: "#1f252c",
-  // Solid buttons (a table view's New): Notion's blue, in both themes.
-  primary: "rgb(35 131 226)",
-  primaryHover: "rgb(28 112 196)",
-  statusClosed: "oklch(0.713 0.094 155.438)",
-  urgent: "oklch(0.712 0.177 12.651)",
+  // --layout-background-1, the panes' ground.
+  chrome: "#27272a",
+  textPrimary: "#f4f4f5",
+  textSecondary: "#d4d4d8",
+  textTertiary: "#a1a1aa",
+  // --treeitem-background-selected (unfocused), and --treeitem-background-hover.
+  bgTertiary: "#3f3f46",
+  bgQuaternary: "#52525b",
+  iconTertiary: "#a1a1aa",
+  // --layout-border-0 (--color-neutral-200).
+  strokeTertiary: "#4c4d58",
+  strokeFocused: "#52525b",
+  resizeEdge: "#52525b",
+  panel: "#27272a",
+  panelBorder: "#4c4d58",
+  panelSelected: "#58c9ff",
+  raised: "#18181b",
+  raisedBorder: "#4c4d58",
+  accent: "#58c9ff",
+  accentFill: "color-mix(in srgb, #58c9ff 20%, #18181b)",
+  primary: "#58c9ff",
+  primaryHover: "color-mix(in srgb, #58c9ff 80%, black)",
+  statusClosed: "#4ade80",
+  urgent: "#f87171",
   avatarRing: "transparent",
-  // Mail's unread dot.
-  systemBlue: "#0a84ff",
-  // A high priority's mark: the system's orange.
-  priority: "#ff9f0a",
-  // Shadows under floating panels (menus, palettes) and floating bars (toasts, a draft's bar): deep on dark, where a
-  // shadow has little to show against, and light on light.
-  shadowPanel: "0 4px 12px rgb(0 0 0 / 28%)",
-  shadowFloat: "0 8px 24px rgb(0 0 0 / 35%)",
+  systemBlue: "#58c9ff",
+  priority: "#fb923c",
+  shadowPanel: "0 2px 8px rgb(0 0 0 / 40%)",
+  shadowFloat: "0 4px 16px rgb(0 0 0 / 45%)",
 };
 export const colors = stylex.defineVars(DARK);
 
 export const lightTheme = stylex.createTheme(colors, {
   chrome: "#fafafa",
-  textPrimary: LIGHT_BASE,
-  textSecondary: mix(LIGHT_BASE, 72),
-  textTertiary: mix(LIGHT_BASE, 55),
-  // Light washes for hover and selection: on a light ground the same tint reads much darker than in dark mode.
-  bgTertiary: mix(LIGHT_BASE, 5.5),
-  bgQuaternary: mix(LIGHT_BASE, 3),
-  iconTertiary: mix(LIGHT_BASE, 50),
-  strokeTertiary: mix(LIGHT_BASE, 10),
-  strokeFocused: mix(LIGHT_BASE, 20),
-  resizeEdge: mix(LIGHT_BASE, 12),
+  textPrimary: "#18181b",
+  textSecondary: "#3f3f46",
+  textTertiary: "#71717a",
+  bgTertiary: "#d4d4d8",
+  bgQuaternary: "#e4e4e7",
+  iconTertiary: "#52525b",
+  strokeTertiary: "#d9d9de",
+  strokeFocused: "#a1a1aa",
+  resizeEdge: "#a1a1aa",
   panel: "#ffffff",
-  panelBorder: "#e4e4e2",
-  panelSelected: "#f3f3f1",
+  panelBorder: "#d9d9de",
+  panelSelected: "#1373d9",
   raised: "#ffffff",
-  raisedBorder: "#dcdcd9",
-  accent: "#2f6fb7",
-  accentFill: "#e2ecf7",
-  primary: "rgb(35 131 226)",
-  primaryHover: "rgb(28 112 196)",
-  statusClosed: "oklch(0.55 0.11 155.438)",
-  urgent: "oklch(0.58 0.2 12.651)",
+  raisedBorder: "#d9d9de",
+  accent: "#1373d9",
+  accentFill: "#ddeefe",
+  primary: "#1373d9",
+  primaryHover: "color-mix(in srgb, #1373d9 80%, black)",
+  statusClosed: "#16a34a",
+  urgent: "#dc2626",
   avatarRing: "rgb(0 0 0 / 14%)",
-  systemBlue: "#007aff",
-  priority: "#ff9500",
-  shadowPanel: "0 2px 8px rgb(0 0 0 / 8%)",
-  shadowFloat: "0 4px 14px rgb(0 0 0 / 9%)",
+  systemBlue: "#1373d9",
+  priority: "#ea580c",
+  shadowPanel: "0 2px 8px rgb(0 0 0 / 12%)",
+  shadowFloat: "0 4px 16px rgb(0 0 0 / 14%)",
+});
+
+// The rest of Thunderbird's tokens the panes use: the page (--layout-background-0), the washes, the selected item (the
+// system accent, here its blue-60, and its text), the spaces bar's ground (--color-surface-lower), cards, buttons,
+// count badges, the unread dot, and its folder colours (folderColors.css).
+const TB_DARK = {
+  page: "#18181b",
+  bg2: "#3f3f46",
+  bg3: "#52525b",
+  bg4: "#71717a",
+  border1: "#52525b",
+  selected: "#58c9ff",
+  selectedText: "#18181b",
+  spaces: "#111113",
+  cardBorder: "#4c4d58",
+  button: "#52525b",
+  buttonHover: "#71717a",
+  buttonActive: "#3f3f46",
+  badge: "#71717a",
+  newBadge: "#2493ef",
+  newText: "#4cb1f9",
+  unreadFill: "#4ade80",
+  unreadStroke: "#16a34a",
+  inbox: "#58c9ff",
+  draft: "#ddb4fe",
+  sent: "#c0f2cf",
+  archive: "#fee78a",
+  folder: "#fee78a",
+  trash: "#d4d4d8",
+  avatar: "#52525b",
+  avatarText: "#a1a1aa",
+};
+export const tb = stylex.defineVars(TB_DARK);
+export const tbLight = stylex.createTheme(tb, {
+  page: "#ffffff",
+  bg2: "#f4f4f5",
+  bg3: "#e4e4e7",
+  bg4: "#d4d4d8",
+  border1: "#a1a1aa",
+  selected: "#1373d9",
+  selectedText: "#ffffff",
+  spaces: "#f7f7f8",
+  cardBorder: "#d9d9de",
+  button: "#e4e4e7",
+  buttonHover: "#f4f4f5",
+  buttonActive: "#d4d4d8",
+  badge: "#71717a",
+  newBadge: "#1373d9",
+  newText: "#1373d9",
+  unreadFill: "#4ade80",
+  unreadStroke: "#16a34a",
+  inbox: "#1373d9",
+  draft: "#ae55f7",
+  sent: "#1d783b",
+  archive: "#713f12",
+  folder: "#eabd08",
+  trash: "#52525b",
+  avatar: "#d4d4d8",
+  avatarText: "#71717a",
 });
 
 // Slack's look: an aubergine sidebar in white type, its chosen row blue, over the light theme (`slackSidebar` on the
@@ -113,26 +166,28 @@ export const layers = stylex.defineConsts({
 
 // Small things in text and menus (chips, links, menu items, fields) · every row and button that fills on hover ·
 // floating panels.
+// Thunderbird's corners: 3px on buttons, rows and cards (--button-border-radius, --listbox-border-radius); its panels
+// a little rounder.
 export const radii = stylex.defineConsts({
-  control: "6px",
-  // A sidebar row and your profile under them (8pt).
-  item: "7.27px",
-  row: "10px",
-  panel: "14px",
+  control: "3px",
+  item: "3px",
+  row: "3px",
+  panel: "6px",
   // A capsule: chips and fields whose ends are fully round, whatever their height.
   pill: "999px",
 });
 
 // The macOS app's text sizes (SF Pro, the system font, in both): each its points ÷ 1.1, for the renderer's 110% scale.
+// Thunderbird on macOS: the system font at 13px (1rem), its sizes as rems of it, ÷ 1.1 for the 110% scale.
 export const fontSizes = stylex.defineConsts({
-  label: "9.09px", // 10pt
-  small: "10px", // 11pt
-  caption: "10.91px", // 12pt, a section's or group's heading
-  body: "11.82px", // 13pt, the body
-  name: "12.73px", // 14pt, a row's title
-  input: "12.73px", // 14pt
-  message: "14.55px", // 16pt, a message
-  pageTitle: "18.18px", // 20pt, a title
+  label: "9.45px", // 0.8rem
+  small: "10.05px", // 0.85rem, a count badge
+  caption: "11.23px", // 0.95rem, a card's sender and date
+  body: "11.82px", // 1rem
+  name: "11.82px", // 1rem
+  input: "11.82px", // 1rem
+  message: "11.82px", // 1rem, a message's body
+  pageTitle: "14.18px", // 1.2rem, a message's subject
 });
 
 // The sidebar's and the list's one step (8pt): rows in from their ends, an icon from its name, a column from its edge.

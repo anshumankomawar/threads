@@ -7,9 +7,14 @@ import { Portal, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { Subspace, Thread, type Activity, plainText, splitText, User, Message } from "models";
 import {
+  itemFor,
+  markDone,
   me,
+  myBuckets,
   open,
   others,
+  placeIn,
+  threadMenu,
   setSplit,
   shortDate,
   showMenu,
@@ -19,14 +24,14 @@ import {
 } from "../session";
 import { base } from "../styles/base";
 import { link, menu as look } from "../styles/controls";
-import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { thread } from "../styles/thread";
-import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
+import { colors, fontSizes, layers, radii, tb } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon } from "./Icon";
-import { Identicon } from "./Identicon";
-import { moved, OptionButton, type Option } from "./Menus";
+import { MenuChip, moved, OptionButton, type Option } from "./Menus";
+import { TbIcon } from "./TbIcon";
+import type { TbIconName } from "../tbIcons";
 import { createThread, send } from "./Palettes";
 
 const styles = stylex.create({
@@ -67,6 +72,116 @@ const styles = stylex.create({
     fontSize: fontSizes.body,
     whiteSpace: "nowrap",
     cursor: "pointer",
+  },
+  // #messagePane: the header on --layout-background-1, the messages on the page's white under it.
+  messagePane: { flexDirection: "column", backgroundColor: tb.page },
+  mh: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    flexShrink: 0,
+    padding: "10px 14px 10px",
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
+    backgroundColor: colors.chrome,
+    zoom: "var(--content-zoom)",
+  },
+  mhTop: { display: "flex", gap: 8, alignItems: "center", minWidth: 0 },
+  mhFrom: { display: "flex", flex: 1, flexDirection: "column", minWidth: 0 },
+  mhName: { color: colors.textPrimary, fontWeight: 700, textAlign: "left" },
+  mhRole: { color: colors.textTertiary, fontSize: fontSizes.caption },
+  mhButtons: { display: "flex", flexShrink: 0, gap: 4 },
+  // A toolbarbutton: --button-background-color (--layout-background-3), lighter under the pointer, 3px corners.
+  headerButton: {
+    display: "flex",
+    gap: 4,
+    alignItems: "center",
+    height: 22,
+    padding: "0 7px",
+    borderRadius: 3,
+    color: colors.textPrimary,
+    backgroundColor: {
+      default: tb.button,
+      ":hover:not(:disabled)": tb.buttonHover,
+      ":active:not(:disabled)": tb.buttonActive,
+    },
+    fontSize: fontSizes.body,
+    whiteSpace: "nowrap",
+    opacity: { default: 1, ":disabled": 0.4 },
+    cursor: "default",
+  },
+  headerIconButton: { padding: "0 4px" },
+  mhLine: { display: "flex", gap: 8, alignItems: "center", minWidth: 0 },
+  mhLabel: { flexShrink: 0, width: 26, color: colors.textTertiary, textAlign: "right" },
+  mhRecipients: { display: "flex", flex: 1, flexWrap: "wrap", gap: 4, minWidth: 0 },
+  recipient: {
+    display: "flex",
+    gap: 4,
+    alignItems: "center",
+    padding: "1px 6px 1px 1px",
+    borderRadius: 999,
+    color: colors.textPrimary,
+    backgroundColor: { default: tb.bg3, ":hover": tb.bg4 },
+    cursor: "default",
+  },
+  mhNone: { color: colors.textTertiary },
+  mhDate: {
+    flexShrink: 0,
+    marginLeft: "auto",
+    color: colors.textTertiary,
+    fontSize: fontSizes.caption,
+  },
+  // The subject: 1.2rem bold.
+  mhSubject: {
+    margin: "2px 0 0 34px",
+    color: colors.textPrimary,
+    fontSize: fontSizes.pageTitle,
+    fontWeight: 700,
+    lineHeight: 1.3,
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
+  avatar: {
+    display: "inline-grid",
+    flexShrink: 0,
+    placeItems: "center",
+    borderRadius: "50%",
+    color: tb.avatarText,
+    backgroundColor: tb.avatar,
+    fontWeight: 700,
+  },
+  messageBody: { backgroundColor: tb.page },
+  mails: { display: "flex", flexDirection: "column", zoom: "var(--content-zoom)" },
+  // Each message as a mail: its sender and date over its body, a hairline under it.
+  mail: {
+    padding: "10px 14px 12px",
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
+  },
+  mailHead: { display: "flex", gap: 8, alignItems: "center", marginBottom: 6 },
+  mailFrom: { color: colors.textPrimary, fontWeight: 700 },
+  mailDate: { marginLeft: "auto", color: colors.textTertiary, fontSize: fontSizes.caption },
+  mailBody: {
+    marginLeft: 28,
+    color: colors.textPrimary,
+    fontSize: fontSizes.message,
+    lineHeight: 1.5,
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
+  compose: { padding: "12px 14px" },
+  // The compose field: the page's white in a 1px --color-gray-40 frame, 3px corners.
+  composeBox: {
+    marginLeft: 28,
+    padding: "6px 8px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: tb.border1,
+    borderRadius: 3,
+    backgroundColor: tb.page,
   },
   reply: { display: "flex", flex: 1, minWidth: 0 },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
@@ -148,26 +263,6 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
   );
 }
 
-function Meta(props: {
-  user?: User;
-  at: Date;
-  marker?: boolean;
-  children?: JSX.Element;
-}): JSX.Element {
-  return (
-    <div {...stylex.attrs(thread.meta, props.marker && threadLineMarker)}>
-      <button
-        class={sx(base.bare, link.person, thread.author)}
-        onClick={() => props.user && open({ person: props.user.id })}
-      >
-        {props.user?.name ?? "Someone"}
-      </button>
-      {props.children}
-      <span class={sx(styles.quiet)}>{ago(props.at)}</span>
-    </div>
-  );
-}
-
 export const LABELS = {
   open: "Open",
   resolved: "Resolved",
@@ -178,45 +273,6 @@ export const LABELS = {
   high: "High",
   urgent: "Urgent",
 };
-
-function Header(props: { thread: Thread }): JSX.Element {
-  const c = (): Thread => props.thread;
-  return (
-    <header class={sx(thread.block, thread.header)}>
-      <span class={sx(thread.avatar)}>
-        <Identicon seed={c().ownerId ?? ""} size={20} />
-      </span>
-      <div class={sx(thread.body, thread.headerBody)}>
-        <Meta user={c().owner} at={c().createdAt} marker />
-        <Show when={c().branchedFrom}>
-          {(parent) => (
-            <div {...stylex.attrs(thread.byline, threadLineMarker)}>
-              <span>Branched from</span>
-              <LinkedText text={`[[thread:${parent().id}]]`} current={c().id} byline />
-            </div>
-          )}
-        </Show>
-        <For each={c().blockers.filter((blocker) => blocker.isOpen)}>
-          {(blocker) => (
-            <div {...stylex.attrs(thread.byline, threadLineMarker)}>
-              <span>Blocked on</span>
-              <LinkedText text={`[[thread:${blocker.id}]]`} current={c().id} byline />
-            </div>
-          )}
-        </For>
-        <h1 class={sx(thread.title, thread.headerTitle)}>{c().title}</h1>
-        <Show when={c().description}>
-          {(description) => (
-            <div class={sx(thread.text, thread.description, thread.headerDescription)}>
-              <LinkedText text={description()} current={c().id} />
-            </div>
-          )}
-        </Show>
-        <People thread={c()} />
-      </div>
-    </header>
-  );
-}
 
 function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Element {
   const line = (): Activity => props.activity;
@@ -236,7 +292,7 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
   const m = (): Message => props.message;
   return (
     <div
-      class={sx(thread.block)}
+      class={sx(styles.mail)}
       onContextMenu={(event) =>
         showMenu(event, [
           { label: "Copy text", run: () => void navigator.clipboard.writeText(plain(m().body)) },
@@ -246,16 +302,152 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
         ])
       }
     >
-      <span class={sx(thread.avatar)}>
-        <Identicon seed={m().authorId} size={20} />
-      </span>
-      <div class={sx(thread.body)}>
-        <Meta user={m().author} at={m().createdAt} />
-        <div class={sx(thread.text)}>
-          <LinkedText text={m().body} current={props.thread.id} />
-        </div>
+      <div class={sx(styles.mailHead)}>
+        <Avatar name={m().author?.name ?? "?"} size={20} />
+        <button
+          class={sx(base.bare, link.person, styles.mailFrom)}
+          onClick={() => m().author && open({ person: m().authorId })}
+        >
+          {m().author?.name ?? "Someone"}
+        </button>
+        <span class={sx(styles.mailDate)}>{longDate(m().createdAt)}</span>
+      </div>
+      <div class={sx(styles.mailBody)}>
+        <LinkedText text={m().body} current={props.thread.id} />
       </div>
     </div>
+  );
+}
+
+// messageHeader.css's recipient avatar: a grey circle with their initials.
+function Avatar(props: { name: string; size: number }): JSX.Element {
+  const initials = (): string =>
+    props.name
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase() ?? "")
+      .join("");
+  return (
+    <span
+      class={sx(styles.avatar)}
+      style={{
+        width: `${props.size}px`,
+        height: `${props.size}px`,
+        "font-size": `${Math.round(props.size * 0.42)}px`,
+      }}
+      aria-hidden="true"
+    >
+      {initials()}
+    </span>
+  );
+}
+
+const longDate = (date: Date): string =>
+  `${date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+
+// One of the message header's buttons: Thunderbird's toolbarbutton, a grey button with its icon and label.
+function HeaderButton(props: {
+  label: string;
+  icon: TbIconName;
+  disabled?: boolean;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      class={sx(base.bare, styles.headerButton)}
+      disabled={props.disabled}
+      onClick={() => props.onClick()}
+    >
+      <TbIcon name={props.icon} />
+      {props.label}
+    </button>
+  );
+}
+
+// #messageHeader: who it's from beside their avatar with the buttons at the end, who it's to and when, then the
+// subject in bold.
+function MessageHeader(props: { thread: Thread }): JSX.Element {
+  const c = (): Thread => props.thread;
+  const item = () => {
+    const it = itemFor(c());
+    return it && !it.doneAt ? it : undefined;
+  };
+  const members = (): User[] => c().assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
+  return (
+    <header class={sx(styles.mh)}>
+      <div class={sx(styles.mhTop)}>
+        <Avatar name={c().owner?.name ?? "?"} size={26} />
+        <div class={sx(styles.mhFrom)}>
+          <button
+            class={sx(base.bare, link.person, styles.mhName)}
+            onClick={() => c().ownerId && open({ person: c().ownerId! })}
+          >
+            {c().owner?.name ?? "Someone"}
+          </button>
+          <span class={sx(styles.mhRole)}>Requester</span>
+        </div>
+        <div class={sx(styles.mhButtons)}>
+          <HeaderButton
+            label="Reply"
+            icon="reply"
+            onClick={() => document.querySelector<HTMLElement>(".reply")?.focus()}
+          />
+          <HeaderButton
+            label="Archive"
+            icon="archive"
+            disabled={!item()}
+            onClick={() => item() && markDone(item()!)}
+          />
+          <Show
+            when={item()}
+            fallback={<HeaderButton label="Move" icon="folder" disabled onClick={() => {}} />}
+          >
+            {(it) => (
+              <MenuChip
+                look={[base.bare, styles.headerButton]}
+                title="Move to a bucket"
+                icon={<TbIcon name="folder" />}
+                label="Move"
+                items={myBuckets().map((bucket) => ({
+                  label: bucket.name,
+                  checked: it().bucketId === bucket.id,
+                  run: () => placeIn(it(), bucket),
+                }))}
+              />
+            )}
+          </Show>
+          <button
+            class={sx(base.bare, styles.headerButton, styles.headerIconButton)}
+            aria-label="More"
+            title="More"
+            onClick={(e) => showMenu(e, threadMenu(c()))}
+          >
+            <TbIcon name="more" />
+          </button>
+        </div>
+      </div>
+      <div class={sx(styles.mhLine)}>
+        <span class={sx(styles.mhLabel)}>To</span>
+        <span class={sx(styles.mhRecipients)}>
+          <For
+            each={members()}
+            fallback={<span class={sx(styles.mhNone)}>@mention someone to bring them in</span>}
+          >
+            {(user) => (
+              <button
+                class={sx(base.bare, styles.recipient)}
+                onClick={() => open({ person: user.id })}
+              >
+                <Avatar name={user.name} size={16} />
+                {user.name}
+              </button>
+            )}
+          </For>
+        </span>
+        <span class={sx(styles.mhDate)}>{longDate(c().createdAt)}</span>
+      </div>
+      <h1 class={sx(styles.mhSubject)}>{c().title}</h1>
+    </header>
   );
 }
 
@@ -376,14 +568,13 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   };
   onSettled(() => () => editor.destroy());
   return (
-    <div class={sx(thread.block)} onClick={() => editor.commands.focus()}>
-      <span class={sx(thread.avatar)}>
-        <Identicon seed={me().id} size={20} />
-      </span>
-      <div class={sx(thread.body)}>
-        <div class={sx(thread.meta)}>
-          <span class={sx(thread.author)}>{me().name}</span>
-        </div>
+    <div class={sx(styles.compose)} onClick={() => editor.commands.focus()}>
+      <div class={sx(styles.mailHead)}>
+        <Avatar name={me().name} size={20} />
+        <span class={sx(styles.mailFrom)}>Reply as {me().name}</span>
+        <span class={sx(styles.mailDate)}>↵ to send</span>
+      </div>
+      <div class={sx(styles.composeBox)}>
         <div ref={mount} class={sx(styles.reply)} />
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
@@ -415,36 +606,6 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 // A thread as a document: its heading, its messages, then the reply. Opened from your inbox it starts at the top
 // without taking the cursor, so the inbox keys keep working.
 
-// Who's in a thread, under its title: who asked, then everyone @mentioned in it so far.
-function People(props: { thread: Thread }): JSX.Element {
-  const c = (): Thread => props.thread;
-  const members = (): User[] => c().assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
-  const Person = (person: { user: User }): JSX.Element => (
-    <button
-      class={sx(base.bare, base.hover, styles.value)}
-      onClick={() => open({ person: person.user.id })}
-    >
-      <Identicon seed={person.user.id} size={14} />
-      {person.user.name}
-    </button>
-  );
-  return (
-    <div class={sx(styles.properties)} aria-label="People">
-      <span class={sx(styles.field)}>Requester</span>
-      <Show when={c().owner} fallback={<span class={sx(styles.none)}>Someone</span>}>
-        {(owner) => <Person user={owner()} />}
-      </Show>
-      <span class={sx(styles.field, styles.fieldAfter)}>Members</span>
-      <For
-        each={members()}
-        fallback={<span class={sx(styles.none)}>@mention someone to bring them in</span>}
-      >
-        {(user) => <Person user={user} />}
-      </For>
-    </div>
-  );
-}
-
 export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.Element {
   let end!: HTMLDivElement;
   const messages = (): Message[] => props.thread.messages.sorted("createdAt");
@@ -464,10 +625,10 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
     },
   );
   return (
-    <div class={sx(thread.view)}>
-      <div class={sx(thread.scroll)}>
-        <article class={sx(thread.doc)}>
-          <Header thread={props.thread} />
+    <div class={sx(thread.view, styles.messagePane)}>
+      <MessageHeader thread={props.thread} />
+      <div class={sx(thread.scroll, styles.messageBody)}>
+        <article class={sx(styles.mails)}>
           <For each={entries()}>
             {(entry) =>
               entry instanceof Message ? (
