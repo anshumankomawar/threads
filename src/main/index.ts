@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
 import { join } from "node:path";
+import icon from "../../build/icon.png?asset";
+import iconDark from "../../resources/icon-dark.png?asset";
 
 const GROUND = { dark: "#101010", light: "#fafafa" };
 
@@ -48,11 +50,17 @@ ipcMain.on("theme", (_event, theme: "dark" | "light") => {
   window?.setBackgroundColor(GROUND[theme]);
 });
 
+function syncDockIcon() {
+  if (!app.isPackaged) app.dock?.setIcon(nativeTheme.shouldUseDarkColors ? iconDark : icon);
+}
+
 app.on("before-quit", () => (quitting = true));
 app.on("activate", show);
 
 void app.whenReady().then(() => {
   nativeTheme.themeSource = "dark";
+  nativeTheme.on("updated", syncDockIcon);
+  syncDockIcon();
   if (process.platform === "darwin")
     systemPreferences.registerDefaults({
       NSTextInsertionPointBlinkPeriodOn: 1e9,
