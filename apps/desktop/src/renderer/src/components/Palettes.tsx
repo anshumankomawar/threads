@@ -17,6 +17,7 @@ import {
   others,
   chooseMailbox,
   setDialog,
+  setSettingsStart,
   signOut,
   SOURCES,
   store,
@@ -210,6 +211,16 @@ function Search(): JSX.Element {
       hint: keysFor("newThread"),
       section: "Quick actions",
       run: () => setDialog({ kind: "newThread" }),
+    },
+    {
+      label: "New Group",
+      section: "Quick actions",
+      run: () => setDialog({ kind: "newSubspace" }),
+    },
+    {
+      label: "Groups",
+      section: "Views",
+      run: done(() => (setSettingsStart("Groups"), open({ settings: null }))),
     },
     ...(
       [
@@ -535,7 +546,7 @@ function NewView(props: { filter: Filter }): JSX.Element {
   );
 }
 
-// A new subspace with you in it. It starts open; its page makes it private.
+// A new group (a subspace, underneath) with you in it, open to the workspace.
 export function makeSubspace(name: string): Subspace {
   const made = store.create(Subspace, { name, visibility: "open", workspace: workspace() });
   store.create(SubspaceMember, { subspace: made, user: me() });
@@ -545,23 +556,26 @@ export function makeSubspace(name: string): Subspace {
 function NewSubspace(): JSX.Element {
   return (
     <Picker
-      placeholder="Name the subspace"
+      placeholder="Name the group, as you'll @mention it"
       rows={(query) =>
-        entry(query, "Make subspace", (name) => open({ subspace: makeSubspace(name).id }))
+        entry(query, "Make group", (name) =>
+          // Then straight on to who's in it.
+          queueMicrotask(() => setDialog({ kind: "addMember", subspace: makeSubspace(name) })),
+        )
       }
     />
   );
 }
 
-// Someone to add to a subspace.
+// Someone to add to a group. Each one picked stays in the list, so several go in at once; Escape is done.
 function AddMember(props: { subspace: Subspace }): JSX.Element {
   return (
     <Picker
-      placeholder={`Add to ${props.subspace.name}…`}
+      placeholder={`Add people to @${props.subspace.name}`}
       rows={(query) =>
         people(
           query,
-          done((user) => store.create(SubspaceMember, { subspace: props.subspace, user })),
+          (user) => void store.create(SubspaceMember, { subspace: props.subspace, user }),
           store.all(User).filter((u) => !memberIn(props.subspace, u.id)),
         )
       }

@@ -86,7 +86,8 @@ export const subspacesWithMembers = (): Subspace[] =>
   store.all(Subspace).filter((sub) => sub.members.length > 0);
 export const memberIn = (sub: Subspace, userId: string) =>
   sub.members.filter((m) => m.userId === userId)[0];
-export const membersHint = (sub: Subspace): string => `Subspace · ${sub.members.length}`;
+export const membersHint = (sub: Subspace): string =>
+  `Group · ${sub.members.length} ${sub.members.length === 1 ? "person" : "people"}`;
 export const myBuckets = (): Bucket[] =>
   store.where(Bucket, "userId", me().id).sort((a, b) => a.position - b.position);
 export const signedIn = (): boolean =>
@@ -141,6 +142,8 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
   null,
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
+// The Settings tab to open on (⌘K's Groups opens it at Groups).
+export const [settingsStart, setSettingsStart] = createSignal<string | undefined>(undefined);
 export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));

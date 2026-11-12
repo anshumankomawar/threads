@@ -1,6 +1,7 @@
 import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import * as stylex from "@stylexjs/stylex";
 import {
   Label,
   PRIORITIES,
@@ -24,6 +25,8 @@ import {
   edit,
   firstName,
   memberIn,
+  settingsStart,
+  setSettingsStart,
   toggled,
   workspace,
 } from "../session";
@@ -44,6 +47,7 @@ import { base } from "../styles/base";
 import { button, chip, chipTone } from "../styles/controls";
 import { page } from "../styles/page";
 import { sx } from "../styles/sx";
+import { colors } from "../styles/tokens.stylex";
 import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
 import { MenuChip } from "./Menus";
@@ -78,8 +82,10 @@ type Page = { tab: Tab; tools?: JSX.Element; body: JSX.Element };
 // A page's tabs in one toolbar, under its title and description, and the chosen tab's tools and body. The toolbar stays
 // as you switch, so the chosen tab opens out to its name. A tab that goes (Settings, when you leave) falls back to the
 // first.
-function PageTabs(props: { pages: Page[] }): JSX.Element {
-  const [chosen, choose] = createSignal(untrack(() => props.pages[0].tab));
+function PageTabs(props: { pages: Page[]; start?: string }): JSX.Element {
+  const [chosen, choose] = createSignal(
+    untrack(() => (props.pages.find((p) => p.tab.label === props.start) ?? props.pages[0]).tab),
+  );
   const current = (): Page => props.pages.find((p) => p.tab === chosen()) ?? props.pages[0];
   return (
     <>
@@ -638,6 +644,88 @@ function Keys(props: { keys: string }): JSX.Element {
 }
 
 const HOTKEYS_TAB: Tab = { label: "Hotkeys", icon: i.KeyboardIcon };
+const GROUPS_TAB: Tab = { label: "Groups", icon: i.UserMultipleIcon };
+
+const groupStyles = stylex.create({
+  list: { display: "flex", flexDirection: "column", gap: 18, maxWidth: 720, paddingTop: 8 },
+  head: { display: "flex", gap: 8, alignItems: "baseline" },
+  end: { display: "flex", gap: 6, marginLeft: "auto" },
+  people: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  remove: {
+    display: "flex",
+    color: { default: colors.textTertiary, ":hover": colors.textPrimary },
+  },
+  empty: { color: colors.textTertiary },
+});
+
+// Groups: people you @mention together. @mentioning one brings everyone in it into the thread.
+function groups(): Page {
+  return {
+    tab: GROUPS_TAB,
+    tools: (
+      <button class={sx(base.hover, chip.chip)} onClick={() => setDialog({ kind: "newSubspace" })}>
+        {icon(i.Add01Icon, 12)}
+        New Group
+      </button>
+    ),
+    body: (
+      <div class={sx(groupStyles.list)}>
+        <For
+          each={[...store.all(Subspace)].sort((a, b) => a.name.localeCompare(b.name))}
+          fallback={
+            <p class={sx(groupStyles.empty)}>
+              No groups yet. Make one, then @mention it in a thread to bring everyone in it.
+            </p>
+          }
+        >
+          {(group) => (
+            <section>
+              <div class={sx(groupStyles.head)}>
+                <span class={sx(page.titleText)}>@{group.name}</span>
+                <span class={sx(page.small)}>
+                  {group.members.length} {group.members.length === 1 ? "person" : "people"}
+                </span>
+                <span class={sx(groupStyles.end)}>
+                  <button
+                    class={sx(base.hover, chip.chip)}
+                    onClick={() => setDialog({ kind: "addMember", subspace: group })}
+                  >
+                    {icon(i.UserAdd01Icon, 12)}
+                    Add People
+                  </button>
+                  <button
+                    class={sx(base.hover, chip.chip, chipTone.urgent)}
+                    onClick={() => void group.delete()}
+                  >
+                    Delete
+                  </button>
+                </span>
+              </div>
+              <div class={sx(groupStyles.people)}>
+                <For each={[...group.members]}>
+                  {(member) => (
+                    <span class={sx(chip.chip)}>
+                      <Identicon seed={member.userId} size={14} />
+                      {member.user?.name ?? "Someone"}
+                      <button
+                        class={sx(base.bare, groupStyles.remove)}
+                        aria-label={`Remove ${member.user?.name ?? "them"}`}
+                        title="Remove"
+                        onClick={() => void member.delete()}
+                      >
+                        {icon(i.Cancel01Icon, 11)}
+                      </button>
+                    </span>
+                  )}
+                </For>
+              </div>
+            </section>
+          )}
+        </For>
+      </div>
+    ),
+  };
+}
 
 // How the app works for you, a tab for each kind of setting, and the workspace's members. Hotkeys: click one, then press its new
 // keys; Escape cancels and ⌫ leaves it without any. Keys another command has move to this one.
@@ -696,6 +784,9 @@ export function SettingsView(): JSX.Element {
     },
   ];
   const people = members({ users: () => store.all(WorkspaceMember).flatMap((m) => m.user ?? []) });
+  // Asked for once (⌘K's Groups): the next time it opens at its first tab again.
+  const start = untrack(settingsStart);
+  queueMicrotask(() => setSettingsStart(undefined));
   const hotkeys: Page = {
     tab: HOTKEYS_TAB,
     tools: (
@@ -735,7 +826,7 @@ export function SettingsView(): JSX.Element {
         press the keys you want: Escape cancels, and ⌫ leaves it without any. Hotkeys are kept on
         this Mac.
       </p>
-      <PageTabs pages={[hotkeys, people]} />
+      <PageTabs pages={[hotkeys, groups(), people]} start={start} />
     </div>
   );
 }
