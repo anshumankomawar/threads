@@ -1,4 +1,5 @@
 import MiniSearch from "minisearch";
+import { createSignal } from "solid-js";
 import { Message, Thread } from "models";
 import { plain } from "./components/ThreadView";
 import { store } from "./session";
@@ -52,23 +53,35 @@ function excerpt(text: string, term: string): string {
 const freshness = (t: Thread): number =>
   1 + 0.5 / (1 + (Date.now() - t.updatedAt.getTime()) / 86_400_000);
 
-// What you opened for a query comes first the next time you type it, as in Alfred.
+// What you opened for a query comes first the next time you type it, as in Alfred; and the threads you've opened from
+// ⌘F, latest first, are your recents until you clear them. Both are kept on this Mac.
 const PICKS = "find-picks";
+const RECENTS = "find-recents";
 let picks = saved<Record<string, string>>(PICKS, {});
+const [recents, setRecents] = createSignal(saved<string[]>(RECENTS, []));
+const keepRecents = (ids: string[]): void => (setRecents(ids), save(RECENTS, ids));
+export const clearRecents = (): void => keepRecents([]);
+export const hasRecents = (): boolean => recents().length > 0;
+
 export function picked(query: string, thread: Thread): void {
+  keepRecents([thread.id, ...recents().filter((id) => id !== thread.id)].slice(0, 8));
+  if (query === "") return;
   const kept = Object.entries(picks).filter(([q]) => q !== query.toLowerCase());
   picks = Object.fromEntries([...kept.slice(-199), [query.toLowerCase(), thread.id]]);
   save(PICKS, picks);
 }
 
-// The threads that match, best first, each with where it matched; with nothing typed, the latest threads.
+// The threads that match, best first, each with where it matched; with nothing typed, your recents, else the latest.
 export function find(query: string): Found[] {
   if (query === "")
-    return store
-      .all(Thread)
-      .toSorted((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-      .slice(0, 8)
-      .map((thread) => ({ thread, terms: [] }));
+    return (
+      hasRecents()
+        ? recents().flatMap((id) => store.findById(Thread, id) ?? [])
+        : store
+            .all(Thread)
+            .toSorted((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+            .slice(0, 8)
+    ).map((thread) => ({ thread, terms: [] }));
   const best = new Map<string, Found & { score: number }>();
   for (const hit of current().search(query)) {
     const thread = store.findById(Thread, hit.threadId as string);

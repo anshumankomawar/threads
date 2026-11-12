@@ -96,6 +96,13 @@ export const palette = stylex.create({
     borderRadius: radii.row,
   },
   labelText: { color: colors.textSecondary, fontSize: fontSizes.label },
+  // A section title's button on its right (⌘F's Clear).
+  sectionAction: {
+    marginLeft: "auto",
+    color: { default: colors.textTertiary, ":hover": colors.textPrimary },
+    fontSize: fontSizes.label,
+    cursor: "pointer",
+  },
 });
 
 // Compose (⌘⇧N): what you write on top, the model's draft of the thread under it.

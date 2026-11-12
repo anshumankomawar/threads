@@ -35,7 +35,7 @@ import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { keysFor } from "../hotkeys";
-import { find, picked } from "../search";
+import { clearRecents, find, hasRecents, picked } from "../search";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
@@ -66,6 +66,8 @@ function Picker(props: {
   // Escape goes back a step instead of closing; Tab does whatever a step wants.
   onBack?: () => void;
   onTab?: () => void;
+  // A Clear button on the right of one section's title.
+  clear?: { section: string; run: () => void };
 }): JSX.Element {
   const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
@@ -135,6 +137,17 @@ function Picker(props: {
                 <Show when={section.title}>
                   <div class={sx(base.ellipsis, palette.sectionLabel, palette.labelText)}>
                     {section.title}
+                    <Show when={props.clear?.section === section.title && props.clear}>
+                      {(clear) => (
+                        <button
+                          class={sx(base.bare, palette.sectionAction)}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => clear().run()}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </Show>
                   </div>
                 </Show>
                 <For each={section.rows}>
@@ -308,19 +321,21 @@ function Search(): JSX.Element {
   );
 }
 
-// ⌘F: threads by anything in them, each with where it matched (search.ts); before you type, the latest ones.
+// ⌘F: threads by anything in them, each with where it matched (search.ts); before you type, the ones you've opened
+// from here (which you can clear), else the latest.
 function Find(): JSX.Element {
   return (
     <Picker
       placeholder="Search threads…"
+      clear={{ section: "Recent", run: clearRecents }}
       rows={(query) =>
         find(query).map(({ thread, snippet, terms }) => ({
           label: thread.title,
           detail: snippet,
           marks: terms,
-          section: query ? undefined : "Recent",
+          section: query ? undefined : hasRecents() ? "Recent" : "Latest",
           run: done(() => {
-            if (query) picked(query, thread);
+            picked(query, thread);
             open({ thread: thread.id });
           }),
         }))
