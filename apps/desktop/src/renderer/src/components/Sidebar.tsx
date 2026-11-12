@@ -37,7 +37,6 @@ import {
   type Mailbox,
   type MenuItem,
 } from "../session";
-import { bucketIcons } from "../bucketIcons";
 import { keysFor } from "../hotkeys";
 import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
@@ -233,7 +232,6 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
 }
 
 export function Sidebar(): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   return (
     <aside
       class={stylex.attrs(s.sidebar, theme() === "slack" && slackSidebar).class}
@@ -272,7 +270,7 @@ export function Sidebar(): JSX.Element {
             <MailboxRow
               box={{ kind: "unsorted" }}
               label="Sorting"
-              icon={i.Clock01Icon}
+              icon={i.Folder01Icon}
               count={inbox().unsorted.length}
               indent
             />
@@ -283,7 +281,7 @@ export function Sidebar(): JSX.Element {
               <MailboxRow
                 box={{ kind: "bucket", id: section.bucket.id }}
                 label={section.bucket.name}
-                icon={icons().get(section.bucket.id) ?? i.InboxIcon}
+                icon={i.Folder01Icon}
                 count={section.items.length}
                 indent
                 menu={() => bucketMenu(section.bucket)}
@@ -295,7 +293,7 @@ export function Sidebar(): JSX.Element {
           <MailboxRow
             box={{ kind: "all" }}
             label="All Threads"
-            icon={i.Message01Icon}
+            icon={i.Archive02Icon}
             count={allThreads().length}
           />
           <MailboxRow
@@ -461,7 +459,6 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
 
 // `alone`, with nothing open beside it: it takes the window.
 export function MessageList(props: { alone?: boolean }): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
   // Opening a draft (from ⌘K, say) lists the drafts.
   createEffect(view, (next) => {
     if ("draft" in next && mailbox().kind !== "drafts") chooseMailbox({ kind: "drafts" });
@@ -554,11 +551,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
                       }}
                     >
                       <Icon
-                        icon={
-                          group.bucket
-                            ? (icons().get(group.bucket.id) ?? i.InboxIcon)
-                            : i.Clock01Icon
-                        }
+                        icon={group.bucket ? i.Folder01Icon : i.Folder01Icon}
                         size={11}
                         aria-hidden="true"
                       />

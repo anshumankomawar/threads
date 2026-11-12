@@ -35,6 +35,7 @@ export const TB_FOR = new Map<IconSvgElement, TbIconName>([
   [i.CommandIcon, "shortcut"],
   [i.TextFontIcon, "font"],
   [i.Folder01Icon, "folder"],
+  [i.Archive02Icon, "archive"],
   [i.Layers01Icon, "spaces-menu"],
   [i.LeftToRightListBulletIcon, "display-options"],
   [i.GitBranchIcon, "thread"],
