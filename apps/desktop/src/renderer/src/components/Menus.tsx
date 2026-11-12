@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createSignal, createUniqueId, For, Show } from "solid-js";
+import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { menu, setMenu, type MenuItem } from "../session";
@@ -59,53 +59,91 @@ export function OptionButton(props: {
   );
 }
 
-// A menu's rows. One with `items` shows them in its place, under a row back.
+// A menu's rows, as macOS lays them out: an icon column (a toggle's check goes there too), titles in one column after it,
+// and a chevron on a row with `items`, whose submenu opens beside it while you're on it.
 function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
-  const [sub, setSub] = createSignal<{ label: string; items: MenuItem[] } | null>(null);
+  // A menu where no row has an icon (or a check) has no icon column at all.
+  const gutter = (): boolean =>
+    props.items.some(
+      (item) => item !== "separator" && (item.icon !== undefined || "checked" in item),
+    );
+  const [sub, setSub] = createSignal<{
+    item: MenuItem & { items: MenuItem[] };
+    row: DOMRect;
+  } | null>(null);
+  // A submenu opens once for its row: coming back to the row (or clicking it) keeps the one that's open.
+  const openSub = (item: MenuItem & { items: MenuItem[] }, event: Event): void => {
+    if (untrack(sub)?.item === item) return;
+    setSub({ item, row: (event.currentTarget as HTMLElement).getBoundingClientRect() });
+  };
   const row = (
-    label: string,
-    before: JSX.Element | undefined,
-    run: () => void,
+    item: Exclude<MenuItem, "separator">,
+    run: (() => void) | undefined,
     checked?: boolean,
-  ): JSX.Element => (
-    <button
-      class={sx(base.bare, look.item, look.itemHover)}
-      role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
-      aria-checked={checked === undefined ? undefined : checked ? "true" : "false"}
-      onClick={run}
-    >
-      <Show when={before}>
-        <span class={sx(look.itemIcon)}>{before}</span>
-      </Show>
-      <span class={sx(base.ellipsis, look.label)}>{label}</span>
-      <Show when={checked}>
-        <span class={sx(look.itemIcon)}>{icon(i.Tick02Icon, 13)}</span>
-      </Show>
-    </button>
-  );
+  ): JSX.Element => {
+    const opens = "items" in item;
+    return (
+      <button
+        class={sx(base.bare, look.entry, sub()?.item === item && look.entryOpen)}
+        role={checked === undefined ? "menuitem" : "menuitemcheckbox"}
+        aria-checked={checked === undefined ? undefined : checked ? "true" : "false"}
+        aria-haspopup={opens ? "menu" : undefined}
+        aria-expanded={opens ? (sub()?.item === item ? "true" : "false") : undefined}
+        onPointerEnter={(event) => (opens ? openSub(item, event) : setSub(null))}
+        onClick={(event) => (opens ? openSub(item, event) : run?.())}
+      >
+        {/* A chosen option keeps its icon; its check goes at the end. One with no icon has its check in the column. */}
+        <Show when={gutter()}>
+          <span class={sx(look.entryIcon)}>
+            {item.icon ?? (checked ? icon(i.Tick02Icon, 13) : undefined)}
+          </span>
+        </Show>
+        <span class={sx(base.ellipsis, look.entryLabel)}>{item.label}</span>
+        <Show when={checked && item.icon}>
+          <span class={sx(look.entryKeys)}>{icon(i.Tick02Icon, 12)}</span>
+        </Show>
+        <Show when={opens}>
+          <span class={sx(look.entryChevron)}>{icon(i.ArrowRight01Icon, 11)}</span>
+        </Show>
+      </button>
+    );
+  };
+  // A submenu beside its row, its first row level with it; on the left if there's no room on the right.
+  const place = (panel: HTMLDivElement, at: DOMRect): void => {
+    queueMicrotask(() => {
+      const { width, height } = panel.getBoundingClientRect();
+      const right = at.right + 4;
+      panel.style.left = `${right + width > innerWidth - 4 ? Math.max(4, at.left - width - 4) : right}px`;
+      panel.style.top = `${Math.max(4, Math.min(at.top - 4.5, innerHeight - height - 4))}px`;
+    });
+  };
   return (
     <>
-      <Show when={sub()}>
-        {(open) => (
-          <>
-            {row(open().label, icon(i.ArrowLeft01Icon), () => setSub(null))}
-            <hr class={sx(look.separator)} />
-          </>
-        )}
-      </Show>
-      <For each={sub()?.items ?? props.items}>
+      <For each={props.items}>
         {(item) =>
           item === "separator" ? (
-            <hr class={sx(look.separator)} />
+            <hr class={sx(look.entrySeparator)} />
           ) : "items" in item ? (
-            row(item.label, item.icon, () => setSub(item))
+            row(item, undefined)
           ) : item.checked !== undefined ? (
-            row(item.label, item.icon, item.run, item.checked)
+            row(item, item.run, item.checked)
           ) : (
-            row(item.label, item.icon, () => (props.close(), item.run()))
+            row(item, () => (props.close(), item.run()))
           )
         }
       </For>
+      <Show when={sub()} keyed>
+        {(open) => (
+          <div
+            ref={(panel) => place(panel, open.row)}
+            class={sx(base.panel, look.menu, look.compact, look.context)}
+            style={{ left: `${open.row.right + 4}px`, top: `${open.row.top - 4.5}px` }}
+            role="menu"
+          >
+            <Items items={open.item.items} close={props.close} />
+          </div>
+        )}
+      </Show>
     </>
   );
 }
@@ -126,7 +164,7 @@ export function ContextMenu(): JSX.Element {
           ref={(el) => queueMicrotask(() => show(el, shown))}
           onToggle={(event) => event.newState === "closed" && menu() === shown && setMenu(null)}
           onContextMenu={(event) => event.preventDefault()}
-          class={sx(base.panel, look.menu, look.popover, look.context)}
+          class={sx(base.panel, look.menu, look.compact, look.popover, look.context)}
           style={{ left: `${shown.x}px`, top: `${shown.y}px` }}
           role="menu"
         >
@@ -170,7 +208,7 @@ export function MenuChip(props: {
         ref={popover}
         popover="auto"
         onToggle={(event) => setOpen(event.newState === "open")}
-        class={sx(base.panel, look.menu, look.popover, chip.menu)}
+        class={sx(base.panel, look.menu, look.compact, look.popover, chip.menu)}
         role="menu"
       >
         {/* Mounted while open, so it opens at the top level again. */}

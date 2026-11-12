@@ -48,16 +48,14 @@ function createWindow(): void {
     height: 670,
     show: false,
     autoHideMenuBar: true,
-    // Cursor's dark glass backdrop: native sidebar vibrancy under a 25% black tint.
+    // An opaque ground, as the macOS app's (no vibrancy): the renderer's `chrome`, in its theme.
     ...(process.platform === "darwin"
       ? {
           titleBarStyle: "hidden",
           // Centered on the top bar at the 110% scale (macOS draws them unscaled): 34px × 1.1 is 37.4pt, so their
           // centres (y + 6.75) sit at 18.75pt, level with its icons.
-          trafficLightPosition: { x: 9, y: 12 },
-          vibrancy: "sidebar",
-          visualEffectState: "active",
-          backgroundColor: "#40000000",
+          trafficLightPosition: { x: 12, y: 12 },
+          backgroundColor: "#141414",
         }
       : {}),
     ...(process.platform === "linux" ? { icon } : {}),
@@ -107,17 +105,17 @@ function createWindow(): void {
 void app.whenReady().then(() => {
   electronApp.setAppUserModelId("com.threads.arc");
 
-  // Dark until the renderer says otherwise (it sends its saved theme as it starts), so the vibrancy material matches.
+  // Dark until the renderer says otherwise (it sends its saved theme as it starts).
   nativeTheme.themeSource = "dark";
   syncDockIcon();
   nativeTheme.on("updated", syncDockIcon);
-  // The renderer's theme (⌘K): the vibrancy material follows it, under a black tint in dark mode and none in light.
+  // The renderer's theme (⌘K): the window's ground and its controls follow it.
   ipcMain.on("set-theme", (event, theme: unknown) => {
     const light = theme === "light";
     nativeTheme.themeSource = light ? "light" : "dark";
     if (process.platform === "darwin") {
       BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(
-        light ? "#00ffffff" : "#40000000",
+        light ? "#fafafa" : "#141414",
       );
     }
   });

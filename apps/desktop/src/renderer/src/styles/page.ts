@@ -1,4 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
+import { peekMarker } from "./markers.stylex";
 import { colors, contentZoom, fontSizes as size, radii } from "./tokens.stylex";
 
 const muted = colors.textTertiary;
@@ -10,7 +11,11 @@ export const page = stylex.create({
     flex: 1,
     flexDirection: "column",
     minHeight: 0,
-    padding: "52px 52px 48px",
+    // In the reading pane, just under its toolbar, as a thread starts.
+    padding: {
+      default: "12px 52px 48px",
+      [stylex.when.ancestor(":is(*)", peekMarker)]: "16px 24px 32px",
+    },
     overflowY: "auto",
     zoom: contentZoom["--content-zoom"],
   },
@@ -26,6 +31,8 @@ export const page = stylex.create({
   summary: { margin: "2px 0 0", color: muted },
   // A subspace's description, under its name: plain text, which members edit in place.
   description: {
+    // The page is a column: it keeps its height rather than being squeezed by what's under it.
+    flexShrink: 0,
     maxWidth: 640,
     margin: "8px 0 0",
     color: colors.textSecondary,
@@ -41,6 +48,7 @@ export const page = stylex.create({
     fieldSizing: "content",
     "::placeholder": { color: muted },
   },
+  titleRow: { display: "flex", gap: 6, alignItems: "center" },
   // A search field in a table's toolbar: an icon and the input in a bordered box.
   search: {
     display: "flex",
@@ -52,7 +60,7 @@ export const page = stylex.create({
     padding: "0 8px",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: { default: colors.strokeTertiary, ":focus-within": colors.strokeFocused },
+    borderColor: colors.strokeTertiary,
     borderRadius: radii.row,
     color: colors.iconTertiary,
     cursor: "text",
@@ -77,7 +85,6 @@ export const page = stylex.create({
   header: { display: "flex", gap: 14, alignItems: "center" },
   // Small building blocks the pages combine, after the `base` styles.
   pointer: { cursor: "pointer" },
-  list: { margin: 0, padding: 0, listStyle: "none" },
   small: { color: muted, fontSize: size.body },
   narrow: { maxWidth: 640 },
   itemBody: { display: "flex", flex: 1, flexDirection: "column", gap: 2, minWidth: 0 },
@@ -99,7 +106,7 @@ export const page = stylex.create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.strokeTertiary,
-    borderRadius: 12,
+    borderRadius: radii.pill,
     color: colors.accent,
     fontSize: size.body,
     cursor: "pointer",
@@ -120,6 +127,23 @@ export const page = stylex.create({
     color: colors.textSecondary,
     backgroundColor: colors.bgTertiary,
   },
+  avatars: { display: "flex" },
+  // Each face overlaps the one before it.
+  avatar: { marginLeft: { default: -4, ":first-child": 0 } },
+  // A hotkey's keys, which you click to change: a rounded fill of their own on hover.
+  keysButton: {
+    display: "flex",
+    alignItems: "center",
+    height: 26,
+    margin: "0 -6px",
+    padding: "0 6px",
+    borderRadius: radii.row,
+    cursor: "pointer",
+  },
+  recordingButton: { backgroundColor: colors.accentFill },
+  recording: { color: colors.accent },
+  // A quiet text button among a tab's tools.
+  quiet: { height: 28, padding: "0 10px", borderRadius: radii.row, cursor: "pointer" },
   // Keys as key caps, as Superhuman shows them.
   caps: { display: "inline-flex", gap: 3 },
   cap: {
@@ -134,21 +158,4 @@ export const page = stylex.create({
     fontSize: size.label,
     backgroundColor: colors.bgTertiary,
   },
-  recording: { color: colors.accent },
-  // A hotkey's keys, which you click to change: a rounded fill of their own on hover.
-  keysButton: {
-    display: "flex",
-    alignItems: "center",
-    height: 26,
-    margin: "0 -6px",
-    padding: "0 6px",
-    borderRadius: radii.row,
-    cursor: "pointer",
-  },
-  recordingButton: { backgroundColor: colors.accentFill },
-  // A quiet text button among a tab's tools.
-  quiet: { height: 28, padding: "0 10px", borderRadius: radii.row, cursor: "pointer" },
-  avatars: { display: "flex" },
-  // Each face overlaps the one before it.
-  avatar: { marginLeft: { default: -4, ":first-child": 0 } },
 });

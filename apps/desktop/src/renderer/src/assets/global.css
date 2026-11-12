@@ -1,5 +1,51 @@
 /* What StyleX can't reach, in the lowest layer (declared first in index.html). */
 @layer reset {
+  /* The welcome screen's faces, as the web page's (Welcome.tsx): Fraunces, light, for its headlines, and Hanken
+     Grotesk for the rest. The app itself stays in the system's San Francisco. */
+  @font-face {
+    font-family: "Fraunces";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: block;
+    src: url(./fonts/fraunces-latin-wght.woff2) format("woff2-variations");
+  }
+  /* The welcome screen's steps (Welcome.tsx's toStep): the old one lifts away, unscaled from the top, while the new one
+     writes itself in with its own animations. The rest of the window doesn't change, so it doesn't cross-fade. */
+  ::view-transition-group(welcome-step) {
+    animation-duration: 0s;
+  }
+  ::view-transition-old(welcome-step),
+  ::view-transition-new(welcome-step) {
+    height: 100%;
+    object-fit: none;
+    object-position: top;
+  }
+  ::view-transition-old(welcome-step) {
+    animation: 200ms cubic-bezier(0.4, 0, 1, 1) both welcome-lift;
+  }
+  ::view-transition-new(welcome-step) {
+    animation: none;
+  }
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+  @keyframes welcome-lift {
+    to {
+      opacity: 0;
+      transform: translateY(-10px);
+      filter: blur(4px);
+    }
+  }
+
+  @font-face {
+    font-family: "Hanken Grotesk";
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: block;
+    src: url(./fonts/hanken-grotesk-latin-wght.woff2) format("woff2-variations");
+  }
+
   :root {
     --scrollbar-thumb: color-mix(in srgb, oklch(0.955 0 0) 8%, transparent);
     color-scheme: dark;
@@ -22,14 +68,27 @@
     overflow: hidden;
     user-select: none;
     color: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
-    background: light-dark(rgb(255 255 255 / 72%), rgb(0 0 0 / 62%));
-    /* Linear's stack. Inter's optical size follows the text size, so large titles get its Display design. */
+    /* The app's chrome, as the window's own ground is (main/index.ts), so the first paint is already it. */
+    background: light-dark(#fafafa, #141414);
+    /* The system's San Francisco, as Mail is set: its optical sizes (Text, Display) follow the size by themselves. */
     font-family:
-      "Inter Variable", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      "Helvetica Neue", sans-serif;
-    font-size: 12px;
-    line-height: 16px;
+      -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue",
+      sans-serif;
+    /* 13pt on 16pt lines, as the macOS app's body (its points ÷ 1.1, for the 110% scale). */
+    font-size: 11.82px;
+    line-height: 14.55px;
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* No focus rings anywhere: where you are shows as each control's own hover or selected state, as in Mail. */
+  :focus,
+  :focus-visible {
+    outline: none;
+  }
+
+  /* A top bar's icons a little heavier than Hugeicons' 1.5, which reads thin at 14px beside the title. */
+  [data-bar] svg [stroke-width] {
+    stroke-width: 1.75;
   }
 
   body * {
@@ -66,14 +125,23 @@
   }
 
   /* The reply editor's content, which ProseMirror makes itself. */
+  /* Spaces that end a wrapped line hang past the edge, rather than leaving a gap at the right-aligned end
+     (ProseMirror's own break-spaces keeps them; important, as its sheet is outside our layer). */
+  .reply.ProseMirror {
+    white-space: pre-wrap !important;
+  }
+
   .reply p {
+    position: relative;
     margin: 0;
   }
 
+  /* Where the caret is, at the line's start. */
   .reply p.is-editor-empty:first-child::before {
     content: attr(data-placeholder);
-    float: left;
-    height: 0;
+    position: absolute;
+    left: 0;
+    white-space: nowrap;
     color: light-dark(
       color-mix(in srgb, oklch(0.21 0 0) 55%, transparent),
       color-mix(in srgb, oklch(0.955 0 0) 60%, transparent)

@@ -54,7 +54,7 @@ import { ago, dot, LABELS } from "./ThreadView";
 // A page's settings: each a name and what it does on the left, its control on the right. Straight under the toolbar,
 // so the first one's name lines up with a table's header.
 const Settings = (props: { children: JSX.Element }): JSX.Element => (
-  <ul class={sx(page.list, page.narrow)}>{props.children}</ul>
+  <ul class={sx(base.list, page.narrow)}>{props.children}</ul>
 );
 function Setting(props: { name: string; hint: string; children: JSX.Element }): JSX.Element {
   return (

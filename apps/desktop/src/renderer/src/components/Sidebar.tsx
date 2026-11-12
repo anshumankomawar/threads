@@ -40,20 +40,28 @@ import { makeSubspace } from "./Palettes";
 import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
 import { base } from "../styles/base";
-import { colors, layers, motion, radii, sidebarSpace } from "../styles/tokens.stylex";
+import {
+  colors,
+  fontSizes,
+  layers,
+  motion,
+  radii,
+  sidebarSpace,
+  space,
+} from "../styles/tokens.stylex";
 import { ago, plain } from "./ThreadView";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 import { tab, Tabs } from "./Tabs";
 
 // Rows' fills are pills `GUTTER` in from the edges; their content stays on the sidebar's inset.
-const INSET = sidebarSpace.inset;
-const GUTTER = sidebarSpace.rowGutter;
+// As the Mail-style sidebar's: rows 8pt in from the edges, their content 8pt in from their own ends.
+const GUTTER = space.inset;
+const INSET = `calc(${space.inset} * 2)`;
 const PILL = `calc(${INSET} - ${GUTTER})`;
 const FADE = "linear-gradient(to right, #000 calc(100% - 24px), transparent)";
 const center = { display: "flex", alignItems: "center" } as const;
 const column = { display: "flex", flexDirection: "column" } as const;
-const EDGE = `linear-gradient(to right, transparent 2px, ${colors.strokeFocused} 2px, ${colors.strokeFocused} 3px, transparent 3px)`;
 const WIDTH = { initial: 268, min: 210, max: 400 };
 const clampWidth = (px: number): number => Math.min(WIDTH.max, Math.max(WIDTH.min, Math.round(px)));
 const [width, setWidth] = createSignal(clampWidth(saved("sidebar-width", WIDTH.initial)));
@@ -105,7 +113,8 @@ const s = stylex.create({
     margin: 0,
     borderStyle: "none",
     cursor: "col-resize",
-    backgroundImage: { default: null, ":hover": EDGE, ":is([data-resizing])": EDGE },
+    // Invisible, as the newer layout's: only the cursor says it's there; the sidebar's border is the line.
+    backgroundColor: "transparent",
   },
   topbar: { paddingLeft: sidebarSpace.afterLights },
   history: { display: "flex", marginRight: 6 },
@@ -114,21 +123,39 @@ const s = stylex.create({
   list: { ...column, margin: 0, padding: 0, listStyle: "none" },
   item: { minWidth: 0, listStyle: "none" },
   pointer: { cursor: "pointer" },
-  row: { ...center, position: "relative", gap: 4, height: 28, margin: `0 ${GUTTER}` },
-  rowPad: { padding: `0 ${PILL} 0 calc(31px - ${GUTTER})`, borderRadius: radii.row },
-  rowLook: { color: colors.textPrimary, outline: "none" },
+  // 30pt tall, rounded 8pt, its icon in an 18pt column 8pt before its 13pt name.
+  row: { ...center, position: "relative", gap: 4, height: 27.27, margin: `0 ${GUTTER}` },
+  rowPad: {
+    padding: `0 ${PILL} 0 calc(${PILL} + 16.36px + ${space.inset})`,
+    borderRadius: radii.item,
+  },
+  rowLook: { color: colors.textPrimary, fontSize: fontSizes.body, outline: "none" },
   active: { backgroundColor: colors.bgTertiary },
   label: { maskImage: { default: null, ":is([data-overflowing])": FADE } },
-  rowIcon: { position: "absolute", top: "50%", left: `calc(12px - ${GUTTER})`, display: "flex" },
+  rowIcon: {
+    position: "absolute",
+    top: "50%",
+    left: PILL,
+    display: "flex",
+    justifyContent: "center",
+    width: 16.36,
+  },
   rowIconLook: { color: colors.iconTertiary, transform: "translateY(-50%)" },
-  meta: { flexShrink: 0, marginLeft: "auto", paddingLeft: 8, whiteSpace: "nowrap", fontSize: 12 },
+  meta: {
+    flexShrink: 0,
+    marginLeft: "auto",
+    paddingLeft: 8,
+    whiteSpace: "nowrap",
+    fontSize: fontSizes.small,
+    fontVariantNumeric: "tabular-nums",
+  },
   faint: { color: colors.textTertiary },
-  small: { fontSize: 11 },
+  small: { fontSize: fontSizes.small },
   tabs: { ...center, flexShrink: 0, gap: 2, padding: `4px calc(${INSET} - 6px) 6px` },
   tabular: { fontVariantNumeric: "tabular-nums" },
   end: { marginLeft: "auto" },
   fixed: { flexShrink: 0 },
-  caption: { margin: 0, fontSize: 11, fontWeight: 500 },
+  caption: { margin: 0, fontSize: fontSizes.caption, fontWeight: 500 },
   empty: { margin: 0, padding: `4px ${INSET} 6px` },
   section: { ...column, paddingBottom: 10 },
   // The + lines up with the rows' counts: its 12px glyph sits 5px inside its 22px button.
@@ -141,7 +168,7 @@ const s = stylex.create({
     "::placeholder": { color: colors.textTertiary },
   },
   inbox: { ...column, gap: 6, paddingBottom: 12 },
-  bucket: { margin: `0 ${GUTTER}`, borderRadius: radii.row },
+  bucket: { margin: `0 ${GUTTER}`, borderRadius: radii.item },
   bucketAfter: { marginTop: 12 },
   quick: { transitionDuration: "120ms", transitionTimingFunction: "ease" },
   // A bucket's name stays at the top of the sidebar while you scroll through its threads.
@@ -159,7 +186,7 @@ const s = stylex.create({
   },
   chevronOpen: { transform: "rotate(90deg)" },
   count: { color: colors.textTertiary, fontWeight: 400 },
-  link: { margin: "2px 0 0", fontSize: 11 },
+  link: { margin: "2px 0 0", fontSize: fontSizes.small },
   more: { display: "block", padding: `2px calc(${PILL} + 24px)` },
   newBucket: { ...center, gap: 6, alignSelf: "flex-start", padding: `2px ${INSET}` },
   // A bucket shows `BUCKET_ROWS` threads and scrolls the rest, fading at an end with more past it.
@@ -175,10 +202,16 @@ const s = stylex.create({
         "linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent)",
     },
   },
-  inboxRow: { ...center, gap: 8, padding: `5px ${PILL}`, borderRadius: radii.row },
+  inboxRow: {
+    ...center,
+    gap: space.inset,
+    padding: `6px ${PILL}`,
+    borderRadius: radii.item,
+    fontSize: fontSizes.body,
+  },
   body: { ...column, flex: 1, minWidth: 0 },
   top: { ...center, gap: 4, minWidth: 0 },
-  title: { lineHeight: "18px" },
+  title: { fontSize: fontSizes.body, lineHeight: "16px" },
   bold: { fontWeight: 600 },
   done: {
     flexShrink: 0,
@@ -186,7 +219,7 @@ const s = stylex.create({
     placeItems: "center",
     width: 22,
     height: 22,
-    borderRadius: radii.row,
+    borderRadius: radii.item,
     cursor: "pointer",
     opacity: {
       default: 0,

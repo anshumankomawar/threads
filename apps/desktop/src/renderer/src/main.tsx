@@ -1,4 +1,3 @@
-import "@fontsource-variable/inter/opsz.css";
 import "./assets/global.css";
 import { render } from "@solidjs/web";
 import { needsSignIn } from "./startup";

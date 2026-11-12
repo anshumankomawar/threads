@@ -70,7 +70,7 @@ const styles = stylex.create({
     flex: 1,
     flexDirection: "column",
     minWidth: 0,
-    backgroundColor: colors.frosted,
+    backgroundColor: colors.chrome,
   },
   // Beside the sidebar, or clear of the traffic lights without it.
   topbarBesideSidebar: { paddingLeft: 8 },
