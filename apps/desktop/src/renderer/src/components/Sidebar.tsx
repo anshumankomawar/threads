@@ -249,16 +249,6 @@ export function Sidebar(): JSX.Element {
     >
       <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
         <AppButtons />
-        <span class={sx(topbar.end)}>
-          <button
-            class={sx(topbar.button)}
-            aria-label="New Thread"
-            title={`New Thread (${keysFor("newThread")})`}
-            onClick={() => setDialog({ kind: "newThread" })}
-          >
-            <Icon icon={"pencil"} {...ICON} />
-          </button>
-        </span>
       </div>
       {/* Your inbox and its buckets, then every thread, then your drafts. */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
@@ -334,7 +324,9 @@ export function Sidebar(): JSX.Element {
           title={`New Message (${keysFor("newThread")})`}
           onClick={() => setDialog({ kind: "newThread" })}
         >
-          <Icon icon="add" aria-hidden="true" />
+          <span class={sx(s.newMessageIcon)}>
+            <Icon icon="add" aria-hidden="true" />
+          </span>
           New Message
         </button>
       </nav>
@@ -550,18 +542,6 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
           <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>
         </span>
-        <Show when={!sidebarOpen()}>
-          <span class={sx(topbar.end)}>
-            <button
-              class={sx(topbar.button)}
-              aria-label="New Thread"
-              title={`New Thread (${keysFor("newThread")})`}
-              onClick={() => setDialog({ kind: "newThread" })}
-            >
-              <Icon icon={"pencil"} {...ICON} />
-            </button>
-          </span>
-        </Show>
       </div>
       <div
         ref={list}
@@ -708,8 +688,12 @@ const s = stylex.create({
     },
     fontSize: fontSizes.body,
     fontWeight: 600,
+    // One line exactly the text's height, so the label centres on the plus rather than riding its line box.
+    lineHeight: 1,
     cursor: "default",
   },
+  // The label's capitals centre a pixel lower than its line box: the plus comes down to meet them.
+  newMessageIcon: { display: "flex", transform: "translateY(1px)" },
   // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
   selected: { backgroundColor: colors.bgTertiary },
   // A little space between rows, so neighbouring fills don't run together.
