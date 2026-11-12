@@ -1,753 +1,92 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createEffect, createSignal, For, onSettled, Show } from "solid-js";
-import { Dynamic, type JSX } from "@solidjs/web";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
+import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import { Bucket, Draft, InboxItem, Label, Subspace, Thread, View } from "models";
+import { Bucket, Draft, Message, Thread, User } from "models";
 import {
   active,
-  workspaceShown,
-  byName,
-  firstName,
-  myBuckets,
-  shortDate,
-  shown,
-  inbox,
-  markDone,
-  me,
-  workspace,
-  open,
   allThreads,
-  setDialog,
-  setSidebarOpen,
-  setSidebarTab,
-  sidebarTab,
-  sidebarOpen,
   canGoBack,
   canGoForward,
+  chooseMailbox,
+  drafts,
   goBack,
   goForward,
-  showMenu,
-  threadMenu,
-  store,
-  unread,
-  view,
+  inbox,
+  itemFor,
+  listed,
+  mailbox,
+  mailboxTitle,
+  me,
+  myBuckets,
+  open,
+  sameMailbox,
   save,
   saved,
+  setDialog,
+  setSidebarOpen,
+  shortDate,
+  shown,
+  showMenu,
+  sidebarOpen,
+  store,
+  threadMenu,
+  unread,
+  view,
+  type Mailbox,
+  type MenuItem,
 } from "../session";
 import { bucketIcons } from "../bucketIcons";
 import { keysFor } from "../hotkeys";
-import { makeSubspace } from "./Palettes";
+import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { base } from "../styles/base";
-import {
-  colors,
-  fontSizes,
-  layers,
-  motion,
-  radii,
-  sidebarSpace,
-  space,
-} from "../styles/tokens.stylex";
-import { ago, plain } from "./ThreadView";
+import { colors, fontSizes, radii, sidebarSpace, space } from "../styles/tokens.stylex";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
-import { tab, Tabs } from "./Tabs";
+import { plain } from "./ThreadView";
 
-// Rows' fills are pills `GUTTER` in from the edges; their content stays on the sidebar's inset.
-// As the Mail-style sidebar's: rows 8pt in from the edges, their content 8pt in from their own ends.
-const GUTTER = space.inset;
-const INSET = `calc(${space.inset} * 2)`;
-const PILL = `calc(${INSET} - ${GUTTER})`;
-const FADE = "linear-gradient(to right, #000 calc(100% - 24px), transparent)";
-const center = { display: "flex", alignItems: "center" } as const;
-const column = { display: "flex", flexDirection: "column" } as const;
-const WIDTH = { initial: 268, min: 210, max: 400 };
-const clampWidth = (px: number): number => Math.min(WIDTH.max, Math.max(WIDTH.min, Math.round(px)));
-const [width, setWidth] = createSignal(clampWidth(saved("sidebar-width", WIDTH.initial)));
-const keepWidth = (px: number): void => {
-  setWidth(px);
-  save("sidebar-width", px);
-};
+// Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
 
-// Dragging the right edge resizes the sidebar (straight on the element, saved on release); a double-click resets it.
-function resize(event: PointerEvent & { currentTarget: HTMLHRElement }): void {
-  event.preventDefault();
-  const edge = event.currentTarget;
-  const panel = edge.parentElement!;
-  const [startX, start] = [event.clientX, panel.getBoundingClientRect().width];
-  const at = (x: number): number => clampWidth(start + x - startX);
-  const move = (e: PointerEvent): void => void (panel.style.width = `${at(e.clientX)}px`);
-  const end = (e: PointerEvent): void => {
-    edge.removeEventListener("pointermove", move);
-    delete edge.dataset.resizing;
-    keepWidth(at(e.clientX));
-  };
-  edge.setPointerCapture(event.pointerId);
-  edge.dataset.resizing = "";
-  edge.addEventListener("pointermove", move);
-  edge.addEventListener("pointerup", end, { once: true });
-  edge.addEventListener("pointercancel", end, { once: true });
-}
-
-const s = stylex.create({
-  sidebar: {
-    ...column,
-    position: "relative",
-    flexShrink: 0,
-    height: "100%",
-    minWidth: 0,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
-    backgroundColor: colors.chrome,
-  },
-  // The resize edge: a 1px line over the border on hover and while dragging.
-  edge: {
-    position: "absolute",
-    top: 0,
-    right: -2,
-    bottom: 0,
-    zIndex: layers.titlebar,
-    width: 4,
-    margin: 0,
-    borderStyle: "none",
-    cursor: "col-resize",
-    // Invisible, as the newer layout's: only the cursor says it's there; the sidebar's border is the line.
-    backgroundColor: "transparent",
-  },
-  topbar: { paddingLeft: sidebarSpace.afterLights },
-  history: { display: "flex", marginRight: 6 },
-  tight: { width: 18 },
-  content: { ...column, flexGrow: 1, minHeight: 0, overflowY: "auto" },
-  list: { ...column, margin: 0, padding: 0, listStyle: "none" },
-  item: { minWidth: 0, listStyle: "none" },
-  pointer: { cursor: "pointer" },
-  // 30pt tall, rounded 8pt, its icon in an 18pt column 8pt before its 13pt name.
-  row: { ...center, position: "relative", gap: 4, height: 27.27, margin: `0 ${GUTTER}` },
-  rowPad: {
-    padding: `0 ${PILL} 0 calc(${PILL} + 16.36px + ${space.inset})`,
-    borderRadius: radii.item,
-  },
-  rowLook: { color: colors.textPrimary, fontSize: fontSizes.body, outline: "none" },
-  // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
-  active: { backgroundColor: colors.bgTertiary },
-  label: { maskImage: { default: null, ":is([data-overflowing])": FADE } },
-  rowIcon: {
-    position: "absolute",
-    top: "50%",
-    left: PILL,
-    display: "flex",
-    justifyContent: "center",
-    width: 16.36,
-  },
-  rowIconLook: { color: colors.iconTertiary, transform: "translateY(-50%)" },
-  meta: {
-    flexShrink: 0,
-    marginLeft: "auto",
-    paddingLeft: 8,
-    whiteSpace: "nowrap",
-    fontSize: fontSizes.small,
-    fontVariantNumeric: "tabular-nums",
-  },
-  faint: { color: colors.textTertiary },
-  small: { fontSize: fontSizes.small },
-  tabs: { ...center, flexShrink: 0, gap: 2, padding: `4px calc(${INSET} - 6px) 6px` },
-  tabular: { fontVariantNumeric: "tabular-nums" },
-  end: { marginLeft: "auto" },
-  fixed: { flexShrink: 0 },
-  caption: { margin: 0, fontSize: fontSizes.caption, fontWeight: 500 },
-  empty: { margin: 0, padding: `4px ${INSET} 6px` },
-  section: { ...column, paddingBottom: 10 },
-  // The + lines up with the rows' counts: its 12px glyph sits 5px inside its 22px button.
-  sectionHeader: { ...center, height: 26, padding: `0 calc(${GUTTER} + ${PILL} - 5px) 0 ${INSET}` },
-  inlineInput: {
-    flex: 1,
-    minWidth: 0,
-    color: colors.textPrimary,
-    outline: "none",
-    "::placeholder": { color: colors.textTertiary },
-  },
-  inbox: { ...column, gap: 6, paddingBottom: 12 },
-  bucket: { margin: `0 ${GUTTER}`, borderRadius: radii.item },
-  bucketAfter: { marginTop: 12 },
-  quick: { transitionDuration: "120ms", transitionTimingFunction: "ease" },
-  // A bucket's name stays at the top of the sidebar while you scroll through its threads.
-  header: { ...center, position: "sticky", top: 0, zIndex: 1, height: 26 },
-  headerLook: { padding: `0 ${PILL} 0 0`, backgroundColor: colors.chrome },
-  toggle: { ...center, flex: 1, gap: 6, minWidth: 0, height: "100%" },
-  toggleLook: { padding: `0 0 0 ${PILL}`, textAlign: "left" },
-  toggleColor: { color: { default: colors.textTertiary, ":hover": colors.textSecondary } },
-  sorting: { paddingLeft: `calc(${PILL} + 20px)`, color: colors.textTertiary, cursor: "default" },
-  faded: { opacity: 0.6 },
-  chevron: {
-    flexShrink: 0,
-    marginLeft: "auto",
-    transitionProperty: { default: "transform", [motion.reduced]: "none" },
-  },
-  chevronOpen: { transform: "rotate(90deg)" },
-  count: { color: colors.textTertiary, fontWeight: 400 },
-  link: { margin: "2px 0 0", fontSize: fontSizes.small },
-  more: { display: "block", padding: `2px calc(${PILL} + 24px)` },
-  newBucket: { ...center, gap: 6, alignSelf: "flex-start", padding: `2px ${INSET}` },
-  // A bucket shows `BUCKET_ROWS` threads and scrolls the rest, fading at an end with more past it.
-  capped: {
-    overflowY: "auto",
-    scrollbarWidth: "none",
-    overscrollBehavior: "contain",
-    maskImage: {
-      default: null,
-      ":is([data-more-below])": "linear-gradient(to bottom, #000 calc(100% - 32px), transparent)",
-      ":is([data-more-above])": "linear-gradient(to bottom, transparent, #000 32px)",
-      ":is([data-more-above][data-more-below])":
-        "linear-gradient(to bottom, transparent, #000 32px, #000 calc(100% - 32px), transparent)",
-    },
-  },
-  inboxRow: {
-    ...center,
-    gap: space.inset,
-    padding: `6px ${PILL}`,
-    borderRadius: radii.item,
-    fontSize: fontSizes.body,
-  },
-  body: { ...column, flex: 1, minWidth: 0 },
-  top: { ...center, gap: 4, minWidth: 0 },
-  title: { fontSize: fontSizes.body, lineHeight: "16px" },
-  bold: { fontWeight: 600 },
-  done: {
-    flexShrink: 0,
-    display: "grid",
-    placeItems: "center",
-    width: 22,
-    height: 22,
-    borderRadius: radii.item,
-    cursor: "pointer",
-    opacity: {
-      default: 0,
-      [stylex.when.ancestor(":hover")]: 1,
-      ":focus-visible": 1,
-    },
-  },
-  doneShown: { opacity: 1 },
-});
-
-const BUCKET_ROWS = 5;
 const ICON = { size: 14, "aria-hidden": "true" } as const;
 
-// Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
-// darkest thing in the bar.
-const LEFT_PANE =
-  "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
-const sidebarIcon = (open: boolean): IconSvgElement =>
-  open
-    ? [
-        ...i.PanelLeftIcon,
-        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
-      ]
-    : i.PanelLeftIcon;
-
-const dueLabel = (c: Thread): string | undefined => c.dueAt && shortDate(c.dueAt);
-
-// A div that acts as a button, for rows that hold other content.
-const pressable = (run: () => void) =>
-  ({
-    role: "button",
-    tabindex: 0,
-    onClick: run,
-    onKeyDown: (event: KeyboardEvent) => {
-      if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " "))
-        return;
-      event.preventDefault();
-      run();
-    },
-  }) as const;
-
-// A ref that marks clipped text with data-overflowing, which fades it out instead of an ellipsis.
-function overflowFade(): (element: HTMLElement) => void {
-  let element!: HTMLElement;
-  onSettled(() => {
-    const target = element;
-    const fade = () =>
-      target.toggleAttribute("data-overflowing", target.scrollWidth > target.clientWidth);
-    const observer = new ResizeObserver(fade);
-    observer.observe(target);
-    return () => observer.disconnect();
-  });
-  return (next) => (element = next);
-}
-
-const menuFor = (c: Thread) => (event: MouseEvent) => showMenu(event, threadMenu(c));
-
-// A one-line row (All Threads, Drafts, Labels): an icon, its name, and something on the right.
-function Row(props: {
-  label: string;
-  icon: IconSvgElement;
-  meta?: string;
-  active?: boolean;
-  title?: string;
-  onClick: () => void;
-  onMenu?: (e: MouseEvent) => void;
-}): JSX.Element {
-  const fade = overflowFade();
-  return (
-    <li class={sx(s.item)}>
-      <div
-        class={sx(s.row, s.rowPad, s.rowLook, s.pointer, props.active && s.active)}
-        title={props.title}
-        onContextMenu={(e) => props.onMenu?.(e)}
-        {...pressable(() => props.onClick())}
-      >
-        <span class={sx(s.rowIcon, s.rowIconLook)} aria-hidden="true">
-          <Icon icon={props.icon} size={14} />
-        </span>
-        <span ref={fade} class={sx(base.clip, s.label)}>
-          {props.label}
-        </span>
-        <Show when={props.meta}>
-          <span class={sx(s.meta, s.faint)}>{props.meta}</span>
-        </Show>
-      </div>
-    </li>
-  );
-}
-
-// What someone last sent you, else why it's here.
-const lineOf = (item: InboxItem): string => {
-  const last = item.thread.messages.sorted("createdAt").findLast((m) => m.authorId !== me().id);
-  return last
-    ? `${firstName(last.author)}: ${plain(last.body)}`
-    : item.manual
-      ? "Placed here by you"
-      : (item.reason ?? "");
-};
-
-// A thread in the inbox: who it's from, its title and due date, and under them what they last sent you.
-function InboxRow(props: { item: InboxItem }): JSX.Element {
-  const c = (): Thread => props.item.thread;
-  const on = (): boolean => active() === c();
-  const fade = overflowFade();
-  let row!: HTMLDivElement;
-  // The open thread stays in view as J and K move past the rows showing.
-  createEffect(on, (shown) => {
-    if (shown) row.scrollIntoView({ block: "nearest" });
-  });
-  return (
-    <li class={sx(s.item)}>
-      <div
-        ref={row}
-        class={sx(
-          s.inboxRow,
-          s.rowLook,
-          s.pointer,
-          on() && s.active,
-          c().state === "blocked" && !on() && s.faded,
-          // Its done button shows while the row is hovered.
-          stylex.defaultMarker(),
-        )}
-        title={props.item.manual ? "Placed here by you" : props.item.reason}
-        onContextMenu={(e) => menuFor(c())(e)}
-        {...pressable(() => open({ thread: c().id }))}
-      >
-        <Identicon seed={c().ownerId ?? ""} size={16} class={sx(s.fixed)} />
-        <span class={sx(s.body)}>
-          <span class={sx(s.top)}>
-            <span ref={fade} class={sx(base.clip, s.label, s.title, unread(props.item) && s.bold)}>
-              {c().title}
-            </span>
-            <Show when={dueLabel(c())}>
-              <span class={sx(s.meta, s.faint, s.small)}>{dueLabel(c())}</span>
-            </Show>
-          </span>
-          <span class={sx(base.ellipsis, s.faint, s.small)}>{lineOf(props.item)}</span>
-        </span>
-        <button
-          class={sx(base.bare, base.hover, base.dim, s.done, on() && s.doneShown)}
-          title={`Done (${keysFor("done")})`}
-          aria-label="Mark done"
-          onClick={(event) => {
-            event.stopPropagation();
-            markDone(props.item);
-          }}
-        >
-          <Icon icon={i.Tick02Icon} size={14} />
-        </button>
-      </div>
-    </li>
-  );
-}
-
-function Rows(props: {
-  label: string;
-  items: InboxItem[];
-  capped?: boolean;
-  ref?: (list: HTMLUListElement) => void;
-}): JSX.Element {
-  return (
-    <ul ref={props.ref} class={sx(s.list, props.capped && s.capped)} aria-label={props.label}>
-      <For each={props.items}>{(item) => <InboxRow item={item} />}</For>
-    </ul>
-  );
-}
-
-const [folded, setFolded] = createSignal<string[]>([]);
-
-// One bucket: its name and count, which folds it, and its threads, capped at `BUCKET_ROWS` until "6 more" opens
-// the rest.
-function BucketSection(props: {
-  bucket: Bucket;
-  items: InboxItem[];
-  icon?: IconSvgElement;
-  after: boolean;
-}): JSX.Element {
-  const shut = (): boolean => folded().includes(props.bucket.id);
-  const [expanded, setExpanded] = createSignal(false);
-  const hidden = (): number => props.items.length - BUCKET_ROWS;
-  const move = (by: number) => () => {
-    const buckets = myBuckets();
-    const at = buckets.indexOf(props.bucket);
-    const other = buckets[at + by];
-    if (!other) return;
-    [props.bucket.position, other.position] = [other.position, props.bucket.position];
-    props.bucket.save();
-    other.save();
+// A column the edge on its right resizes, remembering its width.
+function resizable(key: string, range: { initial: number; min: number; max: number }) {
+  const clamp = (px: number): number => Math.min(range.max, Math.max(range.min, Math.round(px)));
+  const [width, setWidth] = createSignal(clamp(saved(key, range.initial)));
+  const keep = (px: number): void => {
+    setWidth(px);
+    save(key, px);
   };
-  // The rows cap: as tall as the first `cap` rows, marking an end with more past it.
-  let list: HTMLUListElement | undefined;
-  let cap = BUCKET_ROWS;
-  const measure = (): void => {
-    if (list === undefined) return;
-    const [first, cut] = [list.children[0], list.children[cap]] as (HTMLElement | undefined)[];
-    list.style.maxHeight = first && cut ? `${cut.offsetTop - first.offsetTop}px` : "";
-    list.toggleAttribute("data-more-above", list.scrollTop > 0);
-    list.toggleAttribute(
-      "data-more-below",
-      list.scrollTop + list.clientHeight < list.scrollHeight - 1,
-    );
+  const drag = (event: PointerEvent): void => {
+    const edge = event.currentTarget as HTMLElement;
+    const start = event.clientX;
+    const from = width();
+    edge.setPointerCapture(event.pointerId);
+    const move = (e: PointerEvent): void => void setWidth(clamp(from + e.clientX - start));
+    const up = (): void => {
+      edge.removeEventListener("pointermove", move);
+      keep(width());
+    };
+    edge.addEventListener("pointermove", move);
+    edge.addEventListener("pointerup", up, { once: true });
   };
-  const observer = new ResizeObserver(measure);
-  onSettled(() => () => observer.disconnect());
-  createEffect(
-    () => [expanded() ? props.items.length : BUCKET_ROWS, props.items, shut()] as const,
-    ([rows]) => {
-      cap = rows;
-      measure();
-    },
+  const Edge = (props: { label: string }): JSX.Element => (
+    <hr
+      class={sx(s.edge)}
+      aria-label={props.label}
+      aria-orientation="vertical"
+      onPointerDown={drag}
+      onDblClick={() => keep(range.initial)}
+    />
   );
-  const capList = (el: HTMLUListElement): void => {
-    list = el;
-    el.addEventListener("scroll", measure, { passive: true });
-    observer.observe(el);
-  };
-  return (
-    <section class={sx(s.bucket, props.after && s.bucketAfter)}>
-      <div
-        class={sx(s.header, s.headerLook)}
-        onContextMenu={(e) =>
-          showMenu(e, [
-            {
-              label: "Edit bucket…",
-              run: () => setDialog({ kind: "bucket", bucket: props.bucket }),
-            },
-            { label: "New bucket…", run: () => setDialog({ kind: "bucket" }) },
-            "separator",
-            { label: "Move up", run: move(-1) },
-            { label: "Move down", run: move(1) },
-            "separator",
-            // Sorting needs somewhere to put things.
-            ...(myBuckets().length > 1
-              ? [{ label: "Delete bucket", run: () => void props.bucket.delete() }]
-              : []),
-          ])
-        }
-      >
-        <button
-          class={sx(
-            base.bare,
-            s.toggle,
-            s.toggleLook,
-            s.toggleColor,
-            s.caption,
-            s.pointer,
-            props.items.length === 0 && s.faded,
-          )}
-          aria-expanded={shut() ? "false" : "true"}
-          title={props.bucket.description}
-          onClick={() =>
-            setFolded(
-              shut()
-                ? folded().filter((f) => f !== props.bucket.id)
-                : [...folded(), props.bucket.id],
-            )
-          }
-        >
-          <Icon icon={props.icon ?? i.InboxIcon} {...ICON} class={sx(s.fixed)} />
-          <span class={sx(base.ellipsis)}>{props.bucket.name}</span>
-          <Show when={props.items.length > 0}>
-            <span class={sx(s.count, s.tabular)}>{props.items.length}</span>
-          </Show>
-          <Icon
-            icon={i.ArrowRight01Icon}
-            {...ICON}
-            size={10}
-            class={sx(s.chevron, s.quick, !shut() && s.chevronOpen)}
-          />
-        </button>
-      </div>
-      <Show when={!shut() && props.items.length > 0}>
-        <Rows label={props.bucket.name} items={props.items} ref={capList} capped />
-      </Show>
-      <Show when={!shut() && hidden() > 0}>
-        <button
-          class={sx(base.bare, base.dim, s.link, s.more, s.pointer)}
-          onClick={() => setExpanded(!expanded())}
-        >
-          {expanded() ? "Show less" : `${hidden()} more`}
-        </button>
-      </Show>
-    </section>
-  );
+  return { width, Edge };
 }
 
-// Your inbox in your buckets; threads the model hasn't sorted yet wait at the top under "Sorting".
-function InboxTab(): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> =>
-    bucketIcons(inbox().sections.map((g) => g.bucket));
-  // The bucket above shows its threads, which sets this one further apart.
-  const after = (index: number): boolean => {
-    const above = inbox().sections[index - 1];
-    return !!above && above.items.length > 0 && !folded().includes(above.bucket.id);
-  };
-  return (
-    <div class={sx(s.inbox)}>
-      <Show when={inbox().unsorted.length > 0}>
-        <section class={sx(s.bucket)}>
-          <div class={sx(s.header, s.headerLook)}>
-            <span class={sx(s.toggle, s.toggleLook, s.caption, s.sorting)}>
-              <span class={sx(base.ellipsis)}>Sorting</span>
-              <span class={sx(s.count, s.tabular)}>{inbox().unsorted.length}</span>
-            </span>
-          </div>
-          <Rows label="Sorting" items={inbox().unsorted} />
-        </section>
-      </Show>
-      <Show when={inbox().order.length === 0}>
-        <p class={sx(s.empty, s.faint)}>Nothing for you</p>
-      </Show>
-      <For each={inbox().sections}>
-        {(g, index) => (
-          <BucketSection
-            bucket={g.bucket}
-            items={g.items}
-            icon={icons().get(g.bucket.id)}
-            after={after(index())}
-          />
-        )}
-      </For>
-      <button
-        class={sx(base.bare, base.dim, s.link, s.newBucket, s.pointer)}
-        onClick={() => setDialog({ kind: "bucket" })}
-      >
-        {icon(i.Add01Icon)}
-        New bucket
-      </button>
-    </div>
-  );
-}
+const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
+const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 600 });
 
-// A list of rows, with a line in its place while it's empty.
-function List(props: { label: string; empty?: string | false; children: JSX.Element }) {
-  return (
-    <ul class={sx(s.list)} aria-label={props.label}>
-      <Show when={props.empty}>
-        <li class={sx(s.empty, s.faint)}>{props.empty}</li>
-      </Show>
-      {props.children}
-    </ul>
-  );
-}
-
-// Every thread, whoever's in it, the latest active first.
-function ThreadsTab(): JSX.Element {
-  return (
-    <List label="All threads" empty={allThreads().length === 0 && "No threads yet"}>
-      <For each={allThreads()}>
-        {(c) => (
-          <Row
-            icon={i.Message01Icon}
-            label={c.title}
-            meta={ago(c.updatedAt)}
-            active={active() === c}
-            onClick={() => open({ thread: c.id })}
-            onMenu={menuFor(c)}
-          />
-        )}
-      </For>
-    </List>
-  );
-}
-
-function DraftsTab(): JSX.Element {
-  const drafts = (): Draft[] => store.where(Draft, "userId", me().id);
-  return (
-    <List label="Drafts" empty={drafts().length === 0 && "No drafts. ⌘⇧N, then esc, keeps one"}>
-      <For each={drafts()}>
-        {(draft) => (
-          <Row
-            icon={i.NoteEditIcon}
-            label={draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft"}
-            title={draft.text}
-            meta={ago(draft.updatedAt)}
-            active={shown("draft") === draft.id}
-            onClick={() => open({ draft: draft.id })}
-            onMenu={(e) => showMenu(e, [{ label: "Delete draft", run: () => void draft.delete() }])}
-          />
-        )}
-      </For>
-    </List>
-  );
-}
-
-// A titled part of a list, as in Notion's sidebar. With `onAdd`, a + on the title (shown on hover) makes a new one in
-// place: type its name, Enter makes it, Escape or clicking away doesn't.
-function Section(props: {
-  title: string;
-  onAdd?: (name: string) => void;
-  placeholder?: string;
-  children: JSX.Element;
-}): JSX.Element {
-  const [adding, setAdding] = createSignal(false);
-  // Once: Enter takes the input away, which blurs it too.
-  let done = false;
-  const start = (): void => {
-    done = false;
-    setAdding(true);
-  };
-  const finish = (input: HTMLInputElement, make: boolean): void => {
-    if (done) return;
-    done = true;
-    setAdding(false);
-    if (make && input.value.trim()) props.onAdd!(input.value.trim());
-  };
-  return (
-    <section class={sx(s.section)}>
-      <div class={sx(s.sectionHeader, stylex.defaultMarker())}>
-        <span class={sx(s.caption, s.faint)}>{props.title}</span>
-        <Show when={props.onAdd}>
-          <button
-            class={sx(base.bare, base.dim, s.done, s.end, adding() && s.doneShown)}
-            aria-label={`New ${props.title.toLowerCase().replace(/s$/, "")}`}
-            title={`New ${props.title.toLowerCase().replace(/s$/, "")}`}
-            onClick={start}
-          >
-            {icon(i.Add01Icon)}
-          </button>
-        </Show>
-      </div>
-      <ul class={sx(s.list)} aria-label={props.title}>
-        <Show when={adding()}>
-          <li class={sx(s.item)}>
-            <div class={sx(s.row, s.rowPad, s.active)}>
-              <input
-                ref={(input) => queueMicrotask(() => input.focus())}
-                class={sx(base.bare, s.inlineInput)}
-                placeholder={props.placeholder}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") finish(event.currentTarget, true);
-                  else if (event.key === "Escape") finish(event.currentTarget, false);
-                  else return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-                onBlur={(event) => finish(event.currentTarget, true)}
-              />
-            </div>
-          </li>
-        </Show>
-        {props.children}
-      </ul>
-    </section>
-  );
-}
-
-// Where threads live and how you look at them: all of them and your views, the subspaces, and the labels. Hidden from
-// the sidebar for now.
-export function SpacesTab(): JSX.Element {
-  const openIn = (field: "labelIds" | "subspaceIds", id: string): string =>
-    String(store.all(Thread).filter((t) => t.isOpen && t[field].includes(id)).length);
-  return (
-    <>
-      <Section title="Views">
-        <Row
-          icon={i.Layers01Icon}
-          label="Workspace"
-          active={workspaceShown()}
-          onClick={() => open({ view: null })}
-        />
-        <Row
-          icon={i.UserIcon}
-          label="Personal"
-          active={"personal" in view()}
-          onClick={() => open({ personal: null })}
-        />
-        <For each={byName(store.all(View))}>
-          {(v) => (
-            <Row
-              icon={i.FilterIcon}
-              label={v.name}
-              active={shown("view") === v.id}
-              onClick={() => open({ view: v.id })}
-            />
-          )}
-        </For>
-      </Section>
-      <Section
-        title="Subspaces"
-        placeholder="Subspace name"
-        onAdd={(name) => open({ subspace: makeSubspace(name).id })}
-      >
-        <For each={byName(store.all(Subspace))}>
-          {(sub) => (
-            <Row
-              icon={sub.visibility === "private" ? i.SquareLock01Icon : i.UserMultipleIcon}
-              label={sub.name}
-              meta={openIn("subspaceIds", sub.id)}
-              active={shown("subspace") === sub.id}
-              onClick={() => open({ subspace: sub.id })}
-            />
-          )}
-        </For>
-      </Section>
-      <Section
-        title="Labels"
-        placeholder="Label name"
-        onAdd={(name) => store.create(Label, { name, workspace: workspace() })}
-      >
-        <For each={byName(store.all(Label))}>
-          {(label) => (
-            <Row
-              icon={i.Tag01Icon}
-              label={label.name}
-              meta={openIn("labelIds", label.id)}
-              active={shown("label") === label.id}
-              onClick={() => open({ label: label.id })}
-            />
-          )}
-        </For>
-      </Section>
-    </>
-  );
-}
-
-const TABS = [
-  { label: "Inbox", icon: i.InboxIcon, count: () => inbox().order.length, tab: InboxTab },
-  { label: "All Threads", icon: i.Message01Icon, tab: ThreadsTab },
-  {
-    label: "Drafts",
-    icon: i.NoteEditIcon,
-    count: () => store.where(Draft, "userId", me().id).length,
-    tab: DraftsTab,
-  },
-];
+// ── The top bars' buttons ──
 
 const TopButton = (props: {
   label: string;
@@ -768,7 +107,19 @@ const TopButton = (props: {
   </button>
 );
 
-// Beside the window's buttons: on the sidebar's top row, or the main bar's while it's hidden.
+// Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
+// darkest thing in the bar.
+const LEFT_PANE =
+  "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
+const sidebarIcon = (open: boolean): IconSvgElement =>
+  open
+    ? [
+        ...i.PanelLeftIcon,
+        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
+      ]
+    : i.PanelLeftIcon;
+
+// Beside the window's buttons: on the sidebar's top row, or the list's while it's hidden.
 export const AppButtons = (): JSX.Element => (
   <>
     <TopButton
@@ -780,7 +131,7 @@ export const AppButtons = (): JSX.Element => (
   </>
 );
 
-// Back and forward through the pages you've opened, side by side before the main bar's title.
+// Back and forward through the pages you've opened, side by side before the list's title.
 export const HistoryButtons = (): JSX.Element => (
   <span class={sx(s.history)}>
     <TopButton
@@ -800,45 +151,669 @@ export const HistoryButtons = (): JSX.Element => (
   </span>
 );
 
-// The top bar, the tabs, and the chosen tab's list.
-export function Sidebar(): JSX.Element {
-  const chosen = (): (typeof TABS)[number] => TABS[sidebarTab()];
-  const choose = (t: (typeof TABS)[number]): void => void setSidebarTab(TABS.indexOf(t));
-  const settings = (): boolean => "settings" in view();
+// ── The sidebar: mailboxes ──
+
+// A mailbox in the sidebar: its icon, name and count.
+function MailboxRow(props: {
+  box: Mailbox;
+  label: string;
+  icon: IconSvgElement;
+  count?: number;
+  indent?: boolean;
+  // What right-clicking it offers.
+  menu?: () => MenuItem[];
+}): JSX.Element {
+  const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
-    <aside class={sx(s.sidebar)} style={{ width: `${width()}px` }}>
-      <div data-bar class={sx(topbar.bar, s.topbar)}>
+    <li>
+      <div
+        role="button"
+        tabindex={0}
+        aria-current={on() ? "true" : undefined}
+        class={sx(s.mailbox, props.indent && s.indent, on() && s.selected)}
+        onClick={() => chooseMailbox(props.box)}
+        onContextMenu={(e) => {
+          const items = props.menu?.();
+          if (items) showMenu(e, items);
+        }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          chooseMailbox(props.box);
+        }}
+      >
+        <span class={sx(s.mailboxIcon)}>
+          <Icon icon={props.icon} {...ICON} />
+        </span>
+        <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
+        {/* Even none, so a mailbox reads as empty rather than uncounted. */}
+        <Show when={props.count !== undefined}>
+          <span class={sx(s.count)}>{props.count}</span>
+        </Show>
+      </div>
+    </li>
+  );
+}
+
+// Swaps a bucket with its neighbour above (-1) or below (1).
+function moveBucket(bucket: Bucket, by: number): void {
+  const buckets = myBuckets();
+  const other = buckets[buckets.indexOf(bucket) + by];
+  if (!other) return;
+  [bucket.position, other.position] = [other.position, bucket.position];
+  bucket.save();
+  other.save();
+}
+
+function bucketMenu(bucket: Bucket): MenuItem[] {
+  const buckets = myBuckets();
+  const at = buckets.indexOf(bucket);
+  return [
+    {
+      label: "Edit Bucket",
+      icon: icon(i.PencilEdit01Icon, 13),
+      run: () => setDialog({ kind: "bucket", bucket }),
+    },
+    {
+      label: "New Bucket",
+      icon: icon(i.Add01Icon, 13),
+      run: () => setDialog({ kind: "bucket" }),
+    },
+    "separator",
+    ...(at > 0 ? [{ label: "Move Up", run: () => moveBucket(bucket, -1) }] : []),
+    ...(at < buckets.length - 1 ? [{ label: "Move Down", run: () => moveBucket(bucket, 1) }] : []),
+    // Sorting needs somewhere to put things.
+    ...(buckets.length > 1
+      ? [
+          "separator" as const,
+          {
+            label: "Delete Bucket",
+            icon: icon(i.Delete02Icon, 13),
+            run: () => void bucket.delete(),
+          },
+        ]
+      : []),
+  ];
+}
+
+export function Sidebar(): JSX.Element {
+  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
+  return (
+    <aside class={sx(s.sidebar)} style={{ width: `${sidebarColumn.width()}px` }}>
+      <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
         <AppButtons />
         <span class={sx(topbar.end)}>
-          <TopButton
-            label="New thread"
-            icon={i.PencilEdit02Icon}
+          <button
+            class={sx(topbar.button)}
+            aria-label="New Thread"
+            title={`New Thread (${keysFor("newThread")})`}
             onClick={() => setDialog({ kind: "newThread" })}
-          />
+          >
+            <Icon icon={i.PencilEdit02Icon} {...ICON} />
+          </button>
         </span>
       </div>
-      <div class={sx(s.tabs)}>
-        <Tabs label="Sidebar" tabs={TABS} chosen={chosen()} onChoose={choose} />
+      {/* Your inbox and its buckets, then every thread, then your drafts. */}
+      <nav class={sx(s.nav)} aria-label="Mailboxes">
+        <ul class={sx(base.list, s.stack)}>
+          <MailboxRow
+            box={{ kind: "inbox" }}
+            label="Inbox"
+            icon={i.InboxIcon}
+            count={inbox().order.length}
+            menu={() => [
+              {
+                label: "New Bucket",
+                icon: icon(i.Add01Icon, 13),
+                run: () => setDialog({ kind: "bucket" }),
+              },
+            ]}
+          />
+          <Show when={inbox().unsorted.length > 0}>
+            <MailboxRow
+              box={{ kind: "unsorted" }}
+              label="Sorting"
+              icon={i.Clock01Icon}
+              count={inbox().unsorted.length}
+              indent
+            />
+          </Show>
+          {/* Your buckets, under the inbox they sort. */}
+          <For each={inbox().sections}>
+            {(section) => (
+              <MailboxRow
+                box={{ kind: "bucket", id: section.bucket.id }}
+                label={section.bucket.name}
+                icon={icons().get(section.bucket.id) ?? i.InboxIcon}
+                count={section.items.length}
+                indent
+                menu={() => bucketMenu(section.bucket)}
+              />
+            )}
+          </For>
+        </ul>
+        <ul class={sx(base.list, s.stack, s.nearby)}>
+          <MailboxRow
+            box={{ kind: "all" }}
+            label="All Threads"
+            icon={i.Message01Icon}
+            count={allThreads().length}
+          />
+          <MailboxRow
+            box={{ kind: "drafts" }}
+            label="Drafts"
+            icon={i.NoteEditIcon}
+            count={drafts().length}
+          />
+        </ul>
+      </nav>
+      <div class={sx(s.footer)}>
+        {/* You: one button to your profile and settings, on one page. */}
         <button
-          class={sx(base.bare, base.hover, tab.tab, s.end, settings() && tab.on)}
-          aria-pressed={settings() ? "true" : "false"}
-          aria-label="Settings"
-          title={`Settings (${keysFor("settings")})`}
+          class={sx(base.bare, s.profile)}
+          aria-label="Profile and Settings"
+          title={`Profile and Settings (${keysFor("settings")})`}
           onClick={() => open({ settings: null })}
         >
-          <Identicon seed={me().id} size={14} />
+          <Identicon seed={me().id} size={18.18} />
+          <span class={sx(base.ellipsis)}>{me().name}</span>
         </button>
       </div>
-      <div class={sx(s.content)}>
-        <Dynamic component={chosen().tab} />
-      </div>
-      <hr
-        class={sx(s.edge)}
-        aria-label="Resize sidebar"
-        aria-orientation="vertical"
-        onPointerDown={resize}
-        onDblClick={() => keepWidth(WIDTH.initial)}
-      />
+      <sidebarColumn.Edge label="Resize Sidebar" />
     </aside>
   );
 }
+
+// ── The list: the chosen mailbox's threads ──
+
+// As Mail stamps a message: the time today, "Yesterday", then the date.
+function stamp(date: Date): string {
+  const today = new Date();
+  const day = (d: Date): number => new Date(d).setHours(0, 0, 0, 0);
+  if (day(date) === day(today))
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (day(today) - day(date) === 86_400_000) return "Yesterday";
+  return shortDate(date);
+}
+
+// What a message says, without the @mentions most start with (the list shows who it's from already).
+// Everyone's @name, once for every row rather than per row.
+const mentionNames = store.view(() => store.all(User).map((u) => `@${u.name} `));
+function preview(body: string): string {
+  let text = plain(body);
+  const names = mentionNames();
+  let lead = names.find((name) => text.startsWith(name));
+  while (lead) {
+    text = text.slice(lead.length);
+    lead = names.find((name) => text.startsWith(name));
+  }
+  return text;
+}
+
+// A thread as Mail lists a message: its title and when, then who wrote last and the start of what they wrote.
+function Row(props: { thread: Thread }): JSX.Element {
+  const t = (): Thread => props.thread;
+  const on = (): boolean => active() === t();
+  const isUnread = (): boolean => {
+    const it = itemFor(t());
+    return it !== undefined && !it.doneAt && unread(it);
+  };
+  // Its latest message, found once (a pass, not a sort) for the places that show it.
+  const last = createMemo(() => {
+    let latest: Message | undefined;
+    for (const message of t().messages)
+      if (!latest || message.createdAt > latest.createdAt) latest = message;
+    return latest;
+  });
+  const from = () => last()?.author ?? t().owner;
+  let row!: HTMLDivElement;
+  // The open thread stays in view as J and K (or the arrows) move past the rows showing.
+  createEffect(on, (shown) => {
+    if (shown) row.scrollIntoView({ block: "nearest" });
+  });
+  return (
+    <li>
+      <div
+        ref={row}
+        role="button"
+        tabindex={on() ? 0 : -1}
+        data-active={on() ? "" : undefined}
+        aria-current={on() ? "true" : undefined}
+        class={sx(s.row, on() && s.selected)}
+        onClick={() => open({ thread: t().id })}
+        onContextMenu={(e) => showMenu(e, threadMenu(t()))}
+      >
+        <span class={sx(s.rowBody)}>
+          {/* What it's about first, then who wrote last: the topic is what you scan a list for. */}
+          <span class={sx(s.rowTop)}>
+            <span class={sx(s.subjectLine)}>
+              <span class={sx(base.ellipsis, s.subject)}>{t().title}</span>
+            </span>
+            {/* Unread: a dot before when, on the right, so read rows lose no width to an empty column. */}
+            <span class={sx(s.stamp)}>
+              <Show when={isUnread()}>
+                <span class={sx(s.unreadDot)} aria-label="Unread" />
+              </Show>
+              {stamp(last()?.createdAt ?? t().createdAt)}
+            </span>
+          </span>
+          <span class={sx(s.second)}>
+            <span class={sx(s.preview)}>
+              <span class={sx(s.from)}>{from()?.name ?? ""}</span>
+              <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
+            </span>
+          </span>
+        </span>
+      </div>
+    </li>
+  );
+}
+
+const draftTitle = (draft: Draft): string =>
+  draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft";
+
+// A draft in Drafts, which opens back in Compose.
+function DraftRow(props: { draft: Draft }): JSX.Element {
+  // Its drafted title, else its first line; the rest is the preview.
+  const lines = (): string[] => props.draft.text.split("\n");
+  const rest = (): string =>
+    props.draft.draft?.title ? props.draft.text : lines().slice(1).join(" ");
+  const on = (): boolean => shown("draft") === props.draft.id;
+  return (
+    <li>
+      <div
+        role="button"
+        tabindex={0}
+        data-active={on() ? "" : undefined}
+        aria-current={on() ? "true" : undefined}
+        class={sx(s.row, on() && s.selected)}
+        onClick={() => open({ draft: props.draft.id })}
+        onContextMenu={(e) =>
+          showMenu(e, [
+            {
+              label: "Open Draft",
+              icon: icon(i.NoteEditIcon, 13),
+              run: () => open({ draft: props.draft.id }),
+            },
+            "separator",
+            {
+              label: "Delete Draft",
+              icon: icon(i.Delete02Icon, 13),
+              run: () => void props.draft.delete(),
+            },
+          ])
+        }
+      >
+        <span class={sx(s.rowBody)}>
+          <span class={sx(s.rowTop)}>
+            <span class={sx(base.ellipsis, s.from)}>{draftTitle(props.draft)}</span>
+            <span class={sx(s.stamp)}>{stamp(props.draft.updatedAt)}</span>
+          </span>
+          <Show when={rest()}>
+            <span class={sx(s.second)}>
+              <span class={sx(s.preview)}>{rest()}</span>
+            </span>
+          </Show>
+        </span>
+      </div>
+    </li>
+  );
+}
+
+export function MessageList(): JSX.Element {
+  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
+  // Opening a draft (from ⌘K, say) lists the drafts.
+  createEffect(view, (next) => {
+    if ("draft" in next && mailbox().kind !== "drafts") chooseMailbox({ kind: "drafts" });
+  });
+  // A bucket that's gone (deleted here or elsewhere) goes back to the inbox rather than an empty list with no name.
+  createEffect(
+    () => {
+      const box = mailbox();
+      return box.kind === "bucket" && !store.findById(Bucket, box.id);
+    },
+    (gone) => void (gone && chooseMailbox({ kind: "inbox" })),
+  );
+  const isDrafts = (): boolean => mailbox().kind === "drafts";
+  const total = (): number => (isDrafts() ? drafts().length : listed().order.length);
+  const unreadCount = (): number =>
+    listed().order.filter((t) => {
+      const it = itemFor(t);
+      return it !== undefined && !it.doneAt && unread(it);
+    }).length;
+  const subtitle = (): string => {
+    const n = unreadCount();
+    if (n > 0) return `${n} unread`;
+    const count = total();
+    const noun = isDrafts() ? "draft" : "thread";
+    return `${count} ${noun}${count === 1 ? "" : "s"}`;
+  };
+  let list!: HTMLDivElement;
+  // ↑ and ↓ move through the list, as in Mail (J and K do too, anywhere).
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const order = listed().order;
+    if (order.length === 0) return;
+    event.preventDefault();
+    const at = order.indexOf(active()!);
+    const next =
+      event.key === "ArrowDown"
+        ? order[Math.min(order.length - 1, at + 1)]
+        : order[Math.max(0, at - 1)];
+    open({ thread: next.id });
+    queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus());
+  };
+  return (
+    <section
+      class={sx(s.list)}
+      style={{ width: `${listColumn.width()}px` }}
+      aria-label={mailboxTitle(mailbox())}
+    >
+      <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
+        <Show when={!sidebarOpen()}>
+          <AppButtons />
+        </Show>
+        {/* Back and forward: here, where they always are, whatever's open beside the list. */}
+        <HistoryButtons />
+        <span class={sx(s.listHeading)}>
+          <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
+          <span class={sx(s.listSubtitle)}>{subtitle()}</span>
+        </span>
+        <Show when={!sidebarOpen()}>
+          <span class={sx(topbar.end)}>
+            <button
+              class={sx(topbar.button)}
+              aria-label="New Thread"
+              title={`New Thread (${keysFor("newThread")})`}
+              onClick={() => setDialog({ kind: "newThread" })}
+            >
+              <Icon icon={i.PencilEdit02Icon} {...ICON} />
+            </button>
+          </span>
+        </Show>
+      </div>
+      <div
+        ref={list}
+        class={sx(s.listScroll)}
+        onMouseDown={() =>
+          queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
+        }
+        onKeyDown={onKeyDown}
+      >
+        <Show
+          when={isDrafts()}
+          fallback={
+            <For each={listed().groups}>
+              {(group) => (
+                <>
+                  <Show when={mailbox().kind === "inbox"}>
+                    <div
+                      class={sx(s.groupHeader)}
+                      onContextMenu={(e) => {
+                        if (group.bucket) showMenu(e, bucketMenu(group.bucket));
+                      }}
+                    >
+                      <Icon
+                        icon={
+                          group.bucket
+                            ? (icons().get(group.bucket.id) ?? i.InboxIcon)
+                            : i.Clock01Icon
+                        }
+                        size={11}
+                        aria-hidden="true"
+                      />
+                      {group.bucket?.name ?? group.title}
+                      <span class={sx(s.groupCount)}>{group.threads.length}</span>
+                    </div>
+                  </Show>
+                  <ul class={sx(base.list, s.stack)}>
+                    <For each={group.threads}>{(thread) => <Row thread={thread} />}</For>
+                  </ul>
+                </>
+              )}
+            </For>
+          }
+        >
+          <ul class={sx(base.list, s.stack)}>
+            <For each={drafts()}>{(draft) => <DraftRow draft={draft} />}</For>
+          </ul>
+        </Show>
+        <Show when={total() === 0}>
+          <div class={sx(s.empty)}>
+            <Icon
+              icon={mailbox().kind === "inbox" ? i.InboxCheckIcon : i.InboxIcon}
+              size={28}
+              aria-hidden="true"
+            />
+            <span class={sx(s.emptyTitle)}>
+              {mailbox().kind === "inbox" ? "All caught up" : "Nothing here"}
+            </span>
+            <Show when={mailbox().kind === "inbox"}>
+              <span>Nothing in your inbox needs you right now.</span>
+            </Show>
+          </div>
+        </Show>
+      </div>
+      <listColumn.Edge label="Resize List" />
+    </section>
+  );
+}
+
+// With nothing open: say so, and where to look.
+export function NothingOpen(): JSX.Element {
+  return (
+    <div class={sx(s.nothing)}>
+      <span class={sx(s.nothingTitle)}>No thread selected</span>
+      <span>{listed().order.length > 0 ? "Choose one from the list to read it here." : ""}</span>
+    </div>
+  );
+}
+
+const s = stylex.create({
+  // The resize edge on a column's right.
+  edge: {
+    position: "absolute",
+    top: 0,
+    right: -3,
+    bottom: 0,
+    zIndex: 1,
+    width: 5,
+    margin: 0,
+    borderStyle: "none",
+    // Invisible: only the cursor says it's there; the column's own border is the line.
+    backgroundColor: "transparent",
+    cursor: "col-resize",
+  },
+  history: { display: "flex", marginRight: 6 },
+  tight: { width: 18 },
+
+  sidebar: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flexShrink: 0,
+    backgroundColor: colors.chrome,
+    borderRightWidth: 1,
+    borderRightStyle: "solid",
+    borderRightColor: colors.strokeTertiary,
+  },
+  sidebarBar: { paddingLeft: sidebarSpace.afterLights },
+  // Under the top bar, its first line where every column's starts (17pt under the top bar). Each size here is the
+  // macOS app's points ÷ 1.1, for the 110% scale.
+  nav: {
+    flex: 1,
+    minHeight: 0,
+    paddingTop: 8.37,
+    paddingInline: space.inset,
+    paddingBottom: 12,
+    overflowY: "auto",
+  },
+  // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
+  selected: { backgroundColor: colors.bgTertiary },
+  // A little space between rows, so neighbouring fills don't run together.
+  stack: { display: "flex", flexDirection: "column", gap: 1.82 },
+  // 30pt tall, rounded 8pt, 8pt in from its ends, its icon in an 18pt column 8pt before its 13pt name.
+  mailbox: {
+    display: "flex",
+    gap: space.inset,
+    alignItems: "center",
+    height: 27.27,
+    paddingInline: space.inset,
+    borderRadius: radii.item,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    cursor: "default",
+    outline: "none",
+  },
+  // A bucket under Inbox: indented by a margin, not padding, so its ground starts just before its icon.
+  indent: { marginLeft: 14 },
+  mailboxIcon: {
+    display: "flex",
+    flexShrink: 0,
+    justifyContent: "center",
+    width: 16.36,
+    color: colors.iconTertiary,
+  },
+  mailboxName: { flex: 1 },
+  count: {
+    flexShrink: 0,
+    color: colors.textTertiary,
+    fontSize: fontSizes.small,
+    fontVariantNumeric: "tabular-nums",
+  },
+  // Just apart from the rows above.
+  nearby: { marginTop: space.inset },
+  // You 16pt in and 12pt up from the corner, at 20pt, 8pt before your 13pt name.
+  footer: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 4,
+    alignItems: "center",
+    marginInline: space.inset,
+    marginBottom: 4.55,
+  },
+  profile: {
+    display: "flex",
+    flex: 1,
+    minWidth: 0,
+    gap: space.inset,
+    alignItems: "center",
+    paddingBlock: 6.36,
+    paddingInline: space.inset,
+    borderRadius: radii.item,
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
+  },
+
+  list: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flexShrink: 0,
+    minWidth: 0,
+    backgroundColor: colors.chrome,
+    borderRightWidth: 1,
+    borderRightStyle: "solid",
+    borderRightColor: colors.strokeTertiary,
+  },
+  listBar: { paddingLeft: 16 },
+  listBarAlone: { paddingLeft: sidebarSpace.afterLights },
+  // The mailbox's name and, after it on the same line, how many are unread (or listed).
+  listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
+  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
+  listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
+  // Cards 8pt in from the column's sides and 2pt apart.
+  listScroll: {
+    position: "relative",
+    isolation: "isolate",
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingTop: 5.18,
+    paddingInline: space.inset,
+    paddingBottom: 24,
+    outline: "none",
+  },
+  // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.
+  groupHeader: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    padding: "9.09px 10.91px 1.82px",
+    color: colors.textTertiary,
+    fontSize: fontSizes.caption,
+    fontWeight: 500,
+  },
+  groupCount: { fontWeight: 400 },
+  // No hairlines between rows: compact cards, set apart by the space between them. A card: 12pt in from its sides and
+  // 10pt from its top and bottom, rounded 10pt, its two parts 5pt apart.
+  row: {
+    display: "flex",
+    alignItems: "flex-start",
+    padding: "9.09px 10.91px",
+    borderRadius: 9.09,
+    color: colors.textPrimary,
+    cursor: "default",
+    outline: "none",
+  },
+  unreadDot: {
+    flexShrink: 0,
+    width: 6.36,
+    height: 6.36,
+    borderRadius: "50%",
+    backgroundColor: colors.systemBlue,
+  },
+  rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 4.55, minWidth: 0 },
+  // The first line, at 14pt: the title, then at least 8pt on, the unread dot and when.
+  rowTop: { display: "flex", gap: space.inset, alignItems: "center", fontSize: 12.73 },
+  // Who wrote last, at the start of the preview: a little stronger than their words.
+  from: { color: colors.textSecondary, fontWeight: 500 },
+  stamp: {
+    display: "flex",
+    flexShrink: 0,
+    gap: 4.55,
+    alignItems: "center",
+    color: colors.textTertiary,
+    fontVariantNumeric: "tabular-nums",
+  },
+  subjectLine: { display: "flex", flex: 1, gap: 4.55, alignItems: "center", minWidth: 0 },
+  subject: { fontWeight: 600, lineHeight: "17.27px" },
+  // The rest at 13pt: the preview, up to two lines.
+  second: {
+    display: "flex",
+    gap: space.inset,
+    alignItems: "last baseline",
+    fontSize: fontSizes.body,
+    lineHeight: "14.55px",
+  },
+  preview: {
+    display: "-webkit-box",
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    color: colors.textTertiary,
+    WebkitBoxOrient: "vertical",
+    WebkitLineClamp: 2,
+  },
+  empty: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    alignItems: "center",
+    padding: "64px 24px",
+    color: colors.textTertiary,
+    textAlign: "center",
+  },
+  emptyTitle: { color: colors.textSecondary, fontSize: fontSizes.input, fontWeight: 600 },
+  nothing: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    gap: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    color: colors.textTertiary,
+  },
+  nothingTitle: { color: colors.textSecondary, fontSize: fontSizes.pageTitle, fontWeight: 600 },
+});

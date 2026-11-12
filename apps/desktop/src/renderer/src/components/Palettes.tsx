@@ -15,9 +15,8 @@ import {
   open,
   otherSources,
   others,
+  chooseMailbox,
   setDialog,
-  setSidebarOpen,
-  setSidebarTab,
   signOut,
   SOURCES,
   store,
@@ -212,11 +211,17 @@ function Search(): JSX.Element {
       section: "Quick actions",
       run: () => setDialog({ kind: "newThread" }),
     },
-    ...(["Inbox", "All Threads", "Drafts"] as const).map((label, tab) => ({
+    ...(
+      [
+        ["Inbox", "inboxTab", "inbox"],
+        ["All Threads", "threadsTab", "all"],
+        ["Drafts", "draftsTab", "drafts"],
+      ] as const
+    ).map(([label, key, kind]) => ({
       label,
-      hint: keysFor((["inboxTab", "threadsTab", "draftsTab"] as const)[tab]),
+      hint: keysFor(key),
       section: "Views",
-      run: done(() => (setSidebarOpen(true), setSidebarTab(tab))),
+      run: done(() => chooseMailbox({ kind })),
     })),
     {
       label: "Settings",

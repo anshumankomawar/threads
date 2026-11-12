@@ -29,7 +29,7 @@ import {
 import { base } from "./styles/base";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
-import { colors, fontSizes, radii, sidebarSpace } from "./styles/tokens.stylex";
+import { colors, fontSizes, radii } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
 import { Compose } from "./components/Compose";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
@@ -47,7 +47,7 @@ import {
   SettingsView,
   SubspaceView,
 } from "./components/Pages";
-import { AppButtons, HistoryButtons, Sidebar } from "./components/Sidebar";
+import { MessageList, NothingOpen, Sidebar } from "./components/Sidebar";
 
 const styles = stylex.create({
   // Over the window's drag strip, so it's no-drag or its buttons can't be clicked.
@@ -72,9 +72,8 @@ const styles = stylex.create({
     minWidth: 0,
     backgroundColor: colors.chrome,
   },
-  // Beside the sidebar, or clear of the traffic lights without it.
-  topbarBesideSidebar: { paddingLeft: 8 },
-  topbarAlone: { paddingLeft: sidebarSpace.afterLights },
+  // Beside the list: the reading pane's title 16px in, as the list's is.
+  topbarBesideList: { paddingLeft: 16 },
   viewAs: {
     display: "flex",
     gap: 6,
@@ -149,6 +148,8 @@ export default function App(): JSX.Element {
         <Show when={sidebarOpen()}>
           <Sidebar />
         </Show>
+        {/* Mail's columns: the mailboxes, the chosen one's threads, and the thread you're reading. */}
+        <MessageList />
         <main class={sx(styles.main)}>
           {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}
           <Show when={store.rejection()}>
@@ -165,14 +166,7 @@ export default function App(): JSX.Element {
               </div>
             )}
           </Show>
-          <div
-            data-bar
-            class={sx(topbar.bar, sidebarOpen() ? styles.topbarBesideSidebar : styles.topbarAlone)}
-          >
-            <Show when={!sidebarOpen()}>
-              <AppButtons />
-            </Show>
-            <HistoryButtons />
+          <div data-bar class={sx(topbar.bar, styles.topbarBesideList)}>
             <span class={sx(base.ellipsis, topbar.title)}>
               {active()?.title ??
                 label()?.name ??
@@ -198,9 +192,20 @@ export default function App(): JSX.Element {
                 <Identicon seed={me().id} size={14} />
                 <span>{me().name}</span>
               </button>
+              {/* Closes what's open, and the reading pane's content with it. */}
+              <Show when={!("thread" in view()) || active()}>
+                <button
+                  class={sx(topbar.button)}
+                  aria-label="Close"
+                  title="Close"
+                  onClick={() => open({ thread: null })}
+                >
+                  <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
+                </button>
+              </Show>
             </span>
           </div>
-          <Switch>
+          <Switch fallback={<NothingOpen />}>
             <Match when={label()} keyed>
               {(label) => <LabelView label={label} />}
             </Match>

@@ -5,6 +5,7 @@ import type { JSX } from "@solidjs/web";
 import { createStore, httpTransport, indexedLocalDB, type Filter, type Model } from "sync";
 import {
   Bucket,
+  Draft,
   Subspace,
   InboxItem,
   Thread,
@@ -140,12 +141,6 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
   null,
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
-// Which of the sidebar's tabs is open, by position (Inbox, All Threads, Drafts), so its hotkeys can choose one.
-export const [sidebarTab, setSidebarTab] = createSignal(0);
-function showTab(tab: number): void {
-  setSidebarOpen(true);
-  setSidebarTab(tab);
-}
 export const [undo, setUndo] = createSignal<{ text: string; run: () => void } | null>(null);
 
 const [zoom, setZoom] = createSignal<number>(saved("zoom", 1));
@@ -225,6 +220,66 @@ export const allThreads = store.view(() =>
   store.all(Thread).sort((a, b) => lastActive(b) - lastActive(a)),
 );
 
+// ── Mailboxes: what the sidebar chooses and the middle column lists ──
+// The whole inbox, the threads still being sorted, one of your buckets, every thread, or your drafts.
+export type Mailbox =
+  | { kind: "inbox" }
+  | { kind: "unsorted" }
+  | { kind: "bucket"; id: string }
+  | { kind: "all" }
+  | { kind: "drafts" };
+const [chosenMailbox, setChosenMailbox] = createSignal<Mailbox>(
+  saved<Mailbox>("mailbox", { kind: "inbox" }),
+);
+export const mailbox = chosenMailbox;
+export const sameMailbox = (a: Mailbox, b: Mailbox): boolean =>
+  JSON.stringify(a) === JSON.stringify(b);
+export function chooseMailbox(box: Mailbox): void {
+  setSidebarOpen(true);
+  setChosenMailbox(box);
+  save("mailbox", box);
+}
+export const mailboxTitle = (box: Mailbox): string =>
+  box.kind === "inbox"
+    ? "Inbox"
+    : box.kind === "unsorted"
+      ? "Sorting"
+      : box.kind === "bucket"
+        ? (store.findById(Bucket, box.id)?.name ?? "Inbox")
+        : box.kind === "all"
+          ? "All Threads"
+          : "Drafts";
+
+export const drafts = store.view(() =>
+  store
+    .where(Draft, "userId", me().id)
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
+);
+
+// The chosen mailbox's threads, in groups: the inbox by bucket (what's still being sorted first), the rest in one.
+type Group = { bucket?: Bucket; title?: string; threads: Thread[] };
+export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
+  const box = mailbox();
+  const { sections, unsorted } = inbox();
+  const threads = (items: InboxItem[]): Thread[] => items.map((item) => item.thread);
+  const groups: Group[] =
+    box.kind === "inbox"
+      ? [
+          ...(unsorted.length > 0 ? [{ title: "Sorting", threads: threads(unsorted) }] : []),
+          ...sections
+            .filter((section) => section.items.length > 0)
+            .map((section) => ({ bucket: section.bucket, threads: threads(section.items) })),
+        ]
+      : box.kind === "unsorted"
+        ? [{ threads: threads(unsorted) }]
+        : box.kind === "bucket"
+          ? [{ threads: threads(sections.find((x) => x.bucket.id === box.id)?.items ?? []) }]
+          : box.kind === "all"
+            ? [{ threads: allThreads() }]
+            : [];
+  return { groups, order: groups.flatMap((group) => group.threads) };
+});
+
 // ── Navigation and the actions it takes ──
 const activeId = (): string | null => {
   const shown = view();
@@ -290,7 +345,7 @@ window.addEventListener("mouseup", (event) => {
 // After you finish one, the next in your inbox opens; in the split view, the split closes.
 function moveOn(thread: Thread): void {
   if (thread.id === split()) return void setSplit(null);
-  const order = inbox().order;
+  const order = listed().order;
   const at = order.indexOf(thread);
   const next = [...order.slice(at + 1), ...order.slice(0, Math.max(0, at))].find(
     (c) => c !== thread,
@@ -383,10 +438,10 @@ window.addEventListener("keydown", (event) => {
   const keys = keysOf(event);
   const id = keys && commandFor(keys);
   if (!id || (typing && !/[⌘⌃]/.test(keys))) return;
-  const order = inbox().order;
+  const order = listed().order;
   const current = active();
   const at = current ? order.indexOf(current) : -1;
-  const item = current && at !== -1 ? itemFor(current) : undefined;
+  const item = current && inbox().order.includes(current) ? itemFor(current) : undefined;
   const reading = free && !typing;
   const run: Record<HotkeyId, (() => void) | false | undefined> = {
     search: () => setDialog({ kind: "search" }),
@@ -396,9 +451,9 @@ window.addEventListener("keydown", (event) => {
     forward: free && goForward,
     sidebar: () => setSidebarOpen(!sidebarOpen()),
     // Not in a dialog, where ⌘1… choose its own tabs.
-    inboxTab: free && (() => showTab(0)),
-    threadsTab: free && (() => showTab(1)),
-    draftsTab: free && (() => showTab(2)),
+    inboxTab: free && (() => chooseMailbox({ kind: "inbox" })),
+    threadsTab: free && (() => chooseMailbox({ kind: "all" })),
+    draftsTab: free && (() => chooseMailbox({ kind: "drafts" })),
     newThread: () => {
       const shown = view();
       setDialog({
