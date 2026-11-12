@@ -69,6 +69,11 @@ export const palette = stylex.create({
   growIcon: { display: "flex", color: colors.textTertiary },
   // The field's own text size.
   growInput: { height: 14.55, fontSize: fontSizes.body, lineHeight: "14.55px" },
+  // An inverted panel's scheme, for what's coloured with light-dark() (the editor's placeholder, scrollbars).
+  schemeLight: { colorScheme: "light" },
+  schemeDark: { colorScheme: "dark" },
+  // A new thread's first message, as it will read in the thread.
+  message: { padding: "14px 16px 16px", fontSize: fontSizes.body },
   // The chosen row on the field's grey: the sidebar's selection wash (the palette's is meant for a white ground).
   growSelected: { backgroundColor: colors.bgTertiary },
   // The keys at its end, as the field shows them.

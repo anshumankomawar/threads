@@ -6,14 +6,10 @@ import type { Filter } from "sync";
 import {
   account,
   applyTheme,
-  byName,
   dialog,
   edit,
   myBuckets,
   me,
-  membersHint,
-  subspacesWithMembers,
-  summary,
   memberIn,
   open,
   otherSources,
@@ -28,7 +24,6 @@ import {
   signOut,
   SOURCES,
   store,
-  toggled,
   switchTo,
   theme,
   type Dialog,
@@ -54,6 +49,8 @@ import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
 import { Icon } from "./Icon";
 import { moved, OptionButton, type Option } from "./Menus";
+import { MessageBox, plain } from "./ThreadView";
+import { darkTheme, lightTheme } from "../styles/tokens.stylex";
 
 // A modal palette: a click outside or Escape closes it.
 // `grow`: ⌘K (and ⌘F) as the toolbar's search field ([data-search-anchor]) itself. It opens exactly over the field, the
@@ -61,7 +58,12 @@ import { moved, OptionButton, type Option } from "./Menus";
 // sliding down to its results. That's a clip on the compositor (Web Animations), so nothing is laid out again while it
 // opens. Nothing dims behind it.
 const GROW = { duration: 260, easing: "cubic-bezier(0.32, 0.72, 0, 1)" };
-export function Modal(props: { children: JSX.Element; grow?: boolean }): JSX.Element {
+// `inverted`: in the other theme's colours, a dark panel over the light app or a light one over the dark.
+export function Modal(props: {
+  children: JSX.Element;
+  grow?: boolean;
+  inverted?: boolean;
+}): JSX.Element {
   const open = (el: HTMLDialogElement): void => {
     el.closedBy = "any";
     const field =
@@ -84,7 +86,16 @@ export function Modal(props: { children: JSX.Element; grow?: boolean }): JSX.Ele
     <dialog
       ref={(el) => queueMicrotask(() => open(el))}
       onClose={() => setDialog(null)}
-      class={sx(base.panel, palette.dialog, palette.open, props.grow && palette.grow)}
+      class={
+        stylex.attrs(
+          base.panel,
+          palette.dialog,
+          palette.open,
+          props.grow && palette.grow,
+          props.inverted && (theme() === "dark" ? lightTheme : darkTheme),
+          props.inverted && (theme() === "dark" ? palette.schemeLight : palette.schemeDark),
+        ).class
+      }
     >
       {props.children}
     </dialog>
@@ -483,178 +494,43 @@ function Find(): JSX.Element {
   );
 }
 
-type Step = "write" | "describe" | "pick" | "labels";
+// A thread's title from its first message: its first line, without the @mentions.
+const titleFrom = (body: string): string =>
+  plain(body.replaceAll(/\[\[(person|subspace):[^\]\s]+\]\]/g, ""))
+    .split("\n")[0]
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .slice(0, 80) || "New thread";
 
-// Starting a thread: its title, an optional description, then who it's for, who gets it in their inbox (you're its
-// requester, so it's not in yours). Started from a label's, a subspace's or a person's page, it's in that label or
-// subspace, or that person is first in the list.
+// Starting a thread is writing its first message: whoever it @mentions is in it, and Enter sends it. Started from a
+// label's, a subspace's or a person's page, it's in that label or subspace, or that person is in it too.
 function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }): JSX.Element {
-  const [step, setStep] = createSignal<Step>("write");
-  const query = createSignal("");
-  const setTyped = query[1];
-  const [title, setTitle] = createSignal("");
-  const [description, setDescription] = createSignal("");
-  // Labels by name, since one you make here doesn't exist until the thread does.
-  const [names, setNames] = createSignal<string[]>(
-    untrack(() => {
-      const label = store.findById(Label, props.labelId ?? "");
-      return label ? [label.name] : [];
-    }),
-  );
-  // Who it's for: people and groups, as `person:<id>` and `group:<id>`; a group brings in everyone in it.
-  const [picked, setPicked] = createSignal<string[]>(
-    untrack(() => (props.to ? [`person:${props.to.id}`] : [])),
-  );
-  const pickedNames = (): string[] =>
-    picked().flatMap((key) => {
-      const [kind, id] = key.split(":");
-      const name =
-        kind === "person"
-          ? store.findById(User, id)?.name
-          : `@${store.findById(Subspace, id)?.name ?? "group"}`;
-      return name ? [name] : [];
-    });
-  const pickedUsers = (): User[] =>
-    [
-      ...new Set(
-        picked().flatMap((key) => {
-          const [kind, id] = key.split(":");
-          if (kind === "person") return store.findById(User, id) ?? [];
-          const group = store.findById(Subspace, id);
-          return group ? [...group.members].flatMap((m) => m.user ?? []) : [];
-        }),
-      ),
-    ].filter((u) => u.id !== me().id);
-  const go = (next: Step, text = ""): void => {
-    setStep(next);
-    setTyped(text);
-  };
-  const back = (): void => {
-    if (step() === "describe") go("write", title());
-    else if (step() === "pick") go("describe", description());
-    else if (step() === "labels") go("pick");
-    else setDialog(null);
-  };
-  const create = (assignees: User[], subspace?: Subspace): void => {
-    const labels = store.all(Label);
-    const labelIds = names().map(
-      (name) =>
-        (
-          labels.find((l) => l.name === name) ??
-          store.create(Label, { name, workspace: workspace() })
-        ).id,
-    );
-    const subspaceIds = [
-      ...new Set([
-        ...(props.subspaceId ? [props.subspaceId] : []),
-        ...(subspace ? [subspace.id] : []),
-      ]),
-    ];
+  const start = (body: string): void => {
     setDialog(null);
     const made = createThread({
-      title: title(),
-      description: description(),
-      assignees,
-      labelIds,
-      subspaceIds,
+      title: titleFrom(body),
+      assignees: props.to ? [props.to] : [],
+      labelIds: props.labelId ? [props.labelId] : [],
+      subspaceIds: props.subspaceId ? [props.subspaceId] : [],
     });
+    send(made, body);
     open({ thread: made.id });
   };
-  const toggle = (name: string): void => {
-    setNames((all) => toggled(all, name));
-    setTyped("");
-  };
-  const steps: Record<Step, [string, (query: string) => Row[]]> = {
-    write: [
-      untrack(() => (props.to ? `What do you need from ${props.to.name}?` : "What do you need?")),
-      (text) =>
-        next(text, "Step 1 of 3", () => {
-          setTitle(text);
-          go("describe", description());
-        }),
-    ],
-    describe: [
-      "Add a description (optional)",
-      (text) => [
-        {
-          label: text === "" ? "Skip the description" : "Next",
-          hint: "↵",
-          section: `Step 2 of 3 · ${title()}`,
-          run: () => {
-            setDescription(text);
-            go("pick");
-          },
-        },
-      ],
-    ],
-    pick: [
-      "Who's it for?",
-      (text) => {
-        const section = `Step 3 of 3 · ${title()}`;
-        const has = (key: string): boolean => picked().includes(key);
-        const pick = (key: string): void => {
-          setPicked((all) => toggled(all, key));
-          setTyped("");
-        };
-        const choices: Row[] = [
-          ...people(text, (u) => pick(`person:${u.id}`)).map((row) => ({
-            ...row,
-            hint: has(`person:${row.seed}`) ? "✓" : undefined,
-          })),
-          ...subspacesWithMembers()
-            .filter((group) => matches(group.name, text))
-            .map((group) => ({
-              label: `@${group.name}`,
-              icon: "user-list-alt" as const,
-              hint: has(`group:${group.id}`) ? "✓" : membersHint(group),
-              run: () => pick(`group:${group.id}`),
-            })),
-        ].map((row) => ({ ...row, section }));
-        const start: Row =
-          picked().length > 0
-            ? {
-                label: `Start it with ${summary(pickedNames(), "")}`,
-                hint: "↵",
-                accent: true,
-                section,
-                run: () => create(pickedUsers()),
-              }
-            : { label: "No one yet", hint: "@mention them later", section, run: () => create([]) };
-        // Typing looks for someone; with nothing typed, Enter starts it with who's picked.
-        return text === "" ? [start, ...choices] : [...choices, start];
-      },
-    ],
-    labels: [
-      "Find or make a label",
-      (text) => {
-        const all = byName(store.all(Label));
-        const exists = [...all.map((l) => l.name), ...names()].some(
-          (name) => name.toLowerCase() === text.toLowerCase(),
-        );
-        return [
-          ...all
-            .filter((l) => matches(l.name, text))
-            .map((l) => ({
-              label: l.name,
-              hint: names().includes(l.name) ? "✓" : undefined,
-              run: () => toggle(l.name),
-            })),
-          ...names()
-            .filter((name) => !all.some((l) => l.name === name) && matches(name, text))
-            .map((name) => ({ label: name, hint: "✓", run: () => toggle(name) })),
-          ...(text !== "" && !exists ? [{ label: `Make “${text}”`, run: () => toggle(text) }] : []),
-          { label: "Done", hint: "esc", section: "Labels", run: () => go("pick") },
-        ];
-      },
-    ],
-  };
   return (
-    <Picker
-      placeholder={steps[step()][0]}
-      rows={(text) => steps[step()][1](text)}
-      query={query}
-      onBack={back}
-    />
+    <Modal inverted>
+      <div class={sx(palette.message)}>
+        <MessageBox
+          autofocus
+          enterSends
+          placeholder={untrack(() =>
+            props.to
+              ? `Message ${props.to.name}, @mention anyone else`
+              : "Write a message, @mention who it's for",
+          )}
+          onSend={start}
+        />
+      </div>
+    </Modal>
   );
 }
 

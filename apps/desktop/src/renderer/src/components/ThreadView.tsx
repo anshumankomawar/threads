@@ -260,7 +260,26 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
 // The next message, written at the end. ⌘↵ posts it (Enter is a new line), to everyone in the thread; an @mention brings
 // someone in.
 function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
-  const c = (): Thread => props.thread;
+  return (
+    <MessageBox
+      thread={props.thread}
+      autofocus={props.autofocus}
+      placeholder="Reply, @mention someone to bring them in, ⌘↵ to send"
+      onSend={(body) => send(props.thread, body)}
+    />
+  );
+}
+
+// A message as you write it, with the @, # and / menus at the caret. A reply sends on ⌘↵; a new thread's first message
+// (`enterSends`) on Enter, Shift-Enter for a new line. Without a thread, # links one but can't branch a new one off it.
+export function MessageBox(props: {
+  thread?: Thread;
+  autofocus: boolean;
+  placeholder: string;
+  enterSends?: boolean;
+  onSend: (body: string) => void;
+}): JSX.Element {
+  const c = (): Thread | undefined => props.thread;
   const [menus, setMenus] = createSignal<Partial<Record<CaretKind, CaretMenu | null>>>({});
   const [at, setAt] = createSignal(0);
   const kind = (): CaretKind | undefined =>
@@ -293,7 +312,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       ];
     const found = store
       .all(Thread)
-      .filter((o) => o.id !== c().id && o.title.toLowerCase().includes(query))
+      .filter((o) => o.id !== c()?.id && o.title.toLowerCase().includes(query))
       .slice(0, 6)
       .map((o) => ({
         label: o.title,
@@ -301,19 +320,21 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
         run: () => menu.pick({ id: o.id, title: o.title }),
       }));
     const title = menu.query.trim();
+    const from = c();
     const branch = (): void => {
+      if (!from) return;
       // With the same people, so it reaches them.
-      const people = [...c().assigneeIds, c().ownerId ?? ""].filter((id) => id !== me().id);
+      const people = [...from.assigneeIds, from.ownerId ?? ""].filter((id) => id !== me().id);
       const made = createThread({
         title,
-        labelIds: [...c().labelIds],
-        subspaceIds: [...c().subspaceIds],
+        labelIds: [...from.labelIds],
+        subspaceIds: [...from.subspaceIds],
         assignees: [...new Set(people)].flatMap((id) => store.findById(User, id) ?? []),
-        branchedFrom: c(),
+        branchedFrom: from,
       });
       menu.pick({ id: made.id, title });
     };
-    return title
+    return title && from
       ? [
           ...found,
           {
@@ -350,9 +371,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           extensions: [
             // No underline, so ⌘U stays View As.
             StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
-            Placeholder.configure({
-              placeholder: "Reply, @mention someone to bring them in, ⌘↵ to send",
-            }),
+            Placeholder.configure({ placeholder: props.placeholder }),
             ...caretExtensions(
               (caret, menu) => (setMenus((all) => ({ ...all, [caret]: menu })), setAt(0)),
             ),
@@ -364,11 +383,12 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
             },
             handleKeyDown: (view, event) => {
               if (onMenuKey(event)) return true;
-              // Enter is a new line, as in any editor; ⌘↵ sends.
-              if (event.key !== "Enter" || !event.metaKey || event.isComposing) return false;
+              // Enter is a new line, as in any editor, and ⌘↵ sends; or Enter sends, and Shift-Enter is the new line.
+              const sends = props.enterSends ? !event.shiftKey : event.metaKey;
+              if (event.key !== "Enter" || !sends || event.isComposing) return false;
               const body = editor.getText({ blockSeparator: "\n" }).trim();
               if (!body) return true;
-              send(c(), body);
+              props.onSend(body);
               view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
               return true;
             },
@@ -377,8 +397,9 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     );
   };
   onSettled(() => () => editor.destroy());
+  let box!: HTMLDivElement;
   return (
-    <div class={sx(thread.block)} onClick={() => editor.commands.focus()}>
+    <div ref={box} class={sx(thread.block)} onClick={() => editor.commands.focus()}>
       <span class={sx(thread.avatar)}>
         <Identicon seed={me().id} size={20} />
       </span>
@@ -390,7 +411,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (
-          <Portal mount={document.body}>
+          <Portal mount={box.closest("dialog") ?? document.body}>
             <div
               class={sx(base.panel, look.menu, styles.caretMenu)}
               role="listbox"
