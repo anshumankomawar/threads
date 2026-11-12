@@ -502,7 +502,7 @@ const titleFrom = (body: string): string =>
     .trim()
     .slice(0, 80) || "New thread";
 
-// Starting a thread is writing its first message: whoever it @mentions is in it, and Enter sends it. Started from a
+// Starting a thread is writing its first message: whoever it @mentions is in it, and ⌘↵ sends it. Started from a
 // label's, a subspace's or a person's page, it's in that label or subspace, or that person is in it too.
 function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }): JSX.Element {
   const start = (body: string): void => {
@@ -518,18 +518,16 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
   };
   return (
     <Modal inverted>
-      <div class={sx(palette.message)}>
-        <MessageBox
-          autofocus
-          enterSends
-          placeholder={untrack(() =>
-            props.to
-              ? `Message ${props.to.name}, @mention anyone else`
-              : "Write a message, @mention who it's for",
-          )}
-          onSend={start}
-        />
-      </div>
+      <MessageBox
+        autofocus
+        field={palette.messageField}
+        placeholder={untrack(() =>
+          props.to
+            ? `What do you need from ${props.to.name}? @mention anyone else, ⌘↵ to send`
+            : "What do you need? @mention who it's for, ⌘↵ to send",
+        )}
+        onSend={start}
+      />
     </Modal>
   );
 }

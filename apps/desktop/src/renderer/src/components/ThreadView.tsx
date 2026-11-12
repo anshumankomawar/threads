@@ -270,13 +270,14 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   );
 }
 
-// A message as you write it, with the @, # and / menus at the caret. A reply sends on ⌘↵; a new thread's first message
-// (`enterSends`) on Enter, Shift-Enter for a new line. Without a thread, # links one but can't branch a new one off it.
+// A message as you write it, with the @, # and / menus at the caret. Enter is a new line and ⌘↵ sends it. Under your
+// avatar and name, as the thread shows it, or (`field`) just the text, in that look (a new thread's palette field).
+// Without a thread, # links one but can't branch a new one off it.
 export function MessageBox(props: {
   thread?: Thread;
   autofocus: boolean;
   placeholder: string;
-  enterSends?: boolean;
+  field?: stylex.StyleXStyles;
   onSend: (body: string) => void;
 }): JSX.Element {
   const c = (): Thread | undefined => props.thread;
@@ -378,14 +379,13 @@ export function MessageBox(props: {
           ],
           editorProps: {
             attributes: {
-              class: `${sx(thread.text, styles.replyEditor)} reply`,
+              class: `${props.field ? sx(props.field) : sx(thread.text, styles.replyEditor)} reply`,
               "aria-label": "Reply",
             },
             handleKeyDown: (view, event) => {
               if (onMenuKey(event)) return true;
-              // Enter is a new line, as in any editor, and ⌘↵ sends; or Enter sends, and Shift-Enter is the new line.
-              const sends = props.enterSends ? !event.shiftKey : event.metaKey;
-              if (event.key !== "Enter" || !sends || event.isComposing) return false;
+              // Enter is a new line, as in any editor; ⌘↵ sends.
+              if (event.key !== "Enter" || !event.metaKey || event.isComposing) return false;
               const body = editor.getText({ blockSeparator: "\n" }).trim();
               if (!body) return true;
               props.onSend(body);
@@ -400,15 +400,24 @@ export function MessageBox(props: {
   let box!: HTMLDivElement;
   return (
     <div ref={box} class={sx(thread.block)} onClick={() => editor.commands.focus()}>
-      <span class={sx(thread.avatar)}>
-        <Identicon seed={me().id} size={20} />
-      </span>
-      <div class={sx(thread.body)}>
-        <div class={sx(thread.meta)}>
-          <span class={sx(thread.author)}>{me().name}</span>
-        </div>
+      <Show
+        when={props.field}
+        fallback={
+          <>
+            <span class={sx(thread.avatar)}>
+              <Identicon seed={me().id} size={20} />
+            </span>
+            <div class={sx(thread.body)}>
+              <div class={sx(thread.meta)}>
+                <span class={sx(thread.author)}>{me().name}</span>
+              </div>
+              <div ref={mount} class={sx(styles.reply)} />
+            </div>
+          </>
+        }
+      >
         <div ref={mount} class={sx(styles.reply)} />
-      </div>
+      </Show>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (
           <Portal mount={box.closest("dialog") ?? document.body}>

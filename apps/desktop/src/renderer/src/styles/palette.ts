@@ -72,8 +72,19 @@ export const palette = stylex.create({
   // An inverted panel's scheme, for what's coloured with light-dark() (the editor's placeholder, scrollbars).
   schemeLight: { colorScheme: "light" },
   schemeDark: { colorScheme: "dark" },
-  // A new thread's first message, as it will read in the thread.
-  message: { padding: "14px 16px 16px", fontSize: fontSizes.body },
+  // A new thread's first message: the palette's input, growing a line at a time.
+  messageField: {
+    flex: 1,
+    minHeight: 38,
+    maxHeight: 320,
+    overflowY: "auto",
+    padding: `9px ${EDGE}px`,
+    color: colors.textPrimary,
+    fontSize: fontSizes.input,
+    lineHeight: "20px",
+    outline: "none",
+    cursor: "text",
+  },
   // The chosen row on the field's grey: the sidebar's selection wash (the palette's is meant for a white ground).
   growSelected: { backgroundColor: colors.bgTertiary },
   // The keys at its end, as the field shows them.
