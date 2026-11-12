@@ -17,7 +17,6 @@ import {
   listed,
   mailbox,
   mailboxTitle,
-  me,
   myBuckets,
   open,
   sameMailbox,
@@ -37,29 +36,30 @@ import {
   type Mailbox,
   type MenuItem,
 } from "../session";
-import { bucketIcons } from "../bucketIcons";
 import { keysFor } from "../hotkeys";
 import { base } from "../styles/base";
-import { topbar } from "../styles/controls";
+import { zTreeMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
-import {
-  colors,
-  fontSizes,
-  radii,
-  sidebarSpace,
-  slackSidebar,
-  space,
-} from "../styles/tokens.stylex";
+import { z } from "../styles/zotero";
+import { colors, fontSizes, slackSidebar, zotero } from "../styles/tokens.stylex";
 import { icon, Icon, type IconSvgElement } from "./Icon";
-import { Identicon } from "./Identicon";
 import { plain } from "./ThreadView";
 
-// Mail's three columns: the mailboxes, the chosen one's threads, and (in App) the thread you're reading.
+// Zotero 7's library view: the collections pane (the mailboxes), the items tree (the chosen one's threads), and (in
+// App) the item pane (the thread you're reading). Its look is Zotero's SCSS (zotero/zotero scss/components/
+// _collection-tree.scss, _item-tree.scss, _virtualized-table.scss, _toolbar.scss), redone in StyleX.
 
-const ICON = { size: 14, "aria-hidden": "true" } as const;
+// Zotero's icons are 16px in a tree and 20px in a toolbar (÷ 1.1).
+const TREE_ICON = { size: 14.55, "aria-hidden": "true" } as const;
+const TOOLBAR_ICON = { size: 18.18, "aria-hidden": "true" } as const;
 
-// A column the edge on its right resizes, remembering its width.
-function resizable(key: string, range: { initial: number; min: number; max: number }) {
+// A pane the edge on one side resizes, remembering its width: the right edge widens it to the right, the left edge
+// (the item pane's, after the items tree) to the left.
+export function resizable(
+  key: string,
+  range: { initial: number; min: number; max: number },
+  side: "left" | "right" = "right",
+) {
   const clamp = (px: number): number => Math.min(range.max, Math.max(range.min, Math.round(px)));
   const [width, setWidth] = createSignal(clamp(saved(key, range.initial)));
   const keep = (px: number): void => {
@@ -71,7 +71,8 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
     const start = event.clientX;
     const from = width();
     edge.setPointerCapture(event.pointerId);
-    const move = (e: PointerEvent): void => void setWidth(clamp(from + e.clientX - start));
+    const move = (e: PointerEvent): void =>
+      void setWidth(clamp(from + (side === "right" ? 1 : -1) * (e.clientX - start)));
     const up = (): void => {
       edge.removeEventListener("pointermove", move);
       keep(width());
@@ -81,7 +82,7 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
   };
   const Edge = (props: { label: string }): JSX.Element => (
     <hr
-      class={sx(s.edge)}
+      class={sx(s.edge, side === "left" ? s.edgeLeft : s.edgeRight)}
       aria-label={props.label}
       aria-orientation="vertical"
       onPointerDown={drag}
@@ -91,115 +92,120 @@ function resizable(key: string, range: { initial: number; min: number; max: numb
   return { width, Edge };
 }
 
-const sidebarColumn = resizable("mail-sidebar-width", { initial: 220, min: 180, max: 320 });
-const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 600 });
+// $min-width-collections-pane (200px) is also its width; $min-width-items-pane is 370px. (÷ 1.1.)
+const sidebarColumn = resizable("zotero-collections-width", { initial: 182, min: 182, max: 320 });
+const listColumn = resizable("zotero-items-width", { initial: 400, min: 336, max: 700 });
 
-// ── The top bars' buttons ──
+// ── Toolbar buttons ──
 
-const TopButton = (props: {
+const ToolbarButton = (props: {
   label: string;
   icon: IconSvgElement;
   disabled?: boolean;
-  // Narrower, to sit tight against its neighbour.
-  tight?: boolean;
+  // The items toolbar's are 4px apart on each side.
+  spaced?: boolean;
   onClick: () => void;
 }): JSX.Element => (
   <button
-    class={sx(topbar.button, props.tight && s.tight)}
+    class={sx(z.button, props.spaced && z.buttonSpaced)}
     aria-label={props.label}
     title={props.label}
     disabled={props.disabled}
     onClick={() => props.onClick()}
   >
-    <Icon icon={props.icon} {...ICON} />
+    <Icon icon={props.icon} {...TOOLBAR_ICON} />
   </button>
 );
 
-// Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
-// darkest thing in the bar.
-const LEFT_PANE =
-  "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
-const sidebarIcon = (open: boolean): IconSvgElement =>
-  open
-    ? [
-        ...i.PanelLeftIcon,
-        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
-      ]
-    : i.PanelLeftIcon;
-
-// Beside the window's buttons: on the sidebar's top row, or the list's while it's hidden.
+// Shows or hides the collections pane, as Stacked mode's toggle sits in Zotero's items toolbar.
 export const AppButtons = (): JSX.Element => (
-  <>
-    <TopButton
-      label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
-      icon={sidebarIcon(sidebarOpen())}
-      onClick={() => setSidebarOpen(!sidebarOpen())}
-    />
-    <TopButton label="Search" icon={i.Search01Icon} onClick={() => setDialog({ kind: "search" })} />
-  </>
+  <ToolbarButton
+    label={`${sidebarOpen() ? "Hide" : "Show"} Collections Pane (${keysFor("sidebar")})`}
+    icon={i.SidebarLeftIcon}
+    spaced
+    onClick={() => setSidebarOpen(!sidebarOpen())}
+  />
 );
 
-// Back and forward through the pages you've opened, side by side before the list's title.
+// Back and forward through the pages you've opened.
 export const HistoryButtons = (): JSX.Element => (
-  <span class={sx(s.history)}>
-    <TopButton
+  <>
+    <ToolbarButton
       label={`Back (${keysFor("back")})`}
       icon={i.ArrowLeft01Icon}
-      tight
+      spaced
       disabled={!canGoBack()}
       onClick={goBack}
     />
-    <TopButton
+    <ToolbarButton
       label={`Forward (${keysFor("forward")})`}
       icon={i.ArrowRight01Icon}
-      tight
+      spaced
       disabled={!canGoForward()}
       onClick={goForward}
     />
-  </span>
+  </>
 );
 
-// ── The sidebar: mailboxes ──
+// ── The collections pane: mailboxes ──
 
-// A mailbox in the sidebar: its icon, name and count.
-function MailboxRow(props: {
+// A row of the collections tree: indented 16px a level, a twisty (or its 16px spacer), a 16px icon, then its name.
+// Zotero shows no counts, only a feed's unread state, in bold.
+function CollectionRow(props: {
   box: Mailbox;
   label: string;
   icon: IconSvgElement;
-  count?: number;
-  indent?: boolean;
+  level: number;
+  // Only on a row with children: whether they show.
+  open?: boolean;
+  onToggle?: () => void;
+  unread?: boolean;
+  title?: string;
   // What right-clicking it offers.
   menu?: () => MenuItem[];
 }): JSX.Element {
   const on = (): boolean => sameMailbox(mailbox(), props.box);
   return (
-    <li>
-      <div
-        role="button"
-        tabindex={0}
-        aria-current={on() ? "true" : undefined}
-        class={sx(s.mailbox, props.indent && s.indent, on() && s.selected)}
-        onClick={() => chooseMailbox(props.box)}
-        onContextMenu={(e) => {
-          const items = props.menu?.();
-          if (items) showMenu(e, items);
-        }}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          chooseMailbox(props.box);
-        }}
-      >
-        <span class={sx(s.mailboxIcon)}>
-          <Icon icon={props.icon} {...ICON} />
+    <div
+      role="treeitem"
+      tabindex={on() ? 0 : -1}
+      aria-level={props.level + 1}
+      aria-selected={on() ? "true" : "false"}
+      aria-expanded={props.open === undefined ? undefined : props.open ? "true" : "false"}
+      title={props.title}
+      data-active={on() ? "" : undefined}
+      class={sx(z.row, on() && z.rowSelected, props.unread && z.unread)}
+      onClick={() => chooseMailbox(props.box)}
+      onDblClick={() => props.onToggle?.()}
+      onContextMenu={(e) => {
+        const items = props.menu?.();
+        if (items) showMenu(e, items);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "ArrowLeft" && props.open) props.onToggle?.();
+        else if (e.key === "ArrowRight" && props.open === false) props.onToggle?.();
+        else if (e.key === "Enter" || e.key === " ") chooseMailbox(props.box);
+        else return;
+        e.preventDefault();
+      }}
+    >
+      <span class={sx(s.indent)} style={{ "padding-left": `${props.level * 14.55}px` }} />
+      <Show when={props.onToggle} fallback={<span class={sx(s.spacerTwisty)} />}>
+        <span
+          class={sx(z.twisty, on() && z.rowIconSelected, !props.open && z.twistyClosed)}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onToggle?.();
+          }}
+        >
+          <Icon icon={i.ArrowDown01Icon} size={10.91} aria-hidden="true" />
         </span>
-        <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
-        {/* Even none, so a mailbox reads as empty rather than uncounted. */}
-        <Show when={props.count !== undefined}>
-          <span class={sx(s.count)}>{props.count}</span>
-        </Show>
-      </div>
-    </li>
+      </Show>
+      <span class={sx(z.rowIcon, on() && z.rowIconSelected)}>
+        <Icon icon={props.icon} {...TREE_ICON} />
+      </span>
+      <span class={sx(z.cellText, s.collectionText)}>{props.label}</span>
+    </div>
   );
 }
 
@@ -224,7 +230,7 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
     },
     {
       label: "New Bucket",
-      icon: icon(i.Add01Icon, 13),
+      icon: icon(i.FolderAddIcon, 13),
       run: () => setDialog({ kind: "bucket" }),
     },
     "separator",
@@ -244,98 +250,130 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   ];
 }
 
+const hasUnread = (threads: Thread[]): boolean =>
+  threads.some((t) => {
+    const it = itemFor(t);
+    return it !== undefined && !it.doneAt && unread(it);
+  });
+const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
+
+const [libraryOpen, setLibraryOpen] = createSignal(saved("zotero-library-open", true));
+const toggleLibrary = (): void => {
+  setLibraryOpen(!libraryOpen());
+  save("zotero-library-open", libraryOpen());
+};
+
+// ↑ and ↓ through a tree's rows, choosing each as Zotero's trees do.
+function treeKeys(event: KeyboardEvent): void {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const tree = event.currentTarget as HTMLElement;
+  const rows = [...tree.querySelectorAll<HTMLElement>("[role=treeitem]")];
+  const at = rows.findIndex((row) => row.hasAttribute("data-active"));
+  const next =
+    rows[event.key === "ArrowDown" ? Math.min(rows.length - 1, at + 1) : Math.max(0, at - 1)];
+  if (!next) return;
+  event.preventDefault();
+  next.click();
+  queueMicrotask(() => tree.querySelector<HTMLElement>("[data-active]")?.focus());
+}
+
 export function Sidebar(): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
+  let tree!: HTMLDivElement;
   return (
     <aside
-      class={stylex.attrs(s.sidebar, theme() === "slack" && slackSidebar).class}
+      class={stylex.attrs(s.collections, theme() === "slack" && slackSidebar).class}
       style={{ width: `${sidebarColumn.width()}px` }}
+      aria-label="Collections"
     >
-      <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
-        <AppButtons />
-        <span class={sx(topbar.end)}>
-          <button
-            class={sx(topbar.button)}
-            aria-label="New Thread"
-            title={`New Thread (${keysFor("newThread")})`}
-            onClick={() => setDialog({ kind: "newThread" })}
-          >
-            <Icon icon={i.PencilEdit02Icon} {...ICON} />
-          </button>
-        </span>
+      {/* #zotero-toolbar-collection-tree: New Collection at the start, the collection search at the end. */}
+      <div data-bar class={sx(z.toolbar, z.toolbarCollections)}>
+        <ToolbarButton
+          label="New Bucket…"
+          icon={i.FolderAddIcon}
+          onClick={() => setDialog({ kind: "bucket" })}
+        />
+        <span class={sx(z.spacer)} />
+        <ToolbarButton
+          label={`Search (${keysFor("search")})`}
+          icon={i.Search01Icon}
+          onClick={() => setDialog({ kind: "search" })}
+        />
       </div>
-      {/* Your inbox and its buckets, then every thread, then your drafts. */}
-      <nav class={sx(s.nav)} aria-label="Mailboxes">
-        <ul class={sx(base.list, s.stack)}>
-          <MailboxRow
-            box={{ kind: "inbox" }}
-            label="Buckets"
-            icon={i.InboxIcon}
-            count={inbox().order.length}
-            menu={() => [
-              {
-                label: "New Bucket",
-                icon: icon(i.Add01Icon, 13),
-                run: () => setDialog({ kind: "bucket" }),
-              },
-            ]}
-          />
-          <Show when={inbox().unsorted.length > 0}>
-            <MailboxRow
-              box={{ kind: "unsorted" }}
-              label="Sorting"
-              icon={i.Clock01Icon}
-              count={inbox().unsorted.length}
-              indent
-            />
-          </Show>
-          {/* Your buckets, under the inbox they sort. */}
+      {/* My Library with its collections (your buckets) under it, then the special rows Zotero puts after them. */}
+      <div
+        ref={tree}
+        role="tree"
+        aria-label="Mailboxes"
+        {...stylex.attrs(s.collectionsBody, zTreeMarker)}
+        onKeyDown={treeKeys}
+        onMouseDown={() =>
+          queueMicrotask(() => tree.querySelector<HTMLElement>("[data-active]")?.focus())
+        }
+      >
+        <CollectionRow
+          box={{ kind: "inbox" }}
+          label="My Library"
+          icon={i.LibraryIcon}
+          level={0}
+          open={libraryOpen()}
+          onToggle={toggleLibrary}
+          title={`${mailboxTitle({ kind: "inbox" })}: ${count(inbox().order.length, "thread")}`}
+          menu={() => [
+            {
+              label: "New Bucket",
+              icon: icon(i.FolderAddIcon, 13),
+              run: () => setDialog({ kind: "bucket" }),
+            },
+          ]}
+        />
+        <Show when={libraryOpen()}>
+          {/* Your buckets, as subcollections. */}
           <For each={inbox().sections}>
             {(section) => (
-              <MailboxRow
+              <CollectionRow
                 box={{ kind: "bucket", id: section.bucket.id }}
                 label={section.bucket.name}
-                icon={icons().get(section.bucket.id) ?? i.InboxIcon}
-                count={section.items.length}
-                indent
+                icon={i.Folder01Icon}
+                level={1}
+                unread={hasUnread(section.items.map((item) => item.thread))}
+                title={count(section.items.length, "thread")}
                 menu={() => bucketMenu(section.bucket)}
               />
             )}
           </For>
-        </ul>
-        <ul class={sx(base.list, s.stack, s.nearby)}>
-          <MailboxRow
+          {/* What's still being sorted, as Unfiled Items; then every thread and your drafts. */}
+          <Show when={inbox().unsorted.length > 0}>
+            <CollectionRow
+              box={{ kind: "unsorted" }}
+              label="Sorting"
+              icon={i.FolderUnknownIcon}
+              level={1}
+              unread={hasUnread(inbox().unsorted.map((item) => item.thread))}
+              title={count(inbox().unsorted.length, "thread")}
+            />
+          </Show>
+          <CollectionRow
             box={{ kind: "all" }}
             label="All Threads"
-            icon={i.Message01Icon}
-            count={allThreads().length}
+            icon={i.MessageMultiple01Icon}
+            level={1}
+            title={count(allThreads().length, "thread")}
           />
-          <MailboxRow
+          <CollectionRow
             box={{ kind: "drafts" }}
             label="Drafts"
             icon={i.NoteEditIcon}
-            count={drafts().length}
+            level={1}
+            title={count(drafts().length, "draft")}
           />
-        </ul>
-      </nav>
-      <div class={sx(s.footer)}>
-        {/* You: one button to your profile and settings, on one page. */}
-        <button
-          class={sx(base.bare, s.profile)}
-          aria-label="Profile and Settings"
-          title={`Profile and Settings (${keysFor("settings")})`}
-          onClick={() => open({ settings: null })}
-        >
-          <Identicon seed={me().id} size={18.18} />
-          <span class={sx(base.ellipsis)}>{me().name}</span>
-        </button>
+        </Show>
       </div>
-      <sidebarColumn.Edge label="Resize Sidebar" />
+      <sidebarColumn.Edge label="Resize Collections Pane" />
     </aside>
   );
 }
 
-// ── The list: the chosen mailbox's threads ──
+// ── The items tree: the chosen mailbox's threads ──
 
 // As Mail stamps a message: the time today, "Yesterday", then the date.
 function stamp(date: Date): string {
@@ -347,7 +385,7 @@ function stamp(date: Date): string {
   return shortDate(date);
 }
 
-// What a message says, without the @mentions most start with (the list shows who it's from already).
+// What a message says, without the @mentions most start with.
 // Everyone's @name, once for every row rather than per row.
 const mentionNames = store.view(() => store.all(User).map((u) => `@${u.name} `));
 function preview(body: string): string {
@@ -361,21 +399,33 @@ function preview(body: string): string {
   return text;
 }
 
-// A thread as Mail lists a message: its title and when, then who wrote last and the start of what they wrote.
-function Row(props: { thread: Thread }): JSX.Element {
+// A thread's latest message: a pass, not a sort.
+function latest(thread: Thread): Message | undefined {
+  let last: Message | undefined;
+  for (const message of thread.messages)
+    if (!last || message.createdAt > last.createdAt) last = message;
+  return last;
+}
+
+// The quick search in the items toolbar: it narrows the tree to the rows whose title or creator has it.
+const [query, setQuery] = createSignal("");
+const matches = (...fields: (string | undefined)[]): boolean => {
+  const q = query().trim().toLowerCase();
+  return q === "" || fields.some((field) => field?.toLowerCase().includes(q));
+};
+const threadMatches = (t: Thread): boolean =>
+  matches(t.title, (latest(t)?.author ?? t.owner)?.name, t.owner?.name);
+
+// The default columns (itemTreeColumns.jsx): Title (flex 4) and Creator (flex 1), then Date Modified, and a fixed
+// 26px count like Notes (#), here the messages.
+type Column = "title" | "creator" | "date" | "count";
+
+// A thread as an item: its title after a twisty spacer and its item-type icon, who wrote last, when, how many messages.
+function Row(props: { thread: Thread; stripe: number }): JSX.Element {
   const t = (): Thread => props.thread;
   const on = (): boolean => active() === t();
-  const isUnread = (): boolean => {
-    const it = itemFor(t());
-    return it !== undefined && !it.doneAt && unread(it);
-  };
-  // Its latest message, found once (a pass, not a sort) for the places that show it.
-  const last = createMemo(() => {
-    let latest: Message | undefined;
-    for (const message of t().messages)
-      if (!latest || message.createdAt > latest.createdAt) latest = message;
-    return latest;
-  });
+  const isUnread = (): boolean => hasUnread([t()]);
+  const last = createMemo(() => latest(t()));
   const from = () => last()?.author ?? t().owner;
   let row!: HTMLDivElement;
   // The open thread stays in view as J and K (or the arrows) move past the rows showing.
@@ -383,97 +433,119 @@ function Row(props: { thread: Thread }): JSX.Element {
     if (shown) row.scrollIntoView({ block: "nearest" });
   });
   return (
-    <li>
-      <div
-        ref={row}
-        role="button"
-        tabindex={on() ? 0 : -1}
-        data-active={on() ? "" : undefined}
-        aria-current={on() ? "true" : undefined}
-        class={sx(s.row, on() && s.selected)}
-        onClick={() => open({ thread: t().id })}
-        onContextMenu={(e) => showMenu(e, threadMenu(t()))}
-      >
-        <span class={sx(s.rowBody)}>
-          {/* What it's about first, then who wrote last: the topic is what you scan a list for. */}
-          <span class={sx(s.rowTop)}>
-            <span class={sx(s.subjectLine)}>
-              <span class={sx(base.ellipsis, s.subject)}>{t().title}</span>
-            </span>
-            {/* Unread: a dot before when, on the right, so read rows lose no width to an empty column. */}
-            <span class={sx(s.stamp)}>
-              <Show when={isUnread()}>
-                <span class={sx(s.unreadDot)} aria-label="Unread" />
-              </Show>
-              {stamp(last()?.createdAt ?? t().createdAt)}
-            </span>
-          </span>
-          <span class={sx(s.second)}>
-            <span class={sx(s.preview)}>
-              <span class={sx(s.from)}>{from()?.name ?? ""}</span>
-              <Show when={last()}>{(message) => <> {preview(message().body)}</>}</Show>
-            </span>
-          </span>
+    <div
+      ref={row}
+      role="row"
+      tabindex={on() ? 0 : -1}
+      aria-selected={on() ? "true" : "false"}
+      data-active={on() ? "" : undefined}
+      title={last() ? `${from()?.name ?? ""}: ${preview(last()!.body)}` : undefined}
+      class={sx(
+        z.row,
+        props.stripe % 2 === 1 && s.odd,
+        on() && z.rowSelected,
+        isUnread() && z.unread,
+      )}
+      onClick={() => open({ thread: t().id })}
+      onContextMenu={(e) => showMenu(e, threadMenu(t()))}
+    >
+      <span role="gridcell" class={sx(s.cell, s.title)}>
+        <span class={sx(s.spacerTwisty)} />
+        <span class={sx(z.rowIcon, on() && z.rowIconSelected)}>
+          <Icon icon={i.BubbleChatIcon} {...TREE_ICON} />
         </span>
-      </div>
-    </li>
+        <span class={sx(z.cellText)}>{t().title}</span>
+      </span>
+      <span role="gridcell" class={sx(s.cell, s.creator)}>
+        {from()?.name ?? ""}
+      </span>
+      <span role="gridcell" class={sx(s.cell, s.date)}>
+        {stamp(last()?.createdAt ?? t().createdAt)}
+      </span>
+      <span role="gridcell" class={sx(s.cell, s.count)}>
+        {t().messages.length || ""}
+      </span>
+    </div>
   );
 }
 
 const draftTitle = (draft: Draft): string =>
   draft.draft?.title || draft.text.split("\n")[0] || "Untitled draft";
 
-// A draft in Drafts, which opens back in Compose.
-function DraftRow(props: { draft: Draft }): JSX.Element {
-  // Its drafted title, else its first line; the rest is the preview.
-  const lines = (): string[] => props.draft.text.split("\n");
-  const rest = (): string =>
-    props.draft.draft?.title ? props.draft.text : lines().slice(1).join(" ");
+// A draft in Drafts, which opens back in Compose: a note item, in the same columns.
+function DraftRow(props: { draft: Draft; stripe: number }): JSX.Element {
   const on = (): boolean => shown("draft") === props.draft.id;
   return (
-    <li>
-      <div
-        role="button"
-        tabindex={0}
-        data-active={on() ? "" : undefined}
-        aria-current={on() ? "true" : undefined}
-        class={sx(s.row, on() && s.selected)}
-        onClick={() => open({ draft: props.draft.id })}
-        onContextMenu={(e) =>
-          showMenu(e, [
-            {
-              label: "Open Draft",
-              icon: icon(i.NoteEditIcon, 13),
-              run: () => open({ draft: props.draft.id }),
-            },
-            "separator",
-            {
-              label: "Delete Draft",
-              icon: icon(i.Delete02Icon, 13),
-              run: () => void props.draft.delete(),
-            },
-          ])
-        }
-      >
-        <span class={sx(s.rowBody)}>
-          <span class={sx(s.rowTop)}>
-            <span class={sx(base.ellipsis, s.from)}>{draftTitle(props.draft)}</span>
-            <span class={sx(s.stamp)}>{stamp(props.draft.updatedAt)}</span>
-          </span>
-          <Show when={rest()}>
-            <span class={sx(s.second)}>
-              <span class={sx(s.preview)}>{rest()}</span>
-            </span>
-          </Show>
+    <div
+      role="row"
+      tabindex={0}
+      aria-selected={on() ? "true" : "false"}
+      data-active={on() ? "" : undefined}
+      class={sx(z.row, props.stripe % 2 === 1 && s.odd, on() && z.rowSelected)}
+      onClick={() => open({ draft: props.draft.id })}
+      onContextMenu={(e) =>
+        showMenu(e, [
+          {
+            label: "Open Draft",
+            icon: icon(i.NoteEditIcon, 13),
+            run: () => open({ draft: props.draft.id }),
+          },
+          "separator",
+          {
+            label: "Delete Draft",
+            icon: icon(i.Delete02Icon, 13),
+            run: () => void props.draft.delete(),
+          },
+        ])
+      }
+    >
+      <span role="gridcell" class={sx(s.cell, s.title)}>
+        <span class={sx(s.spacerTwisty)} />
+        <span class={sx(z.rowIcon, on() && z.rowIconSelected)}>
+          <Icon icon={i.Note01Icon} {...TREE_ICON} />
         </span>
-      </div>
-    </li>
+        <span class={sx(z.cellText)}>{draftTitle(props.draft)}</span>
+      </span>
+      <span role="gridcell" class={sx(s.cell, s.creator)} />
+      <span role="gridcell" class={sx(s.cell, s.date)}>
+        {stamp(props.draft.updatedAt)}
+      </span>
+      <span role="gridcell" class={sx(s.cell, s.count)} />
+    </div>
   );
 }
 
-// `alone`, with nothing open beside it: it takes the window.
-export function MessageList(props: { alone?: boolean }): JSX.Element {
-  const icons = (): Map<string, IconSvgElement> => bucketIcons(myBuckets());
+// A column header: its label, the resizer line on its start edge (not the first's), and a sort chevron if the tree is
+// sorted by it.
+function Header(props: {
+  column: Column;
+  label: JSX.Element;
+  first?: boolean;
+  sorted?: boolean;
+}): JSX.Element {
+  return (
+    <span
+      role="columnheader"
+      aria-sort={props.sorted ? "descending" : undefined}
+      class={sx(s.cell, s[props.column], s.headerCell)}
+    >
+      <Show when={!props.first}>
+        <span class={sx(s.resizer)} aria-hidden="true" />
+      </Show>
+      <span class={sx(base.ellipsis, s.headerLabel, props.first && s.headerLabelFirst)}>
+        {props.label}
+      </span>
+      <Show when={props.sorted}>
+        <span class={sx(s.sortIndicator)} aria-hidden="true">
+          <Icon icon={i.ArrowDown01Icon} size={10.91} />
+        </span>
+      </Show>
+    </span>
+  );
+}
+
+// `alone`, with nothing open beside it: it takes the window. `fill`, beside the item pane: it takes what that leaves.
+export function MessageList(props: { alone?: boolean; fill?: boolean }): JSX.Element {
   // Opening a draft (from ⌘K, say) lists the drafts.
   createEffect(view, (next) => {
     if ("draft" in next && mailbox().kind !== "drafts") chooseMailbox({ kind: "drafts" });
@@ -487,329 +559,389 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
     (gone) => void (gone && chooseMailbox({ kind: "inbox" })),
   );
   const isDrafts = (): boolean => mailbox().kind === "drafts";
-  const total = (): number => (isDrafts() ? drafts().length : listed().order.length);
-  const unreadCount = (): number =>
-    listed().order.filter((t) => {
-      const it = itemFor(t);
-      return it !== undefined && !it.doneAt && unread(it);
-    }).length;
-  const subtitle = (): string => {
-    const n = unreadCount();
-    if (n > 0) return `${n} unread`;
-    const count = total();
-    const noun = isDrafts() ? "draft" : "thread";
-    return `${count} ${noun}${count === 1 ? "" : "s"}`;
-  };
+  // The chosen mailbox's groups, narrowed by the quick search.
+  const groups = createMemo(() =>
+    listed()
+      .groups.map((group) => ({ ...group, threads: group.threads.filter(threadMatches) }))
+      .filter((group) => group.threads.length > 0),
+  );
+  const order = (): Thread[] => groups().flatMap((group) => group.threads);
+  const shownDrafts = (): Draft[] => drafts().filter((d) => matches(draftTitle(d), d.text));
+  const total = (): number => (isDrafts() ? shownDrafts().length : order().length);
   let list!: HTMLDivElement;
-  // ↑ and ↓ move through the list, as in Mail (J and K do too, anywhere).
+  // ↑ and ↓ move through the tree (J and K do too, anywhere).
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-    const order = listed().order;
-    if (order.length === 0) return;
+    const rows = order();
+    if (rows.length === 0) return;
     event.preventDefault();
-    const at = order.indexOf(active()!);
+    const at = rows.indexOf(active()!);
     const next =
       event.key === "ArrowDown"
-        ? order[Math.min(order.length - 1, at + 1)]
-        : order[Math.max(0, at - 1)];
+        ? rows[Math.min(rows.length - 1, at + 1)]
+        : rows[Math.max(0, at - 1)];
     open({ thread: next.id });
     queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus());
   };
+  let search!: HTMLInputElement;
   return (
     <section
-      class={sx(s.list, props.alone && s.listAlone)}
-      style={{ width: props.alone ? undefined : `${listColumn.width()}px` }}
+      class={sx(s.items, (props.alone || props.fill) && s.itemsFill)}
+      style={{ width: props.alone || props.fill ? undefined : `${listColumn.width()}px` }}
       aria-label={mailboxTitle(mailbox())}
     >
-      <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
-        <Show when={!sidebarOpen()}>
-          <AppButtons />
-        </Show>
-        {/* Back and forward: here, where they always are, whatever's open beside the list. */}
+      {/* #zotero-toolbar-item-tree: its buttons, then the quick search at the end. */}
+      <div data-bar class={sx(z.toolbar, z.toolbarItems)}>
+        <AppButtons />
         <HistoryButtons />
-        <span class={sx(s.listHeading)}>
-          <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
-          <span class={sx(s.listSubtitle)}>{subtitle()}</span>
-        </span>
-        <Show when={!sidebarOpen()}>
-          <span class={sx(topbar.end)}>
+        <span class={sx(z.separator)} />
+        <ToolbarButton
+          label={`New Thread… (${keysFor("newThread")})`}
+          icon={i.AddCircleIcon}
+          spaced
+          onClick={() => setDialog({ kind: "newThread" })}
+        />
+        <ToolbarButton
+          label={`Write a Thread as a Message (${keysFor("compose")})`}
+          icon={i.NoteAddIcon}
+          spaced
+          onClick={() => setDialog({ kind: "compose" })}
+        />
+        <span class={sx(z.spacer)} />
+        {/* quick-search-textbox: a magnifier and the mode menu's chevron, then the field. */}
+        <label
+          class={sx(s.search)}
+          onMouseDown={(e) => e.target === e.currentTarget && search.focus()}
+        >
+          <button
+            class={sx(base.bare, s.searchMode)}
+            aria-label={`Search Everything (${keysFor("search")})`}
+            title={`Search Everything (${keysFor("search")})`}
+            onClick={(e) => {
+              e.preventDefault();
+              setDialog({ kind: "search" });
+            }}
+          >
+            <Icon icon={i.Search01Icon} size={14.55} aria-hidden="true" />
+            <Icon icon={i.ArrowDown01Icon} size={7.27} aria-hidden="true" />
+          </button>
+          <input
+            ref={search}
+            class={sx(s.searchInput)}
+            type="search"
+            placeholder="Title, Creator"
+            aria-label="Filter by title or creator"
+            value={query()}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setQuery("");
+                e.currentTarget.blur();
+              }
+            }}
+          />
+          <Show when={query()}>
             <button
-              class={sx(topbar.button)}
-              aria-label="New Thread"
-              title={`New Thread (${keysFor("newThread")})`}
-              onClick={() => setDialog({ kind: "newThread" })}
+              class={sx(base.bare, s.searchClear)}
+              aria-label="Clear"
+              onClick={(e) => {
+                e.preventDefault();
+                setQuery("");
+              }}
             >
-              <Icon icon={i.PencilEdit02Icon} {...ICON} />
+              <Icon icon={i.Cancel01Icon} size={10.91} aria-hidden="true" />
             </button>
-          </span>
-        </Show>
+          </Show>
+        </label>
       </div>
       <div
-        ref={list}
-        class={sx(s.listScroll)}
-        onMouseDown={() =>
-          queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
-        }
-        onKeyDown={onKeyDown}
+        {...stylex.attrs(s.table, zTreeMarker)}
+        role="treegrid"
+        aria-label={mailboxTitle(mailbox())}
       >
-        <Show
-          when={isDrafts()}
-          fallback={
-            <For each={listed().groups}>
-              {(group) => (
-                <>
-                  <Show when={mailbox().kind === "inbox"}>
-                    <div
-                      class={sx(s.groupHeader)}
-                      onContextMenu={(e) => {
-                        if (group.bucket) showMenu(e, bucketMenu(group.bucket));
-                      }}
-                    >
-                      <Icon
-                        icon={
-                          group.bucket
-                            ? (icons().get(group.bucket.id) ?? i.InboxIcon)
-                            : i.Clock01Icon
-                        }
-                        size={11}
-                        aria-hidden="true"
-                      />
-                      {group.bucket?.name ?? group.title}
-                      <span class={sx(s.groupCount)}>{group.threads.length}</span>
-                    </div>
-                  </Show>
-                  <ul class={sx(base.list, s.stack)}>
-                    <For each={group.threads}>{(thread) => <Row thread={thread} />}</For>
-                  </ul>
-                </>
-              )}
-            </For>
+        <div role="row" class={sx(s.header)}>
+          <Header column="title" label="Title" first />
+          <Header column="creator" label="Creator" />
+          {/* Every thread is listed latest first; the inbox, most urgent first. */}
+          <Header
+            column="date"
+            label="Date Modified"
+            sorted={mailbox().kind === "all" || isDrafts()}
+          />
+          <Header
+            column="count"
+            label={<Icon icon={i.BubbleChatIcon} size={12.73} aria-label="Messages" />}
+          />
+        </div>
+        <div
+          ref={list}
+          class={sx(s.body)}
+          onMouseDown={() =>
+            queueMicrotask(() => list.querySelector<HTMLElement>("[data-active]")?.focus())
           }
+          onKeyDown={onKeyDown}
         >
-          <ul class={sx(base.list, s.stack)}>
-            <For each={drafts()}>{(draft) => <DraftRow draft={draft} />}</For>
-          </ul>
-        </Show>
-        <Show when={total() === 0}>
-          <div class={sx(s.empty)}>
-            <Icon
-              icon={mailbox().kind === "inbox" ? i.InboxCheckIcon : i.InboxIcon}
-              size={28}
-              aria-hidden="true"
-            />
-            <span class={sx(s.emptyTitle)}>
-              {mailbox().kind === "inbox" ? "All caught up" : "Nothing here"}
-            </span>
-            <Show when={mailbox().kind === "inbox"}>
-              <span>Nothing in your buckets needs you right now.</span>
-            </Show>
-          </div>
-        </Show>
+          <Show
+            when={isDrafts()}
+            fallback={
+              <For each={groups()}>
+                {(group, at) => (
+                  <>
+                    {/* The inbox in sections, each under a header row like a library's in a cross-library view, a
+                        blank row before each but the first. */}
+                    <Show when={mailbox().kind === "inbox"}>
+                      <Show when={at() > 0}>
+                        <div class={sx(s.spacerRow)} aria-hidden="true" />
+                      </Show>
+                      <div
+                        class={sx(z.row, s.sectionHeader)}
+                        onContextMenu={(e) => {
+                          if (group.bucket) showMenu(e, bucketMenu(group.bucket));
+                        }}
+                      >
+                        <span class={sx(z.rowIcon, s.sectionIcon)}>
+                          <Icon
+                            icon={group.bucket ? i.Folder01Icon : i.FolderUnknownIcon}
+                            {...TREE_ICON}
+                          />
+                        </span>
+                        <span class={sx(base.ellipsis)}>{group.bucket?.name ?? group.title}</span>
+                      </div>
+                    </Show>
+                    <For each={group.threads}>
+                      {(thread, index) => <Row thread={thread} stripe={index()} />}
+                    </For>
+                  </>
+                )}
+              </For>
+            }
+          >
+            <For each={shownDrafts()}>
+              {(draft, index) => <DraftRow draft={draft} stripe={index()} />}
+            </For>
+          </Show>
+          <Show when={total() === 0}>
+            <div class={sx(s.empty)}>
+              {query().trim()
+                ? "No matching threads"
+                : mailbox().kind === "inbox"
+                  ? "All caught up: nothing in your buckets needs you right now."
+                  : isDrafts()
+                    ? "No drafts"
+                    : "No threads in this view"}
+            </div>
+          </Show>
+        </div>
       </div>
-      <Show when={!props.alone}>
-        <listColumn.Edge label="Resize List" />
+      <Show when={!props.alone && !props.fill}>
+        <listColumn.Edge label="Resize Items Pane" />
       </Show>
     </section>
   );
 }
 
+// The column widths: Title flex 4, Creator and Date Modified flex 1, the count a fixed 26px (÷ 1.1).
 const s = stylex.create({
-  // The resize edge on a column's right.
+  // A splitter: 5px to grab, invisible; the pane's own border is the line.
   edge: {
     position: "absolute",
     top: 0,
-    right: -3,
     bottom: 0,
     zIndex: 1,
     width: 5,
     margin: 0,
     borderStyle: "none",
-    // Invisible: only the cursor says it's there; the column's own border is the line.
     backgroundColor: "transparent",
     cursor: "col-resize",
   },
-  history: { display: "flex", marginRight: 6 },
-  tight: { width: 18 },
+  edgeRight: { right: -3 },
+  edgeLeft: { left: -3 },
 
-  sidebar: {
+  // #zotero-collections-pane: --material-sidepane, a pane divider (the splitter's --material-border-quarternary).
+  collections: {
     position: "relative",
     display: "flex",
     flexDirection: "column",
     flexShrink: 0,
-    backgroundColor: colors.chrome,
+    minWidth: zotero.collectionsWidth,
+    backgroundColor: colors.zSidepane,
     borderRightWidth: 1,
     borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
+    borderRightColor: colors.zFillQuarternary,
   },
-  sidebarBar: { paddingLeft: sidebarSpace.afterLights },
-  // Under the top bar, its first line where every column's starts (17pt under the top bar). Each size here is the
-  // macOS app's points ÷ 1.1, for the 110% scale.
-  nav: {
+  // The collection tree's body: 8px in, 8px at the foot.
+  collectionsBody: {
     flex: 1,
     minHeight: 0,
-    paddingTop: 8.37,
-    paddingInline: space.inset,
-    paddingBottom: 12,
     overflowY: "auto",
-  },
-  // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
-  selected: { backgroundColor: colors.bgTertiary },
-  // A little space between rows, so neighbouring fills don't run together.
-  stack: { display: "flex", flexDirection: "column", gap: 1.82 },
-  // 30pt tall, rounded 8pt, 8pt in from its ends, its icon in an 18pt column 8pt before its 13pt name.
-  mailbox: {
-    display: "flex",
-    gap: space.inset,
-    alignItems: "center",
-    height: 27.27,
-    paddingInline: space.inset,
-    borderRadius: radii.item,
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    cursor: "default",
+    paddingTop: 0,
+    paddingInline: zotero.xs,
+    paddingBottom: zotero.xs,
     outline: "none",
   },
-  // A bucket under Inbox: indented by a margin, not padding, so its ground starts just before its icon.
-  indent: { marginLeft: 14 },
-  mailboxIcon: {
-    display: "flex",
-    flexShrink: 0,
-    justifyContent: "center",
-    width: 16.36,
-    color: colors.iconTertiary,
-  },
-  mailboxName: { flex: 1 },
-  count: {
-    flexShrink: 0,
-    color: colors.textTertiary,
-    fontSize: fontSizes.small,
-    fontVariantNumeric: "tabular-nums",
-  },
-  // Just apart from the rows above.
-  nearby: { marginTop: space.inset },
-  // You 16pt in and 12pt up from the corner, at 20pt, 8pt before your 13pt name.
-  footer: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 4,
-    alignItems: "center",
-    marginInline: space.inset,
-    marginBottom: 4.55,
-  },
-  profile: {
-    display: "flex",
-    flex: 1,
-    minWidth: 0,
-    gap: space.inset,
-    alignItems: "center",
-    paddingBlock: 6.36,
-    paddingInline: space.inset,
-    borderRadius: radii.item,
-    color: colors.textSecondary,
-    fontSize: fontSizes.body,
-    backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary },
-  },
+  indent: { flexShrink: 0 },
+  spacerTwisty: { flexShrink: 0, width: zotero.icon },
+  // .cell.label: 4px at its end.
+  collectionText: { paddingRight: zotero.min },
 
-  list: {
+  // #zotero-items-pane-container.
+  items: {
     position: "relative",
     display: "flex",
     flexDirection: "column",
     flexShrink: 0,
     minWidth: 0,
-    backgroundColor: colors.chrome,
+    backgroundColor: colors.zBackground,
     borderRightWidth: 1,
     borderRightStyle: "solid",
-    borderRightColor: colors.strokeTertiary,
+    borderRightColor: colors.zFillQuarternary,
   },
-  listBar: { paddingLeft: 16 },
-  // Nothing open beside it: it takes the room, with no edge to divide.
-  listAlone: { flex: 1, borderRightWidth: 0 },
-  listBarAlone: { paddingLeft: sidebarSpace.afterLights },
-  // The mailbox's name and, after it on the same line, how many are unread (or listed).
-  listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
-  listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
-  listSubtitle: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
-  // Cards 8pt in from the column's sides and 2pt apart.
-  listScroll: {
+  itemsFill: { flex: 1, flexShrink: 1, minWidth: "336.36px" },
+  // A size of its own, so it's never wider than its items pane.
+  search: {
     position: "relative",
-    isolation: "isolate",
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
-    paddingTop: 5.18,
-    paddingInline: space.inset,
-    paddingBottom: 24,
-    outline: "none",
-  },
-  // A bucket's name at 12pt medium, 12pt in, 10pt above and 2pt over its cards.
-  groupHeader: {
     display: "flex",
-    gap: 6,
+    flexGrow: 1,
     alignItems: "center",
-    padding: "9.09px 10.91px 1.82px",
-    color: colors.textTertiary,
-    fontSize: fontSizes.caption,
-    fontWeight: 500,
+    width: "132.73px",
+    maxWidth: "272.73px",
+    height: zotero.button,
+    marginLeft: zotero.min,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.zFillQuinary,
+    borderRadius: zotero.radius,
+    backgroundColor: colors.zBackground,
+    WebkitAppRegion: "no-drag",
   },
-  groupCount: { fontWeight: 400 },
-  // No hairlines between rows: compact cards, set apart by the space between them. A card: 12pt in from its sides and
-  // 10pt from its top and bottom, rounded 10pt, its two parts 5pt apart.
-  row: {
+  // The search-sign: 16px magnifier and the 8px chevron, 5px in, 18px before the text.
+  searchMode: {
     display: "flex",
-    alignItems: "flex-start",
-    padding: "9.09px 10.91px",
-    borderRadius: 9.09,
-    color: colors.textPrimary,
+    flexShrink: 0,
+    gap: 1.82,
+    alignItems: "center",
+    height: "100%",
+    paddingLeft: "4.55px",
+    paddingRight: "3.64px",
+    color: colors.zFillSecondary,
     cursor: "default",
-    outline: "none",
   },
-  unreadDot: {
-    flexShrink: 0,
-    width: 6.36,
-    height: 6.36,
-    borderRadius: "50%",
-    backgroundColor: colors.systemBlue,
-  },
-  rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 4.55, minWidth: 0 },
-  // The first line, at 14pt: the title, then at least 8pt on, the unread dot and when.
-  rowTop: { display: "flex", gap: space.inset, alignItems: "center", fontSize: 12.73 },
-  // Who wrote last, at the start of the preview: a little stronger than their words.
-  from: { color: colors.textSecondary, fontWeight: 500 },
-  stamp: {
-    display: "flex",
-    flexShrink: 0,
-    gap: 4.55,
-    alignItems: "center",
-    color: colors.textTertiary,
-    fontVariantNumeric: "tabular-nums",
-  },
-  subjectLine: { display: "flex", flex: 1, gap: 4.55, alignItems: "center", minWidth: 0 },
-  subject: { fontWeight: 600, lineHeight: "17.27px" },
-  // The rest at 13pt: the preview, up to two lines.
-  second: {
-    display: "flex",
-    gap: space.inset,
-    alignItems: "last baseline",
-    fontSize: fontSizes.body,
-    lineHeight: "14.55px",
-  },
-  preview: {
-    display: "-webkit-box",
+  searchInput: {
     flex: 1,
     minWidth: 0,
+    height: "100%",
+    padding: 0,
+    paddingRight: "5.45px",
+    borderStyle: "none",
+    color: colors.zFillPrimary,
+    font: "inherit",
+    fontSize: fontSizes.body,
+    backgroundColor: "transparent",
+    outline: "none",
+    "::placeholder": { color: colors.zFillTertiary },
+    "::-webkit-search-cancel-button": { display: "none" },
+  },
+  searchClear: {
+    display: "flex",
+    flexShrink: 0,
+    marginRight: "5.45px",
+    color: colors.zFillPrimary,
+    cursor: "default",
+  },
+
+  table: { display: "flex", flex: 1, flexDirection: "column", minHeight: 0, outline: "none" },
+  // .virtualized-table-header: 8px in, a pane divider under it (#zotero-items-tree's).
+  header: {
+    display: "flex",
+    flexShrink: 0,
+    alignItems: "center",
+    height: zotero.header,
+    paddingInline: zotero.xs,
     overflow: "hidden",
-    color: colors.textTertiary,
-    WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 2,
+    scrollbarGutter: "stable",
+    color: colors.zFillPrimary,
+    fontSize: fontSizes.body,
+    backgroundColor: colors.zBackground,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.zPanedivider,
   },
-  empty: {
+  headerCell: {
+    position: "relative",
     display: "flex",
-    flexDirection: "column",
-    gap: 6,
     alignItems: "center",
-    padding: "64px 24px",
-    color: colors.textTertiary,
+    alignSelf: "stretch",
+    height: "100%",
+    backgroundColor: { default: "transparent", ":hover": colors.zMixQuinary },
+  },
+  headerLabel: { flex: 1 },
+  // Over the twisty and the icon (firstColumnExtraWidth: 16 + 4, + the twisty's 16), so it lines up with the titles.
+  headerLabelFirst: { paddingLeft: "32.73px" },
+  // .resizer: a 1px --fill-quarternary line, 20px tall in the comfortable density.
+  resizer: {
+    position: "absolute",
+    top: "50%",
+    left: 0,
+    width: 1,
+    height: "18.18px",
+    backgroundColor: colors.zFillQuarternary,
+    transform: "translateY(-50%)",
+  },
+  sortIndicator: {
+    display: "flex",
+    flexShrink: 0,
+    marginRight: "2.73px",
+    color: colors.zFillPrimary,
+  },
+  // .virtualized-table-body: 4px over the rows, 8px in and at the foot.
+  body: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    scrollbarGutter: "stable",
+    padding: "3.64px 7.27px 7.27px",
+    outline: "none",
+  },
+  // .cell: 8px each side; the first has none at its start, its twisty and indent do it.
+  cell: {
+    display: "flex",
+    alignItems: "center",
+    minWidth: "27.27px",
+    paddingInline: zotero.xs,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  title: { flex: "4 1 0", paddingLeft: 0 },
+  creator: { display: "block", flex: "1 1 0", lineHeight: zotero.row },
+  date: { display: "block", flex: "1 1 0", lineHeight: zotero.row },
+  count: {
+    flex: "0 0 23.64px",
+    justifyContent: "center",
+    minWidth: "23.64px",
+    paddingInline: 0,
+    textAlign: "center",
+    fontVariantNumeric: "tabular-nums",
+  },
+  // .row.odd: --material-stripe.
+  odd: { backgroundColor: colors.zStripe },
+  // .library-header-row: on the pane's ground, square, 600 in --fill-secondary, its icon 4px before the name at 0.8.
+  sectionHeader: {
+    gap: zotero.min,
+    paddingLeft: zotero.icon,
+    paddingBottom: "2.73px",
+    borderRadius: 0,
+    color: colors.zFillSecondary,
+    fontWeight: 600,
+    backgroundColor: colors.zBackground,
+  },
+  sectionIcon: { opacity: 0.8 },
+  spacerRow: { height: zotero.row },
+  // Zotero's items-tree message: centred in the pane, in --fill-secondary.
+  empty: {
+    padding: "48px 24px",
+    color: colors.zFillSecondary,
+    fontSize: fontSizes.body,
     textAlign: "center",
   },
-  emptyTitle: { color: colors.textSecondary, fontSize: fontSizes.input, fontWeight: 600 },
 });
