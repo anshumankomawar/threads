@@ -50,11 +50,18 @@ export function OptionButton(props: {
   option: Option;
   selected: boolean;
   onHover: () => void;
+  // The chosen row's look where the list's ground isn't a panel's (⌘K grown from the toolbar's field).
+  selectedLook?: stylex.StyleXStyles;
 }): JSX.Element {
   const o = (): Option => props.option;
   return (
     <button
-      class={sx(base.bare, look.item, props.selected && look.itemSelected)}
+      class={sx(
+        base.bare,
+        look.item,
+        props.selected && look.itemSelected,
+        props.selected && props.selectedLook,
+      )}
       role="option"
       aria-selected={props.selected ? "true" : "false"}
       onMouseDown={(event) => event.preventDefault()}

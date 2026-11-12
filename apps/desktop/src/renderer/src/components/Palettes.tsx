@@ -211,6 +211,7 @@ function Picker(props: {
                       option={row}
                       selected={at === index()}
                       onHover={() => setAt(at)}
+                      selectedLook={props.grow && palette.growSelected}
                     />
                   )}
                 </For>
