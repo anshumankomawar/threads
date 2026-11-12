@@ -506,10 +506,12 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       <MessageBox
         autofocus
         field={palette.messageField}
+        hintLook={palette.messageHint}
         placeholder={untrack(() =>
-          props.to
-            ? `What do you need from ${props.to.name}? @mention anyone else, ⌘↵ to send`
-            : "What do you need? @mention who it's for, ⌘↵ to send",
+          props.to ? `What do you need from ${props.to.name}?` : "What do you need?",
+        )}
+        hint={untrack(() =>
+          props.to ? "@mention anyone else, ⌘↵ to send" : "@mention who it's for, ⌘↵ to send",
         )}
         onSend={start}
       />

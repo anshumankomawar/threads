@@ -69,6 +69,8 @@ const styles = stylex.create({
   },
   reply: { display: "flex", flex: 1, minWidth: 0 },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
+  hint: { marginTop: 4, color: colors.textTertiary, fontSize: fontSizes.small },
+  fieldColumn: { display: "flex", flex: 1, flexDirection: "column", minWidth: 0 },
   caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: 300 },
   linkSelf: { color: colors.textSecondary },
   // A hollow ring while open, filled once it's resolved or blocked.
@@ -264,7 +266,8 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     <MessageBox
       thread={props.thread}
       autofocus={props.autofocus}
-      placeholder="Reply, @mention someone to bring them in, ⌘↵ to send"
+      placeholder="Reply"
+      hint="@mention someone to bring them in, ⌘↵ to send"
       onSend={(body) => send(props.thread, body)}
     />
   );
@@ -277,7 +280,10 @@ export function MessageBox(props: {
   thread?: Thread;
   autofocus: boolean;
   placeholder: string;
+  // How it works, under the text, staying as you type.
+  hint: string;
   field?: stylex.StyleXStyles;
+  hintLook?: stylex.StyleXStyles;
   onSend: (body: string) => void;
 }): JSX.Element {
   const c = (): Thread | undefined => props.thread;
@@ -412,11 +418,15 @@ export function MessageBox(props: {
                 <span class={sx(thread.author)}>{me().name}</span>
               </div>
               <div ref={mount} class={sx(styles.reply)} />
+              <span class={sx(styles.hint)}>{props.hint}</span>
             </div>
           </>
         }
       >
-        <div ref={mount} class={sx(styles.reply)} />
+        <div class={sx(styles.fieldColumn)}>
+          <div ref={mount} class={sx(styles.reply)} />
+          <span class={sx(styles.hint, props.hintLook)}>{props.hint}</span>
+        </div>
       </Show>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (

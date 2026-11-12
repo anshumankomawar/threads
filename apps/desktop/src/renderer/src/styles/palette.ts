@@ -75,13 +75,15 @@ export const palette = stylex.create({
     minHeight: 38,
     maxHeight: 320,
     overflowY: "auto",
-    padding: `9px ${EDGE}px`,
+    padding: `9px ${EDGE}px 4px`,
     color: colors.textPrimary,
     fontSize: fontSizes.input,
     lineHeight: "20px",
     outline: "none",
     cursor: "text",
   },
+  // Its hint, under the text at the field's inset.
+  messageHint: { marginTop: 0, padding: `0 ${EDGE}px 9px` },
   // The chosen row on the field's grey: the sidebar's selection wash (the palette's is meant for a white ground).
   growSelected: { backgroundColor: colors.bgTertiary },
   // The keys at its end, as the field shows them.
