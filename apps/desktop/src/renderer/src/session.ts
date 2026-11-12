@@ -276,6 +276,19 @@ export const drafts = store.view(() =>
 
 // The chosen mailbox's threads, in groups: the inbox by bucket (what's still being sorted first), the rest in one.
 type Group = { bucket?: Bucket; title?: string; threads: Thread[] };
+// The sidebar's rows in order, as ⌘1–⌘9 count them: Buckets, Sorting while there's any, each bucket, All Threads, Drafts.
+export const sidebarMailboxes = (): Mailbox[] => [
+  { kind: "inbox" },
+  ...(inbox().unsorted.length > 0 ? [{ kind: "unsorted" } as const] : []),
+  ...inbox().sections.map((section) => ({ kind: "bucket", id: section.bucket.id }) as const),
+  { kind: "all" },
+  { kind: "drafts" },
+];
+function goToMailbox(at: number): void {
+  const box = sidebarMailboxes()[at];
+  if (box) chooseMailbox(box);
+}
+
 export const listed = store.view((): { groups: Group[]; order: Thread[] } => {
   const box = mailbox();
   const { sections, unsorted } = inbox();
@@ -369,6 +382,13 @@ function moveOn(thread: Thread): void {
     (c) => c !== thread,
   );
   open({ thread: next?.id ?? null });
+}
+
+// U, as Superhuman's: back to unread, and out of it to the list, so it stays unread.
+export function markUnread(item: InboxItem): void {
+  item.seenAt = new Date(0);
+  item.save();
+  if (active() === item.thread) setView({ thread: null });
 }
 
 // ⌘E, or the inbox row's done button. Done with the open thread, the next one opens.
@@ -470,9 +490,15 @@ window.addEventListener("keydown", (event) => {
     forward: free && goForward,
     sidebar: () => setSidebarOpen(!sidebarOpen()),
     // Not in a dialog, where ⌘1… choose its own tabs.
-    inboxTab: free && (() => chooseMailbox({ kind: "inbox" })),
-    threadsTab: free && (() => chooseMailbox({ kind: "all" })),
-    draftsTab: free && (() => chooseMailbox({ kind: "drafts" })),
+    mailbox1: free && (() => goToMailbox(0)),
+    mailbox2: free && (() => goToMailbox(1)),
+    mailbox3: free && (() => goToMailbox(2)),
+    mailbox4: free && (() => goToMailbox(3)),
+    mailbox5: free && (() => goToMailbox(4)),
+    mailbox6: free && (() => goToMailbox(5)),
+    mailbox7: free && (() => goToMailbox(6)),
+    mailbox8: free && (() => goToMailbox(7)),
+    mailbox9: free && (() => goToMailbox(8)),
     newThread: () => {
       const shown = view();
       setDialog({
@@ -486,6 +512,9 @@ window.addEventListener("keydown", (event) => {
     next: reading && (() => open({ thread: (order[at + 1] ?? order[at] ?? order[0])?.id ?? null })),
     previous: reading && at > 0 && (() => open({ thread: order[at - 1].id })),
     done: free && item && (() => markDone(item)),
+    doneQuick: reading && item && (() => markDone(item)),
+    unread: reading && item && (() => markUnread(item)),
+    close: reading && current && (() => open({ thread: null })),
     snooze: reading && item && (() => snooze(item)),
     reply: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
     zoomIn: () => applyZoom(zoom() + 0.1),

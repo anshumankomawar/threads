@@ -555,7 +555,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
                       }}
                     >
                       <Icon
-                        icon={group.bucket ? "folder" : "folder"}
+                        icon="folder"
+                        style={{ color: FOLDER.folder }}
                         size={11}
                         aria-hidden="true"
                       />

@@ -19,6 +19,8 @@ import {
   otherSources,
   others,
   chooseMailbox,
+  mailboxTitle,
+  sidebarMailboxes,
   setDialog,
   setSettingsStart,
   signOut,
@@ -33,7 +35,7 @@ import {
 import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
-import { keysFor } from "../hotkeys";
+import { keysFor, type HotkeyId } from "../hotkeys";
 import {
   ask,
   clearRecents,
@@ -255,17 +257,12 @@ function Search(): JSX.Element {
       section: "Views",
       run: done(() => (setSettingsStart("Groups"), open({ settings: null }))),
     },
-    ...(
-      [
-        ["Buckets", "inboxTab", "inbox"],
-        ["All Threads", "threadsTab", "all"],
-        ["Drafts", "draftsTab", "drafts"],
-      ] as const
-    ).map(([label, key, kind]) => ({
-      label,
-      hint: keysFor(key),
+    // The sidebar's rows, with the ⌘1–⌘9 that choose them.
+    ...sidebarMailboxes().map((box, at) => ({
+      label: mailboxTitle(box),
+      hint: at < 9 ? keysFor(`mailbox${at + 1}` as HotkeyId) : undefined,
       section: "Views",
-      run: done(() => chooseMailbox({ kind })),
+      run: done(() => chooseMailbox(box)),
     })),
     {
       label: "Settings",
