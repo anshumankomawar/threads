@@ -469,7 +469,7 @@ function Find(): JSX.Element {
     <Picker
       grow
       keys={keysFor("find")}
-      placeholder="Search threads, or ask a question…"
+      placeholder="Search…"
       query={typed}
       clear={{ section: "Recent", run: clearRecents }}
       onBack={asked() ? () => setAsked(undefined) : undefined}
