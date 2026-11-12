@@ -5,6 +5,10 @@ import { Bucket, Draft, Message, Thread, User } from "models";
 import {
   active,
   allThreads,
+  canGoBack,
+  canGoForward,
+  goBack,
+  goForward,
   chooseMailbox,
   drafts,
   inbox,
@@ -20,6 +24,7 @@ import {
   setDialog,
   shortDate,
   shown,
+  setSidebarOpen,
   showMenu,
   sidebarOpen,
   store,
@@ -27,7 +32,6 @@ import {
   threadMenu,
   unread,
   view,
-  workspace,
   type Mailbox,
   type MenuItem,
 } from "../session";
@@ -81,40 +85,50 @@ const threadPane = resizable("tb-thread-width", { initial: 380, min: 280, max: 7
 
 // ── The unified toolbar ──
 
-function ToolbarButton(props: {
+function ToolbarIcon(props: {
   label: string;
   icon: TbIconName;
-  title?: string;
+  disabled?: boolean;
+  pressed?: boolean;
   onClick: () => void;
 }): JSX.Element {
   return (
     <button
-      class={sx(base.bare, s.toolbarButton)}
-      title={props.title ?? props.label}
+      class={sx(base.bare, s.toolbarIcon, props.pressed && s.toolbarIconPressed)}
+      aria-label={props.label}
+      aria-pressed={props.pressed === undefined ? undefined : props.pressed ? "true" : "false"}
+      title={props.label}
+      disabled={props.disabled}
       onClick={() => props.onClick()}
     >
       <TbIcon name={props.icon} />
-      <span>{props.label}</span>
     </button>
   );
 }
 
-// Across the window's top: Get Messages and Write, the search bar in the middle, and the app menu at the end.
+// Across the window's top: the folder pane's toggle with back and forward, the search bar in the middle, and Settings
+// at the end. Writing is the folder pane's New Message.
 export function UnifiedToolbar(): JSX.Element {
   return (
     <div data-bar class={sx(s.toolbar)}>
       <div class={sx(s.toolbarStart)}>
-        <ToolbarButton
-          label="Get Messages"
-          icon="mail"
-          title="Messages arrive as they're sent"
-          onClick={() => chooseMailbox({ kind: "inbox" })}
+        <ToolbarIcon
+          label={`${sidebarOpen() ? "Hide" : "Show"} folder pane (${keysFor("sidebar")})`}
+          icon="layout"
+          pressed={sidebarOpen()}
+          onClick={() => setSidebarOpen(!sidebarOpen())}
         />
-        <ToolbarButton
-          label="Write"
-          icon="pencil"
-          title={`Write a new thread (${keysFor("newThread")})`}
-          onClick={() => setDialog({ kind: "newThread" })}
+        <ToolbarIcon
+          label={`Back (${keysFor("back")})`}
+          icon="nav-back"
+          disabled={!canGoBack()}
+          onClick={goBack}
+        />
+        <ToolbarIcon
+          label={`Forward (${keysFor("forward")})`}
+          icon="nav-forward"
+          disabled={!canGoForward()}
+          onClick={goForward}
         />
       </div>
       <button
@@ -127,14 +141,12 @@ export function UnifiedToolbar(): JSX.Element {
         <span class={sx(s.searchKeys)}>{keysFor("search")}</span>
       </button>
       <div class={sx(s.toolbarEnd)}>
-        <button
-          class={sx(base.bare, s.toolbarIcon)}
-          aria-label="Settings"
-          title={`Settings (${keysFor("settings")})`}
+        <ToolbarIcon
+          label={`Settings (${keysFor("settings")})`}
+          icon="settings"
+          pressed={"settings" in view()}
           onClick={() => open({ settings: null })}
-        >
-          <TbIcon name="more" />
-        </button>
+        />
       </div>
     </div>
   );
@@ -318,22 +330,12 @@ export function Sidebar(): JSX.Element {
         <li>
           <div class={sx(s.mode)}>All Folders</div>
         </li>
-        {/* The account, bold, its folders under it. */}
-        <li>
-          <div class={sx(s.folder, s.account)}>
-            <span class={sx(s.twisty)} />
-            <span class={sx(s.folderIcon)}>
-              <TbIcon name="mail" />
-            </span>
-            <span class={sx(base.ellipsis, s.folderName, s.bold)}>{workspace().name}</span>
-          </div>
-        </li>
         <Folder
           box={{ kind: "inbox" }}
           label="Buckets"
           icon="inbox"
           color={tb.inbox}
-          depth={1}
+          depth={0}
           count={unreadIn(inbox().order) || undefined}
           total={inbox().order.length || undefined}
           twisty={collapsed() ? "closed" : "open"}
@@ -347,7 +349,7 @@ export function Sidebar(): JSX.Element {
               label="Sorting"
               icon="folder"
               color={tb.folder}
-              depth={2}
+              depth={1}
               total={inbox().unsorted.length}
             />
           </Show>
@@ -358,7 +360,7 @@ export function Sidebar(): JSX.Element {
                 label={section.bucket.name}
                 icon="folder"
                 color={tb.folder}
-                depth={2}
+                depth={1}
                 count={unreadIn(section.items.map((it) => it.thread)) || undefined}
                 total={section.items.length || undefined}
                 menu={() => bucketMenu(section.bucket)}
@@ -371,7 +373,7 @@ export function Sidebar(): JSX.Element {
           label="All Threads"
           icon="archive"
           color={tb.archive}
-          depth={1}
+          depth={0}
           total={allThreads().length || undefined}
         />
         <Folder
@@ -379,7 +381,7 @@ export function Sidebar(): JSX.Element {
           label="Drafts"
           icon="draft"
           color={tb.draft}
-          depth={1}
+          depth={0}
           total={drafts().length || undefined}
         />
       </ul>
@@ -603,21 +605,7 @@ const s = stylex.create({
   },
   toolbarStart: { display: "flex", gap: 2, alignItems: "center", minWidth: 0 },
   toolbarEnd: { display: "flex", gap: 2, justifyContent: "flex-end" },
-  // A unified toolbar button: transparent, washed under the pointer, 3px corners, its icon and label.
-  toolbarButton: {
-    display: "flex",
-    gap: 5,
-    alignItems: "center",
-    height: 25,
-    padding: "0 6px",
-    borderRadius: 3,
-    color: colors.textPrimary,
-    fontSize: fontSizes.body,
-    whiteSpace: "nowrap",
-    backgroundColor: { default: "transparent", ":hover": tb.bg3, ":active": tb.bg4 },
-    cursor: "default",
-    WebkitAppRegion: "no-drag",
-  },
+  // A unified toolbar button: transparent, washed under the pointer, 3px corners.
   toolbarIcon: {
     display: "grid",
     placeItems: "center",
@@ -625,10 +613,16 @@ const s = stylex.create({
     height: 25,
     borderRadius: 3,
     color: colors.textPrimary,
-    backgroundColor: { default: "transparent", ":hover": tb.bg3, ":active": tb.bg4 },
+    backgroundColor: {
+      default: "transparent",
+      ":hover:not(:disabled)": tb.bg3,
+      ":active:not(:disabled)": tb.bg4,
+    },
+    opacity: { default: 1, ":disabled": 0.4 },
     cursor: "default",
     WebkitAppRegion: "no-drag",
   },
+  toolbarIconPressed: { backgroundColor: tb.bg3 },
   // The search bar: 1.45lh + 4px, a 1px #a1a1aa (--color-gray-40) border, the page's white, 3px corners.
   search: {
     display: "flex",
@@ -646,8 +640,8 @@ const s = stylex.create({
     cursor: "text",
     WebkitAppRegion: "no-drag",
   },
-  searchPlaceholder: { flex: 1, textAlign: "left" },
-  searchKeys: { fontSize: fontSizes.small },
+  searchPlaceholder: { flex: 1, textAlign: "left", lineHeight: 1 },
+  searchKeys: { fontSize: fontSizes.small, lineHeight: 1 },
 
   // spacesToolbar.css: 7px padding, 15px gaps, 20px icons in 5px of padding; the current space in the primary
   // button's blue, its icon white. A faint gradient to its right edge, and a border.
@@ -736,7 +730,6 @@ const s = stylex.create({
     color: tb.selectedText,
     backgroundColor: { default: tb.selected, ":hover": tb.selected },
   },
-  account: { backgroundColor: { default: "transparent", ":hover": "transparent" } },
   twisty: { display: "grid", flexShrink: 0, placeItems: "center", width: 14.55, height: 14.55 },
   twistyButton: { display: "grid", placeItems: "center", color: "inherit", cursor: "default" },
   twistyClosed: { transform: "rotate(-90deg)" },

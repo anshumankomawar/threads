@@ -34,6 +34,8 @@ export function Icon(props: IconProps): JSX.Element {
       height={props.size ?? 16}
       viewBox="0 0 24 24"
       fill="none"
+      // A block, so it centres beside text in a flex row rather than sitting on the text's baseline.
+      style={{ display: "block", "flex-shrink": "0" }}
       color="currentColor"
       innerHTML={markup(props.icon)}
     />

@@ -19,8 +19,10 @@ const markup = (parts: readonly TbPart[]): string =>
 export function TbIcon(props: { name: TbIconName; size?: number; class?: string }): JSX.Element {
   const data = () => TB_ICONS[props.name];
   return (
+    // A block, so it centres beside text in a flex row rather than sitting on the text's baseline.
     <svg
       class={props.class}
+      style={{ display: "block", "flex-shrink": "0" }}
       width={props.size ?? 16}
       height={props.size ?? 16}
       viewBox={data().viewBox}
