@@ -50,8 +50,7 @@ export function OptionButton(props: {
   option: Option;
   selected: boolean;
   onHover: () => void;
-  // The row's look, and the chosen row's, where the list isn't a panel's (⌘K grown from the toolbar's field).
-  rowLook?: stylex.StyleXStyles;
+  // The chosen row's look where the list's ground isn't a panel's (⌘K grown from the toolbar's field).
   selectedLook?: stylex.StyleXStyles;
 }): JSX.Element {
   const o = (): Option => props.option;
@@ -60,7 +59,6 @@ export function OptionButton(props: {
       class={sx(
         base.bare,
         look.item,
-        props.rowLook,
         props.selected && look.itemSelected,
         props.selected && props.selectedLook,
       )}

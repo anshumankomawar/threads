@@ -69,8 +69,6 @@ export const palette = stylex.create({
   growIcon: { display: "flex", color: colors.textTertiary },
   // The field's own text size.
   growInput: { height: 14.55, fontSize: fontSizes.body, lineHeight: "14.55px" },
-  // A row as tall as the field's, its text where the field's icon starts.
-  growRow: { height: 22, padding: "0 4px", lineHeight: "14.55px" },
   // The chosen row on the field's grey: the sidebar's selection wash (the palette's is meant for a white ground).
   growSelected: { backgroundColor: colors.bgTertiary },
   // The keys at its end, as the field shows them.
