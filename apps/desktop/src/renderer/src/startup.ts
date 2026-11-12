@@ -2,7 +2,7 @@
 // against that API), who you're signed in as, and the theme. The sign-in screen needs only this, never the store.
 import { createSignal } from "solid-js";
 import * as stylex from "@stylexjs/stylex";
-import { lightTheme } from "./styles/tokens.stylex";
+import { catalogLight, lightTheme } from "./styles/tokens.stylex";
 
 export type Source = "cloudflare" | "local" | "sample";
 const HOSTED_URL = import.meta.env.VITE_API_URL;
@@ -49,7 +49,9 @@ export async function signOut(): Promise<void> {
 export type Theme = "dark" | "light" | "slack";
 const [chosen, setChosen] = createSignal<Theme>(saved("theme", "dark"));
 export const theme = chosen;
-const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
+const LIGHT = [lightTheme, catalogLight].flatMap((theme) =>
+  (stylex.attrs(theme).class ?? "").split(" ").filter(Boolean),
+);
 export function applyTheme(next: Theme): void {
   setChosen(next);
   save("theme", next);

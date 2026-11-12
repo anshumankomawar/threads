@@ -1,7 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { base } from "./base";
 import { toolbarMarker } from "./markers.stylex";
-import { colors, fontSizes, layers, motion, radii } from "./tokens.stylex";
+import { cat, colors, fontSizes, layers, motion, radii } from "./tokens.stylex";
 
 // Below, starting at the anchor's left edge (StyleX's types only know single keywords).
 const UNDER = "bottom span-right" as "bottom";
@@ -137,20 +137,25 @@ export const menu = stylex.create({
 });
 
 export const topbar = stylex.create({
-  bar: { display: "flex", flexShrink: 0, alignItems: "center", gap: 2.5, height: 34 },
+  bar: { display: "flex", flexShrink: 0, alignItems: "center", gap: 6, height: 34 },
+  // The catalog's .btn-nav: a square, 1px black frame on white with a hard 2px #bbb shadow, ink and paper swapping under
+  // the pointer.
   button: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    width: 22,
-    height: 22,
+    width: 21,
+    height: 19.09,
     padding: 0,
-    borderStyle: "none",
-    borderRadius: radii.row,
-    color: colors.textPrimary,
-    backgroundColor: { default: "transparent", ":hover:not(:disabled)": colors.bgTertiary },
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: cat.ink,
+    borderRadius: 0,
+    color: { default: cat.ink, ":hover:not(:disabled)": cat.sheet },
+    backgroundColor: { default: cat.sheet, ":hover:not(:disabled)": cat.ink },
+    boxShadow: `2px 2px ${cat.hardButton}`,
     cursor: { default: "pointer", ":disabled": "default" },
-    opacity: { default: 1, ":disabled": 0.35 },
+    opacity: { default: 1, ":disabled": 0.5 },
     WebkitAppRegion: "no-drag",
   },
   title: { color: colors.textSecondary },

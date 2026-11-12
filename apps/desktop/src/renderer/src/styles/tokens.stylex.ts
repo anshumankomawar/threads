@@ -2,13 +2,12 @@ import * as stylex from "@stylexjs/stylex";
 
 // Dark is the default; `lightTheme` (on the root, from `applyTheme`) is the same tokens for light.
 const DARK_BASE = "oklch(0.955 0 0)";
-const LIGHT_BASE = "oklch(0.21 0 0)";
 const mix = (base: string, percent: number): string =>
   `color-mix(in srgb, ${base} ${percent}%, transparent)`;
 
 const DARK = {
   // The window's ground, opaque, as the macOS app's.
-  chrome: "#141414",
+  chrome: "#0c0c0c",
   textPrimary: DARK_BASE,
   textSecondary: mix(DARK_BASE, 74),
   textTertiary: mix(DARK_BASE, 60),
@@ -44,34 +43,87 @@ const DARK = {
 };
 export const colors = stylex.defineVars(DARK);
 
+// Light is the U.S. Graphics catalog's paper (usgraphics-wds.css): black ink on white sheets over #eee, #bfbfbf rules,
+// square black-bordered panels with a soft 30px shadow, #002dce links, and its menu's #9ba3a8 hover.
 export const lightTheme = stylex.createTheme(colors, {
-  chrome: "#fafafa",
-  textPrimary: LIGHT_BASE,
-  textSecondary: mix(LIGHT_BASE, 72),
-  textTertiary: mix(LIGHT_BASE, 55),
-  // Light washes for hover and selection: on a light ground the same tint reads much darker than in dark mode.
-  bgTertiary: mix(LIGHT_BASE, 5.5),
-  bgQuaternary: mix(LIGHT_BASE, 3),
-  iconTertiary: mix(LIGHT_BASE, 50),
-  strokeTertiary: mix(LIGHT_BASE, 10),
-  strokeFocused: mix(LIGHT_BASE, 20),
-  resizeEdge: mix(LIGHT_BASE, 12),
+  chrome: "#eeeeee",
+  textPrimary: "#000000",
+  textSecondary: "#333333",
+  textTertiary: "#777777",
+  // Its `.table tr.active`: a 10% black wash.
+  bgTertiary: "rgb(0 0 0 / 10%)",
+  bgQuaternary: "rgb(0 0 0 / 5%)",
+  iconTertiary: "#555555",
+  strokeTertiary: "#bfbfbf",
+  strokeFocused: "#000000",
+  resizeEdge: "#888888",
   panel: "#ffffff",
-  panelBorder: "#e4e4e2",
-  panelSelected: "#f3f3f1",
+  panelBorder: "#000000",
+  panelSelected: "#9ba3a8",
   raised: "#ffffff",
-  raisedBorder: "#dcdcd9",
-  accent: "#2f6fb7",
-  accentFill: "#e2ecf7",
+  raisedBorder: "#000000",
+  accent: "#002dce",
+  accentFill: "#c9e5ff",
   primary: "rgb(35 131 226)",
   primaryHover: "rgb(28 112 196)",
   statusClosed: "oklch(0.55 0.11 155.438)",
-  urgent: "oklch(0.58 0.2 12.651)",
+  urgent: "#e7040f",
   avatarRing: "rgb(0 0 0 / 14%)",
-  systemBlue: "#007aff",
-  priority: "#ff9500",
-  shadowPanel: "0 2px 8px rgb(0 0 0 / 8%)",
-  shadowFloat: "0 4px 14px rgb(0 0 0 / 9%)",
+  systemBlue: "#ff4136",
+  priority: "#e25600",
+  shadowPanel: "0 0 30px rgb(0 0 0 / 25%)",
+  shadowFloat: "0 0 30px rgb(0 0 0 / 25%)",
+});
+
+// The catalog's own inks (usgraphics-wds.css), in dark first and then its light paper: a sheet, its ink, cell rules
+// (#bfbfbf), the hard 2px shadows under sheets (#ccc), buttons (#bbb) and tables (#ddd), a table's 4px left edge
+// (#aaa), a sheet's frame (#888), its greys, the nav's red dot (#ff4136), the dark green of ORDER (#006b52), and the
+// light tints of its SKU codes.
+const CATALOG_DARK = {
+  sheet: "#161616",
+  ink: "#e8e8e8",
+  rule: "#3a3a3a",
+  hardSheet: "#000000",
+  hardButton: "#000000",
+  hardTable: "#000000",
+  edge: "#555555",
+  frame: "#4a4a4a",
+  gray: "#8a8a8a",
+  silver: "#6f6f6f",
+  link: "#7d9dff",
+  red: "#ff4136",
+  green: "#00805f",
+  yellow: "#4a4520",
+  pink: "#4d2a45",
+  blue: "#22384e",
+  mint: "#1d4a3b",
+  chip: "#333333",
+};
+export const cat = stylex.defineVars(CATALOG_DARK);
+export const catalogLight = stylex.createTheme(cat, {
+  sheet: "#ffffff",
+  ink: "#000000",
+  rule: "#bfbfbf",
+  hardSheet: "#cccccc",
+  hardButton: "#bbbbbb",
+  hardTable: "#dddddd",
+  edge: "#aaaaaa",
+  frame: "#888888",
+  gray: "#777777",
+  silver: "#999999",
+  link: "#002dce",
+  red: "#ff4136",
+  green: "#006b52",
+  yellow: "#fff5b1",
+  pink: "#fcd4f2",
+  blue: "#c9e5ff",
+  mint: "#b9ffe4",
+  // .chip's #e6e6e6.
+  chip: "#e6e6e6",
+});
+// Its data face, TX-02 (licensed, so not shipped here): the system's mono in its place.
+export const fonts = stylex.defineConsts({
+  mono: 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace',
 });
 
 // Slack's look: an aubergine sidebar in white type, its chosen row blue, over the light theme (`slackSidebar` on the
@@ -113,26 +165,27 @@ export const layers = stylex.defineConsts({
 
 // Small things in text and menus (chips, links, menu items, fields) · every row and button that fills on hover ·
 // floating panels.
+// The catalog's corners are square, everywhere but its chips.
 export const radii = stylex.defineConsts({
-  control: "6px",
-  // A sidebar row and your profile under them (8pt).
-  item: "7.27px",
-  row: "10px",
-  panel: "14px",
+  control: "0px",
+  item: "0px",
+  row: "0px",
+  panel: "0px",
   // A capsule: chips and fields whose ends are fully round, whatever their height.
   pill: "999px",
 });
 
 // The macOS app's text sizes (SF Pro, the system font, in both): each its points ÷ 1.1, for the renderer's 110% scale.
+// The catalog's sizes (its 14px root): each its pixels ÷ 1.1, for the renderer's 110% scale.
 export const fontSizes = stylex.defineConsts({
-  label: "9.09px", // 10pt
-  small: "10px", // 11pt
-  caption: "10.91px", // 12pt, a section's or group's heading
-  body: "11.82px", // 13pt, the body
-  name: "12.73px", // 14pt, a row's title
-  input: "12.73px", // 14pt
-  message: "14.55px", // 16pt, a message
-  pageTitle: "18.18px", // 20pt, a title
+  label: "10.18px", // .8rem
+  small: "10.18px", // .8rem
+  caption: "11.45px", // 90%, a chip's
+  body: "12.73px", // 1rem
+  name: "12.73px", // 1rem, a heading's (bold)
+  input: "12.73px", // 14px, a form input's
+  message: "12.73px", // 1rem
+  pageTitle: "15.27px", // 1.2rem
 });
 
 // The sidebar's and the list's one step (8pt): rows in from their ends, an icon from its name, a column from its edge.

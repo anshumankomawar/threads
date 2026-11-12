@@ -29,7 +29,7 @@ import {
 import { base } from "./styles/base";
 import { chip, toast, topbar } from "./styles/controls";
 import { sx } from "./styles/sx";
-import { colors, fontSizes, radii } from "./styles/tokens.stylex";
+import { cat, colors, fontSizes, radii } from "./styles/tokens.stylex";
 import { ThreadView } from "./components/ThreadView";
 import { Compose } from "./components/Compose";
 import { DragRegionResync, Titlebar } from "./components/DragRegionResync";
@@ -72,8 +72,21 @@ const styles = stylex.create({
     minWidth: 0,
     backgroundColor: colors.chrome,
   },
+  sheet: {
+    display: "flex",
+    flex: 1,
+    flexDirection: "column",
+    minHeight: 0,
+    margin: "0 9px 9px 0",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: cat.frame,
+    backgroundColor: cat.sheet,
+    boxShadow: `2px 2px ${cat.hardSheet}`,
+    overflow: "hidden",
+  },
   // Beside the list: the reading pane's title 16px in, as the list's is.
-  topbarBesideList: { paddingLeft: 16 },
+  topbarBesideList: { paddingLeft: 4 },
   viewAs: {
     display: "flex",
     gap: 6,
@@ -215,65 +228,68 @@ export default function App(): JSX.Element {
                 </button>
               </span>
             </div>
-            <Switch>
-              <Match when={label()} keyed>
-                {(label) => <LabelView label={label} />}
-              </Match>
-              <Match when={subspace()} keyed>
-                {(subspace) => <SubspaceView subspace={subspace} />}
-              </Match>
-              <Match when={savedView()} keyed>
-                {(saved) => <SavedView view={saved} />}
-              </Match>
-              <Match when={workspaceShown()}>
-                <WorkspaceView />
-              </Match>
-              <Match when={person()} keyed>
-                {(user) => <PersonView user={user} />}
-              </Match>
-              <Match when={"settings" in view()}>
-                <SettingsView />
-              </Match>
-              <Match when={"personal" in view()}>
-                <PersonalView />
-              </Match>
-              <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
-                {(draft) => <Compose draftId={draft.id} page />}
-              </Match>
-              <Match when={active()} keyed>
-                {(thread) => (
-                  <div class={sx(styles.panes)}>
-                    <ThreadView thread={thread} autofocus={!itemFor(thread)} />
-                    <Show when={store.findById(Thread, split() ?? "")} keyed>
-                      {(beside) => (
-                        <section class={sx(styles.splitPane)} aria-label={beside.title}>
-                          <div data-bar class={sx(topbar.bar, styles.splitPaneBar)}>
-                            <span class={sx(base.ellipsis, topbar.title, styles.splitTitle)}>
-                              {beside.title}
-                            </span>
-                            <button
-                              class={sx(topbar.button)}
-                              aria-label="Open as the main thread"
-                              onClick={() => open({ thread: beside.id })}
-                            >
-                              <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
-                            </button>
-                            <button
-                              class={sx(topbar.button)}
-                              aria-label="Close"
-                              onClick={() => setSplit(null)}
-                            >
-                              <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
-                            </button>
-                          </div>
-                          <ThreadView thread={beside} />
-                        </section>
-                      )}
-                    </Show>
-                  </div>
-                )}
-              </Match>
-            </Switch>
+            {/* The catalog's sheet: white, a #888 frame, a hard 2px #ccc shadow. */}
+            <div class={sx(styles.sheet)}>
+              <Switch>
+                <Match when={label()} keyed>
+                  {(label) => <LabelView label={label} />}
+                </Match>
+                <Match when={subspace()} keyed>
+                  {(subspace) => <SubspaceView subspace={subspace} />}
+                </Match>
+                <Match when={savedView()} keyed>
+                  {(saved) => <SavedView view={saved} />}
+                </Match>
+                <Match when={workspaceShown()}>
+                  <WorkspaceView />
+                </Match>
+                <Match when={person()} keyed>
+                  {(user) => <PersonView user={user} />}
+                </Match>
+                <Match when={"settings" in view()}>
+                  <SettingsView />
+                </Match>
+                <Match when={"personal" in view()}>
+                  <PersonalView />
+                </Match>
+                <Match when={store.findById(Draft, shown("draft") ?? "")} keyed>
+                  {(draft) => <Compose draftId={draft.id} page />}
+                </Match>
+                <Match when={active()} keyed>
+                  {(thread) => (
+                    <div class={sx(styles.panes)}>
+                      <ThreadView thread={thread} autofocus={!itemFor(thread)} />
+                      <Show when={store.findById(Thread, split() ?? "")} keyed>
+                        {(beside) => (
+                          <section class={sx(styles.splitPane)} aria-label={beside.title}>
+                            <div data-bar class={sx(topbar.bar, styles.splitPaneBar)}>
+                              <span class={sx(base.ellipsis, topbar.title, styles.splitTitle)}>
+                                {beside.title}
+                              </span>
+                              <button
+                                class={sx(topbar.button)}
+                                aria-label="Open as the main thread"
+                                onClick={() => open({ thread: beside.id })}
+                              >
+                                <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
+                              </button>
+                              <button
+                                class={sx(topbar.button)}
+                                aria-label="Close"
+                                onClick={() => setSplit(null)}
+                              >
+                                <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
+                              </button>
+                            </div>
+                            <ThreadView thread={beside} />
+                          </section>
+                        )}
+                      </Show>
+                    </div>
+                  )}
+                </Match>
+              </Switch>
+            </div>
             <Show when={undo()}>
               {(offered) => (
                 <div class={sx(base.panel, toast.undo)} role="status">

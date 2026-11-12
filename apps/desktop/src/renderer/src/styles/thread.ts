@@ -4,9 +4,10 @@ import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 
 // A conversation's geometry: the space between turns, and each avatar's size and drop (centred on a turn's name and
 // first line).
-export const TURN_GAP = 28;
-export const AVATAR = 28;
-const AVATAR_TOP = 8;
+// The catalog's ledger: turns ruled apart rather than spaced, a small face beside each name.
+export const TURN_GAP = 0;
+export const AVATAR = 16;
+const AVATAR_TOP = 2;
 
 // A thread as a document (ThreadView): left-aligned like the other pages, about 706px of text.
 export const thread = stylex.create({
@@ -26,15 +27,25 @@ export const thread = stylex.create({
     flexDirection: "column",
     gap: TURN_GAP,
     // Left-aligned, on the same edge as the other pages; in the reading pane, just under its toolbar.
-    maxWidth: 773,
+    maxWidth: 900,
     padding: {
-      default: "12px 32px 48px 52px",
+      default: "12.73px 12.73px 48px",
       [stylex.when.ancestor(":is(*)", peekMarker)]: "16px 24px 32px",
     },
     zoom: contentZoom["--content-zoom"],
   },
-  block: { position: "relative", display: "flex", gap: 14, scrollMarginTop: 14 },
-  header: { paddingBottom: 4 },
+  // A turn as a ledger line: grey rules (#bfbfbf) between them, as the catalog's cells.
+  block: {
+    position: "relative",
+    display: "flex",
+    gap: 8,
+    padding: "7px 0",
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
+    scrollMarginTop: 14,
+  },
+  header: { paddingBottom: 14 },
   headerBody: { display: "flex", flexDirection: "column", gap: 6 },
   // Put `threadLineMarker` beside it so the title after it moves up.
   byline: {

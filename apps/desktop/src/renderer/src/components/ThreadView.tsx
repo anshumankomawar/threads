@@ -22,7 +22,7 @@ import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { thread } from "../styles/thread";
-import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
+import { cat, colors, fontSizes, fonts, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
 import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
@@ -44,16 +44,91 @@ const styles = stylex.create({
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
   // Pulled out by a value's padding, so the first one's icon lines up with the title.
-  properties: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 2,
-    alignItems: "center",
-    margin: "4px 0 0 -6px",
+  // The catalog's title box (14px root, ÷ 1.1): a 1px frame, a dotted frame 6px inside it.
+  box: {
+    marginBottom: 12.73,
+    padding: 5.45,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: cat.ink,
   },
-  field: { paddingInline: 6, color: colors.textTertiary, fontSize: fontSizes.body },
-  fieldAfter: { marginLeft: 10 },
-  none: { paddingInline: 6, color: colors.textTertiary, fontSize: fontSizes.body },
+  boxInner: {
+    padding: "8px 12px 10px",
+    borderWidth: 1,
+    borderStyle: "dotted",
+    borderColor: cat.ink,
+    textAlign: "center",
+  },
+  boxCode: {
+    color: cat.gray,
+    fontFamily: fonts.mono,
+    fontSize: fontSizes.small,
+    letterSpacing: "1.27px",
+    lineHeight: "17.82px",
+    textTransform: "uppercase",
+  },
+  boxTitle: {
+    margin: "2px 0 0",
+    color: cat.ink,
+    fontSize: fontSizes.pageTitle,
+    fontWeight: 700,
+    lineHeight: 1.25,
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
+  // A catalog table of who's in it: bold heads on the left, grey cells, the 4px #aaa edge.
+  people: {
+    width: "100%",
+    borderCollapse: "collapse",
+    borderLeftWidth: 4,
+    borderLeftStyle: "solid",
+    borderLeftColor: cat.edge,
+    boxShadow: `2px 2px ${cat.hardTable}`,
+    fontSize: fontSizes.body,
+  },
+  peopleTh: {
+    width: "1%",
+    height: 23.55,
+    padding: "2.55px 5.09px 0",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: cat.rule,
+    fontWeight: 700,
+    textAlign: "left",
+    whiteSpace: "nowrap",
+  },
+  peopleTd: {
+    height: 23.55,
+    padding: "2.55px 5.09px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: cat.rule,
+  },
+  // .chip: a #e6e6e6 capsule, 90% type.
+  chip: {
+    display: "inline-flex",
+    gap: 4,
+    alignItems: "center",
+    height: 15.27,
+    margin: "1.27px 4px 1.27px 0",
+    padding: "0 6px 0 3px",
+    borderRadius: 999,
+    color: cat.ink,
+    backgroundColor: { default: cat.chip, ":hover": cat.blue },
+    fontSize: fontSizes.caption,
+    cursor: "pointer",
+  },
+  none: { color: cat.gray, fontSize: fontSizes.body },
+  replyRow: { display: "flex", flexDirection: "column", gap: 4, paddingTop: 10 },
+  replyFrom: { display: "flex", gap: 6, alignItems: "center" },
+  replyBox: {
+    padding: "6px 7px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: cat.ink,
+    backgroundColor: cat.sheet,
+    boxShadow: `inset 2px 2px ${cat.hardTable}`,
+  },
   // A person in it: their page, plain until you hover it.
   value: {
     display: "flex",
@@ -182,29 +257,33 @@ export const LABELS = {
 function Header(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   return (
-    <header class={sx(thread.block, thread.header)}>
-      <span class={sx(thread.avatar)}>
-        <Identicon seed={c().ownerId ?? ""} size={20} />
-      </span>
-      <div class={sx(thread.body, thread.headerBody)}>
-        <Meta user={c().owner} at={c().createdAt} marker />
-        <Show when={c().branchedFrom}>
-          {(parent) => (
-            <div {...stylex.attrs(thread.byline, threadLineMarker)}>
-              <span>Branched from</span>
-              <LinkedText text={`[[thread:${parent().id}]]`} current={c().id} byline />
+    <header class={sx(thread.header)}>
+      <div class={sx(thread.headerBody)}>
+        {/* The catalog's title box: a frame, a dotted frame inside, its code in the data face over the title. */}
+        <div class={sx(styles.box)}>
+          <div class={sx(styles.boxInner)}>
+            <div class={sx(styles.boxCode)}>
+              Thread · started {ago(c().createdAt)} by {c().owner?.name ?? "someone"}
             </div>
-          )}
-        </Show>
-        <For each={c().blockers.filter((blocker) => blocker.isOpen)}>
-          {(blocker) => (
-            <div {...stylex.attrs(thread.byline, threadLineMarker)}>
-              <span>Blocked on</span>
-              <LinkedText text={`[[thread:${blocker.id}]]`} current={c().id} byline />
-            </div>
-          )}
-        </For>
-        <h1 class={sx(thread.title, thread.headerTitle)}>{c().title}</h1>
+            <Show when={c().branchedFrom}>
+              {(parent) => (
+                <div {...stylex.attrs(thread.byline, threadLineMarker)}>
+                  <span>Branched from</span>
+                  <LinkedText text={`[[thread:${parent().id}]]`} current={c().id} byline />
+                </div>
+              )}
+            </Show>
+            <For each={c().blockers.filter((blocker) => blocker.isOpen)}>
+              {(blocker) => (
+                <div {...stylex.attrs(thread.byline, threadLineMarker)}>
+                  <span>Blocked on</span>
+                  <LinkedText text={`[[thread:${blocker.id}]]`} current={c().id} byline />
+                </div>
+              )}
+            </For>
+            <h1 class={sx(styles.boxTitle)}>{c().title}</h1>
+          </div>
+        </div>
         <Show when={c().description}>
           {(description) => (
             <div class={sx(thread.text, thread.description, thread.headerDescription)}>
@@ -376,14 +455,13 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   };
   onSettled(() => () => editor.destroy());
   return (
-    <div class={sx(thread.block)} onClick={() => editor.commands.focus()}>
-      <span class={sx(thread.avatar)}>
-        <Identicon seed={me().id} size={20} />
-      </span>
-      <div class={sx(thread.body)}>
-        <div class={sx(thread.meta)}>
-          <span class={sx(thread.author)}>{me().name}</span>
-        </div>
+    <div class={sx(styles.replyRow)} onClick={() => editor.commands.focus()}>
+      <div class={sx(styles.replyFrom)}>
+        <Identicon seed={me().id} size={12} />
+        <span class={sx(thread.author)}>{me().name}</span>
+      </div>
+      {/* .form-input: a black frame with an inset 2px #ddd shadow; SEND as the catalog's green control. */}
+      <div class={sx(styles.replyBox)}>
         <div ref={mount} class={sx(styles.reply)} />
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
@@ -420,28 +498,35 @@ function People(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   const members = (): User[] => c().assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
   const Person = (person: { user: User }): JSX.Element => (
-    <button
-      class={sx(base.bare, base.hover, styles.value)}
-      onClick={() => open({ person: person.user.id })}
-    >
-      <Identicon seed={person.user.id} size={14} />
+    <button class={sx(base.bare, styles.chip)} onClick={() => open({ person: person.user.id })}>
+      <Identicon seed={person.user.id} size={11} />
       {person.user.name}
     </button>
   );
   return (
-    <div class={sx(styles.properties)} aria-label="People">
-      <span class={sx(styles.field)}>Requester</span>
-      <Show when={c().owner} fallback={<span class={sx(styles.none)}>Someone</span>}>
-        {(owner) => <Person user={owner()} />}
-      </Show>
-      <span class={sx(styles.field, styles.fieldAfter)}>Members</span>
-      <For
-        each={members()}
-        fallback={<span class={sx(styles.none)}>@mention someone to bring them in</span>}
-      >
-        {(user) => <Person user={user} />}
-      </For>
-    </div>
+    <table class={sx(styles.people)} aria-label="People">
+      <tbody>
+        <tr>
+          <th class={sx(styles.peopleTh)}>Requester</th>
+          <td class={sx(styles.peopleTd)}>
+            <Show when={c().owner} fallback={<span class={sx(styles.none)}>Someone</span>}>
+              {(owner) => <Person user={owner()} />}
+            </Show>
+          </td>
+        </tr>
+        <tr>
+          <th class={sx(styles.peopleTh)}>Members</th>
+          <td class={sx(styles.peopleTd)}>
+            <For
+              each={members()}
+              fallback={<span class={sx(styles.none)}>@mention someone to bring them in</span>}
+            >
+              {(user) => <Person user={user} />}
+            </For>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   );
 }
 

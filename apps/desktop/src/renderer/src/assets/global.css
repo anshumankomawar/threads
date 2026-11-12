@@ -69,14 +69,12 @@
     user-select: none;
     color: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
     /* The app's chrome, as the window's own ground is (main/index.ts), so the first paint is already it. */
-    background: light-dark(#fafafa, #141414);
-    /* The system's San Francisco, as Mail is set: its optical sizes (Text, Display) follow the size by themselves. */
-    font-family:
-      -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue",
-      sans-serif;
-    /* 13pt on 16pt lines, as the macOS app's body (its points ÷ 1.1, for the 110% scale). */
-    font-size: 11.82px;
-    line-height: 14.55px;
+    background: light-dark(#eeeeee, #0c0c0c);
+    /* The U.S. Graphics catalog's grotesk (Univers, licensed) as the Mac's nearest, Helvetica Neue, at its 14px on
+       1.5rem (21px) lines, ÷ 1.1 for the 110% scale. */
+    font-family: "Helvetica Neue", Helvetica, -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 12.73px;
+    line-height: 19.09px;
     -webkit-font-smoothing: antialiased;
   }
 
