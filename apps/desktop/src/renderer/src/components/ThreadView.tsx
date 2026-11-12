@@ -112,26 +112,6 @@ const styles = stylex.create({
     cursor: "default",
   },
   headerIconButton: { padding: "0 4px" },
-  mhLine: { display: "flex", gap: 8, alignItems: "center", minWidth: 0 },
-  mhLabel: { flexShrink: 0, width: 26, color: colors.textTertiary, textAlign: "right" },
-  mhRecipients: { display: "flex", flex: 1, flexWrap: "wrap", gap: 4, minWidth: 0 },
-  recipient: {
-    display: "flex",
-    gap: 4,
-    alignItems: "center",
-    padding: "1px 6px 1px 1px",
-    borderRadius: 999,
-    color: colors.textPrimary,
-    backgroundColor: { default: tb.bg3, ":hover": tb.bg4 },
-    cursor: "default",
-  },
-  mhNone: { color: colors.textTertiary },
-  mhDate: {
-    flexShrink: 0,
-    marginLeft: "auto",
-    color: colors.textTertiary,
-    fontSize: fontSizes.caption,
-  },
   // The subject: 1.2rem bold.
   mhSubject: {
     margin: "2px 0 0 34px",
@@ -360,15 +340,14 @@ function HeaderButton(props: {
   );
 }
 
-// #messageHeader: who it's from beside their avatar with the buttons at the end, who it's to and when, then the
-// subject in bold.
+// #messageHeader: who it's from and when beside their avatar, the buttons at the end, then the subject in bold. Who's in
+// it shows where they were tagged, in the messages.
 function MessageHeader(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   const item = () => {
     const it = itemFor(c());
     return it && !it.doneAt ? it : undefined;
   };
-  const members = (): User[] => c().assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
   return (
     <header class={sx(styles.mh)}>
       <div class={sx(styles.mhTop)}>
@@ -380,7 +359,7 @@ function MessageHeader(props: { thread: Thread }): JSX.Element {
           >
             {c().owner?.name ?? "Someone"}
           </button>
-          <span class={sx(styles.mhRole)}>Requester</span>
+          <span class={sx(styles.mhRole)}>{longDate(c().createdAt)}</span>
         </div>
         <div class={sx(styles.mhButtons)}>
           <HeaderButton
@@ -421,26 +400,6 @@ function MessageHeader(props: { thread: Thread }): JSX.Element {
             <TbIcon name="more" />
           </button>
         </div>
-      </div>
-      <div class={sx(styles.mhLine)}>
-        <span class={sx(styles.mhLabel)}>To</span>
-        <span class={sx(styles.mhRecipients)}>
-          <For
-            each={members()}
-            fallback={<span class={sx(styles.mhNone)}>@mention someone to bring them in</span>}
-          >
-            {(user) => (
-              <button
-                class={sx(base.bare, styles.recipient)}
-                onClick={() => open({ person: user.id })}
-              >
-                <Avatar name={user.name} size={16} />
-                {user.name}
-              </button>
-            )}
-          </For>
-        </span>
-        <span class={sx(styles.mhDate)}>{longDate(c().createdAt)}</span>
       </div>
       <h1 class={sx(styles.mhSubject)}>{c().title}</h1>
     </header>
