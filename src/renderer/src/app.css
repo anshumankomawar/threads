@@ -612,56 +612,204 @@ small {
   }
 }
 
-.sign-in {
-  display: flex;
+@font-face {
+  font-family: "Fraunces";
+  font-weight: 100 900;
+  font-display: block;
+  src: url(./fonts/fraunces-latin-wght.woff2) format("woff2-variations");
+}
+@font-face {
+  font-family: "Hanken Grotesk";
+  font-weight: 100 900;
+  font-display: block;
+  src: url(./fonts/hanken-grotesk-latin-wght.woff2) format("woff2-variations");
+}
+@keyframes written {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(5px);
+  }
+}
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes lift {
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+    filter: blur(4px);
+  }
+}
+::view-transition-group(welcome-step) {
+  animation-duration: 0s;
+}
+::view-transition-old(welcome-step) {
+  animation: 200ms cubic-bezier(0.4, 0, 1, 1) both lift;
+}
+::view-transition-new(welcome-step),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+
+.welcome {
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  display: grid;
   flex: 1;
-  flex-direction: column;
-  gap: 12px;
-  align-items: center;
-  justify-content: center;
+  place-items: center;
+  overflow: hidden;
+  color: rgb(255 255 255 / 92%);
+  background: #101010;
+  font:
+    14px/1.45 "Hanken Grotesk",
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   -webkit-app-region: drag;
 
-  & img {
-    width: 52px;
+  & .scene {
+    position: absolute;
+    background-size: 100% 100%;
+    image-rendering: pixelated;
+    opacity: 0;
+    transition: opacity 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
+
+    &.shown {
+      opacity: 1;
+    }
   }
-  & h1 {
-    margin-bottom: 12px;
-    font-size: 19px;
-    font-weight: 500;
+  & .veil {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 460px 400px at 50% 48%,
+      rgb(12 12 13 / 80%),
+      rgb(12 12 13 / 50%) 50%,
+      transparent
+    );
   }
-  & button,
-  & input {
-    width: 320px;
-    height: 44px;
-    padding: 0 18px;
-    border: 1px solid var(--line);
-    border-radius: 22px;
-    font-size: 14px;
+  & form {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 360px;
+    min-height: 400px;
     text-align: center;
+    view-transition-name: welcome-step;
     -webkit-app-region: no-drag;
   }
+  & h1 {
+    font:
+      300 36px/1.08 "Fraunces",
+      "Iowan Old Style",
+      Georgia,
+      serif;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+
+    & span {
+      display: inline-block;
+      white-space: pre;
+      animation: written 700ms var(--ease) backwards;
+    }
+  }
+  & p {
+    margin-top: 10px;
+    color: rgb(255 255 255 / 62%);
+    text-wrap: balance;
+    animation: arrive 600ms var(--ease) 300ms backwards;
+
+    &[role="alert"] {
+      margin: 0;
+      color: #ff8a80;
+      font-size: 13px;
+      animation: none;
+    }
+  }
+  & div {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    margin-top: 26px;
+    animation: arrive 600ms var(--ease) 420ms backwards;
+  }
+  & input,
+  & button {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    padding: 0 18px;
+    border: 0.5px solid rgb(255 255 255 / 14%);
+    border-radius: 999px;
+    transition: 160ms;
+    transition-property: border-color, background-color, opacity, transform;
+  }
   & input {
-    text-align: left;
+    background: rgb(255 255 255 / 6%);
+    backdrop-filter: blur(20px);
     user-select: text;
 
-    &::placeholder {
-      color: var(--text-3);
-    }
     &:focus {
-      border-color: var(--text-3);
+      border-color: rgb(255 255 255 / 34%);
+    }
+    &::placeholder {
+      color: rgb(255 255 255 / 40%);
     }
   }
   & button {
-    color: var(--chrome);
-    background: var(--text);
+    border-color: transparent;
+    color: #101010;
+    background: rgb(255 255 255 / 94%);
     font-weight: 500;
+
+    &:hover {
+      background: rgb(255 255 255 / 84%);
+    }
+    &:active:enabled {
+      transform: scale(0.985);
+    }
+    &:disabled {
+      opacity: 0.8;
+    }
   }
-  & p,
+  & i {
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid;
+    border-right-color: transparent;
+    border-radius: 50%;
+    opacity: 0.7;
+    animation: turn 700ms linear infinite;
+  }
   & a {
-    color: var(--text-3);
-    -webkit-app-region: no-drag;
+    margin-top: 6px;
+    color: rgb(255 255 255 / 55%);
+    font-size: 13px;
+    transition: color 160ms;
+
+    &:hover {
+      color: rgb(255 255 255 / 92%);
+    }
   }
-  & a:hover {
-    color: var(--text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome * {
+    animation: none !important;
+    transition: none !important;
   }
 }
