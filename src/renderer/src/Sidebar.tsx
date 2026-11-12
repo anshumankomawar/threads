@@ -3,7 +3,7 @@ import { api, inBox, useBuckets, useMe, useThreads } from "./data";
 import { Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 import { useResize } from "./resize";
-import { go, setDialog, showMenu, useUI, useView, type Box, type MenuItem } from "./state";
+import { go, showMenu, useUI, useView, type Box, type MenuItem } from "./state";
 
 function BoxRow(props: {
   box: Box;
@@ -74,10 +74,6 @@ export function Sidebar() {
           <BoxRow box="all" label="All Threads" icon="archive" count={rows.length} />
           <BoxRow box="drafts" label="Drafts" icon="draft" count={drafts.length} />
         </ul>
-        <button className="new-message" onClick={() => setDialog({ kind: "new" })}>
-          <Icon name="add" />
-          New Message
-        </button>
       </nav>
       <button className="profile" onClick={() => go({ settings: true })}>
         <Identicon seed={me._id} size={20} />

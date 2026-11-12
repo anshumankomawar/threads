@@ -14,10 +14,7 @@
   --shadow: light-dark(0 4px 14px rgb(0 0 0 / 9%), 0 8px 24px rgb(0 0 0 / 35%));
   --accent: light-dark(#2f6fb7, #78aee7);
   --blue: light-dark(#007aff, #0a84ff);
-  --primary: light-dark(#1373d9, #58c9ff);
-  --primary-hover: light-dark(#0f5cae, #46a1cc);
-  --on-primary: light-dark(#ffffff, #18181b);
-  --inbox: var(--primary);
+  --inbox: light-dark(#1373d9, #58c9ff);
   --folder: light-dark(#eabd08, #fee78a);
   --archive: light-dark(#713f12, #fee78a);
   --draft: light-dark(#ae55f7, #ddb4fe);
@@ -220,24 +217,6 @@ small {
     color: var(--text-3);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
-  }
-  & .new-message {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 28px;
-    margin-top: 5px;
-    border-radius: 3px;
-    color: var(--on-primary);
-    background: var(--primary);
-    font-weight: 600;
-    line-height: 1;
-
-    &:hover {
-      background: var(--primary-hover);
-    }
   }
   & .profile {
     width: auto;
