@@ -257,7 +257,8 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
   );
 }
 
-// The next message, written at the end. Enter posts it, to everyone in the thread; an @mention brings someone in.
+// The next message, written at the end. ⌘↵ posts it (Enter is a new line), to everyone in the thread; an @mention brings
+// someone in.
 function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   const c = (): Thread => props.thread;
   const [menus, setMenus] = createSignal<Partial<Record<CaretKind, CaretMenu | null>>>({});
@@ -349,7 +350,9 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           extensions: [
             // No underline, so ⌘U stays View As.
             StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
-            Placeholder.configure({ placeholder: "Reply… @mention someone to bring them in" }),
+            Placeholder.configure({
+              placeholder: "Reply… @mention someone to bring them in, ⌘↵ to send",
+            }),
             ...caretExtensions(
               (caret, menu) => (setMenus((all) => ({ ...all, [caret]: menu })), setAt(0)),
             ),
@@ -361,7 +364,8 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
             },
             handleKeyDown: (view, event) => {
               if (onMenuKey(event)) return true;
-              if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
+              // Enter is a new line, as in any editor; ⌘↵ sends.
+              if (event.key !== "Enter" || !event.metaKey || event.isComposing) return false;
               const body = editor.getText({ blockSeparator: "\n" }).trim();
               if (!body) return true;
               send(c(), body);
