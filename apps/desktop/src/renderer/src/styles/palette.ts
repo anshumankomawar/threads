@@ -82,8 +82,8 @@ export const palette = stylex.create({
     outline: "none",
     cursor: "text",
   },
-  // Its hint, under the text at the field's inset.
-  messageHint: { marginTop: 0, padding: `0 ${EDGE}px 9px` },
+  // Its hint, under the text at the field's right, where the search field shows its keys.
+  messageHint: { marginTop: 0, padding: `0 ${EDGE}px 9px`, textAlign: "right" },
   // The chosen row on the field's grey: the sidebar's selection wash (the palette's is meant for a white ground).
   growSelected: { backgroundColor: colors.bgTertiary },
   // The keys at its end, as the field shows them.
