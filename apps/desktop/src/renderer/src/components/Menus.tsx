@@ -1,5 +1,5 @@
 import * as i from "@hugeicons/core-free-icons";
-import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
+import { createSignal, createUniqueId, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
 import { menu, setMenu, type MenuItem } from "../session";
@@ -158,19 +158,45 @@ export function ContextMenu(): JSX.Element {
   };
   return (
     <Show when={menu()} keyed>
-      {(shown) => (
-        <div
-          popover="auto"
-          ref={(el) => queueMicrotask(() => show(el, shown))}
-          onToggle={(event) => event.newState === "closed" && menu() === shown && setMenu(null)}
-          onContextMenu={(event) => event.preventDefault()}
-          class={sx(base.panel, look.menu, look.compact, look.popover, look.context)}
-          style={{ left: `${shown.x}px`, top: `${shown.y}px` }}
-          role="menu"
-        >
-          <Items items={shown.items} close={() => setMenu(null)} />
-        </div>
-      )}
+      {(shown) => {
+        // A manual popover that dismisses itself: on macOS the menu opens as the right button goes down, so its release
+        // lands just outside the menu's corner, which an "auto" popover takes for a click away and closes on. A press
+        // outside, Escape, or the window losing focus closes it instead.
+        let panel: HTMLDivElement | undefined;
+        const close = (): void => void (menu() === shown && setMenu(null));
+        const outside = (event: Event): void => {
+          if (!panel?.contains(event.target as Node)) close();
+        };
+        const escape = (event: KeyboardEvent): void => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          close();
+        };
+        window.addEventListener("pointerdown", outside, true);
+        window.addEventListener("keydown", escape, true);
+        window.addEventListener("blur", close);
+        onCleanup(() => {
+          window.removeEventListener("pointerdown", outside, true);
+          window.removeEventListener("keydown", escape, true);
+          window.removeEventListener("blur", close);
+        });
+        return (
+          <div
+            popover="manual"
+            ref={(el) => {
+              panel = el;
+              queueMicrotask(() => show(el, shown));
+            }}
+            onContextMenu={(event) => event.preventDefault()}
+            class={sx(base.panel, look.menu, look.compact, look.popover, look.context)}
+            style={{ left: `${shown.x}px`, top: `${shown.y}px` }}
+            role="menu"
+          >
+            <Items items={shown.items} close={() => setMenu(null)} />
+          </div>
+        );
+      }}
     </Show>
   );
 }
