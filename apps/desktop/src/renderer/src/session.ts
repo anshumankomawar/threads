@@ -241,11 +241,11 @@ export function chooseMailbox(box: Mailbox): void {
 }
 export const mailboxTitle = (box: Mailbox): string =>
   box.kind === "inbox"
-    ? "Inbox"
+    ? "Buckets"
     : box.kind === "unsorted"
       ? "Sorting"
       : box.kind === "bucket"
-        ? (store.findById(Bucket, box.id)?.name ?? "Inbox")
+        ? (store.findById(Bucket, box.id)?.name ?? "Buckets")
         : box.kind === "all"
           ? "All Threads"
           : "Drafts";

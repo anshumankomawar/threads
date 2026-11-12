@@ -258,7 +258,7 @@ export function Sidebar(): JSX.Element {
         <ul class={sx(base.list, s.stack)}>
           <MailboxRow
             box={{ kind: "inbox" }}
-            label="Inbox"
+            label="Buckets"
             icon={i.InboxIcon}
             count={inbox().order.length}
             menu={() => [
@@ -590,7 +590,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               {mailbox().kind === "inbox" ? "All caught up" : "Nothing here"}
             </span>
             <Show when={mailbox().kind === "inbox"}>
-              <span>Nothing in your inbox needs you right now.</span>
+              <span>Nothing in your buckets needs you right now.</span>
             </Show>
           </div>
         </Show>

@@ -213,7 +213,7 @@ function Search(): JSX.Element {
     },
     ...(
       [
-        ["Inbox", "inboxTab", "inbox"],
+        ["Buckets", "inboxTab", "inbox"],
         ["All Threads", "threadsTab", "all"],
         ["Drafts", "draftsTab", "drafts"],
       ] as const
