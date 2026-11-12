@@ -4,6 +4,7 @@ import * as stylex from "@stylexjs/stylex";
 import { Draft, Label, Subspace, Thread, User, View } from "models";
 import {
   active,
+  dialog,
   itemFor,
   account,
   me,
@@ -105,6 +106,8 @@ const styles = stylex.create({
     cursor: "text",
     WebkitAppRegion: "no-drag",
   },
+  // While ⌘K is open it has grown out of this field, so the field itself steps aside.
+  searchOpen: { visibility: "hidden" },
   searchText: { flex: 1, textAlign: "left" },
   searchKeys: { fontSize: fontSizes.small },
   viewAs: {
@@ -198,7 +201,8 @@ export default function App(): JSX.Element {
               <HistoryButtons />
             </div>
             <button
-              class={sx(base.bare, styles.search)}
+              data-search-anchor
+              class={sx(base.bare, styles.search, dialog()?.kind === "search" && styles.searchOpen)}
               title={`Search (${keysFor("search")})`}
               onClick={() => setDialog({ kind: "search" })}
             >

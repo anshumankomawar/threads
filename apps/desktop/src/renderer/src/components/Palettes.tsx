@@ -52,15 +52,47 @@ import {
 } from "../search";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
+import { Icon } from "./Icon";
 import { moved, OptionButton, type Option } from "./Menus";
 
 // A modal palette: a click outside or Escape closes it.
-export function Modal(props: { children: JSX.Element }): JSX.Element {
+// `grow`: ⌘K as the toolbar's search field ([data-search-anchor]) itself. It opens exactly over the field, the field's size
+// and shape, then grows: wider, centred on where the field was, and down to its results, on one fluid curve; its height
+// keeps easing as the results change. Nothing dims behind it.
+export function Modal(props: { children: JSX.Element; grow?: boolean }): JSX.Element {
+  const open = (el: HTMLDialogElement): void => {
+    el.closedBy = "any";
+    const field =
+      props.grow && document.querySelector("[data-search-anchor]")?.getBoundingClientRect();
+    if (!field) return el.showModal();
+    const width = Math.min(innerWidth - 16, Math.max(field.width + 160, 600));
+    Object.assign(el.style, {
+      margin: "0",
+      right: "auto",
+      bottom: "auto",
+      left: `${field.left}px`,
+      top: `${field.top}px`,
+      width: `${field.width}px`,
+      height: `${field.height}px`,
+    });
+    el.showModal();
+    // Two frames, so the field's size is painted before the growth starts from it.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        el.dataset.grown = "";
+        Object.assign(el.style, {
+          left: `${Math.max(8, Math.min(innerWidth - width - 8, field.left + field.width / 2 - width / 2))}px`,
+          width: `${width}px`,
+          height: "auto",
+        });
+      }),
+    );
+  };
   return (
     <dialog
-      ref={(el) => queueMicrotask(() => ((el.closedBy = "any"), el.showModal()))}
+      ref={(el) => queueMicrotask(() => open(el))}
       onClose={() => setDialog(null)}
-      class={sx(base.panel, palette.dialog, palette.open)}
+      class={sx(base.panel, palette.dialog, palette.open, props.grow && palette.grow)}
     >
       {props.children}
     </dialog>
@@ -84,6 +116,8 @@ function Picker(props: {
   clear?: { section: string; run: () => void };
   // Text over the rows (⌘F's answer).
   note?: JSX.Element;
+  // Grown out of the toolbar's search field (Modal's `grow`), its own field in the same place and shape.
+  grow?: boolean;
 }): JSX.Element {
   const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
@@ -113,8 +147,13 @@ function Picker(props: {
     event.preventDefault();
   };
   return (
-    <Modal>
-      <div class={sx(palette.inputRow)}>
+    <Modal grow={props.grow}>
+      <div class={sx(palette.inputRow, props.grow && palette.growInputRow)}>
+        <Show when={props.grow}>
+          <span class={sx(palette.growIcon)}>
+            <Icon icon="search" aria-hidden="true" />
+          </span>
+        </Show>
         <input
           autofocus
           class={sx(base.bare, palette.input)}
@@ -315,6 +354,7 @@ function Search(): JSX.Element {
   ];
   return (
     <Picker
+      grow
       placeholder="Search…"
       filters={["All", "Threads", "People"]}
       rows={(query, filter) =>

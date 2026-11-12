@@ -44,6 +44,24 @@ export const palette = stylex.create({
     animationTimingFunction: "cubic-bezier(0.2, 0.9, 0.3, 1)",
     "::backdrop": { backgroundColor: "transparent" },
   },
+  // Grown from the search field: its rounding and line to start, then the panel's, on one curve (macOS's settle) for
+  // its place, width, height and shadow; heights in between "auto" ease too (interpolate-size). No entrance fade.
+  grow: {
+    maxHeight: "min(520px, calc(100vh - 60px))",
+    borderRadius: { default: radii.item, ":is([data-grown])": radii.panel },
+    boxShadow: { default: "none", ":is([data-grown])": colors.shadowFloat },
+    animationName: "none",
+    interpolateSize: "allow-keywords",
+    transitionProperty: {
+      default: "left, width, height, border-radius, box-shadow",
+      [motion.reduced]: "none",
+    },
+    transitionDuration: "340ms",
+    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
+  },
+  // Its field exactly where the toolbar's was: the same height, icon and inset.
+  growInputRow: { gap: 6, height: 22, flexShrink: 0, padding: "0 7px" },
+  growIcon: { display: "flex", color: colors.textTertiary },
   // `display: flex` only while open, so a closed dialog stays hidden.
   open: { display: { default: "none", ":is([open])": "flex" } },
   // One edge for everything in a palette: what's typed, the tabs' names, headings, rows' icons and the footer all start
