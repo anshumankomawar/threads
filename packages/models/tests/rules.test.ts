@@ -89,6 +89,7 @@ test("a membership puts the workspace in the person's workspaceIds, and its remo
 
 test("you write only your own User (not its workspaces), Bucket, Draft and InboxItem rows", () => {
   const server = setup();
+  run(server, arjun, message("m0", { authorId: "arjun" }));
   const [item] = inboxOf(server, "anshu");
   expect(
     run(
@@ -179,30 +180,31 @@ test("an @mention assigns someone: in their inbox until they mark it done, and a
   expect(assignees(server)).toEqual(["kk"]);
 });
 
-test("a message with no @mention tells nobody and assigns nobody", () => {
+test("once someone's in, every message reaches everyone in the thread but its author, mention or not", () => {
   const server = setup();
   run(server, anshu, message("m1", { body: `${at("arjun")} over to you` }));
   expect(inInbox(server, "anshu")).toBe(false);
-  // Arjun answers without mentioning the owner: it stays in Arjun's inbox, and out of the owner's.
-  run(server, arjun, message("m2", { authorId: "arjun", body: "on it" }));
-  expect(inInbox(server, "anshu")).toBe(false);
   expect(inInbox(server, "arjun")).toBe(true);
+  // Arjun answers without mentioning anyone: it's back with the requester.
+  run(server, arjun, message("m2", { authorId: "arjun", body: "on it" }));
+  expect(inInbox(server, "anshu")).toBe(true);
   expect(assignees(server)).toEqual(["arjun"]);
 });
 
-test("a new thread is in its owner's inbox until they hand it off; an @mention brings it back to stay", () => {
+test("a new thread isn't in its requester's inbox; done stays done until the next message", () => {
   const server = setup();
-  expect(inInbox(server, "anshu")).toBe(true);
-  run(server, anshu, message("m1", { body: "a note" }));
-  expect(inInbox(server, "anshu")).toBe(true);
-  run(server, anshu, message("m2", { body: `${at("arjun")} yours` }));
   expect(inInbox(server, "anshu")).toBe(false);
-  run(server, arjun, message("m3", { authorId: "arjun", body: `${at("anshu")} a question` }));
-  expect(inInbox(server, "anshu")).toBe(true);
-  // Now they're involved, mentioning someone else doesn't take it out of their inbox.
-  run(server, anshu, message("m4", { body: `${at("kk")} can you help` }));
-  expect(inInbox(server, "anshu")).toBe(true);
-  expect(assignees(server)).toEqual(["arjun", "anshu", "kk"]);
+  run(server, anshu, message("m1", { body: "a note" }));
+  expect(inInbox(server, "anshu")).toBe(false);
+  run(server, anshu, message("m2", { body: `${at("arjun")} yours` }));
+  const item = inboxOf(server, "arjun")[0];
+  run(server, arjun, tx("update", "InboxItem", item.id, { doneAt: Date.now() }));
+  expect(inInbox(server, "arjun")).toBe(false);
+  // Anyone's message brings it back for everyone else, without mentioning them.
+  run(server, anshu, message("m3", { body: `${at("kk")} can you help` }));
+  expect(inInbox(server, "arjun")).toBe(true);
+  expect(inInbox(server, "kk")).toBe(true);
+  expect(assignees(server)).toEqual(["arjun", "kk"]);
 });
 
 test("someone who isn't the owner keeps it when they mention someone else", () => {
@@ -227,14 +229,12 @@ test("assigning from the thread reaches their inbox, and unassigning takes it ou
   expect(inInbox(server, "kk")).toBe(false);
 });
 
-test("a thread assigned to someone from the start is in their inbox, not its owner's", () => {
+test("a thread made with people in it is in their inboxes, not its requester's", () => {
   const server = setup();
-  run(server, anshu, thread("assigned", { assigneeIds: ["kk"] }));
-  run(server, anshu, thread("mine", { assigneeIds: ["anshu"] }));
+  run(server, anshu, thread("asked", { assigneeIds: ["kk", "anshu"] }));
   const threadsIn = (person: string) => inboxOf(server, person).map((item) => item.threadId);
-  expect(threadsIn("kk")).toContain("assigned");
-  expect(threadsIn("anshu")).not.toContain("assigned");
-  expect(threadsIn("anshu")).toContain("mine");
+  expect(threadsIn("kk")).toContain("asked");
+  expect(threadsIn("anshu")).not.toContain("asked");
 });
 
 const subspace = (id: string, visibility = "open") =>
@@ -359,6 +359,7 @@ test("a blocked thread says what it's blocked on, and when it's unblocked", () =
 
 test("what was in a deleted bucket is sorted again", () => {
   const server = setup();
+  run(server, arjun, message("m0", { authorId: "arjun" }));
   const [item] = inboxOf(server, "anshu");
   run(
     server,

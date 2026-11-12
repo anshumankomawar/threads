@@ -5,42 +5,18 @@ import StarterKit from "@tiptap/starter-kit";
 import { createEffect, createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js";
 import { Portal, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
+import { Subspace, Thread, type Activity, plainText, splitText, User, Message } from "models";
 import {
-  Bucket,
-  Label,
-  Subspace,
-  Thread,
-  type Activity,
-  plainText,
-  PRIORITIES,
-  splitText,
-  STATES,
-  User,
-  Message,
-} from "models";
-import {
-  byName,
-  edit,
-  firstName,
-  itemFor,
   me,
-  myBuckets,
   open,
   others,
-  placeIn,
-  setDialog,
   setSplit,
-  setState,
   shortDate,
   showMenu,
   store,
   subspacesWithMembers,
   membersHint,
-  summary,
-  toggled,
-  type MenuItem,
 } from "../session";
-import { bucketIcons } from "../bucketIcons";
 import { base } from "../styles/base";
 import { link, menu as look } from "../styles/controls";
 import { threadLineMarker } from "../styles/markers.stylex";
@@ -48,9 +24,9 @@ import { sx } from "../styles/sx";
 import { thread } from "../styles/thread";
 import { colors, fontSizes, layers, radii } from "../styles/tokens.stylex";
 import { caretExtensions, closeCaretMenu, type CaretKind, type CaretMenu } from "./caretMenus";
-import { icon, type IconSvgElement } from "./Icon";
+import { icon } from "./Icon";
 import { Identicon } from "./Identicon";
-import { MenuChip, moved, OptionButton, type Option } from "./Menus";
+import { moved, OptionButton, type Option } from "./Menus";
 import { createThread, send } from "./Palettes";
 
 const styles = stylex.create({
@@ -75,7 +51,10 @@ const styles = stylex.create({
     alignItems: "center",
     margin: "4px 0 0 -6px",
   },
-  // A property's value: its menu, plain until you hover it.
+  field: { paddingInline: 6, color: colors.textTertiary, fontSize: fontSizes.body },
+  fieldAfter: { marginLeft: 10 },
+  none: { paddingInline: 6, color: colors.textTertiary, fontSize: fontSizes.body },
+  // A person in it: their page, plain until you hover it.
   value: {
     display: "flex",
     gap: 6,
@@ -189,9 +168,6 @@ function Meta(props: {
   );
 }
 
-// Due-date shortcuts, at 5pm.
-const dueAt = (days: number): Date =>
-  new Date(new Date(Date.now() + days * 86_400_000).setHours(17, 0, 0, 0));
 export const LABELS = {
   open: "Open",
   resolved: "Resolved",
@@ -202,44 +178,6 @@ export const LABELS = {
   high: "High",
   urgent: "Urgent",
 };
-
-type ListField = "labelIds" | "subspaceIds" | "assigneeIds";
-
-// A chip for one of a thread's lists: what's in it ("Security +1"), and a checklist of what can be.
-function ListChip(props: {
-  thread: Thread;
-  field: ListField;
-  records: { id: string; name: string }[];
-  none: string;
-  icon: IconSvgElement;
-  title?: string;
-  short?: (name: string) => string;
-  more?: MenuItem[];
-  look?: stylex.StyleXStyles;
-}): JSX.Element {
-  const ids = (): string[] => props.thread[props.field];
-  const name = (id: string): string => {
-    const found = props.records.find((r) => r.id === id)?.name ?? "Someone";
-    return props.short ? props.short(found) : found;
-  };
-  return (
-    <MenuChip
-      label={<span class={sx(base.ellipsis)}>{summary(ids().map(name), props.none)}</span>}
-      icon={icon(props.icon, 13)}
-      tone={ids().length === 0 ? "muted" : undefined}
-      title={props.title}
-      look={props.look}
-      items={[
-        ...byName(props.records).map((record) => ({
-          label: record.name,
-          icon: ids().includes(record.id) ? icon(i.Tick02Icon, 13) : undefined,
-          run: () => edit(props.thread, { [props.field]: toggled(ids(), record.id) }),
-        })),
-        ...(props.more ?? []),
-      ]}
-    />
-  );
-}
 
 function Header(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
@@ -274,7 +212,7 @@ function Header(props: { thread: Thread }): JSX.Element {
             </div>
           )}
         </Show>
-        <Properties thread={c()} />
+        <People thread={c()} />
       </div>
     </header>
   );
@@ -321,7 +259,7 @@ function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element 
   );
 }
 
-// The next message, written at the end. Enter posts it; only someone @mentioned hears about it.
+// The next message, written at the end. Enter posts it, to everyone in the thread; an @mention brings someone in.
 function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
   const c = (): Thread => props.thread;
   const [menus, setMenus] = createSignal<Partial<Record<CaretKind, CaretMenu | null>>>({});
@@ -334,21 +272,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
     if (!open) return [];
     const menu = menus()[open]!;
     const query = menu.query.trim().toLowerCase();
-    if (open === "command")
-      return [
-        {
-          label: "Blocked",
-          hint: "Ask someone for what this needs",
-          icon: i.UnavailableIcon,
-          run: () => (menu.pick(), setDialog({ kind: "blocked", thread: c() })),
-        },
-        {
-          label: "Resolve",
-          hint: "Resolve it for everyone",
-          icon: i.CheckmarkCircle02Icon,
-          run: () => (menu.pick(), setState(c(), "resolved")),
-        },
-      ].filter((o) => o.label.toLowerCase().startsWith(query));
+    if (open === "command") return [];
     if (open === "mention")
       return [
         ...others()
@@ -356,7 +280,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           .map((u) => ({
             label: u.name,
             seed: u.id,
-            hint: "assigns them",
+            hint: "brings them in",
             run: () => menu.pick({ id: u.id, name: u.name }),
           })),
         ...subspacesWithMembers()
@@ -491,110 +415,32 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 // A thread as a document: its heading, its messages, then the reply. Opened from your inbox it starts at the top
 // without taking the cursor, so the inbox keys keep working.
 
-// A thread's properties, under its title: a row of values, each a menu you change it from, plain until you hover it.
-const value = [base.bare, base.hover, styles.value];
-function Properties(props: { thread: Thread }): JSX.Element {
+// Who's in a thread, under its title: who asked, then everyone @mentioned in it so far.
+function People(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
-  const item = (): ReturnType<typeof itemFor> => itemFor(c());
-  const change = (fields: Partial<Thread>) => () => edit(c(), fields);
-  const place = (bucket: Bucket | undefined) => () => placeIn(item()!, bucket);
-  const bucketIcon = (bucket?: Bucket): IconSvgElement =>
-    bucketIcons(myBuckets()).get(bucket?.id ?? "") ?? i.InboxIcon;
+  const members = (): User[] => c().assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
+  const Person = (person: { user: User }): JSX.Element => (
+    <button
+      class={sx(base.bare, base.hover, styles.value)}
+      onClick={() => open({ person: person.user.id })}
+    >
+      <Identicon seed={person.user.id} size={14} />
+      {person.user.name}
+    </button>
+  );
   return (
-    <div class={sx(styles.properties)} aria-label="Properties">
-      <MenuChip
-        look={value}
-        label={<span class={sx(base.ellipsis)}>{LABELS[c().state]}</span>}
-        icon={dot(c().state)}
-        items={STATES.map((state) => ({
-          label: LABELS[state],
-          icon: dot(state),
-          run: () => setState(c(), state),
-        }))}
-      />
-      <Show when={item()}>
-        {(it) => (
-          <MenuChip
-            look={value}
-            label={<span class={sx(base.ellipsis)}>{it().bucket?.name ?? "Sorting…"}</span>}
-            icon={icon(bucketIcon(it().bucket), 13)}
-            tone={it().bucket ? undefined : "muted"}
-            title={
-              it().bucket
-                ? it().manual
-                  ? "Placed by you"
-                  : it().reason
-                : "Being sorted into one of your buckets"
-            }
-            items={[
-              ...myBuckets().map((b) => ({
-                label: b.name,
-                icon: icon(b === it().bucket ? i.Tick02Icon : bucketIcon(b), 13),
-                run: place(b),
-              })),
-              ...(it().manual ? [{ label: "Sort it for me", run: place(undefined) }] : []),
-            ]}
-          />
-        )}
+    <div class={sx(styles.properties)} aria-label="People">
+      <span class={sx(styles.field)}>Requester</span>
+      <Show when={c().owner} fallback={<span class={sx(styles.none)}>Someone</span>}>
+        {(owner) => <Person user={owner()} />}
       </Show>
-      <ListChip
-        look={value}
-        thread={c()}
-        field="labelIds"
-        records={store.all(Label)}
-        none="No labels"
-        icon={i.Tag01Icon}
-        more={[{ label: "New label…", run: () => setDialog({ kind: "newLabel", thread: c() }) }]}
-      />
-      <ListChip
-        look={value}
-        thread={c()}
-        field="subspaceIds"
-        records={store.all(Subspace)}
-        none="Everyone"
-        icon={i.Layers01Icon}
-        title="Where it lives: its subspaces' members see it, and only they when one is private"
-      />
-      <ListChip
-        look={value}
-        thread={c()}
-        field="assigneeIds"
-        records={store.all(User)}
-        none="No assignees"
-        icon={i.UserMultipleIcon}
-        short={(name) => firstName({ name })}
-      />
-      <MenuChip
-        look={value}
-        label={<span class={sx(base.ellipsis)}>{LABELS[c().priority]}</span>}
-        tone={c().priority === "urgent" ? "urgent" : c().priority === "none" ? "muted" : undefined}
-        items={PRIORITIES.map((priority) => ({
-          label: LABELS[priority],
-          run: change({ priority }),
-        }))}
-      />
-      <MenuChip
-        look={value}
-        icon={icon(i.Calendar01Icon, 13)}
-        label={
-          <span class={sx(base.ellipsis)}>
-            {c().dueAt ? `Due ${shortDate(c().dueAt!)}` : "No due date"}
-          </span>
-        }
-        tone={
-          c().dueAt && c().dueAt!.getTime() < Date.now()
-            ? "urgent"
-            : c().dueAt
-              ? undefined
-              : "muted"
-        }
-        items={[
-          { label: "Today", run: change({ dueAt: dueAt(0) }) },
-          { label: "Tomorrow", run: change({ dueAt: dueAt(1) }) },
-          { label: "Next week", run: change({ dueAt: dueAt(7) }) },
-          { label: "No due date", run: change({ dueAt: undefined }) },
-        ]}
-      />
+      <span class={sx(styles.field, styles.fieldAfter)}>Members</span>
+      <For
+        each={members()}
+        fallback={<span class={sx(styles.none)}>@mention someone to bring them in</span>}
+      >
+        {(user) => <Person user={user} />}
+      </For>
     </div>
   );
 }
@@ -603,9 +449,11 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
   let end!: HTMLDivElement;
   const messages = (): Message[] => props.thread.messages.sorted("createdAt");
   const entries = (): (Message | Activity)[] =>
-    [...messages(), ...props.thread.activity.sorted("createdAt")].sort(
-      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
-    );
+    // Of what people did to it, only renames: status, labels and the rest are gone from threads for now.
+    [
+      ...messages(),
+      ...props.thread.activity.sorted("createdAt").filter((a) => a.text.startsWith("renamed")),
+    ].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   // To the end on opening to reply, and whenever you send something.
   let opened = false;
   createEffect(
@@ -629,9 +477,7 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
               )
             }
           </For>
-          <Show when={props.thread.isOpen}>
-            <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
-          </Show>
+          <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
           <div ref={end} />
         </article>
         {/* Room to scroll the last entry up to the top without losing it off screen. */}

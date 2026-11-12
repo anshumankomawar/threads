@@ -208,7 +208,7 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
           : failed()
             ? "Couldn't reach the model"
             : "Drafting…";
-  // Everyone the thread asks, once each: who it's assigned to.
+  // Everyone the thread asks, once each: who's in it.
   const asked = (draft: ComposeDraft): User[] =>
     [...new Set(draft.asks.flatMap((a) => a.personIds))].flatMap(
       (id) => store.findById(User, id) ?? [],

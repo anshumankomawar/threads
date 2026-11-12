@@ -16,10 +16,11 @@ import {
   otherSources,
   others,
   setDialog,
+  setSidebarOpen,
+  setSidebarTab,
   signOut,
   SOURCES,
   store,
-  summary,
   toggled,
   switchTo,
   theme,
@@ -211,14 +212,12 @@ function Search(): JSX.Element {
       section: "Quick actions",
       run: () => setDialog({ kind: "newThread" }),
     },
-    { label: "New label", section: "Quick actions", run: () => setDialog({ kind: "newLabel" }) },
-    {
-      label: "New subspace",
-      section: "Quick actions",
-      run: () => setDialog({ kind: "newSubspace" }),
-    },
-    { label: "Workspace", section: "Views", run: done(() => open({ view: null })) },
-    { label: "Personal", section: "Views", run: done(() => open({ personal: null })) },
+    ...(["Inbox", "All Threads", "Drafts"] as const).map((label, tab) => ({
+      label,
+      hint: keysFor((["inboxTab", "threadsTab", "draftsTab"] as const)[tab]),
+      section: "Views",
+      run: done(() => (setSidebarOpen(true), setSidebarTab(tab))),
+    })),
     {
       label: "Settings",
       hint: keysFor("settings"),
@@ -259,30 +258,15 @@ function Search(): JSX.Element {
   return (
     <Picker
       placeholder="Search…"
-      filters={["All", "Threads", "Spaces", "People"]}
+      filters={["All", "Threads", "People"]}
       rows={(query, filter) =>
         [
           ...(filter === 0 ? commands() : []),
-          ...(filter === 0 || filter === 3 ? store.all(User) : []).map((u) => ({
+          ...(filter === 0 || filter === 2 ? store.all(User) : []).map((u) => ({
             label: u.name,
             section: "People",
             seed: u.id,
             run: done(() => open({ person: u.id })),
-          })),
-          ...(filter === 0 || filter === 2 ? store.all(Subspace) : []).map((sub) => ({
-            label: sub.name,
-            section: "Subspaces",
-            run: done(() => open({ subspace: sub.id })),
-          })),
-          ...(filter === 0 || filter === 2 ? store.all(View) : []).map((v) => ({
-            label: v.name,
-            section: "Views",
-            run: done(() => open({ view: v.id })),
-          })),
-          ...(filter === 0 || filter === 2 ? store.all(Label) : []).map((l) => ({
-            label: l.name,
-            section: "Labels",
-            run: done(() => open({ label: l.id })),
           })),
           ...(filter === 0 || filter === 1 ? store.all(Thread) : []).map((t) => ({
             label: t.title,
@@ -297,9 +281,9 @@ function Search(): JSX.Element {
 
 type Step = "write" | "describe" | "pick" | "labels";
 
-// Starting a thread: its title, an optional description, then who it's assigned to (a person, or everyone in a
-// subspace, which it then goes in); there Tab picks labels. Started from a label's, a subspace's or a person's page, it's
-// in that label or subspace, or that person is first in the list.
+// Starting a thread: its title, an optional description, then who it's for, who gets it in their inbox (you're its
+// requester, so it's not in yours). Started from a label's, a subspace's or a person's page, it's in that label or
+// subspace, or that person is first in the list.
 function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }): JSX.Element {
   const [step, setStep] = createSignal<Step>("write");
   const query = createSignal("");
@@ -376,41 +360,15 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       ],
     ],
     pick: [
-      "Assign to…",
+      "Who's it for?",
       (text) => {
         const section = `Step 3 of 3 · ${title()}`;
         const first = props.to?.id;
         return [
-          ...(
-            [
-              { label: "Unassigned", run: () => create([]) },
-              ...people(text, (u) => create([u])),
-              { label: "Me", seed: me().id, run: () => create([me()]) },
-              ...store
-                .all(Subspace)
-                .filter((sub) => sub.members.length > 0)
-                .map((sub) => ({
-                  label: sub.name,
-                  hint: `Subspace · ${sub.members.length}`,
-                  run: () =>
-                    create(
-                      sub.members.filter((m) => m.userId !== me().id).map((m) => m.user),
-                      sub,
-                    ),
-                })),
-            ] as Row[]
-          )
-            .filter((row) => matches(row.label, text))
-            .toSorted(
-              (a, b) => Number(!!first && b.seed === first) - Number(!!first && a.seed === first),
-            )
-            .map((row) => ({ ...row, section })),
-          {
-            label: summary(names(), "No labels"),
-            hint: "⇥",
-            section: "Labels",
-            run: () => go("labels"),
-          },
+          ...people(text, (u) => create([u]))
+            .toSorted((a, b) => Number(b.seed === first) - Number(a.seed === first))
+            .map((row) => ({ ...row, hint: "↵", section })),
+          { label: "No one yet", hint: "@mention them later", section, run: () => create([]) },
         ];
       },
     ],
@@ -444,7 +402,6 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       rows={(text) => steps[step()][1](text)}
       query={query}
       onBack={back}
-      onTab={() => step() === "pick" && go("labels")}
     />
   );
 }

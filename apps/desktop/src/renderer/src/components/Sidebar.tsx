@@ -16,7 +16,7 @@ import {
   me,
   workspace,
   open,
-  sent,
+  allThreads,
   setDialog,
   setSidebarOpen,
   setSidebarTab,
@@ -240,7 +240,7 @@ function overflowFade(): (element: HTMLElement) => void {
 
 const menuFor = (c: Thread) => (event: MouseEvent) => showMenu(event, threadMenu(c));
 
-// A one-line row (Sent, Drafts, Labels): an icon, its name, and something on the right.
+// A one-line row (All Threads, Drafts, Labels): an icon, its name, and something on the right.
 function Row(props: {
   label: string;
   icon: IconSvgElement;
@@ -529,15 +529,16 @@ function List(props: { label: string; empty?: string | false; children: JSX.Elem
   );
 }
 
-function SentTab(): JSX.Element {
+// Every thread, whoever's in it, the latest active first.
+function ThreadsTab(): JSX.Element {
   return (
-    <List label="Sent" empty={sent().length === 0 && "Nothing out with anyone"}>
-      <For each={sent()}>
+    <List label="All threads" empty={allThreads().length === 0 && "No threads yet"}>
+      <For each={allThreads()}>
         {(c) => (
           <Row
             icon={i.Message01Icon}
             label={c.title}
-            meta={dueLabel(c)}
+            meta={ago(c.updatedAt)}
             active={active() === c}
             onClick={() => open({ thread: c.id })}
             onMenu={menuFor(c)}
@@ -631,8 +632,9 @@ function Section(props: {
   );
 }
 
-// Where threads live and how you look at them: all of them and your views, the subspaces, and the labels.
-function SpacesTab(): JSX.Element {
+// Where threads live and how you look at them: all of them and your views, the subspaces, and the labels. Hidden from
+// the sidebar for now.
+export function SpacesTab(): JSX.Element {
   const openIn = (field: "labelIds" | "subspaceIds", id: string): string =>
     String(store.all(Thread).filter((t) => t.isOpen && t[field].includes(id)).length);
   return (
@@ -701,14 +703,13 @@ function SpacesTab(): JSX.Element {
 
 const TABS = [
   { label: "Inbox", icon: i.InboxIcon, count: () => inbox().order.length, tab: InboxTab },
-  { label: "Sent", icon: i.SentIcon, count: () => sent().length, tab: SentTab },
+  { label: "All Threads", icon: i.Message01Icon, tab: ThreadsTab },
   {
     label: "Drafts",
     icon: i.NoteEditIcon,
     count: () => store.where(Draft, "userId", me().id).length,
     tab: DraftsTab,
   },
-  { label: "Spaces", icon: i.Layers01Icon, tab: SpacesTab },
 ];
 
 const TopButton = (props: {

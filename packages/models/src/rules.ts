@@ -203,11 +203,7 @@ const effects: ServerOptions["effects"] = {
       for (const line of describeChanges(before!, after!, db))
         logActivity(db, after!, userId, line);
     if (kind === "create") {
-      // Assigned to someone else from the start, it's in its owner's Sent.
-      const assigned = after!.assigneeIds as string[];
       const owner = after!.ownerId as string | null;
-      if (owner != null && (assigned.length === 0 || assigned.includes(owner)))
-        deliver(db, owner, after!.id);
       const blocks =
         after!.blocksId != null ? db.get("Thread", after!.blocksId as string) : undefined;
       if (blocks) {
@@ -215,10 +211,12 @@ const effects: ServerOptions["effects"] = {
         logActivity(db, blocks, owner, `is blocked on ${threadLink(after!.id)}`);
       }
     }
+    // Whoever joins the thread gets it in their inbox, except its requester: what you ask isn't for you.
     if (after) {
       const assignees = after.assigneeIds as string[];
       const was = (before?.assigneeIds ?? []) as string[];
-      for (const id of assignees) if (!was.includes(id)) deliver(db, id, after.id);
+      for (const id of assignees)
+        if (!was.includes(id) && id !== after.ownerId) deliver(db, id, after.id);
       for (const id of was)
         if (!assignees.includes(id)) {
           const item = itemOf(db, id, after.id);
@@ -262,7 +260,7 @@ const effects: ServerOptions["effects"] = {
   },
   Message: ({ kind, after }, db) => {
     if (kind !== "create") return;
-    const { threadId, workspaceId, authorId, body, createdAt } = after as Row & {
+    const { threadId, workspaceId, authorId, body } = after as Row & {
       threadId: string;
       authorId: string;
       body: string;
@@ -274,10 +272,10 @@ const effects: ServerOptions["effects"] = {
       JSON.stringify(thread.subspaceIds) !== JSON.stringify(after!.subspaceIds)
     )
       throw new Refusal("invalid", "A message's workspaceId and subspaceIds are its thread's");
-    // An @mention assigns someone, and a subspace's assigns everyone in it now; a message that mentions nobody tells
-    // nobody.
-    const assignees = thread.assigneeIds as string[];
-    const members = subspaceMentionsIn(body)
+    // An @mention brings someone in, and a subspace's everyone in it now; they stay in from then on. Every message
+    // reaches everyone in the thread, its requester too, all but whoever wrote it.
+    const members = thread.assigneeIds as string[];
+    const inSubspace = subspaceMentionsIn(body)
       .filter((id) => canSee(db, authorId, id))
       .flatMap((id) =>
         db
@@ -285,17 +283,13 @@ const effects: ServerOptions["effects"] = {
           .filter((m) => m.subspaceId === id)
           .map((m) => m.userId as string),
       );
-    const mentioned = [...new Set([...mentionsIn(body), ...members])].filter(
-      (id) => id !== authorId && db.get("User", id) !== undefined,
+    const mentioned = [...new Set([...mentionsIn(body), ...inSubspace])].filter(
+      (id) => id !== thread.ownerId && db.get("User", id) !== undefined,
     );
-    for (const id of mentioned) deliver(db, id, threadId);
-    if (mentioned.some((id) => !assignees.includes(id)))
-      update(db, "Thread", threadId, { assigneeIds: [...new Set([...assignees, ...mentioned])] });
-    if (mentioned.length === 0) return;
-    // An owner who hands their thread to someone has it in Sent, until someone @mentions them there.
-    const item = itemOf(db, authorId, threadId);
-    if (authorId === thread.ownerId && !assignees.includes(authorId) && item && item.doneAt == null)
-      update(db, "InboxItem", item.id, { doneAt: createdAt });
+    const everyone = [...new Set([...members, ...mentioned])];
+    if (everyone.length > members.length) update(db, "Thread", threadId, { assigneeIds: everyone });
+    for (const id of [...everyone, thread.ownerId as string])
+      if (id != null && id !== authorId) deliver(db, id, threadId);
   },
 };
 

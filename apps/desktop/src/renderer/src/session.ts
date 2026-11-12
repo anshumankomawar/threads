@@ -140,7 +140,7 @@ export const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuI
   null,
 );
 export const [sidebarOpen, setSidebarOpen] = createSignal(true);
-// Which of the sidebar's tabs is open, by position (Inbox, Sent, Drafts, Spaces), so its hotkeys can choose one.
+// Which of the sidebar's tabs is open, by position (Inbox, All Threads, Drafts), so its hotkeys can choose one.
 export const [sidebarTab, setSidebarTab] = createSignal(0);
 function showTab(tab: number): void {
   setSidebarOpen(true);
@@ -205,9 +205,7 @@ export const inbox = store.view(() => {
   const time = now();
   const items = store
     .where(InboxItem, "userId", me().id)
-    .filter(
-      (i) => i.thread?.isOpen && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > time),
-    )
+    .filter((i) => i.thread && !i.doneAt && !(i.snoozedUntil && i.snoozedUntil.getTime() > time))
     .sort(byUrgency);
   const buckets = myBuckets();
   const sections = buckets.map((bucket) => ({
@@ -222,14 +220,9 @@ export const inbox = store.view(() => {
   };
 });
 
-// Open threads you own that someone else is on, unless they're back in your inbox.
-export const sent = store.view(() =>
-  store
-    .where(Thread, "ownerId", me().id)
-    .filter(
-      (c) => c.isOpen && !inbox().order.includes(c) && c.assigneeIds.some((id) => id !== me().id),
-    )
-    .sort((a, b) => lastActive(b) - lastActive(a)),
+// Every thread, the latest active first.
+export const allThreads = store.view(() =>
+  store.all(Thread).sort((a, b) => lastActive(b) - lastActive(a)),
 );
 
 // ── Navigation and the actions it takes ──
@@ -358,11 +351,6 @@ export function threadMenu(thread: Thread): MenuItem[] {
           ...(item.manual ? [{ label: "Sort it for me", run: () => placeIn(item) }] : []),
         ]
       : []),
-    "separator",
-    {
-      label: thread.isOpen ? "Resolve" : "Reopen",
-      run: () => setState(thread, thread.isOpen ? "resolved" : "open"),
-    },
   ];
 }
 
@@ -409,9 +397,8 @@ window.addEventListener("keydown", (event) => {
     sidebar: () => setSidebarOpen(!sidebarOpen()),
     // Not in a dialog, where ⌘1… choose its own tabs.
     inboxTab: free && (() => showTab(0)),
-    sentTab: free && (() => showTab(1)),
+    threadsTab: free && (() => showTab(1)),
     draftsTab: free && (() => showTab(2)),
-    spacesTab: free && (() => showTab(3)),
     newThread: () => {
       const shown = view();
       setDialog({
@@ -427,7 +414,6 @@ window.addEventListener("keydown", (event) => {
     done: free && item && (() => markDone(item)),
     snooze: reading && item && (() => snooze(item)),
     reply: reading && (() => document.querySelector<HTMLElement>(".reply")?.focus()),
-    resolve: free && current && (() => setState(current, current.isOpen ? "resolved" : "open")),
     zoomIn: () => applyZoom(zoom() + 0.1),
     zoomOut: () => applyZoom(zoom() - 0.1),
     zoomReset: () => applyZoom(1),

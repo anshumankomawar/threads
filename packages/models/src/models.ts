@@ -113,7 +113,8 @@ export class Thread extends Model {
   @Property({ enum: PRIORITIES }) priority!: Priority;
   @Property() labelIds!: string[];
   @Property() subspaceIds!: string[];
-  // Who's involved: an @mention adds someone, and it stays in their inbox until they mark it done or it's resolved.
+  // Who's in it besides its requester (`owner`): everyone @mentioned in it, ever. Each new message puts it back in
+  // their inboxes, and the requester's, until they mark it done.
   @Property() assigneeIds!: string[];
   @Reference(() => Thread, "branches", { nullable: true }) branchedFrom?: Thread;
   // Made with /blocked: that thread stays blocked until this one is resolved.
