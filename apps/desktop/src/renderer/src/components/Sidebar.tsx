@@ -539,7 +539,7 @@ const s = stylex.create({
     paddingRight: 6,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
-    borderBottomColor: "rgb(0 0 0 / 15%)",
+    borderBottomColor: colors.strokeTertiary,
     backgroundColor: colors.chrome,
   },
   toolbarStart: { display: "flex", gap: 2, alignItems: "center", minWidth: 0 },
