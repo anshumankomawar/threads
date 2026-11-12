@@ -27,6 +27,8 @@ export function Icon(props: IconProps): JSX.Element {
       viewBox={TB_ICONS[props.icon].viewBox}
       fill="none"
       color="currentColor"
+      // A block, so it centres in its button rather than sitting on the text's baseline.
+      style={{ display: "block", "flex-shrink": "0" }}
       innerHTML={tbMarkup(props.icon)}
     />
   );

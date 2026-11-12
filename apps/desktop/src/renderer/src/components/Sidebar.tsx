@@ -113,7 +113,8 @@ const TopButton = (props: {
   </button>
 );
 
-// Beside the window's buttons: on the sidebar's top row, or the list's while it's hidden.
+// Beside the window's buttons: the sidebar's toggle (search is ⌘K), on the sidebar's top row or the list's while it's
+// hidden.
 export const AppButtons = (): JSX.Element => (
   <>
     <TopButton
@@ -121,7 +122,6 @@ export const AppButtons = (): JSX.Element => (
       icon={"layout"}
       onClick={() => setSidebarOpen(!sidebarOpen())}
     />
-    <TopButton label="Search" icon={"search"} onClick={() => setDialog({ kind: "search" })} />
   </>
 );
 
@@ -137,7 +137,7 @@ export const HistoryButtons = (): JSX.Element => (
     />
     <TopButton
       label={`Forward (${keysFor("forward")})`}
-      icon={"nav-right"}
+      icon={"nav-forward"}
       tight
       disabled={!canGoForward()}
       onClick={goForward}
