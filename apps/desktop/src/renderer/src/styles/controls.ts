@@ -122,6 +122,10 @@ export const menu = stylex.create({
   itemSelected: { backgroundColor: colors.panelSelected },
   itemIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
   label: { flex: 1 },
+  // A label with a detail after it takes only its own width, up to half the row.
+  labelFit: { flex: "0 1 auto", maxWidth: "50%" },
+  detail: { flex: 1, minWidth: 0, color: colors.textTertiary },
+  mark: { color: colors.textPrimary, fontWeight: 600 },
   hint: { marginLeft: 6, color: colors.textTertiary },
   // What you type in a menu (its field row, a combo box's, an inline form's), and the ↵ always after it.
   input: {

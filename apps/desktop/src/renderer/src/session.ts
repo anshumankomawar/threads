@@ -125,7 +125,7 @@ export type MenuItem =
   | { label: string; icon?: JSX.Element; items: MenuItem[] }
   | "separator";
 export type Dialog =
-  | { kind: "search" | "viewAs" }
+  | { kind: "search" | "find" | "viewAs" }
   | { kind: "newThread"; labelId?: string; subspaceId?: string; to?: User }
   | { kind: "newView"; filter: Filter }
   | { kind: "newSubspace" }
@@ -448,6 +448,7 @@ window.addEventListener("keydown", (event) => {
   const reading = free && !typing;
   const run: Record<HotkeyId, (() => void) | false | undefined> = {
     search: () => setDialog({ kind: "search" }),
+    find: () => setDialog({ kind: "find" }),
     settings: () => (setDialog(null), open({ settings: null })),
     hotkeys: free && (() => open({ settings: null })),
     back: free && goBack,

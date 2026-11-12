@@ -28,6 +28,7 @@
     "@tiptap/core": "3.32.0",
     "better-auth": "1.7.17",
     "conf": "^16.0.0",
+    "minisearch": "7.2.0",
     "models": "workspace:*",
     "solid-js": "2.0.0-rc.21",
     "sync": "workspace:*"

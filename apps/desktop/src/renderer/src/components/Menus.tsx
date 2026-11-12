@@ -10,9 +10,12 @@ import { icon, type IconSvgElement } from "./Icon";
 import { Identicon } from "./Identicon";
 
 // One choice in a list you move through with the arrow keys: a palette's rows, the reply's @ # / menus, ⌘⇧N's @ menu.
-// `section` heads a run of a palette's rows; `hint` sits on the right; `accent` makes it stand out ("New thread").
+// `section` heads a run of a palette's rows; `hint` sits on the right; `accent` makes it stand out ("New thread");
+// `detail` follows the label, faint (where ⌘F matched), with `marks` in bold in both.
 export type Option = {
   label: string;
+  detail?: string;
+  marks?: string[];
   hint?: string;
   seed?: string;
   icon?: IconSvgElement;
@@ -20,6 +23,24 @@ export type Option = {
   section?: string;
   run: () => void;
 };
+
+// Text with each of `marks` in bold, wherever it appears in any case.
+function Marked(props: { text: string; marks?: string[] }): JSX.Element {
+  const parts = (): string[] =>
+    props.marks?.length
+      ? props.text.split(
+          new RegExp(
+            `(${props.marks.map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+            "gi",
+          ),
+        )
+      : [props.text];
+  return (
+    <For each={parts()}>
+      {(part, at) => (at() % 2 ? <b class={sx(look.mark)}>{part}</b> : part)}
+    </For>
+  );
+}
 
 // Where the arrow keys move the choice to in a list of `count`, wrapping; undefined for any other key.
 export const moved = (key: string, at: number, count: number): number | undefined =>
@@ -51,7 +72,16 @@ export function OptionButton(props: {
       >
         {(seed) => <Identicon seed={seed()} size={16} />}
       </Show>
-      <span class={sx(base.ellipsis, look.label)}>{o().label}</span>
+      <span class={sx(base.ellipsis, look.label, o().detail !== undefined && look.labelFit)}>
+        <Marked text={o().label} marks={o().marks} />
+      </span>
+      <Show when={o().detail}>
+        {(detail) => (
+          <span class={sx(base.ellipsis, look.detail)}>
+            <Marked text={detail()} marks={o().marks} />
+          </span>
+        )}
+      </Show>
       <Show when={o().hint}>
         <span class={sx(look.hint, o().accent && look.accent)}>{o().hint}</span>
       </Show>

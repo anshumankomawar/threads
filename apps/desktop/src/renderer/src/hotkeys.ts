@@ -6,6 +6,7 @@ import { save, saved } from "./startup";
 // typing; with ⌘ or ⌃ they work anywhere. What each does is in session.ts, by id.
 export const HOTKEYS = [
   { id: "search", label: "Search", section: "General", keys: "⌘K" },
+  { id: "find", label: "Search threads", section: "General", keys: "⌘F" },
   { id: "settings", label: "Settings", section: "General", keys: "⌘," },
   { id: "hotkeys", label: "Show hotkeys", section: "General", keys: "?" },
   { id: "back", label: "Back", section: "General", keys: "⌘[" },

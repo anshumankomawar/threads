@@ -35,6 +35,7 @@ import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { keysFor } from "../hotkeys";
+import { find, picked } from "../search";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
@@ -302,6 +303,27 @@ function Search(): JSX.Element {
             run: done(() => open({ thread: t.id })),
           })),
         ].filter((row) => matches(row.label, query))
+      }
+    />
+  );
+}
+
+// ⌘F: threads by anything in them, each with where it matched (search.ts); before you type, the latest ones.
+function Find(): JSX.Element {
+  return (
+    <Picker
+      placeholder="Search threads…"
+      rows={(query) =>
+        find(query).map(({ thread, snippet, terms }) => ({
+          label: thread.title,
+          detail: snippet,
+          marks: terms,
+          section: query ? undefined : "Recent",
+          run: done(() => {
+            if (query) picked(query, thread);
+            open({ thread: thread.id });
+          }),
+        }))
       }
     />
   );
@@ -645,6 +667,7 @@ function AddMember(props: { subspace: Subspace }): JSX.Element {
 
 const PALETTES = {
   search: Search,
+  find: Find,
   newView: NewView,
   newSubspace: NewSubspace,
   addMember: AddMember,
