@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -6,14 +5,14 @@ import { showMenu, type MenuItem } from "../session";
 import { base } from "../styles/base";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
-import { icon, type IconSvgElement } from "./Icon";
+import { icon, type IconName } from "./Icon";
 import { MenuChip } from "./Menus";
 import { Tabs, type Tab } from "./Tabs";
 
 // A column (Notion's property): its name and type icon, its width, how it sorts, and its cell.
 export type Column<T> = {
   label: string;
-  icon: IconSvgElement;
+  icon: IconName;
   width: number;
   sort: (row: T) => string | number;
   cell: (row: T) => JSX.Element;
@@ -151,7 +150,7 @@ export function Table<T>(props: {
   };
   const sortBy = (column: Column<T>, down: boolean): MenuItem => ({
     label: down ? "Sort descending" : "Sort ascending",
-    icon: icon(down ? i.ArrowDown01Icon : i.ArrowUp01Icon, 13),
+    icon: icon(down ? "nav-down" : "nav-up", 13),
     run: () => setSort({ column, down }),
   });
   const menu = (c: Column<T>): MenuItem[] => [
@@ -161,7 +160,7 @@ export function Table<T>(props: {
     ...(props.hide && c !== props.columns[0]
       ? [
           "separator" as const,
-          { label: "Hide", icon: icon(i.ViewOffIcon, 13), run: () => props.hide!(c.label) },
+          { label: "Hide", icon: icon("hidden", 13), run: () => props.hide!(c.label) },
         ]
       : []),
   ];
@@ -186,7 +185,7 @@ export function Table<T>(props: {
                         <span class={sx(s.headIcon)}>{icon(c.icon, 14)}</span>
                         <span class={sx(base.ellipsis)}>{c.label}</span>
                         <Show when={sort()?.column === c}>
-                          {icon(sort()!.down ? i.ArrowDown01Icon : i.ArrowUp01Icon, 12)}
+                          {icon(sort()!.down ? "nav-down" : "nav-up", 12)}
                         </Show>
                       </>
                     }

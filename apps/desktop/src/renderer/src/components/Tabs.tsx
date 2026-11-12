@@ -5,9 +5,9 @@ import { base } from "../styles/base";
 import { tabLabel } from "../styles/markers.stylex";
 import { sx } from "../styles/sx";
 import { colors, motion, radii } from "../styles/tokens.stylex";
-import { Icon, type IconSvgElement } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 
-export type Tab = { label: string; icon: IconSvgElement; count?: () => number };
+export type Tab = { label: string; icon: IconName; count?: () => number };
 
 // One tab's look, for a button that sits beside the tabs (`on` while it's chosen).
 export const tab = stylex.create({

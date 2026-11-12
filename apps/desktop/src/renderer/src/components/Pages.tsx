@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -71,9 +70,9 @@ function Setting(props: { name: string; hint: string; children: JSX.Element }): 
     </li>
   );
 }
-const THREADS: Tab = { label: "Threads", icon: i.Message01Icon };
-const MEMBERS: Tab = { label: "Members", icon: i.UserMultipleIcon };
-const SETTINGS: Tab = { label: "Settings", icon: i.Settings02Icon };
+const THREADS: Tab = { label: "Threads", icon: "conversation" };
+const MEMBERS: Tab = { label: "Members", icon: "user-list-alt" };
+const SETTINGS: Tab = { label: "Settings", icon: "settings" };
 
 // A tab of a page: its tools, in the toolbar beside the tabs, and what it shows under them. Made once, so a tab keeps
 // its filters and search while you're on another.
@@ -108,28 +107,28 @@ const pill = (text: string, before?: JSX.Element): JSX.Element => (
 const COLUMNS: Column<Thread>[] = [
   {
     label: "Title",
-    icon: i.TextFontIcon,
+    icon: "font",
     width: 256,
     sort: (t) => t.title.toLowerCase(),
     cell: (t) => <span class={sx(page.titleText)}>{t.title}</span>,
   },
   {
     label: "Status",
-    icon: i.Loading03Icon,
+    icon: "sync",
     width: 108,
     sort: (t) => ORDER.indexOf(t.state),
     cell: (t) => pill(LABELS[t.state], dot(t.state)),
   },
   {
     label: "Priority",
-    icon: i.Flag01Icon,
+    icon: "priority",
     width: 104,
     sort: (t) => PRIORITIES.indexOf(t.priority),
     cell: (t) => (t.priority === "none" ? "" : pill(LABELS[t.priority])),
   },
   {
     label: "Owner",
-    icon: i.UserIcon,
+    icon: "user",
     width: 136,
     sort: (t) => t.owner?.name ?? "",
     cell: (t) => (
@@ -145,7 +144,7 @@ const COLUMNS: Column<Thread>[] = [
   },
   {
     label: "Assignees",
-    icon: i.UserMultipleIcon,
+    icon: "user-list-alt",
     width: 100,
     sort: (t) => t.assigneeIds.length,
     cell: (t) => (
@@ -163,7 +162,7 @@ const COLUMNS: Column<Thread>[] = [
   },
   {
     label: "Labels",
-    icon: i.Tag01Icon,
+    icon: "tag",
     width: 152,
     sort: (t) =>
       labelsOf(t)
@@ -177,7 +176,7 @@ const COLUMNS: Column<Thread>[] = [
   },
   {
     label: "Updated",
-    icon: i.Clock01Icon,
+    icon: "clock",
     width: 104,
     sort: (t) => t.updatedAt.getTime(),
     cell: (t) => ago(t.updatedAt),
@@ -195,7 +194,7 @@ const visible = (): Column<Thread>[] => COLUMNS.filter((c) => !columnsHidden().i
 const MEMBER_COLUMNS: Column<User>[] = [
   {
     label: "Name",
-    icon: i.TextFontIcon,
+    icon: "font",
     width: 240,
     sort: (u) => u.name.toLowerCase(),
     cell: (u) => (
@@ -207,14 +206,14 @@ const MEMBER_COLUMNS: Column<User>[] = [
   },
   {
     label: "Email",
-    icon: i.Mail01Icon,
+    icon: "mail",
     width: 240,
     sort: (u) => u.email ?? "",
     cell: (u) => u.email,
   },
   {
     label: "Role",
-    icon: i.UserIcon,
+    icon: "user",
     width: 120,
     sort: (u) => memberOf(u)?.role ?? "member",
     cell: (u) => pill(ROLE[memberOf(u)?.role ?? "member"]),
@@ -230,7 +229,7 @@ function SearchBox(props: {
 }): JSX.Element {
   return (
     <label class={sx(page.search)}>
-      {icon(i.Search01Icon, 13)}
+      {icon("search", 13)}
       <input
         class={sx(base.bare, page.searchInput)}
         aria-label={props.label}
@@ -369,7 +368,7 @@ function threadsTab(props: {
         <MenuChip
           look={iconTool}
           title="Filter"
-          label={icon(i.FilterIcon, 16)}
+          label={icon("filter", 16)}
           items={Object.entries(FIELDS).map(([field, { label, compare, values }]) => ({
             label,
             items: values().map(([value, name]) => ({
@@ -381,7 +380,7 @@ function threadsTab(props: {
         <MenuChip
           look={iconTool}
           title="Properties"
-          label={icon(i.LeftToRightListBulletIcon, 16)}
+          label={icon("display-options", 16)}
           items={COLUMNS.slice(1).map((c) => ({
             label: c.label,
             icon: icon(c.icon, 13),
@@ -410,7 +409,7 @@ function threadsTab(props: {
                   onClick={() => change(conditions().filter((c) => c !== condition))}
                 >
                   {describe(condition)}
-                  {icon(i.Cancel01Icon, 11)}
+                  {icon("close", 11)}
                 </button>
               )}
             </For>
@@ -547,7 +546,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         <Setting name="Visibility" hint="Who can find it, see its threads and join.">
           <MenuChip
             label={isPrivate() ? "Private" : "Open"}
-            icon={icon(isPrivate() ? i.SquareLock01Icon : i.ViewIcon)}
+            icon={icon(isPrivate() ? "lock" : "eye")}
             items={[
               { label: "Open: anyone can join", run: () => edit(s(), { visibility: "open" }) },
               { label: "Private: members only", run: () => edit(s(), { visibility: "private" }) },
@@ -643,8 +642,8 @@ function Keys(props: { keys: string }): JSX.Element {
   );
 }
 
-const HOTKEYS_TAB: Tab = { label: "Hotkeys", icon: i.KeyboardIcon };
-const GROUPS_TAB: Tab = { label: "Groups", icon: i.UserMultipleIcon };
+const HOTKEYS_TAB: Tab = { label: "Hotkeys", icon: "shortcut" };
+const GROUPS_TAB: Tab = { label: "Groups", icon: "user-list-alt" };
 
 const groupStyles = stylex.create({
   list: { display: "flex", flexDirection: "column", gap: 18, maxWidth: 720, paddingTop: 8 },
@@ -664,7 +663,7 @@ function groups(): Page {
     tab: GROUPS_TAB,
     tools: (
       <button class={sx(base.hover, chip.chip)} onClick={() => setDialog({ kind: "newSubspace" })}>
-        {icon(i.Add01Icon, 12)}
+        {icon("add", 12)}
         New Group
       </button>
     ),
@@ -690,7 +689,7 @@ function groups(): Page {
                     class={sx(base.hover, chip.chip)}
                     onClick={() => setDialog({ kind: "addMember", subspace: group })}
                   >
-                    {icon(i.UserAdd01Icon, 12)}
+                    {icon("new-contact", 12)}
                     Add People
                   </button>
                   <button
@@ -713,7 +712,7 @@ function groups(): Page {
                         title="Remove"
                         onClick={() => void member.delete()}
                       >
-                        {icon(i.Cancel01Icon, 11)}
+                        {icon("close", 11)}
                       </button>
                     </span>
                   )}
@@ -747,21 +746,21 @@ export function SettingsView(): JSX.Element {
   const columns: Column<Hotkey>[] = [
     {
       label: "Action",
-      icon: i.TextFontIcon,
+      icon: "font",
       width: 280,
       sort: (h) => h.label,
       cell: (h) => <span class={sx(page.titleText)}>{h.label}</span>,
     },
     {
       label: "Section",
-      icon: i.Folder01Icon,
+      icon: "folder",
       width: 140,
       sort: (h) => HOTKEYS.findIndex((other) => other.section === h.section),
       cell: (h) => h.section,
     },
     {
       label: "Keys",
-      icon: i.CommandIcon,
+      icon: "shortcut",
       width: 200,
       sort: (h) => keysFor(h.id),
       // The one thing to change here: a button of its own, not the row.

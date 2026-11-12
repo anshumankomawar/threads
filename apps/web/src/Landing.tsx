@@ -1,7 +1,6 @@
 import { For } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import * as i from "@hugeicons/core-free-icons";
 import { AppWindow } from "./components/AppWindow";
 import { Icon } from "./components/Icon";
 import { sx } from "./styles/sx";
@@ -266,10 +265,10 @@ export function Landing(): JSX.Element {
         title="Switch between light and dark"
       >
         <span class={sx(s.sun)}>
-          <Icon icon={i.Sun03Icon} size={18} aria-hidden="true" />
+          <Icon icon={"paint-brush"} size={18} aria-hidden="true" />
         </span>
         <span class={sx(s.moon)}>
-          <Icon icon={i.Moon02Icon} size={18} aria-hidden="true" />
+          <Icon icon={"paint-brush"} size={18} aria-hidden="true" />
         </span>
       </button>
 

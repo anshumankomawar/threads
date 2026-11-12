@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -49,7 +48,7 @@ import {
   slackSidebar,
   space,
 } from "../styles/tokens.stylex";
-import { icon, Icon, type IconSvgElement } from "./Icon";
+import { icon, Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 import { plain } from "./ThreadView";
 
@@ -97,7 +96,7 @@ const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 6
 
 const TopButton = (props: {
   label: string;
-  icon: IconSvgElement;
+  icon: IconName;
   disabled?: boolean;
   // Narrower, to sit tight against its neighbour.
   tight?: boolean;
@@ -119,10 +118,10 @@ export const AppButtons = (): JSX.Element => (
   <>
     <TopButton
       label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
-      icon={i.PanelLeftIcon}
+      icon={"layout"}
       onClick={() => setSidebarOpen(!sidebarOpen())}
     />
-    <TopButton label="Search" icon={i.Search01Icon} onClick={() => setDialog({ kind: "search" })} />
+    <TopButton label="Search" icon={"search"} onClick={() => setDialog({ kind: "search" })} />
   </>
 );
 
@@ -131,14 +130,14 @@ export const HistoryButtons = (): JSX.Element => (
   <span class={sx(s.history)}>
     <TopButton
       label={`Back (${keysFor("back")})`}
-      icon={i.ArrowLeft01Icon}
+      icon={"nav-back"}
       tight
       disabled={!canGoBack()}
       onClick={goBack}
     />
     <TopButton
       label={`Forward (${keysFor("forward")})`}
-      icon={i.ArrowRight01Icon}
+      icon={"nav-right"}
       tight
       disabled={!canGoForward()}
       onClick={goForward}
@@ -161,7 +160,7 @@ const FOLDER = {
 function MailboxRow(props: {
   box: Mailbox;
   label: string;
-  icon: IconSvgElement;
+  icon: IconName;
   // Its icon's colour (FOLDER).
   color?: string;
   count?: number;
@@ -217,12 +216,12 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
   return [
     {
       label: "Edit Bucket",
-      icon: icon(i.PencilEdit01Icon, 13),
+      icon: icon("pencil", 13),
       run: () => setDialog({ kind: "bucket", bucket }),
     },
     {
       label: "New Bucket",
-      icon: icon(i.Add01Icon, 13),
+      icon: icon("add", 13),
       run: () => setDialog({ kind: "bucket" }),
     },
     "separator",
@@ -234,7 +233,7 @@ function bucketMenu(bucket: Bucket): MenuItem[] {
           "separator" as const,
           {
             label: "Delete Bucket",
-            icon: icon(i.Delete02Icon, 13),
+            icon: icon("trash", 13),
             run: () => void bucket.delete(),
           },
         ]
@@ -257,7 +256,7 @@ export function Sidebar(): JSX.Element {
             title={`New Thread (${keysFor("newThread")})`}
             onClick={() => setDialog({ kind: "newThread" })}
           >
-            <Icon icon={i.PencilEdit02Icon} {...ICON} />
+            <Icon icon={"pencil"} {...ICON} />
           </button>
         </span>
       </div>
@@ -267,13 +266,13 @@ export function Sidebar(): JSX.Element {
           <MailboxRow
             box={{ kind: "inbox" }}
             label="Buckets"
-            icon={i.InboxIcon}
+            icon={"inbox"}
             color={FOLDER.inbox}
             count={inbox().order.length}
             menu={() => [
               {
                 label: "New Bucket",
-                icon: icon(i.Add01Icon, 13),
+                icon: icon("add", 13),
                 run: () => setDialog({ kind: "bucket" }),
               },
             ]}
@@ -282,7 +281,7 @@ export function Sidebar(): JSX.Element {
             <MailboxRow
               box={{ kind: "unsorted" }}
               label="Sorting"
-              icon={i.Folder01Icon}
+              icon={"folder"}
               color={FOLDER.folder}
               count={inbox().unsorted.length}
               indent
@@ -294,7 +293,7 @@ export function Sidebar(): JSX.Element {
               <MailboxRow
                 box={{ kind: "bucket", id: section.bucket.id }}
                 label={section.bucket.name}
-                icon={i.Folder01Icon}
+                icon={"folder"}
                 color={FOLDER.folder}
                 count={section.items.length}
                 indent
@@ -307,14 +306,14 @@ export function Sidebar(): JSX.Element {
           <MailboxRow
             box={{ kind: "all" }}
             label="All Threads"
-            icon={i.Archive02Icon}
+            icon={"archive"}
             color={FOLDER.archive}
             count={allThreads().length}
           />
           <MailboxRow
             box={{ kind: "drafts" }}
             label="Drafts"
-            icon={i.NoteEditIcon}
+            icon={"draft"}
             color={FOLDER.draft}
             count={drafts().length}
           />
@@ -445,13 +444,13 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
           showMenu(e, [
             {
               label: "Open Draft",
-              icon: icon(i.NoteEditIcon, 13),
+              icon: icon("draft", 13),
               run: () => open({ draft: props.draft.id }),
             },
             "separator",
             {
               label: "Delete Draft",
-              icon: icon(i.Delete02Icon, 13),
+              icon: icon("trash", 13),
               run: () => void props.draft.delete(),
             },
           ])
@@ -540,7 +539,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
               title={`New Thread (${keysFor("newThread")})`}
               onClick={() => setDialog({ kind: "newThread" })}
             >
-              <Icon icon={i.PencilEdit02Icon} {...ICON} />
+              <Icon icon={"pencil"} {...ICON} />
             </button>
           </span>
         </Show>
@@ -567,7 +566,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
                       }}
                     >
                       <Icon
-                        icon={group.bucket ? i.Folder01Icon : i.Folder01Icon}
+                        icon={group.bucket ? "folder" : "folder"}
                         size={11}
                         aria-hidden="true"
                       />
@@ -590,7 +589,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
         <Show when={total() === 0}>
           <div class={sx(s.empty)}>
             <Icon
-              icon={mailbox().kind === "inbox" ? i.InboxCheckIcon : i.InboxIcon}
+              icon={mailbox().kind === "inbox" ? "inbox" : "inbox"}
               size={28}
               aria-hidden="true"
             />

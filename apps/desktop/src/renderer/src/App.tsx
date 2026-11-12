@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { For, Match, Show, Switch } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -211,7 +210,7 @@ export default function App(): JSX.Element {
                   title="Close"
                   onClick={() => open({ thread: null })}
                 >
-                  <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
+                  <Icon icon={"close"} size={14} aria-hidden="true" />
                 </button>
               </span>
             </div>
@@ -256,14 +255,14 @@ export default function App(): JSX.Element {
                               aria-label="Open as the main thread"
                               onClick={() => open({ thread: beside.id })}
                             >
-                              <Icon icon={i.ArrowExpand01Icon} size={13} aria-hidden="true" />
+                              <Icon icon={"layout"} size={13} aria-hidden="true" />
                             </button>
                             <button
                               class={sx(topbar.button)}
                               aria-label="Close"
                               onClick={() => setSplit(null)}
                             >
-                              <Icon icon={i.Cancel01Icon} size={14} aria-hidden="true" />
+                              <Icon icon={"close"} size={14} aria-hidden="true" />
                             </button>
                           </div>
                           <ThreadView thread={beside} />

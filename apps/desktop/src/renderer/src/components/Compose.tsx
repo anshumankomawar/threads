@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { Draft, mention, Subspace, User, type ComposeDraft } from "models";
@@ -272,7 +271,7 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
             >
               <div class={sx(compose.head)}>
                 <Show when={props.page} fallback="New thread">
-                  <span class={sx(page.pill)}>{icon(i.NoteEditIcon, 12)} Draft</span>
+                  <span class={sx(page.pill)}>{icon("draft", 12)} Draft</span>
                 </Show>
                 <Show when={!props.page}>
                   <span class={sx(compose.status)}>

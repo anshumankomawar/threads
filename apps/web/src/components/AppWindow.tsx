@@ -1,6 +1,5 @@
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import * as i from "@hugeicons/core-free-icons";
 import { sx } from "../styles/sx";
 import { colors, fontSizes } from "../styles/tokens.stylex";
 import { Identicon } from "./Identicon";
@@ -161,10 +160,10 @@ export function AppWindow(): JSX.Element {
       </div>
       <section class={sx(s.pane)}>
         <div class={sx(s.bar)}>
-          <span class={sx(s.barButton)}>{icon(i.ArrowLeft01Icon)}</span>
-          <span class={sx(s.barButton, s.barButtonOff)}>{icon(i.ArrowRight01Icon)}</span>
+          <span class={sx(s.barButton)}>{icon("nav-back")}</span>
+          <span class={sx(s.barButton, s.barButtonOff)}>{icon("nav-right")}</span>
           <span class={sx(s.barTitle)}>Launch checklist for Threads 2.0</span>
-          <span class={sx(s.barButton)}>{icon(i.MoreHorizontalIcon)}</span>
+          <span class={sx(s.barButton)}>{icon("more")}</span>
         </div>
         <div class={sx(s.doc)}>
           <Turn who="daniel" name="Daniel Okafor" when="2h ago">
@@ -174,12 +173,12 @@ export function AppWindow(): JSX.Element {
                 <span class={sx(s.dot)} />
                 Open
               </span>
-              {value(BUCKET, i.Target02Icon)}
-              {value("Launch", i.Tag01Icon)}
-              {value("Go-to-market", i.Layers01Icon)}
-              {value("Jamie +1", i.UserIcon)}
+              {value(BUCKET, "priority")}
+              {value("Launch", "tag")}
+              {value("Go-to-market", "spaces-menu")}
+              {value("Jamie +1", "user")}
               {value("High")}
-              {value("Due Nov 9", i.Calendar03Icon)}
+              {value("Due Nov 9", "calendar")}
             </div>
           </Turn>
           <Turn who="daniel" name="Daniel Okafor" when="2h ago">

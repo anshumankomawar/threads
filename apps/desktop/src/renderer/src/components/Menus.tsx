@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { createSignal, createUniqueId, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -6,7 +5,7 @@ import { menu, setMenu, type MenuItem } from "../session";
 import { base } from "../styles/base";
 import { chip, chipTone, menu as look } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { icon, type IconSvgElement } from "./Icon";
+import { icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 
 // One choice in a list you move through with the arrow keys: a palette's rows, the reply's @ # / menus, ⌘⇧N's @ menu.
@@ -18,7 +17,7 @@ export type Option = {
   marks?: string[];
   hint?: string;
   seed?: string;
-  icon?: IconSvgElement;
+  icon?: IconName;
   accent?: boolean;
   section?: string;
   run: () => void;
@@ -125,15 +124,15 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
         {/* A chosen option keeps its icon; its check goes at the end. One with no icon has its check in the column. */}
         <Show when={gutter()}>
           <span class={sx(look.entryIcon)}>
-            {item.icon ?? (checked ? icon(i.Tick02Icon, 13) : undefined)}
+            {item.icon ?? (checked ? icon("check", 13) : undefined)}
           </span>
         </Show>
         <span class={sx(base.ellipsis, look.entryLabel)}>{item.label}</span>
         <Show when={checked && item.icon}>
-          <span class={sx(look.entryKeys)}>{icon(i.Tick02Icon, 12)}</span>
+          <span class={sx(look.entryKeys)}>{icon("check", 12)}</span>
         </Show>
         <Show when={opens}>
-          <span class={sx(look.entryChevron)}>{icon(i.ArrowRight01Icon, 11)}</span>
+          <span class={sx(look.entryChevron)}>{icon("nav-right", 11)}</span>
         </Show>
       </button>
     );

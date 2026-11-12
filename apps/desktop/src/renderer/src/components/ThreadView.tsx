@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { Editor } from "@tiptap/core";
 import { Placeholder } from "@tiptap/extensions";
 import StarterKit from "@tiptap/starter-kit";
@@ -120,7 +119,7 @@ function LinkedText(props: { text: string; current: string; byline?: boolean }):
               class={sx(base.bare, link.thread, props.byline && link.threadInByline)}
               onClick={() => setSplit(part.thread)}
             >
-              {icon(i.GitBranchIcon, 11)}
+              {icon("thread", 11)}
               {titleOf(part.thread) ?? "Thread"}
             </button>
           </Show>
@@ -287,7 +286,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           .filter((sub) => sub.name.toLowerCase().includes(query))
           .map((sub) => ({
             label: sub.name,
-            icon: i.UserMultipleIcon,
+            icon: "user-list-alt" as const,
             hint: membersHint(sub),
             run: () => menu.pick({ id: `subspace:${sub.id}`, name: sub.name }),
           })),
@@ -298,7 +297,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
       .slice(0, 6)
       .map((o) => ({
         label: o.title,
-        icon: i.GitBranchIcon,
+        icon: "thread" as const,
         run: () => menu.pick({ id: o.id, title: o.title }),
       }));
     const title = menu.query.trim();
@@ -320,7 +319,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           {
             label: "New thread",
             hint: `“${title}”`,
-            icon: i.Add01Icon,
+            icon: "add" as const,
             accent: true,
             run: branch,
           },

@@ -1,10 +1,9 @@
 import { For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
-import * as i from "@hugeicons/core-free-icons";
 import { sx } from "../styles/sx";
 import { colors, fontSizes, radii } from "../styles/tokens.stylex";
-import { Icon, type IconSvgElement } from "./Icon";
+import { Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 
 // Arc's sidebar and message list, drawn with the app's own measurements (Mail.tsx and Tabs.tsx on solid-email) and
@@ -274,25 +273,15 @@ const ROWS: Row[] = [
 const IN_BUCKET = 10;
 const UNREAD = 10;
 
-export const icon = (svg: IconSvgElement, size = 14): JSX.Element => (
+export const icon = (svg: IconName, size = 14): JSX.Element => (
   <Icon icon={svg} size={size} aria-hidden="true" />
 );
 
-// Hugeicons' panel icon with the side pane filled, as the app draws it while the sidebar is open.
-const SIDEBAR_OPEN: IconSvgElement = [
-  ...i.PanelLeftIcon,
-  [
-    "path",
-    {
-      d: "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z",
-      fill: "currentColor",
-      key: "pane",
-    },
-  ],
-];
+// The sidebar's button, as the app draws it: Thunderbird's layout icon.
+const SIDEBAR_OPEN: IconName = "layout";
 
 function Mailbox(props: {
-  icon: IconSvgElement;
+  icon: IconName;
   name: string;
   count?: number;
   on?: boolean;
@@ -314,26 +303,26 @@ export function Sidebar(): JSX.Element {
     <aside class={sx(s.sidebar)}>
       <div class={sx(s.bar)}>
         <span class={sx(s.barButton)}>{icon(SIDEBAR_OPEN)}</span>
-        <span class={sx(s.barButton)}>{icon(i.Search01Icon)}</span>
+        <span class={sx(s.barButton)}>{icon("search")}</span>
         <span class={sx(s.barEnd)}>
-          <span class={sx(s.barButton)}>{icon(i.PencilEdit02Icon)}</span>
+          <span class={sx(s.barButton)}>{icon("pencil")}</span>
         </span>
       </div>
       <div class={sx(s.groups)}>
         <span class={sx(s.tab, s.tabOn)}>
-          {icon(i.InboxIcon)}
+          {icon("inbox")}
           Inbox
         </span>
-        <span class={sx(s.tab)}>{icon(i.Layers01Icon)}</span>
-        <span class={sx(s.tab)}>{icon(i.ViewIcon)}</span>
+        <span class={sx(s.tab)}>{icon("spaces-menu")}</span>
+        <span class={sx(s.tab)}>{icon("eye")}</span>
       </div>
       <nav class={sx(s.nav)}>
         <ul class={sx(s.mailboxes)}>
-          <Mailbox icon={i.InboxIcon} name="Buckets" count={11} on />
-          <Mailbox icon={i.Target02Icon} name={BUCKET} count={IN_BUCKET} indent />
-          <Mailbox icon={i.BookOpen01Icon} name="Messages to read" count={1} indent />
-          <Mailbox icon={i.SentIcon} name="Sent" />
-          <Mailbox icon={i.NoteEditIcon} name="Drafts" />
+          <Mailbox icon={"inbox"} name="Buckets" count={11} on />
+          <Mailbox icon={"priority"} name={BUCKET} count={IN_BUCKET} indent />
+          <Mailbox icon={"file"} name="Messages to read" count={1} indent />
+          <Mailbox icon={"sent"} name="Sent" />
+          <Mailbox icon={"draft"} name="Drafts" />
         </ul>
       </nav>
       <div class={sx(s.footer)}>
@@ -341,7 +330,7 @@ export function Sidebar(): JSX.Element {
           <Identicon seed="you" size={16} />
           Jamie Lin
         </span>
-        <span class={sx(s.gear)}>{icon(i.Settings02Icon)}</span>
+        <span class={sx(s.gear)}>{icon("settings")}</span>
       </div>
     </aside>
   );
@@ -378,7 +367,7 @@ function Thread(props: { row: Row; last: boolean; beforeOn: boolean }): JSX.Elem
             <span class={sx(s.chips)}>
               <Show when={row.due}>
                 <span class={sx(s.due, row.due?.soon && s.dueSoon)}>
-                  {icon(i.Calendar03Icon, 10)}
+                  {icon("calendar", 10)}
                   {row.due?.on}
                 </span>
               </Show>
@@ -402,11 +391,11 @@ export function MessageList(): JSX.Element {
           <span class={sx(s.listTitle)}>Buckets</span>
           <span class={sx(s.listSubtitle)}>{UNREAD} unread</span>
         </span>
-        <span class={sx(s.barButton)}>{icon(i.FilterIcon)}</span>
+        <span class={sx(s.barButton)}>{icon("filter")}</span>
       </div>
       <div class={sx(s.listScroll)}>
         <div class={sx(s.groupHeader)}>
-          {icon(i.Target02Icon, 12)}
+          {icon("priority", 12)}
           {BUCKET} <span class={sx(s.groupCount)}>{IN_BUCKET}</span>
         </div>
         <ul class={sx(s.rows)}>

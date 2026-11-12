@@ -1,4 +1,3 @@
-import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, Show, untrack, type Signal } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -466,7 +465,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
             .filter((group) => matches(group.name, text))
             .map((group) => ({
               label: `@${group.name}`,
-              icon: i.UserMultipleIcon,
+              icon: "user-list-alt" as const,
               hint: has(`group:${group.id}`) ? "✓" : membersHint(group),
               run: () => pick(`group:${group.id}`),
             })),
