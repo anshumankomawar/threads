@@ -717,11 +717,13 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
+  // Its title on the same line as the sidebar's first row and the thread's first name (centred 22px down).
   listHeader: {
     display: "flex",
     flexShrink: 0,
     alignItems: "center",
-    height: 34,
+    height: 44,
+    paddingTop: 0.92,
     paddingInline: 16,
   },
   // Nothing open beside it: it takes the room, with no edge to divide.
@@ -737,7 +739,6 @@ const s = stylex.create({
     flex: 1,
     minHeight: 0,
     overflowY: "auto",
-    paddingTop: 5.18,
     paddingInline: space.inset,
     paddingBottom: 24,
     outline: "none",

@@ -30,7 +30,7 @@ export const thread = stylex.create({
     // Left-aligned, on the same edge as the other pages; in the reading pane, just under its toolbar.
     maxWidth: 773,
     padding: {
-      default: "10px 24px 40px 28px",
+      default: "13px 24px 40px 28px",
       [stylex.when.ancestor(":is(*)", peekMarker)]: "16px 24px 32px",
     },
     zoom: contentZoom["--content-zoom"],
