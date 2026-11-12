@@ -2,7 +2,7 @@ import type { JSONContent } from "@tiptap/react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-export type Theme = "dark" | "light" | "slack";
+export type Theme = "dark" | "light";
 export type Box = "inbox" | "unsorted" | "all" | "drafts" | (string & {});
 export type View = { box: Box; thread?: string; settings?: boolean };
 export type Draft = { id: string; content: JSONContent; text: string; at: number };
@@ -66,7 +66,7 @@ export function setTheme(theme: Theme) {
 }
 function applyTheme(theme: Theme) {
   document.documentElement.dataset.theme = theme;
-  window.desktop.setTheme(theme === "dark" ? "dark" : "light");
+  window.desktop.setTheme(theme);
 }
 useUI.persist.onFinishHydration(({ theme }) => applyTheme(theme));
 applyTheme(useUI.getState().theme);

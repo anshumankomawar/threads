@@ -3,7 +3,7 @@ import { useMutation } from "convex/react";
 import { api, useBuckets, useGroups, useMe, usePeople, type Doc, type Id } from "./data";
 import { reset, setTheme, useUI, type Theme } from "./state";
 
-const THEMES: Theme[] = ["dark", "light", "slack"];
+const THEMES: Theme[] = ["dark", "light"];
 
 function BucketForm({ bucket }: { bucket?: Doc<"buckets"> }) {
   const save = useMutation(api.workspace.saveBucket);

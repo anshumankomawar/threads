@@ -75,7 +75,6 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
     { section: "Views", label: "Settings", hint: "⌘,", run: () => go({ settings: true }) },
     { section: "Theme", label: "Dark", run: () => setTheme("dark") },
     { section: "Theme", label: "Light", run: () => setTheme("light") },
-    { section: "Theme", label: "Slack", run: () => setTheme("slack") },
     { section: "Account", label: "Sign Out", run: () => void signOut().then(reset) },
   ];
   const threads: Item[] = rows.map((row) => ({

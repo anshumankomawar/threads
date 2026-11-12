@@ -23,19 +23,8 @@
   --draft: light-dark(#ae55f7, #ddb4fe);
   --avatar-ring: light-dark(rgb(0 0 0 / 14%), transparent);
 }
-:root[data-theme="light"],
-:root[data-theme="slack"] {
+:root[data-theme="light"] {
   color-scheme: light;
-}
-:root[data-theme="slack"] .sidebar {
-  --chrome: #3f0e40;
-  --text: #ffffff;
-  --text-2: rgb(255 255 255 / 82%);
-  --text-3: rgb(255 255 255 / 70%);
-  --selected: #1164a3;
-  --hover: #350d36;
-  --line: #522653;
-  color-scheme: dark;
 }
 
 *,
