@@ -5,7 +5,7 @@ import type { MutationCtx } from "./_generated/server";
 import { membership, mutation, query, type Ctx } from "./functions";
 import { mentions, titleOf } from "./text";
 
-async function post(ctx: MutationCtx & Ctx, threadId: Id<"threads">, body: string) {
+export async function post(ctx: MutationCtx & Ctx, threadId: Id<"threads">, body: string) {
   const { _id: authorId, workspaceId } = ctx.me;
   const activeAt = Date.now();
   await ctx.db.insert("messages", { workspaceId, threadId, authorId, body });
@@ -107,18 +107,20 @@ export const search = query({
   },
 });
 
+export async function begin(ctx: MutationCtx & Ctx, body: string) {
+  const threadId = await ctx.db.insert("threads", {
+    workspaceId: ctx.me.workspaceId,
+    title: titleOf(body),
+    lastAuthorId: ctx.me._id,
+    lastBody: body,
+  });
+  await post(ctx, threadId, body);
+  return threadId;
+}
+
 export const start = mutation({
   args: { body: v.string() },
-  handler: async (ctx, { body }) => {
-    const threadId = await ctx.db.insert("threads", {
-      workspaceId: ctx.me.workspaceId,
-      title: titleOf(body),
-      lastAuthorId: ctx.me._id,
-      lastBody: body,
-    });
-    await post(ctx, threadId, body);
-    return threadId;
-  },
+  handler: (ctx, { body }) => begin(ctx, body),
 });
 
 export const send = mutation({
