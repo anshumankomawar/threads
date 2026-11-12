@@ -413,7 +413,7 @@ function Find(): JSX.Element {
         : [
             {
               label: `Ask Arc “${q}”`,
-              icon: i.SparklesIcon,
+              icon: "star",
               section: "Ask Arc",
               run: () => askArc(q),
             },
