@@ -106,6 +106,27 @@ resolving the last open blocker reopens it; a new user gets the default buckets.
 After each commit the Durable Object sorts unsorted, unplaced InboxItems into their owners' buckets with Workers AI and
 writes the answers as ordinary transactions (`apps/api/src/triage.ts`); a failure retries in a minute by alarm.
 
+## Search (⌘F)
+
+Three layers, each answering sooner than the next, so nothing waits on the network to show something:
+
+- **Words**, in the app (`apps/desktop/src/renderer/src/search.ts`): an in-memory full-text index (MiniSearch) over the
+  titles, descriptions and messages of every thread the app holds, so it can't find what you may not see. Prefix and
+  fuzzy matching, title matches first, then fresher threads; what you opened for a query comes first next time. Before
+  you type: your recents.
+- **Meaning** (Related), from the API (`apps/api/src/search.ts`): every thread's title and description, and each
+  message under its thread's title, embedded with Workers AI (`bge-m3`) into the Vectorize index `threads-search`
+  (1024 dimensions, cosine), under a namespace of the workspace's own (a key kept in its SQLite, so a workspace that
+  starts over, or a developer's local one, never touches another's). The `Workspace` object re-embeds what changed after
+  each commit, like inbox sorting, and drops what's gone. `POST /search { query }` embeds the query and keeps only the
+  threads the session may see (the rows sync would send it). ⌘F asks once typing pauses and lists them below.
+- **Ask Arc** (`POST /search { query, ask: true }`): retrieval-augmented generation. The nearest five threads the
+  session may see go to Llama 3.3 70B with the question; it answers from them alone and names the ones it used, which ⌘F
+  lists under the answer.
+
+`/search` reads and writes no data, so it's not a sync route; it runs in the workspace's object because it needs the
+session's view of the rows. Without AI (`THREADS_LOCAL_AI=off`) it answers 503, and ⌘F finds by words alone.
+
 ## Sessions
 
 Every request carries `X-Workspace` (`local`, or `sample` when `SAMPLE_WORKSPACE` is on) and a bearer token; the socket

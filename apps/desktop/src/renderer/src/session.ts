@@ -107,6 +107,21 @@ export const draftWith = async (
   return response.json() as Promise<ComposeDraft>;
 };
 
+// ⌘F by meaning, or Ask Arc, from the workspace's API (apps/api/src/search.ts), as you.
+export const searchApi = async <T>(body: { query: string; ask?: boolean }): Promise<T> => {
+  const response = await fetch(`${server.url}/search`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Workspace": server.workspace,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`Search failed (${response.status})`);
+  return response.json() as Promise<T>;
+};
+
 // ── What's on screen ──
 // A thread, or a page of threads: a label's, a person's, a subspace's, a saved view's, or all of them (`view: null`).
 export type View =

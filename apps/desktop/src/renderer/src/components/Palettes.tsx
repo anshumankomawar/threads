@@ -34,7 +34,17 @@ import { paletteSectionMarker } from "../styles/markers.stylex";
 import { base } from "../styles/base";
 import { palette } from "../styles/palette";
 import { keysFor } from "../hotkeys";
-import { clearRecents, find, hasRecents, picked } from "../search";
+import {
+  ask,
+  clearRecents,
+  find,
+  hasRecents,
+  picked,
+  related,
+  warm,
+  type Answered,
+  type Found,
+} from "../search";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
 import { moved, OptionButton, type Option } from "./Menus";
@@ -67,6 +77,8 @@ function Picker(props: {
   onTab?: () => void;
   // A Clear button on the right of one section's title.
   clear?: { section: string; run: () => void };
+  // Text over the rows (⌘F's answer).
+  note?: JSX.Element;
 }): JSX.Element {
   const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
@@ -127,6 +139,9 @@ function Picker(props: {
             </For>
           </div>
         )}
+      </Show>
+      <Show when={props.note}>
+        <div class={sx(palette.note)}>{props.note}</div>
       </Show>
       <Show when={rows().length > 0}>
         <div class={sx(palette.results)} role="listbox">
@@ -320,25 +335,91 @@ function Search(): JSX.Element {
   );
 }
 
+// A question, as opposed to words to find: Ask Arc comes first for it.
+const QUESTION = /\?$|^(what|why|how|who|when|where|which|did|does|do|is|are|was|can|should)\b/i;
+
 // ⌘F: threads by anything in them, each with where it matched (search.ts); before you type, the ones you've opened
-// from here (which you can clear), else the latest.
+// from here (which you can clear), else the latest. Once typing pauses, threads near it in meaning follow as Related,
+// below what's already there; and Ask Arc answers a question from the threads, listing the ones it used.
 function Find(): JSX.Element {
+  const typed = createSignal("");
+  const query = createMemo(() => typed[0]().trim());
+  const [near, setNear] = createSignal<{ query: string; found: Found[] }>({ query: "", found: [] });
+  const [asked, setAsked] = createSignal<{
+    question: string;
+    answer?: Answered;
+    failed?: boolean;
+  }>();
+  warm();
+  createEffect(query, (q) => {
+    if (asked() && asked()!.question !== q) setAsked(undefined);
+    if (q.length < 3) return;
+    const timer = setTimeout(
+      () =>
+        void related(q).then(
+          (found) => setNear({ query: q, found }),
+          () => {},
+        ),
+      250,
+    );
+    return () => clearTimeout(timer);
+  });
+  const askArc = (question: string): void => {
+    setAsked({ question });
+    ask(question).then(
+      (answer) => asked()?.question === question && setAsked({ question, answer }),
+      () => asked()?.question === question && setAsked({ question, failed: true }),
+    );
+  };
+  const row = ({ thread, snippet, terms }: Found, q: string, section?: string): Row => ({
+    label: thread.title,
+    detail: snippet,
+    marks: terms,
+    section,
+    run: done(() => {
+      picked(q, thread);
+      open({ thread: thread.id });
+    }),
+  });
+  const rows = (q: string): Row[] => {
+    const answered = asked();
+    if (answered)
+      return (answered.answer?.threads ?? []).map((f) =>
+        row({ thread: f, terms: [] }, q, "Sources"),
+      );
+    const words = find(q);
+    const shown = new Set(words.map((f) => f.thread.id));
+    const meant = near().query === q ? near().found.filter((f) => !shown.has(f.thread.id)) : [];
+    const askRow: Row[] =
+      q.length < 3
+        ? []
+        : [
+            {
+              label: `Ask Arc “${q}”`,
+              icon: i.SparklesIcon,
+              section: "Ask Arc",
+              run: () => askArc(q),
+            },
+          ];
+    return [
+      ...(QUESTION.test(q) ? askRow : []),
+      ...words.map((f) => row(f, q, q ? undefined : hasRecents() ? "Recent" : "Latest")),
+      ...meant.map((f) => row(f, q, "Related")),
+      ...(QUESTION.test(q) ? [] : askRow),
+    ];
+  };
   return (
     <Picker
-      placeholder="Search threads…"
+      placeholder="Search threads, or ask a question…"
+      query={typed}
       clear={{ section: "Recent", run: clearRecents }}
-      rows={(query) =>
-        find(query).map(({ thread, snippet, terms }) => ({
-          label: thread.title,
-          detail: snippet,
-          marks: terms,
-          section: query ? undefined : hasRecents() ? "Recent" : "Latest",
-          run: done(() => {
-            picked(query, thread);
-            open({ thread: thread.id });
-          }),
-        }))
+      onBack={asked() ? () => setAsked(undefined) : undefined}
+      note={
+        asked() &&
+        (asked()!.answer?.answer ??
+          (asked()!.failed ? "Arc couldn't answer that just now." : "Thinking…"))
       }
+      rows={rows}
     />
   );
 }

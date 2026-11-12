@@ -96,6 +96,14 @@ export const palette = stylex.create({
     borderRadius: radii.row,
   },
   labelText: { color: colors.textSecondary, fontSize: fontSizes.label },
+  // Text over a palette's rows (⌘F's answer).
+  note: {
+    padding: `8px ${EDGE}px 10px`,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
+    lineHeight: 1.45,
+    whiteSpace: "pre-wrap",
+  },
   // A section title's button on its right (⌘F's Clear).
   sectionAction: {
     marginLeft: "auto",

@@ -34,12 +34,17 @@ export default defineConfig(({ mode }) => ({
       BETTER_AUTH_URL: bindings.secret(),
       GOOGLE_CLIENT_ID: bindings.secret(),
       GOOGLE_CLIENT_SECRET: bindings.secret(),
-      // Workers AI sorts inboxes into buckets. It always runs on Cloudflare, in local dev too, within the account's
-      // free daily allocation, so local dev needs a login on the Threads account. Without access, `THREADS_LOCAL_AI=off`
-      // leaves it out: everything else works, and threads wait under "Sorting".
+      // Workers AI sorts inboxes into buckets, and with Vectorize searches threads by meaning (src/search.ts). Both
+      // always run on Cloudflare, in local dev too, so local dev needs a login on the Threads account. Without access,
+      // `THREADS_LOCAL_AI=off` leaves them out: everything else works, threads wait under "Sorting", and ⌘F finds by
+      // words alone.
       ...(process.env.THREADS_LOCAL_AI === "off"
         ? {}
-        : { AI: bindings.ai({ dev: { remote: true } }) }),
+        : {
+            AI: bindings.ai({ dev: { remote: true } }),
+            // 1024 dimensions, cosine: made with `cf vectorize create`.
+            VECTORS: bindings.vectorize({ name: "threads-search", dev: { remote: true } }),
+          }),
     },
   },
 }));

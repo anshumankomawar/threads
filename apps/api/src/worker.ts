@@ -16,6 +16,7 @@ import {
 import { registry } from "sync";
 import { createAuth, personFor, SIGNED_IN_PAGE } from "./auth.ts";
 import { workersAiComposer } from "./compose.ts";
+import { Search } from "./search.ts";
 import { Triager, workersAiClassifier } from "./triage.ts";
 
 const WORKSPACES = ["local", "sample"];
@@ -59,6 +60,8 @@ export class Workspace extends DurableObject<Env> {
   #server: SyncServer | undefined;
   // Sorts inboxes with Workers AI after each change. Without AI (`THREADS_LOCAL_AI=off`) items stay unsorted.
   #triager: Triager | undefined;
+  // Keeps threads searchable by meaning (src/search.ts). Without AI and Vectorize, ⌘F finds by words alone.
+  #search: Search | undefined;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -87,19 +90,22 @@ export class Workspace extends DurableObject<Env> {
     if (this.#server !== undefined) return this.#server;
     const server = threadsServer(sqliteStorage(this.ctx.storage), () => this.#sockets());
     if (server.deltas(ADMIN, 0).lastSyncId === 0) server.action(ADMIN, "seed", this.#workspace);
-    const { AI: ai } = this.env as { AI?: Ai };
+    const { AI: ai, VECTORS: vectors } = this.env as { AI?: Ai; VECTORS?: VectorizeIndex };
+    const retry = (retryAtMs: number): void => void this.ctx.storage.setAlarm(retryAtMs);
     if (ai !== undefined)
-      this.#triager = new Triager(server, workersAiClassifier(ai), {
-        onFailure: (retryAtMs) => void this.ctx.storage.setAlarm(retryAtMs),
-      });
+      this.#triager = new Triager(server, workersAiClassifier(ai), { onFailure: retry });
+    if (ai !== undefined && vectors !== undefined)
+      this.#search = new Search(server, ai, vectors, this.ctx.storage.sql, retry);
     this.#server = server;
-    // Anything left unsorted, such as a fresh seed.
-    this.#sort();
+    // Anything left unsorted or unindexed, such as a fresh seed.
+    this.#catchUp();
     return server;
   }
 
-  #sort(): void {
+  // Sorts inboxes and indexes for search, in the background.
+  #catchUp(): void {
     if (this.#triager !== undefined) this.ctx.waitUntil(this.#triager.kick());
+    if (this.#search !== undefined) this.ctx.waitUntil(this.#search.index());
   }
 
   #sockets(): Socket[] {
@@ -122,30 +128,52 @@ export class Workspace extends DurableObject<Env> {
     };
   }
 
-  // Retries sorting after the model failed.
+  // Retries sorting or indexing after a model failed.
   async alarm(): Promise<void> {
     this.#load();
-    this.#sort();
+    this.#catchUp();
   }
 
   async fetch(request: Request): Promise<Response> {
     const server = this.#load();
+    const { pathname } = new URL(request.url);
     // The sync socket hibernates while idle, so open connections cost next to nothing. It counts once it says Hello.
-    if (new URL(request.url).pathname === "/sync/socket") {
+    if (pathname === "/sync/socket") {
       if (request.headers.get("Upgrade") !== "websocket")
         return new Response("Expected a WebSocket upgrade", { status: 426 });
       const { 0: client, 1: socket } = new WebSocketPair();
       this.ctx.acceptWebSocket(socket);
       return new Response(null, { status: 101, webSocket: client });
     }
-    const response = await handleRequest(
-      server,
-      request,
-      JSON.parse(request.headers.get(SESSION_HEADER)!),
-    );
-    // A commit may have new inbox items to sort.
-    if (request.method === "POST") this.#sort();
+    const session = JSON.parse(request.headers.get(SESSION_HEADER)!) as Session;
+    if (pathname === "/search") return this.#find(request, session);
+    const response = await handleRequest(server, request, session);
+    // A commit may have new inbox items to sort, and new words to find.
+    if (request.method === "POST") this.#catchUp();
     return response;
+  }
+
+  // ⌘F by meaning, or Ask Arc (src/search.ts), as the session: it reads no more than the session may see, and writes
+  // nothing.
+  async #find(request: Request, session: Session): Promise<Response> {
+    if (this.#search === undefined)
+      return Response.json({ error: "Search by meaning isn't set up here" }, { status: 503 });
+    const { query, ask } = await request.json<{ query?: string; ask?: boolean }>();
+    if (typeof query !== "string") return Response.json({ error: "No query" }, { status: 400 });
+    // Opening ⌘F asks with nothing, which only wakes this object, so the first real search doesn't wait for it.
+    if (query.trim() === "") return Response.json({ hits: [] });
+    try {
+      return Response.json(
+        ask
+          ? await this.#search.ask(session, query)
+          : { hits: await this.#search.search(session, query) },
+      );
+    } catch (error) {
+      return Response.json(
+        { error: error instanceof Error ? error.message : "Search failed" },
+        { status: 502 },
+      );
+    }
   }
 
   // The only message a client sends is its Hello, again whenever what it follows changes; the server then sends how its
@@ -216,8 +244,9 @@ app.post("/ai/compose", async (c) => {
   }
 });
 
-// The sync protocol goes to the workspace's object, with the session; the socket authenticates with its Hello.
-app.on(["GET", "POST"], ["/sync/*", "/actions/*"], async (c) => {
+// The sync protocol, and ⌘F's search, go to the workspace's object, with the session; the socket authenticates with its
+// Hello.
+app.on(["GET", "POST"], ["/sync/*", "/actions/*", "/search"], async (c) => {
   const workspace = workspaceOf(c);
   if (
     !WORKSPACES.includes(workspace) ||

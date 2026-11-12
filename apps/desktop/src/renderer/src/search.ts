@@ -2,7 +2,7 @@ import MiniSearch from "minisearch";
 import { createSignal } from "solid-js";
 import { Message, Thread } from "models";
 import { plain } from "./components/ThreadView";
-import { store } from "./session";
+import { searchApi, store } from "./session";
 import { save, saved } from "./startup";
 
 // ⌘F: every thread you can see, found by its title, its description or anything said in it. The index lives in memory,
@@ -97,3 +97,38 @@ export function find(query: string): Found[] {
 }
 
 void store.ready().then(() => requestIdleCallback(() => current()));
+
+// By meaning, from the API (Vectorize, apps/api/src/search.ts): threads near the query, each with the message that was
+// nearest, best first. Each query is asked once; the app shows only threads it has.
+const meanings = new Map<string, Promise<Found[]>>();
+export function related(query: string): Promise<Found[]> {
+  let found = meanings.get(query);
+  if (found === undefined) {
+    found = searchApi<{ hits: { threadId: string; messageId?: string }[] }>({ query }).then(
+      ({ hits }) =>
+        hits.flatMap(({ threadId, messageId }) => {
+          const thread = store.findById(Thread, threadId);
+          const message = messageId === undefined ? undefined : store.findById(Message, messageId);
+          return thread
+            ? [{ thread, snippet: message && plain(message.body).slice(0, 100), terms: [] }]
+            : [];
+        }),
+    );
+    found.catch(() => meanings.delete(query));
+    meanings.set(query, found);
+  }
+  return found;
+}
+
+// Opening ⌘F wakes the workspace's search, so the first query doesn't wait for it.
+export const warm = (): void => void searchApi({ query: "" }).catch(() => {});
+
+// Ask Arc: an answer from the threads nearest the question, and the threads it used.
+export type Answered = { answer: string; threads: Thread[] };
+export const ask = (question: string): Promise<Answered> =>
+  searchApi<{ answer: string; threadIds: string[] }>({ query: question, ask: true }).then(
+    ({ answer, threadIds }) => ({
+      answer,
+      threads: threadIds.flatMap((id) => store.findById(Thread, id) ?? []),
+    }),
+  );

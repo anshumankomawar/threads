@@ -25,10 +25,10 @@ const ADMIN: Session = { admin: true };
 
 const unsorted = (item: Row): boolean => item.bucketId == null && !item.manual;
 
-// Every row in the workspace.
-function readAll(server: SyncServer): Reader {
+// Every row in the workspace, or every row one session sees.
+export function readAll(server: SyncServer, session: Session = ADMIN): Reader {
   const tables = new Map<string, Map<string, Row>>();
-  for (const { model, row } of server.bootstrap(ADMIN).rows) {
+  for (const { model, row } of server.bootstrap(session).rows) {
     if (!tables.has(model)) tables.set(model, new Map());
     tables.get(model)!.set(row.id, row);
   }
