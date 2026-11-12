@@ -241,7 +241,7 @@ small {
   }
   & .profile {
     width: auto;
-    margin: 0 8px 5px;
+    margin: 0 8px 9px;
     color: var(--text-2);
 
     &:hover {
