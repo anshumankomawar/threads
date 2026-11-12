@@ -44,24 +44,33 @@ export const palette = stylex.create({
     animationTimingFunction: "cubic-bezier(0.2, 0.9, 0.3, 1)",
     "::backdrop": { backgroundColor: "transparent" },
   },
-  // Grown from the search field: its rounding and line to start, then the panel's, on one curve (macOS's settle) for
-  // its place, width, height and shadow; heights in between "auto" ease too (interpolate-size). No entrance fade.
+  // Grown from the search field (Modal's `grow`): the field's own ground, line and corners (App's search), so it's the
+  // field that grows; no entrance fade, as its bottom edge moving down is the entrance.
   grow: {
     maxHeight: "min(520px, calc(100vh - 60px))",
-    borderRadius: { default: radii.item, ":is([data-grown])": radii.panel },
-    boxShadow: { default: "none", ":is([data-grown])": colors.shadowFloat },
+    borderColor: colors.strokeTertiary,
+    borderRadius: radii.item,
+    backgroundColor: `color-mix(in srgb, ${colors.textPrimary} 5%, ${colors.chrome})`,
+    boxShadow: "none",
     animationName: "none",
-    interpolateSize: "allow-keywords",
-    transitionProperty: {
-      default: "left, width, height, border-radius, box-shadow",
-      [motion.reduced]: "none",
-    },
-    transitionDuration: "340ms",
-    transitionTimingFunction: "cubic-bezier(0.32, 0.72, 0, 1)",
   },
   // Its field exactly where the toolbar's was: the same height, icon and inset.
-  growInputRow: { gap: 6, height: 22, flexShrink: 0, padding: "0 7px" },
+  // The field's own inside: a 22px row (with its 1px line, the field's 24px), 8px in from the line as the field's are,
+  // its text size, so nothing in it moves when it opens.
+  growInputRow: {
+    gap: 6,
+    height: 22,
+    flexShrink: 0,
+    padding: "0 8px",
+    fontSize: fontSizes.body,
+    // The field's own lines (the app's 14.55px, where a palette's are 16px), so its text sits on the field's line too.
+    lineHeight: "14.55px",
+  },
   growIcon: { display: "flex", color: colors.textTertiary },
+  // The field's own text size.
+  growInput: { height: 14.55, fontSize: fontSizes.body, lineHeight: "14.55px" },
+  // The keys at its end, as the field shows them.
+  growKeys: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.small },
   // `display: flex` only while open, so a closed dialog stays hidden.
   open: { display: { default: "none", ":is([open])": "flex" } },
   // One edge for everything in a palette: what's typed, the tabs' names, headings, rows' icons and the footer all start

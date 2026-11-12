@@ -101,7 +101,8 @@ const styles = stylex.create({
     borderColor: colors.strokeTertiary,
     borderRadius: radii.item,
     color: colors.textTertiary,
-    backgroundColor: { default: colors.bgQuaternary, ":hover": colors.bgTertiary },
+    // Solid, the same as ⌘K's panel that grows out of it, and steady under the pointer.
+    backgroundColor: `color-mix(in srgb, ${colors.textPrimary} 5%, ${colors.chrome})`,
     fontSize: fontSizes.body,
     cursor: "text",
     WebkitAppRegion: "no-drag",
@@ -202,7 +203,11 @@ export default function App(): JSX.Element {
             </div>
             <button
               data-search-anchor
-              class={sx(base.bare, styles.search, dialog()?.kind === "search" && styles.searchOpen)}
+              class={sx(
+                base.bare,
+                styles.search,
+                (dialog()?.kind === "search" || dialog()?.kind === "find") && styles.searchOpen,
+              )}
               title={`Search (${keysFor("search")})`}
               onClick={() => setDialog({ kind: "search" })}
             >
@@ -232,11 +237,14 @@ export default function App(): JSX.Element {
             </div>
           </header>
           <div class={sx(styles.columns)}>
-            <Show when={sidebarOpen()}>
+            {/* Settings takes the whole window under the toolbar: no sidebar or list beside it. */}
+            <Show when={sidebarOpen() && !("settings" in view())}>
               <Sidebar />
             </Show>
             {/* Mail's columns: the mailboxes, the chosen one's threads, and the thread you're reading. */}
-            <MessageList alone={nothingOpen()} />
+            <Show when={!("settings" in view())}>
+              <MessageList alone={nothingOpen()} />
+            </Show>
             <Show when={!nothingOpen()}>
               <main class={sx(styles.main)}>
                 {/* A change the server refused has already been undone, so say so rather than letting it vanish. */}

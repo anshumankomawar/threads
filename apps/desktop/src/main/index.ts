@@ -17,7 +17,12 @@ app.setName("Arc");
 app.setPath("userData", userData);
 
 // In development, expose the Chrome DevTools protocol on localhost so scripts can drive and inspect the app.
-if (is.dev) app.commandLine.appendSwitch("remote-debugging-port", "9333");
+// THREADS_DEBUG_PORT runs a second copy beside the usual one without the two fighting over it.
+if (is.dev)
+  app.commandLine.appendSwitch(
+    "remote-debugging-port",
+    process.env["THREADS_DEBUG_PORT"] ?? "9333",
+  );
 
 // The Dock icon in the app's theme. A packaged app on macOS 26 has the Icon Composer bundle, which macOS switches
 // itself (with Liquid Glass, clear and tinted); in development, and on older macOS, the Dock shows this instead.

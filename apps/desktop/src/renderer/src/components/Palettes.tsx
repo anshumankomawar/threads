@@ -56,16 +56,17 @@ import { Icon } from "./Icon";
 import { moved, OptionButton, type Option } from "./Menus";
 
 // A modal palette: a click outside or Escape closes it.
-// `grow`: ⌘K as the toolbar's search field ([data-search-anchor]) itself. It opens exactly over the field, the field's size
-// and shape, then grows: wider, centred on where the field was, and down to its results, on one fluid curve; its height
-// keeps easing as the results change. Nothing dims behind it.
+// `grow`: ⌘K (and ⌘F) as the toolbar's search field ([data-search-anchor]) itself. It opens exactly over the field, the
+// same place, width, corners and colours, its icon, text and keys on the field's own pixels; only its bottom edge moves,
+// sliding down to its results. That's a clip on the compositor (Web Animations), so nothing is laid out again while it
+// opens. Nothing dims behind it.
+const GROW = { duration: 260, easing: "cubic-bezier(0.32, 0.72, 0, 1)" };
 export function Modal(props: { children: JSX.Element; grow?: boolean }): JSX.Element {
   const open = (el: HTMLDialogElement): void => {
     el.closedBy = "any";
     const field =
       props.grow && document.querySelector("[data-search-anchor]")?.getBoundingClientRect();
     if (!field) return el.showModal();
-    const width = Math.min(innerWidth - 16, Math.max(field.width + 160, 600));
     Object.assign(el.style, {
       margin: "0",
       right: "auto",
@@ -73,20 +74,11 @@ export function Modal(props: { children: JSX.Element; grow?: boolean }): JSX.Ele
       left: `${field.left}px`,
       top: `${field.top}px`,
       width: `${field.width}px`,
-      height: `${field.height}px`,
     });
     el.showModal();
-    // Two frames, so the field's size is painted before the growth starts from it.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        el.dataset.grown = "";
-        Object.assign(el.style, {
-          left: `${Math.max(8, Math.min(innerWidth - width - 8, field.left + field.width / 2 - width / 2))}px`,
-          width: `${width}px`,
-          height: "auto",
-        });
-      }),
-    );
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const below = el.getBoundingClientRect().height - field.height;
+    el.animate({ clipPath: [`inset(0px 0px ${below}px 0px)`, "inset(0px 0px 0px 0px)"] }, GROW);
   };
   return (
     <dialog
@@ -116,8 +108,10 @@ function Picker(props: {
   clear?: { section: string; run: () => void };
   // Text over the rows (⌘F's answer).
   note?: JSX.Element;
-  // Grown out of the toolbar's search field (Modal's `grow`), its own field in the same place and shape.
+  // Grown out of the toolbar's search field (Modal's `grow`), its own field in the same place and shape, showing these
+  // keys at its end as the field shows ⌘K.
   grow?: boolean;
+  keys?: string;
 }): JSX.Element {
   const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
@@ -156,13 +150,16 @@ function Picker(props: {
         </Show>
         <input
           autofocus
-          class={sx(base.bare, palette.input)}
+          class={sx(base.bare, palette.input, props.grow && palette.growInput)}
           placeholder={props.placeholder}
           spellcheck={false}
           value={query()}
           onInput={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={onKeyDown}
         />
+        <Show when={props.grow && props.keys}>
+          <span class={sx(palette.growKeys)}>{props.keys}</span>
+        </Show>
       </div>
       <Show when={props.filters}>
         {(filters) => (
@@ -355,6 +352,7 @@ function Search(): JSX.Element {
   return (
     <Picker
       grow
+      keys={keysFor("search")}
       placeholder="Search…"
       filters={["All", "Threads", "People"]}
       rows={(query, filter) =>
@@ -468,6 +466,8 @@ function Find(): JSX.Element {
   };
   return (
     <Picker
+      grow
+      keys={keysFor("find")}
       placeholder="Search threads, or ask a question…"
       query={typed}
       clear={{ section: "Recent", run: clearRecents }}
