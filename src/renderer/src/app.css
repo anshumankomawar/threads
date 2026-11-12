@@ -478,6 +478,13 @@ small {
   & .message-box {
     padding: 10px 15px;
 
+    & .hint {
+      margin-top: 4px;
+      color: var(--text-3);
+      font-size: 11px;
+      text-align: right;
+    }
+
     & .editor {
       min-height: 22px;
       max-height: 350px;

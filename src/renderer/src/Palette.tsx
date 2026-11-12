@@ -161,23 +161,32 @@ export function NewMessage({ draft }: { draft?: Draft }) {
 
   return (
     <Modal onClose={keep}>
-      <MessageBox
-        autoFocus
-        content={draft?.content}
-        placeholder="What do you need? @mention who it's for, ⌘↵ to send"
-        onSend={(body) => void send(body)}
-        onChange={(editor) =>
-          (written.current = {
-            id,
-            content: editor.getJSON(),
-            text: editor
-              .getText({ blockSeparator: "\n" })
-              .replace(/\[\[\w+:\w+\]\]/g, "")
-              .trim(),
-            at: Date.now(),
-          })
-        }
-      />
+      <div
+        onKeyDown={(event) => {
+          if (!event.metaKey || event.key !== "s") return;
+          event.preventDefault();
+          event.currentTarget.closest("dialog")!.close();
+        }}
+      >
+        <MessageBox
+          autoFocus
+          content={draft?.content}
+          placeholder="What do you need?"
+          hint="@mention who it's for, ⌘↵ to send"
+          onSend={(body) => void send(body)}
+          onChange={(editor) =>
+            (written.current = {
+              id,
+              content: editor.getJSON(),
+              text: editor
+                .getText({ blockSeparator: "\n" })
+                .replace(/\[\[\w+:\w+\]\]/g, "")
+                .trim(),
+              at: Date.now(),
+            })
+          }
+        />
+      </div>
     </Modal>
   );
 }
