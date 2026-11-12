@@ -132,6 +132,7 @@ export function UnifiedToolbar(): JSX.Element {
         />
       </div>
       <button
+        data-search-anchor
         class={sx(base.bare, s.search)}
         title={`Search (${keysFor("search")})`}
         onClick={() => setDialog({ kind: "search" })}
@@ -638,7 +639,7 @@ const s = stylex.create({
   folderIcon: { display: "flex", flexShrink: 0, marginLeft: 2 },
   // .name: 7px on either side.
   folderName: { flex: 1, marginInline: 6.36 },
-  bold: { fontWeight: 700 },
+  bold: { fontWeight: 600 },
   // .folder-count-badge: a capsule, 1px 4px, 0.85em bold, 16px at least; unread grey-50 with white text, total
   // grey-20 with near-black.
   badge: {
@@ -652,7 +653,7 @@ const s = stylex.create({
     lineHeight: "normal",
     textAlign: "center",
   },
-  badgeUnread: { color: "#ffffff", backgroundColor: tb.badge, fontWeight: 700 },
+  badgeUnread: { color: "#ffffff", backgroundColor: tb.badge, fontWeight: 600 },
   badgeTotal: { color: colors.textPrimary, backgroundColor: tb.bg3, fontWeight: 400 },
 
   // #threadPane, its header bar, and the cards' ground.
@@ -680,7 +681,7 @@ const s = stylex.create({
     borderBottomColor: colors.strokeTertiary,
   },
   threadHeaderAlone: { paddingLeft: 9 },
-  folderTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: 700 },
+  folderTitle: { color: colors.textPrimary, fontSize: 13, fontWeight: 600 },
   messageCount: { flexShrink: 0, color: colors.textTertiary, fontSize: fontSizes.caption },
   threadHeaderEnd: { display: "flex", gap: 2, marginLeft: "auto" },
   headerButton: {

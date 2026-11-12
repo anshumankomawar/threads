@@ -37,15 +37,29 @@ import { palette } from "../styles/palette";
 import { keysFor } from "../hotkeys";
 import { sx } from "../styles/sx";
 import { Compose } from "./Compose";
+import { TbIcon } from "./TbIcon";
 import { moved, OptionButton, type Option } from "./Menus";
 
 // A modal palette: a click outside or Escape closes it.
-export function Modal(props: { children: JSX.Element }): JSX.Element {
+// `anchored`, as VS Code's quick pick: it drops down from the toolbar's search field ([data-search-anchor]), over it and
+// centred on it, rather than floating in the middle of the window.
+export function Modal(props: { children: JSX.Element; anchored?: boolean }): JSX.Element {
+  const place = (el: HTMLDialogElement): void => {
+    const anchor = document.querySelector("[data-search-anchor]")?.getBoundingClientRect();
+    if (!props.anchored || !anchor) return;
+    const width = Math.min(innerWidth - 16, Math.max(anchor.width + 80, 560));
+    el.style.width = `${width}px`;
+    el.style.margin = "0";
+    el.style.left = `${Math.max(8, Math.min(innerWidth - width - 8, anchor.left + anchor.width / 2 - width / 2))}px`;
+    el.style.top = `${anchor.top - 3}px`;
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+  };
   return (
     <dialog
-      ref={(el) => queueMicrotask(() => ((el.closedBy = "any"), el.showModal()))}
+      ref={(el) => queueMicrotask(() => ((el.closedBy = "any"), place(el), el.showModal()))}
       onClose={() => setDialog(null)}
-      class={sx(base.panel, palette.dialog, palette.open)}
+      class={sx(base.panel, palette.dialog, palette.open, props.anchored && palette.anchored)}
     >
       {props.children}
     </dialog>
@@ -65,6 +79,8 @@ function Picker(props: {
   // Escape goes back a step instead of closing; Tab does whatever a step wants.
   onBack?: () => void;
   onTab?: () => void;
+  // Dropped down from the toolbar's search field (Modal's `anchored`), its own field in the same place.
+  anchored?: boolean;
 }): JSX.Element {
   const [query, setQuery] = untrack(() => props.query) ?? createSignal("");
   const [at, setAt] = createSignal(0);
@@ -94,8 +110,13 @@ function Picker(props: {
     event.preventDefault();
   };
   return (
-    <Modal>
-      <div class={sx(palette.inputRow)}>
+    <Modal anchored={props.anchored}>
+      <div class={sx(palette.inputRow, props.anchored && palette.anchoredInputRow)}>
+        <Show when={props.anchored}>
+          <span class={sx(palette.anchoredIcon)}>
+            <TbIcon name="search" />
+          </span>
+        </Show>
         <input
           autofocus
           class={sx(base.bare, palette.input)}
@@ -285,7 +306,8 @@ function Search(): JSX.Element {
   ];
   return (
     <Picker
-      placeholder="Search…"
+      anchored
+      placeholder="Search threads, people and commands"
       filters={["All", "Threads", "People"]}
       rows={(query, filter) =>
         [

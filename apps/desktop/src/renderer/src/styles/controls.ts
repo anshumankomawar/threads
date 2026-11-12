@@ -82,12 +82,12 @@ export const menu = stylex.create({
     // A little tighter inside the highlight than Mail's.
     padding: "0 7px 0 7.5px",
     borderRadius: 5,
-    color: colors.textPrimary,
+    color: { default: colors.textPrimary, ":hover": colors.panelSelectedText },
     whiteSpace: "nowrap",
     cursor: "default",
     backgroundColor: { default: "transparent", ":hover": colors.panelSelected },
   },
-  entryOpen: { backgroundColor: colors.panelSelected },
+  entryOpen: { color: colors.panelSelectedText, backgroundColor: colors.panelSelected },
   entryIcon: { display: "flex", flexShrink: 0, justifyContent: "center", width: 13 },
   entryLabel: { flex: 1, paddingRight: 8 },
   entryChevron: { display: "flex", flexShrink: 0, color: colors.textSecondary },
@@ -119,10 +119,11 @@ export const menu = stylex.create({
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  itemSelected: { backgroundColor: colors.panelSelected },
+  itemSelected: { color: colors.panelSelectedText, backgroundColor: colors.panelSelected },
   itemIcon: { display: "flex", flexShrink: 0, color: colors.iconTertiary },
   label: { flex: 1 },
-  hint: { marginLeft: 6, color: colors.textTertiary },
+  // In the row's own colour, faded: legible on the selection's blue as on the panel.
+  hint: { marginLeft: 6, color: "inherit", opacity: 0.6 },
   // What you type in a menu (its field row, a combo box's, an inline form's), and the ↵ always after it.
   input: {
     flex: 1,
@@ -160,7 +161,14 @@ export const topbar = stylex.create({
 export const link = stylex.create({
   // A name that opens someone's profile; put an author or mention style after it.
   person: { textDecoration: { default: null, ":hover": "underline" }, cursor: "pointer" },
-  mention: { color: colors.accent },
+  // A mention as a tag: the accent on a 12% wash of it, 3px corners.
+  mention: {
+    padding: "0 3px",
+    borderRadius: 3,
+    color: colors.accent,
+    backgroundColor: `color-mix(in srgb, ${colors.accent} 12%, transparent)`,
+    fontWeight: 500,
+  },
   thread: {
     display: "inline-flex",
     gap: 4,

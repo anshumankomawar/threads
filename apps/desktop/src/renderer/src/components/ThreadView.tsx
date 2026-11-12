@@ -73,25 +73,33 @@ const styles = stylex.create({
     whiteSpace: "nowrap",
     cursor: "pointer",
   },
-  // #messagePane: the header on --layout-background-1, the messages on the page's white under it.
+  // The message pane: the page's white, one readable column in it.
   messagePane: { flexDirection: "column", backgroundColor: tb.page },
+  messageBody: { backgroundColor: tb.page },
+  column: { maxWidth: 760, padding: "0 24px", zoom: "var(--content-zoom)" },
+  // The head: the subject (17px, semibold) with the buttons on its line, who started it under it, a hairline below.
   mh: {
     display: "flex",
     flexDirection: "column",
-    gap: 6,
-    flexShrink: 0,
-    padding: "10px 14px 10px",
+    gap: 8,
+    padding: "20px 0 14px",
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
-    backgroundColor: colors.chrome,
-    zoom: "var(--content-zoom)",
   },
-  mhTop: { display: "flex", gap: 8, alignItems: "center", minWidth: 0 },
-  mhFrom: { display: "flex", flex: 1, flexDirection: "column", minWidth: 0 },
-  mhName: { color: colors.textPrimary, fontWeight: 700, textAlign: "left" },
-  mhRole: { color: colors.textTertiary, fontSize: fontSizes.caption },
-  mhButtons: { display: "flex", flexShrink: 0, gap: 4 },
+  mhTitleRow: { display: "flex", gap: 12, alignItems: "flex-start" },
+  mhSubject: {
+    flex: 1,
+    margin: 0,
+    color: colors.textPrimary,
+    fontSize: 15.45,
+    fontWeight: 600,
+    lineHeight: 1.3,
+    letterSpacing: "-0.005em",
+    overflowWrap: "anywhere",
+    userSelect: "text",
+  },
+  mhButtons: { display: "flex", flexShrink: 0, gap: 4, marginTop: -1 },
   // A toolbarbutton: --button-background-color (--layout-background-3), lighter under the pointer, 3px corners.
   headerButton: {
     display: "flex",
@@ -112,54 +120,124 @@ const styles = stylex.create({
     cursor: "default",
   },
   headerIconButton: { padding: "0 4px" },
-  // The subject: 1.2rem bold.
-  mhSubject: {
-    margin: "2px 0 0 34px",
-    color: colors.textPrimary,
-    fontSize: fontSizes.pageTitle,
-    fontWeight: 700,
-    lineHeight: 1.3,
-    overflowWrap: "anywhere",
-    userSelect: "text",
+  mhByline: {
+    display: "flex",
+    gap: 6,
+    alignItems: "center",
+    color: colors.textTertiary,
+    fontSize: fontSizes.caption,
+  },
+  mhName: {
+    color: { default: colors.textSecondary, ":hover": colors.textPrimary },
+    fontWeight: 600,
+    cursor: "default",
   },
   avatar: {
     display: "inline-grid",
     flexShrink: 0,
     placeItems: "center",
     borderRadius: "50%",
-    color: tb.avatarText,
-    backgroundColor: tb.avatar,
-    fontWeight: 700,
+    fontWeight: 600,
+    letterSpacing: "0.02em",
   },
-  messageBody: { backgroundColor: tb.page },
-  mails: { display: "flex", flexDirection: "column", zoom: "var(--content-zoom)" },
-  // Each message as a mail: its sender and date over its body, a hairline under it.
-  // Each message as a mail: its sender and date over its body, set apart by space alone.
-  mail: { padding: "10px 14px 8px" },
-  mailHead: { display: "flex", gap: 8, alignItems: "center", marginBottom: 6 },
-  mailFrom: { color: colors.textPrimary, fontWeight: 700 },
-  mailDate: { marginLeft: "auto", color: colors.textTertiary, fontSize: fontSizes.caption },
-  mailBody: {
-    marginLeft: 28,
+  mails: { display: "flex", flexDirection: "column", paddingTop: 6 },
+  // A message: a 26px gutter for the avatar (or, in a run, its time under the pointer), its words beside it. A faint wash
+  // under the pointer, as a chat's.
+  mail: {
+    display: "grid",
+    gridTemplateColumns: "26px minmax(0, 1fr)",
+    columnGap: 10,
+    margin: "0 -8px",
+    padding: "8px 8px 2px",
+    borderRadius: 5,
+    backgroundColor: {
+      default: "transparent",
+      ":hover": `color-mix(in srgb, ${colors.textPrimary} 3.5%, transparent)`,
+    },
+  },
+  mailContinued: { paddingTop: 1 },
+  gutter: { display: "flex", justifyContent: "center", paddingTop: 1 },
+  gutterTime: {
+    color: colors.textTertiary,
+    fontSize: 9.09,
+    lineHeight: "20px",
+    whiteSpace: "nowrap",
+    fontVariantNumeric: "tabular-nums",
+    opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1 },
+  },
+  mailMain: { minWidth: 0 },
+  mailHead: { display: "flex", gap: 7, alignItems: "baseline", marginBottom: 1 },
+  mailFrom: {
     color: colors.textPrimary,
-    fontSize: fontSizes.message,
+    fontWeight: 600,
+    textDecoration: { default: "none", ":hover": "underline" },
+    cursor: "default",
+  },
+  mailTime: {
+    color: colors.textTertiary,
+    fontSize: fontSizes.caption,
+    fontVariantNumeric: "tabular-nums",
+  },
+  // What they said: 14px on 1.5 lines.
+  mailBody: {
+    paddingBottom: 4,
+    color: colors.textPrimary,
+    fontSize: 12.73,
     lineHeight: 1.5,
     whiteSpace: "pre-wrap",
     overflowWrap: "anywhere",
     userSelect: "text",
   },
-  compose: { padding: "12px 14px" },
-  // The compose field: the page's white in a 1px --color-gray-40 frame, 3px corners.
+  // A day's name centred on a hairline.
+  day: {
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    margin: "14px 0 6px",
+    color: colors.textTertiary,
+    fontSize: fontSizes.caption,
+    fontWeight: 600,
+    "::before": { content: '""', flex: 1, height: 1, backgroundColor: colors.strokeTertiary },
+    "::after": { content: '""', flex: 1, height: 1, backgroundColor: colors.strokeTertiary },
+  },
+  dayLabel: { flexShrink: 0 },
+  compose: { padding: "14px 0 24px" },
+  // The compose frame: the page's white, a --color-gray-40 line, 6px corners; the accent's line and a soft ring of it
+  // while you type.
   composeBox: {
-    marginLeft: 28,
-    padding: "6px 8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    padding: "9px 10px 7px",
     borderWidth: 1,
     borderStyle: "solid",
-    borderColor: tb.border1,
-    borderRadius: 3,
+    borderColor: { default: tb.cardBorder, ":focus-within": colors.accent },
+    borderRadius: 6,
     backgroundColor: tb.page,
+    boxShadow: {
+      default: "none",
+      ":focus-within": `0 0 0 3px color-mix(in srgb, ${colors.accent} 20%, transparent)`,
+    },
+    cursor: "text",
   },
-  reply: { display: "flex", flex: 1, minWidth: 0 },
+  composeFoot: { display: "flex", gap: 8, alignItems: "center" },
+  composeHint: { flex: 1, color: colors.textTertiary, fontSize: fontSizes.small },
+  // Send: the primary button, small.
+  send: {
+    height: 22,
+    padding: "0 10px",
+    borderRadius: 3,
+    color: tb.selectedText,
+    backgroundColor: {
+      default: tb.selected,
+      ":hover:not(:disabled)": `color-mix(in srgb, ${tb.selected} 85%, black)`,
+    },
+    fontSize: fontSizes.body,
+    fontWeight: 600,
+    opacity: { default: 1, ":disabled": 0.4 },
+    cursor: "default",
+  },
+  reply: { display: "flex", flex: 1, minWidth: 0, fontSize: 12.73, lineHeight: 1.5 },
   replyEditor: { flex: 1, minHeight: 21, outline: "none", cursor: "text" },
   caretMenu: { position: "fixed", zIndex: layers.caretMenu, width: 300 },
   linkSelf: { color: colors.textSecondary },
@@ -264,38 +342,102 @@ function ActivityLine(props: { activity: Activity; thread: Thread }): JSX.Elemen
   );
 }
 
-function MessageBlock(props: { message: Message; thread: Thread }): JSX.Element {
+// When it was said: the time on its own, the day in a divider above it.
+const time = (date: Date): string =>
+  date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const longDate = (date: Date): string =>
+  `${date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })} at ${time(date)}`;
+const dayOf = (date: Date): number => new Date(date).setHours(0, 0, 0, 0);
+function dayLabel(date: Date): string {
+  const today = dayOf(new Date());
+  const day = dayOf(date);
+  if (day === today) return "Today";
+  if (day === today - 86_400_000) return "Yesterday";
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    ...(new Date(date).getFullYear() === new Date().getFullYear() ? {} : { year: "numeric" }),
+  });
+}
+const sinceStarted = (date: Date): string =>
+  dayOf(date) === dayOf(new Date())
+    ? `today at ${time(date)}`
+    : dayOf(date) === dayOf(new Date()) - 86_400_000
+      ? `yesterday at ${time(date)}`
+      : `on ${date.toLocaleDateString(undefined, { month: "short", day: "numeric" })} at ${time(date)}`;
+
+// A run of messages from one person: within ten minutes of the last, on the same day, with nothing between.
+const RUN = 10 * 60_000;
+const continues = (message: Message, before: Message | Activity | undefined): boolean =>
+  before instanceof Message &&
+  before.authorId === message.authorId &&
+  message.createdAt.getTime() - before.createdAt.getTime() < RUN &&
+  dayOf(before.createdAt) === dayOf(message.createdAt);
+
+// A message: the first of a run under its sender's avatar, name and time; the rest of the run just their words, the
+// time in the gutter under the pointer.
+function MessageBlock(props: {
+  message: Message;
+  thread: Thread;
+  continued: boolean;
+}): JSX.Element {
   const m = (): Message => props.message;
   return (
     <div
-      class={sx(styles.mail)}
+      class={sx(styles.mail, props.continued && styles.mailContinued, stylex.defaultMarker())}
       onContextMenu={(event) =>
         showMenu(event, [
-          { label: "Copy text", run: () => void navigator.clipboard.writeText(plain(m().body)) },
+          { label: "Copy Text", run: () => void navigator.clipboard.writeText(plain(m().body)) },
           ...(m().authorId === me().id
-            ? ["separator" as const, { label: "Delete message", run: () => void m().delete() }]
+            ? ["separator" as const, { label: "Delete Message", run: () => void m().delete() }]
             : []),
         ])
       }
     >
-      <div class={sx(styles.mailHead)}>
-        <Avatar name={m().author?.name ?? "?"} size={20} />
-        <button
-          class={sx(base.bare, link.person, styles.mailFrom)}
-          onClick={() => m().author && open({ person: m().authorId })}
+      <div class={sx(styles.gutter)}>
+        <Show
+          when={!props.continued}
+          fallback={
+            <span class={sx(styles.gutterTime)} title={longDate(m().createdAt)}>
+              {time(m().createdAt)}
+            </span>
+          }
         >
-          {m().author?.name ?? "Someone"}
-        </button>
-        <span class={sx(styles.mailDate)}>{longDate(m().createdAt)}</span>
+          <Avatar name={m().author?.name ?? "?"} size={26} />
+        </Show>
       </div>
-      <div class={sx(styles.mailBody)}>
-        <LinkedText text={m().body} current={props.thread.id} />
+      <div class={sx(styles.mailMain)}>
+        <Show when={!props.continued}>
+          <div class={sx(styles.mailHead)}>
+            <button
+              class={sx(base.bare, styles.mailFrom)}
+              onClick={() => m().author && open({ person: m().authorId })}
+            >
+              {m().author?.name ?? "Someone"}
+            </button>
+            <span class={sx(styles.mailTime)} title={longDate(m().createdAt)}>
+              {time(m().createdAt)}
+            </span>
+          </div>
+        </Show>
+        <div class={sx(styles.mailBody)}>
+          <LinkedText text={m().body} current={props.thread.id} />
+        </div>
       </div>
     </div>
   );
 }
 
-// messageHeader.css's recipient avatar: a grey circle with their initials.
+// A day's start in the conversation: its name between two hairlines.
+const DayDivider = (props: { date: Date }): JSX.Element => (
+  <div class={sx(styles.day)} role="separator">
+    <span class={sx(styles.dayLabel)}>{dayLabel(props.date)}</span>
+  </div>
+);
+
+// Someone's initials in a soft circle of their own colour, worked out from their name, so the same person is always
+// the same colour; light-dark() keeps it legible in either theme.
 function Avatar(props: { name: string; size: number }): JSX.Element {
   const initials = (): string =>
     props.name
@@ -303,13 +445,21 @@ function Avatar(props: { name: string; size: number }): JSX.Element {
       .slice(0, 2)
       .map((word) => word[0]?.toUpperCase() ?? "")
       .join("");
+  const hue = (): number => {
+    let h = 7;
+    for (let i = 0; i < props.name.length; i++) h = (h * 33 + props.name.charCodeAt(i)) % 3600;
+    // Twelve hues 30° apart, so similar names land on clearly different colours.
+    return (h % 12) * 30;
+  };
   return (
     <span
       class={sx(styles.avatar)}
       style={{
         width: `${props.size}px`,
         height: `${props.size}px`,
-        "font-size": `${Math.round(props.size * 0.42)}px`,
+        "font-size": `${Math.round(props.size * 0.4)}px`,
+        "background-color": `light-dark(hsl(${hue()} 60% 90%), hsl(${hue()} 30% 30%))`,
+        color: `light-dark(hsl(${hue()} 45% 32%), hsl(${hue()} 70% 85%))`,
       }}
       aria-hidden="true"
     >
@@ -318,10 +468,7 @@ function Avatar(props: { name: string; size: number }): JSX.Element {
   );
 }
 
-const longDate = (date: Date): string =>
-  `${date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
-
-// One of the message header's buttons: Thunderbird's toolbarbutton, a grey button with its icon and label.
+// One of the header's buttons: Thunderbird's toolbarbutton, a grey button with its icon and label.
 function HeaderButton(props: {
   label: string;
   icon: TbIconName;
@@ -340,8 +487,8 @@ function HeaderButton(props: {
   );
 }
 
-// #messageHeader: who it's from and when beside their avatar, the buttons at the end, then the subject in bold. Who's in
-// it shows where they were tagged, in the messages.
+// The thread's head: its subject with what you can do with it, and under it who started it and when. Who's in it shows
+// where they were tagged, in the messages.
 function MessageHeader(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   const item = () => {
@@ -350,17 +497,8 @@ function MessageHeader(props: { thread: Thread }): JSX.Element {
   };
   return (
     <header class={sx(styles.mh)}>
-      <div class={sx(styles.mhTop)}>
-        <Avatar name={c().owner?.name ?? "?"} size={26} />
-        <div class={sx(styles.mhFrom)}>
-          <button
-            class={sx(base.bare, link.person, styles.mhName)}
-            onClick={() => c().ownerId && open({ person: c().ownerId! })}
-          >
-            {c().owner?.name ?? "Someone"}
-          </button>
-          <span class={sx(styles.mhRole)}>{longDate(c().createdAt)}</span>
-        </div>
+      <div class={sx(styles.mhTitleRow)}>
+        <h1 class={sx(styles.mhSubject)}>{c().title}</h1>
         <div class={sx(styles.mhButtons)}>
           <HeaderButton
             label="Reply"
@@ -401,7 +539,16 @@ function MessageHeader(props: { thread: Thread }): JSX.Element {
           </button>
         </div>
       </div>
-      <h1 class={sx(styles.mhSubject)}>{c().title}</h1>
+      <div class={sx(styles.mhByline)}>
+        <Avatar name={c().owner?.name ?? "?"} size={18} />
+        <button
+          class={sx(base.bare, styles.mhName)}
+          onClick={() => c().ownerId && open({ person: c().ownerId! })}
+        >
+          {c().owner?.name ?? "Someone"}
+        </button>
+        <span title={longDate(c().createdAt)}>started this {sinceStarted(c().createdAt)}</span>
+      </div>
     </header>
   );
 }
@@ -498,7 +645,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
           extensions: [
             // No underline, so ⌘U stays View As.
             StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
-            Placeholder.configure({ placeholder: "Reply… @mention someone to bring them in" }),
+            Placeholder.configure({ placeholder: "Reply to everyone in this thread" }),
             ...caretExtensions(
               (caret, menu) => (setMenus((all) => ({ ...all, [caret]: menu })), setAt(0)),
             ),
@@ -508,29 +655,50 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
               class: `${sx(thread.text, styles.replyEditor)} reply`,
               "aria-label": "Reply",
             },
-            handleKeyDown: (view, event) => {
+            handleKeyDown: (_view, event) => {
               if (onMenuKey(event)) return true;
               if (event.key !== "Enter" || event.shiftKey || event.isComposing) return false;
-              const body = editor.getText({ blockSeparator: "\n" }).trim();
-              if (!body) return true;
-              send(c(), body);
-              view.dispatch(view.state.tr.delete(0, view.state.doc.content.size));
+              submit();
               return true;
             },
           },
         }),
     );
   };
+  // Sends what's written to everyone in the thread, and clears the field for the next.
+  const [empty, setEmpty] = createSignal(true);
+  const submit = (): void => {
+    const body = editor.getText({ blockSeparator: "\n" }).trim();
+    if (!body) return;
+    send(c(), body);
+    editor.commands.clearContent(true);
+  };
   onSettled(() => () => editor.destroy());
   return (
-    <div class={sx(styles.compose)} onClick={() => editor.commands.focus()}>
-      <div class={sx(styles.mailHead)}>
-        <Avatar name={me().name} size={20} />
-        <span class={sx(styles.mailFrom)}>Reply as {me().name}</span>
-        <span class={sx(styles.mailDate)}>↵ to send</span>
-      </div>
-      <div class={sx(styles.composeBox)}>
-        <div ref={mount} class={sx(styles.reply)} />
+    <div class={sx(styles.compose)}>
+      {/* The field and its foot in one rounded frame, which takes the accent's ring while you type in it. */}
+      <div class={sx(styles.composeBox)} onClick={() => editor.commands.focus()}>
+        <div
+          ref={mount}
+          class={sx(styles.reply)}
+          onInput={() => setEmpty(!editor.getText().trim())}
+        />
+        <div class={sx(styles.composeFoot)}>
+          <span class={sx(styles.composeHint)}>
+            ↵ to send · ⇧↵ for a new line · @ to bring someone in
+          </span>
+          <button
+            class={sx(base.bare, styles.send)}
+            disabled={empty()}
+            onClick={(event) => {
+              event.stopPropagation();
+              submit();
+              setEmpty(true);
+            }}
+          >
+            Send
+          </button>
+        </div>
       </div>
       <Show when={options().length > 0 && menus()[kind()!]?.rect}>
         {(rect) => (
@@ -583,20 +751,38 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
     <div class={sx(thread.view, styles.messagePane)}>
       <div class={sx(thread.scroll, styles.messageBody)}>
         {/* The header scrolls away with the messages rather than staying put. */}
-        <MessageHeader thread={props.thread} />
-        <article class={sx(styles.mails)}>
-          <For each={entries()}>
-            {(entry) =>
-              entry instanceof Message ? (
-                <MessageBlock message={entry} thread={props.thread} />
-              ) : (
-                <ActivityLine activity={entry} thread={props.thread} />
-              )
-            }
-          </For>
-          <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
-          <div ref={end} />
-        </article>
+        <div class={sx(styles.column)}>
+          <MessageHeader thread={props.thread} />
+          <article class={sx(styles.mails)}>
+            <For each={entries()}>
+              {(entry, at) => {
+                const before = (): Message | Activity | undefined => entries()[at() - 1];
+                // A new day starts with its name, unless it's the day the thread was started (the header says so).
+                const newDay = (): boolean =>
+                  dayOf(entry.createdAt) !==
+                  dayOf((before() ?? { createdAt: props.thread.createdAt }).createdAt);
+                return (
+                  <>
+                    <Show when={newDay()}>
+                      <DayDivider date={entry.createdAt} />
+                    </Show>
+                    {entry instanceof Message ? (
+                      <MessageBlock
+                        message={entry}
+                        thread={props.thread}
+                        continued={!newDay() && continues(entry, before())}
+                      />
+                    ) : (
+                      <ActivityLine activity={entry} thread={props.thread} />
+                    )}
+                  </>
+                );
+              }}
+            </For>
+            <Reply thread={props.thread} autofocus={props.autofocus ?? true} />
+            <div ref={end} />
+          </article>
+        </div>
         {/* Room to scroll the last entry up to the top without losing it off screen. */}
         <div class={sx(styles.overscroll)} aria-hidden="true" />
       </div>

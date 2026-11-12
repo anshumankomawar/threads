@@ -44,6 +44,25 @@ export const palette = stylex.create({
     animationTimingFunction: "cubic-bezier(0.2, 0.9, 0.3, 1)",
     "::backdrop": { backgroundColor: "transparent" },
   },
+  // VS Code's quick pick: square to the toolbar, a little rounder than a field, no entrance zoom, its shadow lifting it.
+  anchored: {
+    maxHeight: "min(520px, calc(100vh - 60px))",
+    borderRadius: 6,
+    animationName: "none",
+  },
+  // Its field where the toolbar's was, with the same icon before it.
+  anchoredInputRow: {
+    gap: 7,
+    height: 30,
+    margin: 5,
+    padding: "0 8px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.accent,
+    borderRadius: 3,
+    backgroundColor: colors.panel,
+  },
+  anchoredIcon: { display: "flex", color: colors.textTertiary },
   // `display: flex` only while open, so a closed dialog stays hidden.
   open: { display: { default: "none", ":is([open])": "flex" } },
   // One edge for everything in a palette: what's typed, the tabs' names, headings, rows' icons and the footer all start

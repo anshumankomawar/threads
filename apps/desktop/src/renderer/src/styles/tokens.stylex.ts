@@ -23,6 +23,8 @@ const DARK = {
   panel: "#27272a",
   panelBorder: "#4c4d58",
   panelSelected: "#58c9ff",
+  // Text on the selected item: Thunderbird's --selected-item-text-color.
+  panelSelectedText: "#18181b",
   raised: "#18181b",
   raisedBorder: "#4c4d58",
   accent: "#58c9ff",
@@ -53,6 +55,7 @@ export const lightTheme = stylex.createTheme(colors, {
   panel: "#ffffff",
   panelBorder: "#d9d9de",
   panelSelected: "#1373d9",
+  panelSelectedText: "#ffffff",
   raised: "#ffffff",
   raisedBorder: "#d9d9de",
   accent: "#1373d9",
