@@ -130,6 +130,7 @@ const s = stylex.create({
     borderRadius: radii.item,
   },
   rowLook: { color: colors.textPrimary, fontSize: fontSizes.body, outline: "none" },
+  // The chosen row, on its own ground; nothing changes under the pointer (as macOS lists show it).
   active: { backgroundColor: colors.bgTertiary },
   label: { maskImage: { default: null, ":is([data-overflowing])": FADE } },
   rowIcon: {
@@ -233,12 +234,16 @@ const s = stylex.create({
 const BUCKET_ROWS = 5;
 const ICON = { size: 14, "aria-hidden": "true" } as const;
 
-// Hugeicons' panel icon with the side pane filled, for a sidebar that's open.
+// Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
+// darkest thing in the bar.
 const LEFT_PANE =
   "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
 const sidebarIcon = (open: boolean): IconSvgElement =>
   open
-    ? [...i.PanelLeftIcon, ["path", { d: LEFT_PANE, fill: "currentColor", key: "pane" }]]
+    ? [
+        ...i.PanelLeftIcon,
+        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
+      ]
     : i.PanelLeftIcon;
 
 const dueLabel = (c: Thread): string | undefined => c.dueAt && shortDate(c.dueAt);
@@ -287,13 +292,13 @@ function Row(props: {
   return (
     <li class={sx(s.item)}>
       <div
-        class={sx(s.row, s.rowPad, base.hover, s.rowLook, s.pointer, props.active && s.active)}
+        class={sx(s.row, s.rowPad, s.rowLook, s.pointer, props.active && s.active)}
         title={props.title}
         onContextMenu={(e) => props.onMenu?.(e)}
         {...pressable(() => props.onClick())}
       >
         <span class={sx(s.rowIcon, s.rowIconLook)} aria-hidden="true">
-          <Icon icon={props.icon} size={12} />
+          <Icon icon={props.icon} size={14} />
         </span>
         <span ref={fade} class={sx(base.clip, s.label)}>
           {props.label}
@@ -332,7 +337,6 @@ function InboxRow(props: { item: InboxItem }): JSX.Element {
         ref={row}
         class={sx(
           s.inboxRow,
-          base.hover,
           s.rowLook,
           s.pointer,
           on() && s.active,
@@ -803,7 +807,7 @@ export function Sidebar(): JSX.Element {
   const settings = (): boolean => "settings" in view();
   return (
     <aside class={sx(s.sidebar)} style={{ width: `${width()}px` }}>
-      <div class={sx(topbar.bar, s.topbar)}>
+      <div data-bar class={sx(topbar.bar, s.topbar)}>
         <AppButtons />
         <span class={sx(topbar.end)}>
           <TopButton
