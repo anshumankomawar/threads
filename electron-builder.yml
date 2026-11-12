@@ -1,0 +1,9 @@
+appId: com.threads.arc
+productName: Arc
+directories:
+  buildResources: build
+files:
+  - out
+mac:
+  icon: build/AppIcon.icon
+  entitlementsInherit: build/entitlements.mac.plist

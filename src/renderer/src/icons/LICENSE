@@ -1,0 +1,5 @@
+The icons in icons.ts are Thunderbird's (mail/themes/shared/mail/icons/new/compact in comm-central),
+with their context-fill and context-stroke paint converted to currentColor.
+
+This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the
+MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
