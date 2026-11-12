@@ -47,7 +47,7 @@ export async function signOut(): Promise<void> {
 
 // Slack is the light theme with an aubergine sidebar (Sidebar.tsx puts `slackSidebar` on it).
 export type Theme = "dark" | "light" | "slack";
-const [chosen, setChosen] = createSignal<Theme>(saved("theme", "dark"));
+const [chosen, setChosen] = createSignal<Theme>(saved("theme", "light"));
 export const theme = chosen;
 const LIGHT = (stylex.attrs(lightTheme).class ?? "").split(" ").filter(Boolean);
 export function applyTheme(next: Theme): void {

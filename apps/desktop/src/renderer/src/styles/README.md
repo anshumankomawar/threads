@@ -2,7 +2,8 @@
 
 StyleX (`@stylexjs/stylex`, built by `@stylexjs/unplugin/vite` with CSS layers). Each component keeps its own
 `stylex.create`; what several share lives here: tokens and the light theme (`tokens.stylex.ts`), markers and the tab
-label width (`markers.stylex.ts`), `sx`, and shared styles (`controls.ts`, `page.ts`, `palette.ts`, `thread.ts`). The
+label width (`markers.stylex.ts`), `sx`, and shared styles (`controls.ts`, `page.ts`, `palette.ts`, `thread.ts`, and `zotero.ts`, the Zotero 7 panes' toolbars,
+buttons and tree rows, whose colours are the `z*` tokens and whose sizes are `zotero` in `tokens.stylex.ts`). The
 only plain CSS is `assets/global.css`, in `@layer reset` under StyleX's layers.
 
 - Apply with `class={sx(styles.row, active() && styles.rowActive)}`; later styles win. Use `stylex.attrs` for dynamic

@@ -12,3 +12,7 @@ export const toolbarMarker = stylex.defineMarker();
 export const tabLabel = stylex.defineVars({
   "--label-width": "auto",
 });
+
+// On a Zotero-style tree (the collections and items panes): its chosen row is the accent only while the tree has focus,
+// grey otherwise, as virtualized-table's `.row.selected` under `.virtualized-table:not(:focus-within)`.
+export const zTreeMarker = stylex.defineMarker();

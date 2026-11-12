@@ -41,6 +41,38 @@ const DARK = {
   // shadow has little to show against, and light on light.
   shadowPanel: "0 4px 12px rgb(0 0 0 / 28%)",
   shadowFloat: "0 8px 24px rgb(0 0 0 / 35%)",
+  // Zotero 7's palette (zotero/zotero scss/themes/_dark.scss, and the opaque mixes its derive-colors mixin makes from
+  // it in scss/abstracts/_mixins.scss). Its accent is accent-blue, as on Windows (macOS's is the system's SelectedItem).
+  zAccent: "#4072e5",
+  zAccentText: "#ffffff",
+  zAccentBlue10: "#4072e54d",
+  zFillPrimary: "#ffffffe5",
+  zFillSecondary: "#ffffff8c",
+  zFillTertiary: "#ffffff4d",
+  zFillQuarternary: "#ffffff1f",
+  zFillQuinary: "#ffffff0f",
+  zBackground: "#1e1e1e",
+  zSidepane: "#303030",
+  zTabbar: "#1e1e1e",
+  zToolbar: "#272727",
+  zButton: "#404040",
+  zBorder: "#ffffff2e",
+  zPanedivider: "#404040",
+  // --material-stripe, --material-mix-quinary/-quarternary, --color-quinary/-quarternary-on-sidepane.
+  zStripe: "#292929",
+  zMixQuinary: "#2b2b2b",
+  zMixQuarternary: "#393939",
+  zQuinaryOnSidepane: "#3c3c3c",
+  zQuarternaryOnSidepane: "#494949",
+  zTabShadow: "0 0 0 0.5px rgb(0 0 0 / 5%), 0 0.5px 2.5px 0 rgb(0 0 0 / 30%)",
+  // The item pane's section colours ($item-pane-sections in scss/abstracts/_variables.scss).
+  zSectionInfo: "#4072e5",
+  zSectionAbstract: "#66adffd9",
+  zSectionNotes: "#faa700cc",
+  zSectionAttachments: "#39bf68d9",
+  zSectionTags: "#ff794cd9",
+  zSectionRelated: "#cc7a52e5",
+  zSectionCollections: "#59adc4e5",
 };
 export const colors = stylex.defineVars(DARK);
 
@@ -72,6 +104,35 @@ export const lightTheme = stylex.createTheme(colors, {
   priority: "#ff9500",
   shadowPanel: "0 2px 8px rgb(0 0 0 / 8%)",
   shadowFloat: "0 4px 14px rgb(0 0 0 / 9%)",
+  // Zotero 7's light palette (scss/themes/_light.scss), its default look.
+  zAccent: "#4072e5",
+  zAccentText: "#ffffff",
+  zAccentBlue10: "#4072e51a",
+  zFillPrimary: "#000000d9",
+  zFillSecondary: "#0000008c",
+  zFillTertiary: "#00000040",
+  zFillQuarternary: "#0000001a",
+  zFillQuinary: "#0000000d",
+  zBackground: "#ffffff",
+  zSidepane: "#f2f2f2",
+  zTabbar: "#f2f2f2",
+  zToolbar: "#f9f9f9",
+  zButton: "#ffffff",
+  zBorder: "#00000026",
+  zPanedivider: "#dadada",
+  zStripe: "#f5f5f5",
+  zMixQuinary: "#f2f2f2",
+  zMixQuarternary: "#e5e5e5",
+  zQuinaryOnSidepane: "#e6e6e6",
+  zQuarternaryOnSidepane: "#d9d9d9",
+  zTabShadow: "0 0 0 0.5px rgb(0 0 0 / 5%), 0 0.5px 2.5px 0 rgb(0 0 0 / 30%)",
+  zSectionInfo: "#4072e5",
+  zSectionAbstract: "#66adff",
+  zSectionNotes: "#faa700",
+  zSectionAttachments: "#39bf68",
+  zSectionTags: "#ff794c",
+  zSectionRelated: "#cc7a52",
+  zSectionCollections: "#59adc4",
 });
 
 // Slack's look: an aubergine sidebar in white type, its chosen row blue, over the light theme (`slackSidebar` on the
@@ -90,6 +151,12 @@ export const slackSidebar = stylex.createTheme(colors, {
   strokeTertiary: "#522653",
   strokeFocused: mix(ON_AUBERGINE, 25),
   resizeEdge: mix(ON_AUBERGINE, 20),
+  // The collections pane is the sidebar here: aubergine, its chosen row blue.
+  zSidepane: AUBERGINE,
+  zFillPrimary: ON_AUBERGINE,
+  zFillSecondary: mix(ON_AUBERGINE, 72),
+  zQuarternaryOnSidepane: "#350d36",
+  zAccent: "#1164a3",
 });
 
 export const sidebarSpace = stylex.defineConsts({
@@ -145,4 +212,35 @@ export const motion = stylex.defineConsts({
   reduced: "@media (prefers-reduced-motion: reduce)",
   // macOS's spring-like settle, for things that move into place (folds, the layout pill).
   settle: "cubic-bezier(0.32, 0.72, 0, 1)",
+});
+
+// Zotero 7's metrics, from its SCSS and virtualized-table.jsx, in CSS pixels at the window's 110% (each ÷ 1.1).
+export const zotero = stylex.defineConsts({
+  // A tree row: 13px text × 1.3333 line, + 11 for the default "comfortable" density (_getRowHeight) = 28px.
+  row: "25.45px",
+  // The items tree's column header: 2.33333333em (comfortable) of the 13px root = 30.33px.
+  header: "27.58px",
+  // $height-toolbar: 41px.
+  toolbar: "37.27px",
+  // The tab bar's --tab-min-height: 36px.
+  tabbar: "32.73px",
+  // A tab and a toolbarbutton: 28px.
+  button: "25.45px",
+  // $width-sidenav: 37px.
+  sidenav: "33.64px",
+  // An icon (16px), a toolbar icon (20px), a twisty's chevron (8px in its 16px box).
+  icon: "14.55px",
+  // CHILD_INDENT: 16px a level.
+  indent: "14.55px",
+  // .row's border-radius (5px) and a tab's.
+  radius: "4.55px",
+  // $space-min, $space-xs, $space-sm: 4, 8, 12px.
+  min: "3.64px",
+  xs: "7.27px",
+  sm: "10.91px",
+  // The root's 13px on 1.3333 lines.
+  font: "11.82px",
+  lineHeight: "15.76px",
+  // $min-width-collections-pane: 200px.
+  collectionsWidth: "181.82px",
 });
