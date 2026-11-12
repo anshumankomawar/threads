@@ -154,12 +154,8 @@ const styles = stylex.create({
   messageBody: { backgroundColor: tb.page },
   mails: { display: "flex", flexDirection: "column", zoom: "var(--content-zoom)" },
   // Each message as a mail: its sender and date over its body, a hairline under it.
-  mail: {
-    padding: "10px 14px 12px",
-    borderBottomWidth: 1,
-    borderBottomStyle: "solid",
-    borderBottomColor: colors.strokeTertiary,
-  },
+  // Each message as a mail: its sender and date over its body, set apart by space alone.
+  mail: { padding: "10px 14px 8px" },
   mailHead: { display: "flex", gap: 8, alignItems: "center", marginBottom: 6 },
   mailFrom: { color: colors.textPrimary, fontWeight: 700 },
   mailDate: { marginLeft: "auto", color: colors.textTertiary, fontSize: fontSizes.caption },
@@ -626,8 +622,9 @@ export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.
   );
   return (
     <div class={sx(thread.view, styles.messagePane)}>
-      <MessageHeader thread={props.thread} />
       <div class={sx(thread.scroll, styles.messageBody)}>
+        {/* The header scrolls away with the messages rather than staying put. */}
+        <MessageHeader thread={props.thread} />
         <article class={sx(styles.mails)}>
           <For each={entries()}>
             {(entry) =>
