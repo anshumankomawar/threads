@@ -171,8 +171,7 @@ export function NewMessage({ draft }: { draft?: Draft }) {
         <MessageBox
           autoFocus
           content={draft?.content}
-          placeholder="What do you need?"
-          hint="@mention who it's for, ⌘↵ to send"
+          placeholder="What do you need? @mention who it's for, ⌘↵ to send"
           onSend={(body) => void send(body)}
           onChange={(editor) =>
             (written.current = {
