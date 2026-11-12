@@ -115,24 +115,12 @@ const TopButton = (props: {
   </button>
 );
 
-// Hugeicons' panel icon with the side pane tinted, for a sidebar that's open: it reads as open without being the
-// darkest thing in the bar.
-const LEFT_PANE =
-  "M9 3H8C6 3 4.9 3.2 4.17 4.17C3.2 4.9 3 6 3 8V16C3 18 3.2 19.1 4.17 19.83C4.9 20.8 6 21 8 21H9Z";
-const sidebarIcon = (open: boolean): IconSvgElement =>
-  open
-    ? [
-        ...i.PanelLeftIcon,
-        ["path", { d: LEFT_PANE, fill: "currentColor", fillOpacity: 0.3, key: "pane" }],
-      ]
-    : i.PanelLeftIcon;
-
 // Beside the window's buttons: on the sidebar's top row, or the list's while it's hidden.
 export const AppButtons = (): JSX.Element => (
   <>
     <TopButton
       label={sidebarOpen() ? "Hide sidebar" : "Show sidebar"}
-      icon={sidebarIcon(sidebarOpen())}
+      icon={i.PanelLeftIcon}
       onClick={() => setSidebarOpen(!sidebarOpen())}
     />
     <TopButton label="Search" icon={i.Search01Icon} onClick={() => setDialog({ kind: "search" })} />
