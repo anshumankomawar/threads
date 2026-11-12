@@ -11,5 +11,5 @@
     "isolatedModules": true,
     "types": ["electron-vite/node", "vite/client"]
   },
-  "include": ["src", "convex", "tests", "*.config.ts"]
+  "include": ["src", "convex", "tests", "*.config.*"]
 }

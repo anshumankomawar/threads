@@ -2,36 +2,37 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
 import logo from "./logo.png";
 
-const REDIRECT = "http://127.0.0.1:47821";
-
 export function SignIn() {
   const { signIn } = useAuthActions();
-  const [busy, setBusy] = useState(false);
-
-  const google = async () => {
-    setBusy(true);
-    const code = window.desktop.signIn();
-    await signIn("google", { redirectTo: REDIRECT });
-    await signIn("google", { code: await code });
-  };
+  const [flow, setFlow] = useState<"signIn" | "signUp">("signIn");
+  const [failed, setFailed] = useState(false);
+  const isNew = flow === "signUp";
 
   return (
-    <div className="sign-in">
+    <form
+      className="sign-in"
+      action={(form) =>
+        signIn("password", form).then(
+          () => setFailed(false),
+          () => setFailed(true),
+        )
+      }
+    >
       <img src={logo} alt="" />
-      <h1>Sign in to Arc</h1>
-      <button disabled={busy} onClick={() => void google()}>
-        {busy ? "Finish in your browser" : "Continue with Google"}
-      </button>
-      {import.meta.env.DEV && (
-        <form action={(form) => void signIn("dev", form)}>
-          <input
-            name="email"
-            type="email"
-            placeholder="Development: sign in as this email"
-            required
-          />
-        </form>
+      <h1>{isNew ? "Create your account" : "Sign in to Arc"}</h1>
+      <input name="flow" type="hidden" value={flow} />
+      {isNew && <input name="name" placeholder="Name" required autoFocus />}
+      <input name="email" type="email" placeholder="Email" required autoFocus={!isNew} />
+      <input name="password" type="password" placeholder="Password" minLength={8} required />
+      <button>{isNew ? "Create Account" : "Sign In"}</button>
+      {failed && (
+        <p>
+          {isNew ? "That didn't work. Is the email already in use?" : "Wrong email or password."}
+        </p>
       )}
-    </div>
+      <a onClick={() => (setFlow(isNew ? "signIn" : "signUp"), setFailed(false))}>
+        {isNew ? "I already have an account" : "Create an account"}
+      </a>
+    </form>
   );
 }

@@ -1,8 +1,6 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
-import { createServer } from "node:http";
 import { join } from "node:path";
 
-const SIGN_IN_PORT = 47821;
 const GROUND = { dark: "#141414", light: "#fafafa" };
 
 let window: BrowserWindow | undefined;
@@ -48,22 +46,6 @@ function createWindow() {
 ipcMain.on("theme", (_event, theme: "dark" | "light") => {
   nativeTheme.themeSource = theme;
   window?.setBackgroundColor(GROUND[theme]);
-});
-
-let signingIn: Promise<string> | undefined;
-ipcMain.handle("sign-in", () => {
-  signingIn ??= new Promise<string>((resolve) => {
-    const server = createServer((request, response) => {
-      const code = new URL(request.url!, "http://127.0.0.1").searchParams.get("code");
-      response.end("Signed in. You can close this tab.");
-      if (!code) return;
-      server.close();
-      signingIn = undefined;
-      show();
-      resolve(code);
-    }).listen(SIGN_IN_PORT, "127.0.0.1");
-  });
-  return signingIn;
 });
 
 app.on("before-quit", () => (quitting = true));

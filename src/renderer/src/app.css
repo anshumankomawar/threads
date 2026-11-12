@@ -659,13 +659,28 @@ small {
     text-align: center;
     -webkit-app-region: no-drag;
   }
+  & input {
+    text-align: left;
+    user-select: text;
+
+    &::placeholder {
+      color: var(--text-3);
+    }
+    &:focus {
+      border-color: var(--text-3);
+    }
+  }
   & button {
     color: var(--chrome);
     background: var(--text);
     font-weight: 500;
-
-    &:disabled {
-      opacity: 0.6;
-    }
+  }
+  & p,
+  & a {
+    color: var(--text-3);
+    -webkit-app-region: no-drag;
+  }
+  & a:hover {
+    color: var(--text);
   }
 }

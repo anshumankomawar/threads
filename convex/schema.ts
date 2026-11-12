@@ -9,14 +9,9 @@ export default defineSchema({
     name: v.string(),
     email: v.string(),
     workspaceId: v.id("workspaces"),
-  })
-    .index("email", ["email"])
-    .index("workspace", ["workspaceId"]),
+  }).index("workspace", ["workspaceId"]),
 
-  workspaces: defineTable({
-    name: v.string(),
-    domain: v.optional(v.string()),
-  }).index("domain", ["domain"]),
+  workspaces: defineTable({ name: v.string() }),
 
   invites: defineTable({
     workspaceId: v.id("workspaces"),
