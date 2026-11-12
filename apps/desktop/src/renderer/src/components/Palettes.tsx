@@ -1,3 +1,4 @@
+import * as i from "@hugeicons/core-free-icons";
 import { createEffect, createMemo, createSignal, For, Show, untrack, type Signal } from "solid-js";
 import { Dynamic, type JSX } from "@solidjs/web";
 import * as stylex from "@stylexjs/stylex";
@@ -11,6 +12,9 @@ import {
   edit,
   myBuckets,
   me,
+  membersHint,
+  subspacesWithMembers,
+  summary,
   memberIn,
   open,
   otherSources,
@@ -321,6 +325,30 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       return label ? [label.name] : [];
     }),
   );
+  // Who it's for: people and groups, as `person:<id>` and `group:<id>`; a group brings in everyone in it.
+  const [picked, setPicked] = createSignal<string[]>(
+    untrack(() => (props.to ? [`person:${props.to.id}`] : [])),
+  );
+  const pickedNames = (): string[] =>
+    picked().flatMap((key) => {
+      const [kind, id] = key.split(":");
+      const name =
+        kind === "person"
+          ? store.findById(User, id)?.name
+          : `@${store.findById(Subspace, id)?.name ?? "group"}`;
+      return name ? [name] : [];
+    });
+  const pickedUsers = (): User[] =>
+    [
+      ...new Set(
+        picked().flatMap((key) => {
+          const [kind, id] = key.split(":");
+          if (kind === "person") return store.findById(User, id) ?? [];
+          const group = store.findById(Subspace, id);
+          return group ? [...group.members].flatMap((m) => m.user ?? []) : [];
+        }),
+      ),
+    ].filter((u) => u.id !== me().id);
   const go = (next: Step, text = ""): void => {
     setStep(next);
     setTyped(text);
@@ -387,13 +415,37 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       "Who's it for?",
       (text) => {
         const section = `Step 3 of 3 · ${title()}`;
-        const first = props.to?.id;
-        return [
-          ...people(text, (u) => create([u]))
-            .toSorted((a, b) => Number(b.seed === first) - Number(a.seed === first))
-            .map((row) => ({ ...row, hint: "↵", section })),
-          { label: "No one yet", hint: "@mention them later", section, run: () => create([]) },
-        ];
+        const has = (key: string): boolean => picked().includes(key);
+        const pick = (key: string): void => {
+          setPicked((all) => toggled(all, key));
+          setTyped("");
+        };
+        const choices: Row[] = [
+          ...people(text, (u) => pick(`person:${u.id}`)).map((row) => ({
+            ...row,
+            hint: has(`person:${row.seed}`) ? "✓" : undefined,
+          })),
+          ...subspacesWithMembers()
+            .filter((group) => matches(group.name, text))
+            .map((group) => ({
+              label: `@${group.name}`,
+              icon: i.UserMultipleIcon,
+              hint: has(`group:${group.id}`) ? "✓" : membersHint(group),
+              run: () => pick(`group:${group.id}`),
+            })),
+        ].map((row) => ({ ...row, section }));
+        const start: Row =
+          picked().length > 0
+            ? {
+                label: `Start it with ${summary(pickedNames(), "")}`,
+                hint: "↵",
+                accent: true,
+                section,
+                run: () => create(pickedUsers()),
+              }
+            : { label: "No one yet", hint: "@mention them later", section, run: () => create([]) };
+        // Typing looks for someone; with nothing typed, Enter starts it with who's picked.
+        return text === "" ? [start, ...choices] : [...choices, start];
       },
     ],
     labels: [
