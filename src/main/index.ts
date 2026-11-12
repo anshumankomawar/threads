@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
 import { join } from "node:path";
 
-const GROUND = { dark: "#141414", light: "#fafafa" };
+const GROUND = { dark: "#101010", light: "#fafafa" };
 
 let window: BrowserWindow | undefined;
 let quitting = false;

@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  --chrome: light-dark(#fafafa, #141414);
+  --chrome: light-dark(#fafafa, #101010);
   --text: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
   --text-2: light-dark(oklch(0.21 0 0 / 72%), oklch(0.955 0 0 / 74%));
   --text-3: light-dark(oklch(0.21 0 0 / 55%), oklch(0.955 0 0 / 60%));
