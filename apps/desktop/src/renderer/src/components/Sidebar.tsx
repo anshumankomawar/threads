@@ -40,14 +40,7 @@ import { keysFor } from "../hotkeys";
 import { base } from "../styles/base";
 import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
-import {
-  colors,
-  fontSizes,
-  radii,
-  sidebarSpace,
-  slackSidebar,
-  space,
-} from "../styles/tokens.stylex";
+import { colors, fontSizes, radii, slackSidebar, space } from "../styles/tokens.stylex";
 import { icon, Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 import { plain } from "./ThreadView";
@@ -94,7 +87,7 @@ const listColumn = resizable("mail-list-width", { initial: 340, min: 280, max: 6
 
 // ── The top bars' buttons ──
 
-const TopButton = (props: {
+export const TopButton = (props: {
   label: string;
   icon: IconName;
   disabled?: boolean;
@@ -247,9 +240,6 @@ export function Sidebar(): JSX.Element {
       class={stylex.attrs(s.sidebar, theme() === "slack" && slackSidebar).class}
       style={{ width: `${sidebarColumn.width()}px` }}
     >
-      <div data-bar class={sx(topbar.bar, s.sidebarBar)}>
-        <AppButtons />
-      </div>
       {/* Your inbox and its buckets, then every thread, then your drafts. */}
       <nav class={sx(s.nav)} aria-label="Mailboxes">
         <ul class={sx(base.list, s.stack)}>
@@ -522,12 +512,8 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
       style={{ width: props.alone ? undefined : `${listColumn.width()}px` }}
       aria-label={mailboxTitle(mailbox())}
     >
-      <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
-        <Show when={!sidebarOpen()}>
-          <AppButtons />
-        </Show>
-        {/* Back and forward: here, where they always are, whatever's open beside the list. */}
-        <HistoryButtons />
+      {/* The mailbox's name and count, heading the list (the toolbar above runs across the window). */}
+      <div class={sx(s.listHeader)}>
         <span class={sx(s.listHeading)}>
           <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>
@@ -627,7 +613,6 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  sidebarBar: { paddingLeft: sidebarSpace.afterLights },
   // Under the top bar, its first line where every column's starts (17pt under the top bar). Each size here is the
   // macOS app's points ÷ 1.1, for the 110% scale.
   nav: {
@@ -732,10 +717,18 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  listBar: { paddingLeft: 16 },
+  listHeader: {
+    display: "flex",
+    flexShrink: 0,
+    alignItems: "center",
+    height: 34,
+    paddingInline: 16,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.strokeTertiary,
+  },
   // Nothing open beside it: it takes the room, with no edge to divide.
   listAlone: { flex: 1, borderRightWidth: 0 },
-  listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   // The mailbox's name and, after it on the same line, how many are unread (or listed).
   listHeading: { display: "flex", gap: 6, alignItems: "baseline", minWidth: 0 },
   listTitle: { color: colors.textPrimary, fontSize: fontSizes.name, fontWeight: 500 },
