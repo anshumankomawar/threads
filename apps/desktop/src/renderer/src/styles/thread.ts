@@ -4,10 +4,11 @@ import { colors, contentZoom, fontSizes } from "./tokens.stylex";
 
 // A conversation's geometry: the space between turns, and each avatar's size and drop (centred on a turn's name and
 // first line).
-// Compact: 16px between turns, a 20px face level with the name.
+// Compact: 16px between turns, a 20px face centred on a turn's name and first line (an 18px meta line and a 17px line
+// of text, so (18 + 17 − 20) / 2 down).
 export const TURN_GAP = 16;
 export const AVATAR = 20;
-const AVATAR_TOP = 0;
+const AVATAR_TOP = 7.5;
 
 // A thread as a document (ThreadView): left-aligned like the other pages, about 706px of text.
 export const thread = stylex.create({
