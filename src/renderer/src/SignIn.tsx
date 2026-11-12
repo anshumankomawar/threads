@@ -1,6 +1,6 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useState } from "react";
-import logo from "./logo.png";
+import icon from "../../../build/icons/256x256.png";
 
 export function SignIn() {
   const { signIn } = useAuthActions();
@@ -18,7 +18,7 @@ export function SignIn() {
         )
       }
     >
-      <img src={logo} alt="" />
+      <img src={icon} alt="" />
       <h1>{isNew ? "Create your account" : "Sign in to Arc"}</h1>
       <input name="flow" type="hidden" value={flow} />
       {isNew && <input name="name" placeholder="Name" required autoFocus />}
