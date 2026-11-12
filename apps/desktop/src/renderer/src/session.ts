@@ -276,7 +276,10 @@ export const drafts = store.view(() =>
 
 // The chosen mailbox's threads, in groups: the inbox by bucket (what's still being sorted first), the rest in one.
 type Group = { bucket?: Bucket; title?: string; threads: Thread[] };
-// The sidebar's rows in order, as ⌘1–⌘9 count them: Buckets, Sorting while there's any, each bucket, All Threads, Drafts.
+// Your buckets in the sidebar's order, as ⌘1–⌘9 choose them.
+export const bucketMailboxes = (): Mailbox[] =>
+  inbox().sections.map((section) => ({ kind: "bucket", id: section.bucket.id }) as const);
+// The sidebar's rows in order: Buckets, Sorting while there's any, each bucket, All Threads, Drafts.
 export const sidebarMailboxes = (): Mailbox[] => [
   { kind: "inbox" },
   ...(inbox().unsorted.length > 0 ? [{ kind: "unsorted" } as const] : []),
@@ -285,7 +288,7 @@ export const sidebarMailboxes = (): Mailbox[] => [
   { kind: "drafts" },
 ];
 function goToMailbox(at: number): void {
-  const box = sidebarMailboxes()[at];
+  const box = bucketMailboxes()[at];
   if (box) chooseMailbox(box);
 }
 

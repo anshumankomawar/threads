@@ -21,6 +21,8 @@ import {
   chooseMailbox,
   mailboxTitle,
   sidebarMailboxes,
+  bucketMailboxes,
+  sameMailbox,
   setDialog,
   setSettingsStart,
   signOut,
@@ -257,10 +259,12 @@ function Search(): JSX.Element {
       section: "Views",
       run: done(() => (setSettingsStart("Groups"), open({ settings: null }))),
     },
-    // The sidebar's rows, with the ⌘1–⌘9 that choose them.
-    ...sidebarMailboxes().map((box, at) => ({
+    // The sidebar's rows; each bucket with the ⌘1–⌘9 that chooses it.
+    ...sidebarMailboxes().map((box) => ({
       label: mailboxTitle(box),
-      hint: at < 9 ? keysFor(`mailbox${at + 1}` as HotkeyId) : undefined,
+      hint: ((at) => (at >= 0 && at < 9 ? keysFor(`mailbox${at + 1}` as HotkeyId) : undefined))(
+        bucketMailboxes().findIndex((b) => sameMailbox(b, box)),
+      ),
       section: "Views",
       run: done(() => chooseMailbox(box)),
     })),
