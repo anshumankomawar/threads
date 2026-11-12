@@ -667,8 +667,8 @@ const s = stylex.create({
     paddingBottom: 12,
     overflowY: "auto",
   },
-  // Thunderbird's search bar: the page's white (or its dark) in a 1px grey-40 frame, 3px corners, the icon before the
-  // placeholder and the keys at the end.
+  // Thunderbird's search bar: the page's white (or its dark) in a 1px grey-40 frame, the icon before the placeholder and
+  // the keys at the end.
   search: {
     display: "flex",
     gap: 6,
@@ -680,7 +680,8 @@ const s = stylex.create({
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: "light-dark(#a1a1aa, #52525b)",
-    borderRadius: 3,
+    // The rows' own rounding, so it lines up with the chosen row's pill under it.
+    borderRadius: radii.item,
     color: colors.textTertiary,
     backgroundColor: "light-dark(#ffffff, #18181b)",
     fontSize: fontSizes.body,
