@@ -80,7 +80,7 @@ export function MentionToasts(): JSX.Element {
               <Identicon seed={newest.authorId} size={18} />
             </span>
             <div class={sx(toast.body)}>
-              <div class={sx(base.ellipsis, toast.title)}>
+              <div class={sx(base.clip, toast.title)}>
                 {toasts().length === 1 ? (
                   <>
                     {em(newest.author.name)} mentioned you in {em(newest.thread.title)}

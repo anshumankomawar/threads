@@ -2,6 +2,10 @@
 
 All AI-written code must go on the `prototype` branch. Before writing or editing code, check the current branch with `git branch --show-current`; if it is not `prototype`, switch with `git switch prototype` (create it with `git switch -c prototype` if missing). Never commit AI-written code to `main` or any other branch.
 
+# No Ellipses
+
+Nothing in the UI ever shows "…" or "...": not in placeholders, labels, loading text or excerpts ("Search", "Loading", "Thinking"), and not from truncation. Text that overflows is clipped (`base.clip`, `textOverflow: "clip"`), never `textOverflow: "ellipsis"` or `WebkitLineClamp`, which draws one.
+
 # Running the App
 
 - **Architecture.** Threads runs on its own Linear-style sync engine, built exactly to `docs/sync-engine-v1-spec.md`. **Before changing models, the API, or anything in `packages/protocol`, `packages/sync` or `packages/server`, read the spec and `docs/architecture.md`**, and keep the latter up to date when the architecture changes. Product builders define models with the decorators (`packages/models/src/models.ts`), put server rules in `packages/models/src/rules.ts`, and write UI that reads models and calls `save()`.

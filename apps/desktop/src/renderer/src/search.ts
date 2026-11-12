@@ -56,7 +56,7 @@ function current(): MiniSearch<Doc> {
 // The words around the first match.
 function excerpt(text: string, term: string): string {
   const start = Math.max(0, text.toLowerCase().indexOf(term) - 30);
-  return `${start > 0 ? "…" : ""}${text.slice(start, start + 100)}`;
+  return text.slice(start, start + 100);
 }
 
 // Fresher threads rank a little higher, as a launcher ranks what you used last.

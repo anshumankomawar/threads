@@ -101,7 +101,7 @@ const labelsOf = (t: Thread): Label[] =>
 const pill = (text: string, before?: JSX.Element): JSX.Element => (
   <span class={sx(page.pill)}>
     {before}
-    <span class={sx(base.ellipsis)}>{text}</span>
+    <span class={sx(base.clip)}>{text}</span>
   </span>
 );
 const COLUMNS: Column<Thread>[] = [
@@ -136,7 +136,7 @@ const COLUMNS: Column<Thread>[] = [
         {(owner) => (
           <span class={sx(page.inCell)}>
             <Identicon seed={owner().id} size={18} />
-            <span class={sx(base.ellipsis)}>{owner().name}</span>
+            <span class={sx(base.clip)}>{owner().name}</span>
           </span>
         )}
       </Show>
@@ -200,7 +200,7 @@ const MEMBER_COLUMNS: Column<User>[] = [
     cell: (u) => (
       <span class={sx(page.inCell)}>
         <Identicon seed={u.id} size={18} />
-        <span class={sx(base.ellipsis, page.titleText)}>{u.name}</span>
+        <span class={sx(base.clip, page.titleText)}>{u.name}</span>
       </span>
     ),
   },
@@ -573,7 +573,7 @@ export function SubspaceView(props: { subspace: Subspace }): JSX.Element {
         <textarea
           class={sx(base.bare, page.description, page.descriptionField)}
           aria-label="Description"
-          placeholder="Add a description…"
+          placeholder="Add a description"
           rows={1}
           value={s().description ?? ""}
           onKeyDown={(event) => event.key === "Escape" && event.currentTarget.blur()}
@@ -776,7 +776,7 @@ export function SettingsView(): JSX.Element {
           onClick={() => setRecording(recording() === h.id ? null : h.id)}
         >
           <Show when={recording() === h.id} fallback={<Keys keys={keysFor(h.id)} />}>
-            <span class={sx(page.recording)}>Press keys…</span>
+            <span class={sx(page.recording)}>Press keys</span>
           </Show>
         </button>
       ),

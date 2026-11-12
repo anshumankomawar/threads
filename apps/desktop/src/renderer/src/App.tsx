@@ -154,9 +154,9 @@ const styles = stylex.create({
 function Waiting(): JSX.Element {
   return (
     <div class={sx(styles.status)}>
-      <Show when={store.connection() === "offline"} fallback="Loading…">
+      <Show when={store.connection() === "offline"} fallback="Loading">
         <div>
-          Waiting for the {SOURCES[source]} API at {server.url}…
+          Waiting for the {SOURCES[source]} API at {server.url}
           <div class={sx(styles.sources)}>
             <For each={otherSources}>
               {(s) => (
@@ -212,7 +212,7 @@ export default function App(): JSX.Element {
               onClick={() => setDialog({ kind: "search" })}
             >
               <Icon icon="search" aria-hidden="true" />
-              <span class={sx(styles.searchText)}>Search…</span>
+              <span class={sx(styles.searchText)}>Search</span>
               <span class={sx(styles.searchKeys)}>{keysFor("search")}</span>
             </button>
             <div class={sx(styles.unifiedEnd)}>
@@ -296,7 +296,7 @@ export default function App(): JSX.Element {
                           {(beside) => (
                             <section class={sx(styles.splitPane)} aria-label={beside.title}>
                               <div data-bar class={sx(topbar.bar, styles.splitPaneBar)}>
-                                <span class={sx(base.ellipsis, topbar.title, styles.splitTitle)}>
+                                <span class={sx(base.clip, topbar.title, styles.splitTitle)}>
                                   {beside.title}
                                 </span>
                                 <button

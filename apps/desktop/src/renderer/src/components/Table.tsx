@@ -82,7 +82,7 @@ const s = stylex.create({
     height: 32,
     overflow: "hidden",
     color: colors.textPrimary,
-    textOverflow: "ellipsis",
+    textOverflow: "clip",
   },
   // A row that opens: its fill is its cells', rounded at its two ends (a step rounder than the sidebar's shorter rows).
   tdOpens: {
@@ -183,7 +183,7 @@ export function Table<T>(props: {
                     label={
                       <>
                         <span class={sx(s.headIcon)}>{icon(c.icon, 14)}</span>
-                        <span class={sx(base.ellipsis)}>{c.label}</span>
+                        <span class={sx(base.clip)}>{c.label}</span>
                         <Show when={sort()?.column === c}>
                           {icon(sort()!.down ? "nav-down" : "nav-up", 12)}
                         </Show>

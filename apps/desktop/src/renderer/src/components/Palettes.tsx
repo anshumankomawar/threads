@@ -190,7 +190,7 @@ function Picker(props: {
             {(section) => (
               <div {...stylex.attrs(palette.section, palette.divided, paletteSectionMarker)}>
                 <Show when={section.title}>
-                  <div class={sx(base.ellipsis, palette.sectionLabel, palette.labelText)}>
+                  <div class={sx(base.clip, palette.sectionLabel, palette.labelText)}>
                     {section.title}
                     <Show when={props.clear?.section === section.title && props.clear}>
                       {(clear) => (
@@ -338,7 +338,7 @@ function Search(): JSX.Element {
       ? []
       : [
           {
-            label: "View as…",
+            label: "View as",
             hint: keysFor("viewAs"),
             section: "Data",
             run: () => setDialog({ kind: "viewAs" }),
@@ -354,7 +354,7 @@ function Search(): JSX.Element {
     <Picker
       grow
       keys={keysFor("search")}
-      placeholder="Search…"
+      placeholder="Search"
       filters={["All", "Threads", "People"]}
       rows={(query, filter) =>
         [
@@ -469,14 +469,14 @@ function Find(): JSX.Element {
     <Picker
       grow
       keys={keysFor("find")}
-      placeholder="Search…"
+      placeholder="Search"
       query={typed}
       clear={{ section: "Recent", run: clearRecents }}
       onBack={asked() ? () => setAsked(undefined) : undefined}
       note={
         asked() &&
         (asked()!.answer?.answer ??
-          (asked()!.failed ? "Arc couldn't answer that just now." : "Thinking…"))
+          (asked()!.failed ? "Arc couldn't answer that just now." : "Thinking"))
       }
       rows={rows}
     />
@@ -574,7 +574,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
         }),
     ],
     describe: [
-      "Add a description… (optional)",
+      "Add a description (optional)",
       (text) => [
         {
           label: text === "" ? "Skip the description" : "Next",
@@ -625,7 +625,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
       },
     ],
     labels: [
-      "Find or make a label…",
+      "Find or make a label",
       (text) => {
         const all = byName(store.all(Label));
         const exists = [...all.map((l) => l.name), ...names()].some(
@@ -722,7 +722,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
     <Picker
       placeholder={
         naming()
-          ? "Name the bucket… (Follow-ups)"
+          ? "Name the bucket (Follow-ups)"
           : "What goes in it? (anything a customer asked for or reported)"
       }
       query={query}
@@ -755,7 +755,7 @@ function BucketEditor(props: { bucket?: Bucket }): JSX.Element {
 function ViewAs(): JSX.Element {
   return (
     <Picker
-      placeholder="View as…"
+      placeholder="View as"
       rows={(query) => people(query, (u) => switchTo({ viewer: u.id }))}
     />
   );

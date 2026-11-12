@@ -17,7 +17,6 @@ export const base = stylex.create({
   list: { margin: 0, padding: 0, listStyle: "none" },
   // One line, cut off at the edge.
   clip: { minWidth: 0, overflow: "hidden", whiteSpace: "nowrap" },
-  ellipsis: { minWidth: 0, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" },
   hover: { backgroundColor: { default: "transparent", ":hover": colors.bgQuaternary } },
   // Quiet text that brightens under the pointer.
   dim: { color: { default: colors.textTertiary, ":hover": colors.textPrimary } },

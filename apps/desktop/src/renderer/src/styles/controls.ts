@@ -252,12 +252,10 @@ export const toast = stylex.create({
   title: { color: colors.textSecondary, fontSize: fontSizes.body },
   emphasis: { color: colors.textPrimary },
   text: {
-    display: "-webkit-box",
     marginTop: 2,
+    maxHeight: "2lh",
     overflow: "hidden",
     color: colors.textPrimary,
-    WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 2,
   },
   // Over the window's foot, whatever's open, and clear of the layout pill under it.
   undo: {

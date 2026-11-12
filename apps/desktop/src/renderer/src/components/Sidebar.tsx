@@ -183,7 +183,7 @@ function MailboxRow(props: {
         <span class={sx(s.mailboxIcon)} style={{ color: props.color }}>
           <Icon icon={props.icon} {...ICON} />
         </span>
-        <span class={sx(base.ellipsis, s.mailboxName)}>{props.label}</span>
+        <span class={sx(base.clip, s.mailboxName)}>{props.label}</span>
         {/* Even none, so a mailbox reads as empty rather than uncounted. */}
         <Show when={props.count !== undefined}>
           <span class={sx(s.count)}>{props.count}</span>
@@ -319,7 +319,7 @@ export function Sidebar(): JSX.Element {
           onClick={() => open({ settings: null })}
         >
           <Identicon seed={me().id} size={18.18} />
-          <span class={sx(base.ellipsis)}>{me().name}</span>
+          <span class={sx(base.clip)}>{me().name}</span>
         </button>
       </div>
       <sidebarColumn.Edge label="Resize Sidebar" />
@@ -390,7 +390,7 @@ function Row(props: { thread: Thread }): JSX.Element {
           {/* What it's about first, then who wrote last: the topic is what you scan a list for. */}
           <span class={sx(s.rowTop)}>
             <span class={sx(s.subjectLine)}>
-              <span class={sx(base.ellipsis, s.subject)}>{t().title}</span>
+              <span class={sx(base.clip, s.subject)}>{t().title}</span>
             </span>
             {/* Unread: a dot before when, on the right, so read rows lose no width to an empty column. */}
             <span class={sx(s.stamp)}>
@@ -449,7 +449,7 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
       >
         <span class={sx(s.rowBody)}>
           <span class={sx(s.rowTop)}>
-            <span class={sx(base.ellipsis, s.from)}>{draftTitle(props.draft)}</span>
+            <span class={sx(base.clip, s.from)}>{draftTitle(props.draft)}</span>
             <span class={sx(s.stamp)}>{stamp(props.draft.updatedAt)}</span>
           </span>
           <Show when={rest()}>
@@ -515,7 +515,7 @@ export function MessageList(props: { alone?: boolean }): JSX.Element {
       {/* The mailbox's name and count, heading the list (the toolbar above runs across the window). */}
       <div class={sx(s.listHeader)}>
         <span class={sx(s.listHeading)}>
-          <span class={sx(base.ellipsis, s.listTitle)}>{mailboxTitle(mailbox())}</span>
+          <span class={sx(base.clip, s.listTitle)}>{mailboxTitle(mailbox())}</span>
           <span class={sx(s.listSubtitle)}>{subtitle()}</span>
         </span>
       </div>
@@ -796,13 +796,11 @@ const s = stylex.create({
     lineHeight: "14px",
   },
   preview: {
-    display: "-webkit-box",
     flex: 1,
     minWidth: 0,
     overflow: "hidden",
     color: colors.textTertiary,
-    WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 1,
+    whiteSpace: "nowrap",
   },
   empty: {
     display: "flex",

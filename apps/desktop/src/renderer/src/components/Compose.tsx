@@ -199,14 +199,14 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
   // Beside "New thread": what the model's doing, or that you've taken over.
   const status = (): string =>
     submitting()
-      ? "Making it…"
+      ? "Making it"
       : edited()
         ? "Edited"
         : current()
           ? ""
           : failed()
             ? "Couldn't reach the model"
-            : "Drafting…";
+            : "Drafting";
   // Everyone the thread asks, once each: who's in it.
   const asked = (draft: ComposeDraft): User[] =>
     [...new Set(draft.asks.flatMap((a) => a.personIds))].flatMap(
@@ -234,7 +234,7 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
             ref={input}
             autofocus
             class={sx(base.bare, compose.input)}
-            placeholder="Write it as you'd say it… @mention who it's for"
+            placeholder="Write it as you'd say it, @mention who it's for"
             spellcheck={false}
             value={text()}
             onInput={(event) => {
@@ -298,7 +298,7 @@ export function Compose(props: { draftId?: string; page?: boolean }): JSX.Elemen
               <textarea
                 class={sx(compose.field, compose.context)}
                 aria-label="Context"
-                placeholder="Add context…"
+                placeholder="Add context"
                 rows={1}
                 value={draft().context}
                 onInput={(event) => change({ context: event.currentTarget.value })}

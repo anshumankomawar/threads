@@ -351,7 +351,7 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
             // No underline, so ⌘U stays View As.
             StarterKit.configure({ heading: false, horizontalRule: false, underline: false }),
             Placeholder.configure({
-              placeholder: "Reply… @mention someone to bring them in, ⌘↵ to send",
+              placeholder: "Reply, @mention someone to bring them in, ⌘↵ to send",
             }),
             ...caretExtensions(
               (caret, menu) => (setMenus((all) => ({ ...all, [caret]: menu })), setAt(0)),

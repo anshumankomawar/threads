@@ -78,12 +78,12 @@ export function OptionButton(props: {
       >
         {(seed) => <Identicon seed={seed()} size={16} />}
       </Show>
-      <span class={sx(base.ellipsis, look.label, o().detail !== undefined && look.labelFit)}>
+      <span class={sx(base.clip, look.label, o().detail !== undefined && look.labelFit)}>
         <Marked text={o().label} marks={o().marks} />
       </span>
       <Show when={o().detail}>
         {(detail) => (
-          <span class={sx(base.ellipsis, look.detail)}>
+          <span class={sx(base.clip, look.detail)}>
             <Marked text={detail()} marks={o().marks} />
           </span>
         )}
@@ -134,7 +134,7 @@ function Items(props: { items: MenuItem[]; close: () => void }): JSX.Element {
             {item.icon ?? (checked ? icon("check", 13) : undefined)}
           </span>
         </Show>
-        <span class={sx(base.ellipsis, look.entryLabel)}>{item.label}</span>
+        <span class={sx(base.clip, look.entryLabel)}>{item.label}</span>
         <Show when={checked && item.icon}>
           <span class={sx(look.entryKeys)}>{icon("check", 12)}</span>
         </Show>
