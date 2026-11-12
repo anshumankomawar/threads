@@ -69,9 +69,6 @@ export const palette = stylex.create({
   growIcon: { display: "flex", color: colors.textTertiary },
   // The field's own text size.
   growInput: { height: 14.55, fontSize: fontSizes.body, lineHeight: "14.55px" },
-  // An inverted panel's scheme, for what's coloured with light-dark() (the editor's placeholder, scrollbars).
-  schemeLight: { colorScheme: "light" },
-  schemeDark: { colorScheme: "dark" },
   // A new thread's first message: the palette's input, growing a line at a time.
   messageField: {
     flex: 1,

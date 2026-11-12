@@ -43,8 +43,6 @@ const DARK = {
   shadowFloat: "0 8px 24px rgb(0 0 0 / 35%)",
 };
 export const colors = stylex.defineVars(DARK);
-// Every token at its dark value, for one panel in the light theme (`inverted`).
-export const darkTheme = stylex.createTheme(colors, DARK);
 
 export const lightTheme = stylex.createTheme(colors, {
   chrome: "#fafafa",

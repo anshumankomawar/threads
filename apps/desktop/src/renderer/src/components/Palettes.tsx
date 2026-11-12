@@ -50,7 +50,6 @@ import { Compose } from "./Compose";
 import { Icon } from "./Icon";
 import { moved, OptionButton, type Option } from "./Menus";
 import { MessageBox, plain } from "./ThreadView";
-import { darkTheme, lightTheme } from "../styles/tokens.stylex";
 
 // A modal palette: a click outside or Escape closes it.
 // `grow`: ⌘K (and ⌘F) as the toolbar's search field ([data-search-anchor]) itself. It opens exactly over the field, the
@@ -58,12 +57,7 @@ import { darkTheme, lightTheme } from "../styles/tokens.stylex";
 // sliding down to its results. That's a clip on the compositor (Web Animations), so nothing is laid out again while it
 // opens. Nothing dims behind it.
 const GROW = { duration: 260, easing: "cubic-bezier(0.32, 0.72, 0, 1)" };
-// `inverted`: in the other theme's colours, a dark panel over the light app or a light one over the dark.
-export function Modal(props: {
-  children: JSX.Element;
-  grow?: boolean;
-  inverted?: boolean;
-}): JSX.Element {
+export function Modal(props: { children: JSX.Element; grow?: boolean }): JSX.Element {
   const open = (el: HTMLDialogElement): void => {
     el.closedBy = "any";
     const field =
@@ -86,16 +80,7 @@ export function Modal(props: {
     <dialog
       ref={(el) => queueMicrotask(() => open(el))}
       onClose={() => setDialog(null)}
-      class={
-        stylex.attrs(
-          base.panel,
-          palette.dialog,
-          palette.open,
-          props.grow && palette.grow,
-          props.inverted && (theme() === "dark" ? lightTheme : darkTheme),
-          props.inverted && (theme() === "dark" ? palette.schemeLight : palette.schemeDark),
-        ).class
-      }
+      class={sx(base.panel, palette.dialog, palette.open, props.grow && palette.grow)}
     >
       {props.children}
     </dialog>
@@ -517,7 +502,7 @@ function NewThread(props: { labelId?: string; subspaceId?: string; to?: User }):
     open({ thread: made.id });
   };
   return (
-    <Modal inverted>
+    <Modal>
       <MessageBox
         autofocus
         field={palette.messageField}
