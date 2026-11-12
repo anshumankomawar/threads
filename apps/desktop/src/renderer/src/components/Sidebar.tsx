@@ -767,8 +767,9 @@ const s = stylex.create({
   row: {
     display: "flex",
     alignItems: "flex-start",
-    padding: "9.09px 10.91px",
-    borderRadius: 9.09,
+    // Compact, at the sidebar's scale: 6px above and below, rounded as its rows are.
+    padding: "6px 9px",
+    borderRadius: 7.27,
     color: colors.textPrimary,
     cursor: "default",
     outline: "none",
@@ -780,9 +781,9 @@ const s = stylex.create({
     borderRadius: "50%",
     backgroundColor: colors.systemBlue,
   },
-  rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 4.55, minWidth: 0 },
-  // The first line, at 14pt: the title, then at least 8pt on, the unread dot and when.
-  rowTop: { display: "flex", gap: space.inset, alignItems: "center", fontSize: 12.73 },
+  rowBody: { display: "flex", flex: 1, flexDirection: "column", gap: 1, minWidth: 0 },
+  // The first line, at the sidebar's 13pt: the title, then the unread dot and when.
+  rowTop: { display: "flex", gap: space.inset, alignItems: "center", fontSize: fontSizes.body },
   // Who wrote last, at the start of the preview: a little stronger than their words.
   from: { color: colors.textSecondary, fontWeight: 500 },
   stamp: {
@@ -794,14 +795,14 @@ const s = stylex.create({
     fontVariantNumeric: "tabular-nums",
   },
   subjectLine: { display: "flex", flex: 1, gap: 4.55, alignItems: "center", minWidth: 0 },
-  subject: { fontWeight: 600, lineHeight: "17.27px" },
-  // The rest at 13pt: the preview, up to two lines.
+  subject: { fontWeight: 600, lineHeight: "15px" },
+  // The rest at 12pt: the preview, one line.
   second: {
     display: "flex",
     gap: space.inset,
     alignItems: "last baseline",
-    fontSize: fontSizes.body,
-    lineHeight: "14.55px",
+    fontSize: fontSizes.caption,
+    lineHeight: "14px",
   },
   preview: {
     display: "-webkit-box",
@@ -810,7 +811,7 @@ const s = stylex.create({
     overflow: "hidden",
     color: colors.textTertiary,
     WebkitBoxOrient: "vertical",
-    WebkitLineClamp: 2,
+    WebkitLineClamp: 1,
   },
   empty: {
     display: "flex",

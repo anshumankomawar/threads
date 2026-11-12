@@ -211,7 +211,6 @@ function Header(props: { thread: Thread }): JSX.Element {
             </div>
           )}
         </Show>
-        <People thread={c()} />
       </div>
     </header>
   );
@@ -413,36 +412,6 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 
 // A thread as a document: its heading, its messages, then the reply. Opened from your inbox it starts at the top
 // without taking the cursor, so the inbox keys keep working.
-
-// Who's in a thread, under its title: who asked, then everyone @mentioned in it so far.
-function People(props: { thread: Thread }): JSX.Element {
-  const c = (): Thread => props.thread;
-  const members = (): User[] => c().assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
-  const Person = (person: { user: User }): JSX.Element => (
-    <button
-      class={sx(base.bare, base.hover, styles.value)}
-      onClick={() => open({ person: person.user.id })}
-    >
-      <Identicon seed={person.user.id} size={14} />
-      {person.user.name}
-    </button>
-  );
-  return (
-    <div class={sx(styles.properties)} aria-label="People">
-      <span class={sx(styles.field)}>Requester</span>
-      <Show when={c().owner} fallback={<span class={sx(styles.none)}>Someone</span>}>
-        {(owner) => <Person user={owner()} />}
-      </Show>
-      <span class={sx(styles.field, styles.fieldAfter)}>Members</span>
-      <For
-        each={members()}
-        fallback={<span class={sx(styles.none)}>@mention someone to bring them in</span>}
-      >
-        {(user) => <Person user={user} />}
-      </For>
-    </div>
-  );
-}
 
 export function ThreadView(props: { thread: Thread; autofocus?: boolean }): JSX.Element {
   let end!: HTMLDivElement;
