@@ -111,15 +111,18 @@ writes the answers as ordinary transactions (`apps/api/src/triage.ts`); a failur
 Three layers, each answering sooner than the next, so nothing waits on the network to show something:
 
 - **Words**, in the app (`apps/desktop/src/renderer/src/search.ts`): an in-memory full-text index (MiniSearch) over the
-  titles, descriptions and messages of every thread the app holds, so it can't find what you may not see. Prefix and
-  fuzzy matching, title matches first, then fresher threads; what you opened for a query comes first next time. Before
-  you type: your recents.
-- **Meaning** (Related), from the API (`apps/api/src/search.ts`): every thread's title and description, and each
+  titles, descriptions and messages of every thread the app holds, so it can't find what you may not see. Common words
+  ("what", "was", "the") are left out of the index and the query; only the word being typed matches as a prefix, and
+  only a long word forgives a typo. Every word in one place, else any of them; title matches first, then fresher
+  threads; what you opened for a query comes first next time. Before you type: your recents.
+- **Meaning**, from the API (`apps/api/src/search.ts`): every thread's title and description, and each
   message under its thread's title, embedded with Workers AI (`bge-m3`) into the Vectorize index `threads-search`
   (1024 dimensions, cosine), under a namespace of the workspace's own (a key kept in its SQLite, so a workspace that
   starts over, or a developer's local one, never touches another's). The `Workspace` object re-embeds what changed after
   each commit, like inbox sorting, and drops what's gone. `POST /search { query }` embeds the query and keeps only the
-  threads the session may see (the rows sync would send it). ⌘F asks once typing pauses and lists them below.
+  threads the session may see (the rows sync would send it). ⌘F asks once typing pauses and fuses the two rankings
+  (reciprocal rank fusion), weighting meaning over words when what you typed reads as a question, which also puts Ask
+  Arc first. Eight threads show, then "Show more".
 - **Ask Arc** (`POST /search { query, ask: true }`): retrieval-augmented generation. The nearest five threads the
   session may see go to Llama 3.3 70B with the question; it answers from them alone and names the ones it used, which ⌘F
   lists under the answer.

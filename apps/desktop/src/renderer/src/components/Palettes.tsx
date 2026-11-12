@@ -38,6 +38,7 @@ import {
   ask,
   clearRecents,
   find,
+  fuse,
   hasRecents,
   picked,
   related,
@@ -335,16 +336,21 @@ function Search(): JSX.Element {
   );
 }
 
-// A question, as opposed to words to find: Ask Arc comes first for it.
+// A question, as opposed to words to find (it starts like one, ends in "?", or is a sentence): Ask Arc comes first, and
+// meaning outweighs words.
 const QUESTION = /\?$|^(what|why|how|who|when|where|which|did|does|do|is|are|was|can|should)\b/i;
+const isQuestion = (q: string): boolean => QUESTION.test(q) || q.split(/\s+/).length >= 6;
+// How many threads show before "Show more".
+const SHOWN = 8;
 
 // ⌘F: threads by anything in them, each with where it matched (search.ts); before you type, the ones you've opened
-// from here (which you can clear), else the latest. Once typing pauses, threads near it in meaning follow as Related,
-// below what's already there; and Ask Arc answers a question from the threads, listing the ones it used.
+// from here (which you can clear), else the latest. Once typing pauses, threads near it in meaning join them, the two
+// rankings fused; and Ask Arc answers a question from the threads, listing the ones it used.
 function Find(): JSX.Element {
   const typed = createSignal("");
   const query = createMemo(() => typed[0]().trim());
   const [near, setNear] = createSignal<{ query: string; found: Found[] }>({ query: "", found: [] });
+  const [more, setMore] = createSignal(false);
   const [asked, setAsked] = createSignal<{
     question: string;
     answer?: Answered;
@@ -353,6 +359,7 @@ function Find(): JSX.Element {
   warm();
   createEffect(query, (q) => {
     if (asked() && asked()!.question !== q) setAsked(undefined);
+    setMore(false);
     if (q.length < 3) return;
     const timer = setTimeout(
       () =>
@@ -388,8 +395,18 @@ function Find(): JSX.Element {
         row({ thread: f, terms: [] }, q, "Sources"),
       );
     const words = find(q);
-    const shown = new Set(words.map((f) => f.thread.id));
-    const meant = near().query === q ? near().found.filter((f) => !shown.has(f.thread.id)) : [];
+    if (q === "") return words.map((f) => row(f, q, hasRecents() ? "Recent" : "Latest"));
+    const question = isQuestion(q);
+    const meant = near().query === q ? near().found : [];
+    const ranked = fuse([
+      [words, question ? 0.5 : 1],
+      [meant, question ? 2 : 1],
+    ]);
+    const shown = more() ? ranked : ranked.slice(0, SHOWN);
+    const rest: Row[] =
+      ranked.length > shown.length
+        ? [{ label: `Show ${ranked.length - shown.length} more`, run: () => setMore(true) }]
+        : [];
     const askRow: Row[] =
       q.length < 3
         ? []
@@ -402,10 +419,10 @@ function Find(): JSX.Element {
             },
           ];
     return [
-      ...(QUESTION.test(q) ? askRow : []),
-      ...words.map((f) => row(f, q, q ? undefined : hasRecents() ? "Recent" : "Latest")),
-      ...meant.map((f) => row(f, q, "Related")),
-      ...(QUESTION.test(q) ? [] : askRow),
+      ...(question ? askRow : []),
+      ...shown.map((f) => row(f, q)),
+      ...rest,
+      ...(question ? [] : askRow),
     ];
   };
   return (

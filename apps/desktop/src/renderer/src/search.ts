@@ -14,6 +14,14 @@ export type Found = { thread: Thread; snippet?: string; terms: string[] };
 let index: MiniSearch<Doc> | undefined;
 let builtFor = "";
 
+// Words too common to tell threads apart: they match nothing and are never highlighted, so "what was the" finds nothing
+// by its words and leaves the question to Ask Arc and meaning.
+const STOP = new Set(
+  "a about after all also am an and any are as at be because been before but by can could did do does doing done for from had has have he her here him his how i if in into is it its just me my no not of on or our out over please she should so some than that the their them then there these they this those to too up us very was we were what when where which while who why will with would you your".split(
+    " ",
+  ),
+);
+
 // Messages are never edited, so their count and the threads' titles and descriptions tell when to rebuild.
 function current(): MiniSearch<Doc> {
   const threads = store.all(Thread);
@@ -23,10 +31,12 @@ function current(): MiniSearch<Doc> {
   index = new MiniSearch<Doc>({
     fields: ["title", "text"],
     storeFields: ["threadId", "text"],
+    processTerm: (term) => (STOP.has(term.toLowerCase()) ? null : term.toLowerCase()),
     searchOptions: {
       boost: { title: 3 },
-      prefix: true,
-      fuzzy: (term) => (term.length > 3 ? 0.2 : false),
+      // Only the word you're still typing is a prefix; a typo is forgiven only in a long word ("hidra", not "what").
+      prefix: (_term, at, terms) => at === terms.length - 1,
+      fuzzy: (term) => (term.length >= 5 ? 0.2 : false),
       combineWith: "AND",
     },
   });
@@ -83,7 +93,9 @@ export function find(query: string): Found[] {
             .slice(0, 8)
     ).map((thread) => ({ thread, terms: [] }));
   const best = new Map<string, Found & { score: number }>();
-  for (const hit of current().search(query)) {
+  // Every word in one place, else any of them (a sentence rarely has all its words in one message).
+  const all = current().search(query);
+  for (const hit of all.length > 0 ? all : current().search(query, { combineWith: "OR" })) {
     const thread = store.findById(Thread, hit.threadId as string);
     if (!thread || (best.get(thread.id)?.score ?? 0) >= hit.score) continue;
     const inTitle = Object.values(hit.match).some((fields) => fields.includes("title"));
@@ -97,6 +109,21 @@ export function find(query: string): Found[] {
 }
 
 void store.ready().then(() => requestIdleCallback(() => current()));
+
+// Reciprocal rank fusion: each list adds weight / (60 + rank) to its threads, so a thread high in either ranks high and
+// one in both higher still. A thread keeps what the first list found it by (its highlighted words).
+export function fuse(lists: [Found[], number][]): Found[] {
+  const scored = new Map<string, { found: Found; score: number }>();
+  for (const [list, weight] of lists)
+    list.forEach((found, rank) => {
+      const seen = scored.get(found.thread.id);
+      scored.set(found.thread.id, {
+        found: seen?.found ?? found,
+        score: (seen?.score ?? 0) + weight / (60 + rank),
+      });
+    });
+  return [...scored.values()].toSorted((a, b) => b.score - a.score).map((s) => s.found);
+}
 
 // By meaning, from the API (Vectorize, apps/api/src/search.ts): threads near the query, each with the message that was
 // nearest, best first. Each query is asked once; the app shows only threads it has.
