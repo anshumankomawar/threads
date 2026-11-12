@@ -32,7 +32,7 @@ import { createThread, send } from "./Palettes";
 const styles = stylex.create({
   // The viewport minus about one block, so the last entry can reach the top but never leave the screen.
   overscroll: { height: "calc(100vh - 34px - 140px)" },
-  quiet: { color: colors.textTertiary, fontSize: fontSizes.body },
+  quiet: { color: colors.textTertiary, fontSize: fontSizes.small },
   event: { marginBlock: -6 },
   eventMarker: {
     display: "flex",
@@ -44,16 +44,24 @@ const styles = stylex.create({
   eventText: { flex: 1, minWidth: 0, lineHeight: "18px" },
   eventActor: { color: colors.textSecondary },
   // Pulled out by a value's padding, so the first one's icon lines up with the title.
-  properties: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: 2,
+  // Who's in it, as Things' tags: a label, then small capsules (16pt tall, 11pt type, fully round).
+  pills: { display: "flex", flexWrap: "wrap", gap: 4, alignItems: "center", marginTop: 10 },
+  pillsLabel: { marginRight: 2, color: colors.textTertiary, fontSize: fontSizes.small },
+  pillsLabelAfter: { marginLeft: 8 },
+  pill: {
+    display: "inline-flex",
+    gap: 4,
     alignItems: "center",
-    margin: "4px 0 0 -6px",
+    height: 17,
+    padding: "0 7px 0 3px",
+    borderRadius: radii.pill,
+    color: { default: colors.textSecondary, ":hover": colors.textPrimary },
+    fontSize: fontSizes.small,
+    fontWeight: 500,
+    backgroundColor: colors.bgTertiary,
+    cursor: "pointer",
   },
-  field: { paddingInline: 6, color: colors.textTertiary, fontSize: fontSizes.body },
-  fieldAfter: { marginLeft: 10 },
-  none: { paddingInline: 6, color: colors.textTertiary, fontSize: fontSizes.body },
+  none: { color: colors.textTertiary, fontSize: fontSizes.small },
   // A person in it: their page, plain until you hover it.
   value: {
     display: "flex",
@@ -182,12 +190,8 @@ export const LABELS = {
 function Header(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   return (
-    <header class={sx(thread.block, thread.header)}>
-      <span class={sx(thread.avatar)}>
-        <Identicon seed={c().ownerId ?? ""} size={20} />
-      </span>
-      <div class={sx(thread.body, thread.headerBody)}>
-        <Meta user={c().owner} at={c().createdAt} marker />
+    <header class={sx(thread.header)}>
+      <div class={sx(thread.headerBody)}>
         <Show when={c().branchedFrom}>
           {(parent) => (
             <div {...stylex.attrs(thread.byline, threadLineMarker)}>
@@ -204,7 +208,10 @@ function Header(props: { thread: Thread }): JSX.Element {
             </div>
           )}
         </For>
-        <h1 class={sx(thread.title, thread.headerTitle)}>{c().title}</h1>
+        <h1 class={sx(thread.headerTitle)}>{c().title}</h1>
+        <div class={sx(thread.byline)}>
+          Started by {c().owner?.name ?? "someone"} {ago(c().createdAt)}
+        </div>
         <Show when={c().description}>
           {(description) => (
             <div class={sx(thread.text, thread.description, thread.headerDescription)}>
@@ -419,22 +426,20 @@ function Reply(props: { thread: Thread; autofocus: boolean }): JSX.Element {
 function People(props: { thread: Thread }): JSX.Element {
   const c = (): Thread => props.thread;
   const members = (): User[] => c().assigneeIds.flatMap((id) => store.findById(User, id) ?? []);
+  // Each one a tag, as Things shows them: a small capsule with their face.
   const Person = (person: { user: User }): JSX.Element => (
-    <button
-      class={sx(base.bare, base.hover, styles.value)}
-      onClick={() => open({ person: person.user.id })}
-    >
-      <Identicon seed={person.user.id} size={14} />
+    <button class={sx(base.bare, styles.pill)} onClick={() => open({ person: person.user.id })}>
+      <Identicon seed={person.user.id} size={12} />
       {person.user.name}
     </button>
   );
   return (
-    <div class={sx(styles.properties)} aria-label="People">
-      <span class={sx(styles.field)}>Requester</span>
+    <div class={sx(styles.pills)} aria-label="People">
+      <span class={sx(styles.pillsLabel)}>Requester</span>
       <Show when={c().owner} fallback={<span class={sx(styles.none)}>Someone</span>}>
         {(owner) => <Person user={owner()} />}
       </Show>
-      <span class={sx(styles.field, styles.fieldAfter)}>Members</span>
+      <span class={sx(styles.pillsLabel, styles.pillsLabelAfter)}>Members</span>
       <For
         each={members()}
         fallback={<span class={sx(styles.none)}>@mention someone to bring them in</span>}

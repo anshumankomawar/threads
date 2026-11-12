@@ -55,7 +55,7 @@ function createWindow(): void {
           // Centered on the top bar at the 110% scale (macOS draws them unscaled): 34px × 1.1 is 37.4pt, so their
           // centres (y + 6.75) sit at 18.75pt, level with its icons.
           trafficLightPosition: { x: 12, y: 12 },
-          backgroundColor: "#2a2a2c",
+          backgroundColor: "#2a2a2a",
         }
       : {}),
     ...(process.platform === "linux" ? { icon } : {}),
@@ -115,7 +115,7 @@ void app.whenReady().then(() => {
     nativeTheme.themeSource = light ? "light" : "dark";
     if (process.platform === "darwin") {
       BrowserWindow.fromWebContents(event.sender)?.setBackgroundColor(
-        light ? "#ffffff" : "#2a2a2c",
+        light ? "#ffffff" : "#2a2a2a",
       );
     }
   });

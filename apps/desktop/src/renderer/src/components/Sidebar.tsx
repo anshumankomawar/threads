@@ -21,9 +21,11 @@ import {
   save,
   saved,
   setDialog,
+  setSidebarOpen,
   shortDate,
   shown,
   showMenu,
+  sidebarOpen,
   store,
   theme,
   threadMenu,
@@ -35,8 +37,9 @@ import {
 import { bucketIcons } from "../bucketIcons";
 import { keysFor } from "../hotkeys";
 import { base } from "../styles/base";
+import { topbar } from "../styles/controls";
 import { sx } from "../styles/sx";
-import { colors, fontSizes, radii, slackSidebar } from "../styles/tokens.stylex";
+import { colors, fontSizes, radii, sidebarSpace, slackSidebar } from "../styles/tokens.stylex";
 import { icon, Icon, type IconSvgElement } from "./Icon";
 import { MenuChip } from "./Menus";
 import { plain } from "./ThreadView";
@@ -139,7 +142,7 @@ function Place(props: { box: Mailbox; label: string; count?: number; menu?: () =
         }}
       >
         <span class={sx(s.placeIcon)} style={{ color: tintOf(props.box) }}>
-          <Icon icon={iconOf(props.box)} size={15} aria-hidden="true" />
+          <Icon icon={iconOf(props.box)} size={13.64} aria-hidden="true" />
         </span>
         <span class={sx(base.ellipsis, s.placeName)}>{props.label}</span>
         <Show when={props.count}>
@@ -317,7 +320,7 @@ function Checkbox(props: { item?: InboxItem }): JSX.Element {
           }}
         >
           <Show when={ticked()}>
-            <Icon icon={i.Tick02Icon} size={11} aria-hidden="true" />
+            <Icon icon={i.Tick02Icon} size={9} aria-hidden="true" />
           </Show>
         </button>
       )}
@@ -356,12 +359,16 @@ function Row(props: { thread: Thread }): JSX.Element {
           open({ thread: t().id });
         }}
       >
-        <Checkbox item={item()} />
-        <Show when={isUnread()}>
-          <span class={sx(s.newDot)} aria-label="New" />
-        </Show>
-        <span class={sx(base.ellipsis, s.rowTitle, !!item()?.doneAt && s.rowDone)}>
-          {t().title}
+        <span class={sx(s.rowCheck)}>
+          <Checkbox item={item()} />
+        </span>
+        <span class={sx(s.rowTitleLine)}>
+          <Show when={isUnread()}>
+            <span class={sx(s.newDot)} aria-label="New" />
+          </Show>
+          <span class={sx(base.ellipsis, s.rowTitle, !!item()?.doneAt && s.rowDone)}>
+            {t().title}
+          </span>
         </span>
         <Show when={last()}>
           {(message) => (
@@ -396,10 +403,12 @@ function DraftRow(props: { draft: Draft }): JSX.Element {
           ])
         }
       >
-        <span class={sx(s.bubble)} aria-hidden="true">
-          <Icon icon={i.NoteEditIcon} size={13} />
+        <span class={sx(s.rowCheck, s.bubble)} aria-hidden="true">
+          <Icon icon={i.NoteEditIcon} size={12} />
         </span>
-        <span class={sx(base.ellipsis, s.rowTitle)}>{title()}</span>
+        <span class={sx(s.rowTitleLine)}>
+          <span class={sx(base.ellipsis, s.rowTitle)}>{title()}</span>
+        </span>
         <span class={sx(s.rowWhen)}>{stamp(props.draft.updatedAt)}</span>
       </div>
     </li>
@@ -422,7 +431,10 @@ export function useMailboxUpkeep(): void {
 
 // The chosen place as Things shows a list: its icon and title, its notes (a bucket's description), then its rows under
 // their headings.
-export function ListPage(): JSX.Element {
+const listColumn = resizable("things-list-width", { initial: 380, min: 300, max: 640 });
+
+// `alone`, with nothing open beside it: it takes the window, its list in the middle as a Things page.
+export function ListPage(props: { alone: boolean }): JSX.Element {
   const box = (): Mailbox => mailbox();
   const isDrafts = (): boolean => box().kind === "drafts";
   const total = (): number => (isDrafts() ? drafts().length : listed().order.length);
@@ -431,51 +443,73 @@ export function ListPage(): JSX.Element {
     return b.kind === "bucket" ? store.findById(Bucket, b.id)?.description : undefined;
   };
   return (
-    <div class={sx(s.page)}>
-      <div class={sx(s.column)}>
-        <h1 class={sx(s.title)}>
-          <span class={sx(s.titleIcon)} style={{ color: tintOf(box()) }}>
-            <Icon icon={iconOf(box())} size={22} aria-hidden="true" />
-          </span>
-          {mailboxTitle(box())}
-        </h1>
-        <Show when={notes()}>{(text) => <p class={sx(s.notes)}>{text()}</p>}</Show>
-        <Show
-          when={isDrafts()}
-          fallback={
-            <For each={listed().groups}>
-              {(group) => (
-                <section class={sx(s.section)}>
-                  <Show when={box().kind === "inbox"}>
-                    <h2
-                      class={sx(s.heading)}
-                      onContextMenu={(e) => {
-                        if (group.bucket) showMenu(e, bucketMenu(group.bucket));
-                      }}
-                    >
-                      {group.bucket?.name ?? group.title}
-                    </h2>
-                  </Show>
-                  <ul class={sx(base.list)}>
-                    <For each={group.threads}>{(thread) => <Row thread={thread} />}</For>
-                  </ul>
-                </section>
-              )}
-            </For>
-          }
-        >
-          <ul class={sx(base.list, s.section)}>
-            <For each={drafts()}>{(draft) => <DraftRow draft={draft} />}</For>
-          </ul>
-        </Show>
-        {/* Things leaves an empty list to its faint icon. */}
-        <Show when={total() === 0}>
-          <div class={sx(s.empty)} style={{ color: tintOf(box()) }}>
-            <Icon icon={iconOf(box())} size={56} aria-hidden="true" />
-          </div>
+    <section
+      class={sx(s.listColumn, props.alone && s.listAlone)}
+      style={{ width: props.alone ? undefined : `${listColumn.width()}px` }}
+      aria-label={mailboxTitle(box())}
+    >
+      {/* The strip the window drags by; the show-sidebar button sits in it while the sidebar's hidden. */}
+      <div data-bar class={sx(topbar.bar, s.listBar, !sidebarOpen() && s.listBarAlone)}>
+        <Show when={!sidebarOpen()}>
+          <button
+            class={sx(topbar.button)}
+            aria-label="Show sidebar"
+            title={`Show sidebar (${keysFor("sidebar")})`}
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Icon icon={i.PanelLeftIcon} size={14} aria-hidden="true" />
+          </button>
         </Show>
       </div>
-    </div>
+      <div class={sx(s.page)}>
+        <div class={sx(s.column, props.alone && s.columnAlone)}>
+          <h1 class={sx(s.title)}>
+            <span class={sx(s.titleIcon)} style={{ color: tintOf(box()) }}>
+              <Icon icon={iconOf(box())} size={18} aria-hidden="true" />
+            </span>
+            {mailboxTitle(box())}
+          </h1>
+          <Show when={notes()}>{(text) => <p class={sx(s.notes)}>{text()}</p>}</Show>
+          <Show
+            when={isDrafts()}
+            fallback={
+              <For each={listed().groups}>
+                {(group) => (
+                  <section class={sx(s.section)}>
+                    <Show when={box().kind === "inbox"}>
+                      <h2
+                        class={sx(s.heading)}
+                        onContextMenu={(e) => {
+                          if (group.bucket) showMenu(e, bucketMenu(group.bucket));
+                        }}
+                      >
+                        {group.bucket?.name ?? group.title}
+                      </h2>
+                    </Show>
+                    <ul class={sx(base.list)}>
+                      <For each={group.threads}>{(thread) => <Row thread={thread} />}</For>
+                    </ul>
+                  </section>
+                )}
+              </For>
+            }
+          >
+            <ul class={sx(base.list, s.section)}>
+              <For each={drafts()}>{(draft) => <DraftRow draft={draft} />}</For>
+            </ul>
+          </Show>
+          {/* Things leaves an empty list to its faint icon. */}
+          <Show when={total() === 0}>
+            <div class={sx(s.empty)} style={{ color: tintOf(box()) }}>
+              <Icon icon={iconOf(box())} size={56} aria-hidden="true" />
+            </div>
+          </Show>
+        </div>
+      </div>
+      <Show when={props.alone} fallback={<listColumn.Edge label="Resize List" />}>
+        <Toolbar />
+      </Show>
+    </section>
   );
 }
 
@@ -495,7 +529,7 @@ function ToolButton(props: {
       disabled={props.disabled}
       onClick={() => props.onClick?.()}
     >
-      <Icon icon={props.icon} size={15} aria-hidden="true" />
+      <Icon icon={props.icon} size={13.64} aria-hidden="true" />
     </button>
   );
 }
@@ -531,7 +565,7 @@ export function Toolbar(): JSX.Element {
           <MenuChip
             look={[base.bare, s.tool]}
             title="Move to a Bucket"
-            label={<Icon icon={i.ArrowRight02Icon} size={15} aria-hidden="true" />}
+            label={<Icon icon={i.ArrowRight02Icon} size={13.64} aria-hidden="true" />}
             items={myBuckets().map((bucket) => ({
               label: bucket.name,
               checked: it().bucketId === bucket.id,
@@ -574,37 +608,40 @@ const s = stylex.create({
     borderRightStyle: "solid",
     borderRightColor: colors.strokeTertiary,
   },
-  // Under the window's buttons, the first place a little below them.
+  // Things' sidebar, in its points ÷ 1.1: the first place well under the window's buttons, places 12.5pt in from the
+  // edges and 24pt tall, groups 16pt apart.
   nav: {
     display: "flex",
     flex: 1,
     flexDirection: "column",
-    gap: 16,
+    gap: 14.55,
     minHeight: 0,
-    padding: "46px 10px 12px",
+    padding: "46px 11.36px 12px",
     overflowY: "auto",
   },
-  group: { display: "flex", flexDirection: "column", gap: 1 },
+  group: { display: "flex", flexDirection: "column", gap: 0 },
+  // A place: its 15pt icon centred in an 18pt column 4.5pt in, its 13pt medium name 7pt after, its count 9pt from the
+  // end; chosen, a 6pt-rounded pill.
   place: {
     display: "flex",
-    gap: 8,
+    gap: 6.36,
     alignItems: "center",
-    height: 24,
-    padding: "0 8px 0 6px",
-    borderRadius: 6,
+    height: 21.82,
+    padding: "0 8.18px 0 4.09px",
+    borderRadius: 5.45,
     color: colors.textPrimary,
-    fontSize: fontSizes.name,
+    fontSize: fontSizes.body,
     fontWeight: 500,
     cursor: "default",
     outline: "none",
   },
   placeOn: { backgroundColor: colors.bgTertiary },
-  placeIcon: { display: "flex", flexShrink: 0, justifyContent: "center", width: 18 },
+  placeIcon: { display: "flex", flexShrink: 0, justifyContent: "center", width: 16.36 },
   placeName: { flex: 1 },
   count: {
     flexShrink: 0,
     color: colors.textTertiary,
-    fontSize: fontSizes.body,
+    fontSize: fontSizes.caption,
     fontVariantNumeric: "tabular-nums",
   },
   foot: {
@@ -612,15 +649,15 @@ const s = stylex.create({
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "space-between",
-    height: 34,
+    height: 30.91,
     padding: "0 12px 0 14px",
   },
   footButton: {
     display: "flex",
-    gap: 6,
+    gap: 5,
     alignItems: "center",
     color: { default: colors.textSecondary, ":hover": colors.textPrimary },
-    fontSize: fontSizes.body,
+    fontSize: fontSizes.caption,
     cursor: "pointer",
   },
   footIcon: {
@@ -629,57 +666,96 @@ const s = stylex.create({
     cursor: "pointer",
   },
 
+  // The list's column: the page's ground, a hairline on its right while something's open beside it.
+  listColumn: {
+    position: "relative",
+    display: "flex",
+    flexDirection: "column",
+    flexShrink: 0,
+    minWidth: 0,
+    backgroundColor: colors.chrome,
+    borderRightWidth: 1,
+    borderRightStyle: "solid",
+    borderRightColor: colors.strokeTertiary,
+    containerType: "inline-size",
+  },
+  listAlone: { flex: 1, borderRightWidth: 0 },
+  listBar: { paddingLeft: 12 },
+  listBarAlone: { paddingLeft: sidebarSpace.afterLights },
   page: { flex: 1, minHeight: 0, overflowY: "auto" },
-  // Things' page: one column in the middle, its title well down from the top.
-  column: { maxWidth: 680, margin: "0 auto", padding: "30px 40px 64px" },
+  column: { padding: "6px 20px 48px" },
+  // Alone, a Things page: one column in the middle.
+  columnAlone: { maxWidth: 720, margin: "0 auto", padding: "10px 40px 64px" },
+  // A list's title: 20pt bold beside its icon, as Things' are.
   title: {
     display: "flex",
-    gap: 10,
+    gap: 7,
     alignItems: "center",
     margin: 0,
     color: colors.textPrimary,
-    fontSize: 22,
+    fontSize: fontSizes.pageTitle,
     fontWeight: 700,
+    lineHeight: "24px",
     letterSpacing: "-0.01em",
   },
   titleIcon: { display: "flex" },
-  notes: { margin: "8px 0 0", color: colors.textSecondary, fontSize: fontSizes.name },
-  section: { marginTop: 22 },
-  // A heading in a list: bold, in the accent, over a hairline.
+  notes: {
+    margin: "6px 0 0",
+    color: colors.textSecondary,
+    fontSize: fontSizes.body,
+    lineHeight: "17px",
+  },
+  section: { marginTop: 18 },
+  // A heading in a list, as Things': 13pt bold over a hairline.
   heading: {
-    margin: "0 0 6px",
-    paddingBottom: 5,
+    margin: "0 0 3px",
+    paddingBottom: 4,
     borderBottomWidth: 1,
     borderBottomStyle: "solid",
     borderBottomColor: colors.strokeTertiary,
-    color: colors.accent,
-    fontSize: fontSizes.name,
+    color: colors.textPrimary,
+    fontSize: fontSizes.body,
     fontWeight: 700,
   },
+  // A to-do's row, 29pt: its checkbox 8pt before the title, when at the end. In a narrow column what they last said
+  // goes under the title; with room, beside it.
   row: {
-    display: "flex",
-    gap: 9,
+    display: "grid",
+    gridTemplateColumns: {
+      default: "auto minmax(0, 1fr) auto",
+      "@container (min-width: 600px)": "auto minmax(0, max-content) minmax(0, 1fr) auto",
+    },
+    gridTemplateAreas: {
+      default: '"check title when" ". note note"',
+      "@container (min-width: 600px)": '"check title note when"',
+    },
+    columnGap: 7.27,
+    rowGap: 1,
     alignItems: "center",
-    height: 30,
+    minHeight: 26.36,
     margin: "0 -8px",
-    padding: "0 8px",
-    borderRadius: 6,
+    padding: { default: "5px 8px", "@container (min-width: 600px)": "0 8px" },
+    borderRadius: 5.45,
     color: colors.textPrimary,
-    fontSize: fontSizes.name,
+    fontSize: fontSizes.body,
     cursor: "default",
     outline: "none",
   },
-  rowOn: { backgroundColor: colors.bgTertiary },
+  // Chosen, Things' soft blue.
+  rowOn: { backgroundColor: `color-mix(in srgb, ${TINT.blue} 22%, transparent)` },
+  rowCheck: { display: "flex", gridArea: "check" },
+  rowTitleLine: { display: "flex", gridArea: "title", gap: 5, alignItems: "center", minWidth: 0 },
+  // A to-do's checkbox: 12.7pt square, rounded 3pt, a fine grey line; ticked, Things' blue with a white tick.
   check: {
     display: "grid",
     flexShrink: 0,
     placeItems: "center",
-    width: 14,
-    height: 14,
-    borderWidth: 1.5,
+    width: 11.55,
+    height: 11.55,
+    borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.iconTertiary,
-    borderRadius: 4,
+    borderRadius: 2.73,
     color: "#ffffff",
     cursor: "pointer",
     transitionProperty: "background-color, border-color",
@@ -690,35 +766,34 @@ const s = stylex.create({
     display: "flex",
     flexShrink: 0,
     justifyContent: "center",
-    width: 14,
+    width: 11.55,
     color: colors.iconTertiary,
   },
   newDot: {
     flexShrink: 0,
-    width: 7,
-    height: 7,
-    marginRight: -3,
+    width: 6.36,
+    height: 6.36,
     borderRadius: "50%",
     backgroundColor: TINT.yellow,
   },
-  rowTitle: { flexShrink: 0, maxWidth: "60%" },
+  rowTitle: { minWidth: 0 },
   rowDone: { color: colors.textTertiary },
-  rowNote: { flex: 1, color: colors.textTertiary, fontSize: fontSizes.body },
+  rowNote: { gridArea: "note", minWidth: 0, color: colors.textTertiary },
   rowWhen: {
-    flexShrink: 0,
-    marginLeft: "auto",
+    gridArea: "when",
     color: colors.textTertiary,
     fontSize: fontSizes.small,
     fontVariantNumeric: "tabular-nums",
   },
   empty: { display: "flex", justifyContent: "center", paddingTop: 120, opacity: 0.25 },
 
+  // Things' toolbar: 34pt, its tools spread evenly across the page's foot.
   toolbar: {
     display: "flex",
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "space-evenly",
-    height: 34,
+    height: 30.91,
     borderTopWidth: 1,
     borderTopStyle: "solid",
     borderTopColor: colors.strokeTertiary,

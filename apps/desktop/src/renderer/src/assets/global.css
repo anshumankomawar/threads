@@ -69,7 +69,7 @@
     user-select: none;
     color: light-dark(oklch(0.21 0 0), oklch(0.955 0 0));
     /* The app's chrome, as the window's own ground is (main/index.ts), so the first paint is already it. */
-    background: light-dark(#ffffff, #2a2a2c);
+    background: light-dark(#ffffff, #2a2a2a);
     /* The system's San Francisco, as Mail is set: its optical sizes (Text, Display) follow the size by themselves. */
     font-family:
       -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue",
