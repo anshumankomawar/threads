@@ -10,7 +10,7 @@ import { List } from "./List";
 import { NewMessage, Search } from "./Palette";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
-import { back, forward, go, setDialog, theme, toggleSidebar, useUI, useView } from "./state";
+import { back, forward, go, setDialog, show, theme, toggleSidebar, useUI, useView } from "./state";
 import { DraftView, Thread } from "./Thread";
 
 const BUCKET_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -23,6 +23,10 @@ function useShortcuts() {
   const threadId = view.thread;
   const order = sections(rows, view.box, buckets).flatMap((section) => section.rows);
   const at = order.findIndex((row) => row.threadId === threadId);
+  const first = order[0]?.threadId;
+  useEffect(() => {
+    if (first && !view.thread && !view.draft) show(first);
+  }, [view.box, !first]);
 
   const open = (index: number) => {
     const row = order[Math.max(0, Math.min(order.length - 1, index))];

@@ -52,6 +52,10 @@ export function go(view: Partial<View>) {
   if (same) return set({ dialog: null });
   set({ history: [...history.slice(0, at + 1), next], at: at + 1, dialog: null });
 }
+export const show = (thread: Id<"threads">) =>
+  set(({ history, at }) => ({
+    history: history.map((view, index) => (index === at ? { ...view, thread } : view)),
+  }));
 export const back = () => set(({ at }) => ({ at: Math.max(0, at - 1) }));
 export const forward = () =>
   set(({ at, history }) => ({ at: Math.min(history.length - 1, at + 1) }));
