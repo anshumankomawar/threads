@@ -8,9 +8,13 @@ import { useMutation } from "convex/react";
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "./data";
+import horizon from "./horizon.png";
 
+const picture = new Image();
+picture.src = horizon;
 const loaded = Promise.race([
   Promise.all([
+    picture.decode().catch(() => {}),
     document.fonts.load('300 36px "Fraunces"'),
     document.fonts.load('400 14px "Hanken Grotesk"'),
   ]),
@@ -18,15 +22,7 @@ const loaded = Promise.race([
 ]);
 
 const DOT = 3;
-const SHADES = [
-  [16, 16, 16],
-  [44, 16, 6],
-  [96, 32, 10],
-  [166, 60, 18],
-  [226, 88, 30],
-  [243, 140, 80],
-  [247, 184, 140],
-];
+const GROUND = [16, 16, 16];
 
 function threshold(x: number, y: number) {
   let value = 0;
@@ -41,20 +37,20 @@ function paint(canvas: HTMLCanvasElement) {
   canvas.width = width;
   canvas.height = height;
   canvas.style.width = `${(width * DOT) / devicePixelRatio}px`;
-  const context = canvas.getContext("2d")!;
-  const image = context.createImageData(width, height);
-  const glow = (x: number, y: number, fromX: number, fromY: number, reach: number) =>
-    Math.max(0, 1 - Math.hypot(x - fromX, y - fromY) / reach) ** 2;
+  const context = canvas.getContext("2d", { willReadFrequently: true })!;
+  const scale = Math.max(width / picture.width, height / picture.height);
+  const [drawn, tall] = [picture.width * scale, picture.height * scale];
+  context.filter = "blur(2px)";
+  context.drawImage(picture, (width - drawn) / 2, (height - tall) / 2, drawn, tall);
 
+  const image = context.getImageData(0, 0, width, height);
   for (let y = 0; y < height; y++)
     for (let x = 0; x < width; x++) {
-      const [u, v] = [x / width, y / height];
-      const drift =
-        Math.sin(u * 7 + v * 4) + Math.sin(u * 13 - v * 9 + 1.7) + Math.sin((u + v) * 23);
-      const light = glow(u, v, 1.05, 1.12, 0.95) + 0.45 * glow(u, v, -0.05, -0.1, 0.6);
-      const level = Math.min(1, light * (1 + 0.14 * drift)) * (SHADES.length - 1);
-      const shade = SHADES[Math.floor(level) + (level % 1 > threshold(x, y) ? 1 : 0)];
-      image.data.set([...shade, 255], (y * width + x) * 4);
+      const at = (y * width + x) * 4;
+      const color = image.data.slice(at, at + 3);
+      const peak = Math.max(...color, 1);
+      const lit = (peak / 255) ** 2 > threshold(x, y);
+      image.data.set(lit ? color.map((channel) => (channel / peak) * 200) : GROUND, at);
     }
   context.putImageData(image, 0, 0);
 }
@@ -90,9 +86,8 @@ export function SignIn() {
   const step = STEPS[flow];
 
   useEffect(() => {
-    void loaded.then(() => setReady(true));
     const fit = () => paint(scene.current!);
-    fit();
+    void loaded.then(() => (fit(), setReady(true)));
     addEventListener("resize", fit);
     return () => removeEventListener("resize", fit);
   }, []);
@@ -122,6 +117,7 @@ export function SignIn() {
   return (
     <main className="welcome">
       <canvas ref={scene} className={ready ? "scene shown" : "scene"} />
+      <span className="veil" />
       {ready && (
         <form key={flow} action={submit}>
           <h1>

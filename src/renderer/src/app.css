@@ -686,6 +686,16 @@ small {
       opacity: 1;
     }
   }
+  & .veil {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(
+      ellipse 520px 440px at 50% 48%,
+      rgb(16 16 16 / 92%),
+      rgb(16 16 16 / 70%) 55%,
+      transparent
+    );
+  }
   & form {
     position: relative;
     display: flex;
