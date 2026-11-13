@@ -228,10 +228,9 @@ small {
   }
   & .nested {
     margin-left: 15px;
-
-    & + :not(.nested) {
-      margin-top: 8px;
-    }
+  }
+  & .box:has(+ .nested):not(.nested) {
+    margin-top: 8px;
   }
   & .count {
     color: var(--text-3);

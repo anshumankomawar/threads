@@ -48,6 +48,8 @@ export function Sidebar() {
           value={view.settings ? null : view.box}
           onValueChange={(box) => box && go({ box, thread: undefined })}
         >
+          {row("all", "All Threads", "archive", rows.length)}
+          {row("drafts", "Drafts", "draft", drafts.length)}
           {row("inbox", "Buckets", "inbox", count("inbox"))}
           {count("unsorted") > 0 &&
             row("unsorted", "Sorting", "folder", count("unsorted"), undefined, true)}
@@ -65,8 +67,6 @@ export function Sidebar() {
               true,
             ),
           )}
-          {row("all", "All Threads", "archive", rows.length)}
-          {row("drafts", "Drafts", "draft", drafts.length)}
         </Listbox>
       </ContextMenu>
       <Button className="profile" onClick={() => go({ settings: true })}>

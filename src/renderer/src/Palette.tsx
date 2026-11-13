@@ -94,6 +94,8 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
   });
   const commands = [
     command("Quick actions", "New Message", () => setDialog("new"), "⌘N"),
+    command("Views", "All Threads", () => go({ box: "all", thread: undefined })),
+    command("Views", "Drafts", () => go({ box: "drafts", thread: undefined })),
     command("Views", "Buckets", () => go({ box: "inbox", thread: undefined })),
     ...buckets.map((bucket, index) =>
       command(
@@ -103,8 +105,6 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
         index < 9 ? `⌘${index + 1}` : undefined,
       ),
     ),
-    command("Views", "All Threads", () => go({ box: "all", thread: undefined })),
-    command("Views", "Drafts", () => go({ box: "drafts", thread: undefined })),
     command("Views", "Settings", () => go({ settings: true }), "⌘,"),
     command("Theme", "Dark", () => theme.set("dark")),
     command("Theme", "Light", () => theme.set("light")),
