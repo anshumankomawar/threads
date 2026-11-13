@@ -96,7 +96,7 @@ export const start = internalMutation({
       .query("users")
       .filter((q) => q.eq(q.field("email"), email))
       .unique();
-    if (!me) throw new Error(`No account for ${email}`);
+    if (!me?.workspaceId) throw new Error(`No account in a workspace for ${email}`);
     const { workspaceId } = me;
     const userIds = [];
     for (const name of TEAM)
@@ -121,13 +121,14 @@ export const step = internalMutation({
   handler: async (ctx, { meId, index, threads }) => {
     const [from, key, bucket, text] = SCRIPT[index];
     const me = (await ctx.db.get(meId))!;
+    const workspaceId = me.workspaceId!;
     const people = await ctx.db
       .query("users")
-      .withIndex("workspace", (q) => q.eq("workspaceId", me.workspaceId))
+      .withIndex("workspace", (q) => q.eq("workspaceId", workspaceId))
       .collect();
     const groups = await ctx.db
       .query("groups")
-      .withIndex("workspace", (q) => q.eq("workspaceId", me.workspaceId))
+      .withIndex("workspace", (q) => q.eq("workspaceId", workspaceId))
       .collect();
     const mention = (word: string) => {
       const person = word === "me" ? me : people.find(({ name }) => name.startsWith(word));
@@ -135,7 +136,7 @@ export const step = internalMutation({
       return person ? personToken(person._id) : group ? groupToken(group._id) : `@${word}`;
     };
     const body = text.replace(/@(\w+)/g, (_match, word: string) => mention(word));
-    const author = { ...ctx, me: people.find(({ name }) => name === from)! };
+    const author = { ...ctx, me: { ...people.find(({ name }) => name === from)!, workspaceId } };
     const threadId = threads[key] ?? (await begin(author, body));
     if (threads[key]) await post(author, threadId, body);
 

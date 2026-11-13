@@ -89,8 +89,8 @@ export const visible = query({
 });
 
 async function nearest(ctx: ActionCtx, text: string, floor: number): Promise<Doc<"messages">[]> {
-  if (!process.env.VOYAGE_API_KEY) return [];
   const { workspaceId } = await ctx.runQuery(api.workspace.me);
+  if (!process.env.VOYAGE_API_KEY || !workspaceId) return [];
   const hits = await ctx.vectorSearch("vectors", "near", {
     vector: await embed(text, "query"),
     limit: 32,

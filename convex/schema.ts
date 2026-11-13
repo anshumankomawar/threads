@@ -5,15 +5,12 @@ export default defineSchema({
   users: defineTable({
     name: v.string(),
     email: v.string(),
-    workspaceId: v.id("workspaces"),
+    workspaceId: v.optional(v.id("workspaces")),
   }).index("workspace", ["workspaceId"]),
 
-  workspaces: defineTable({ name: v.string() }),
-
-  invites: defineTable({
-    workspaceId: v.id("workspaces"),
-    email: v.string(),
-  }).index("email", ["email"]),
+  workspaces: defineTable({ name: v.string(), invite: v.optional(v.string()) }).index("invite", [
+    "invite",
+  ]),
 
   groups: defineTable({
     workspaceId: v.id("workspaces"),

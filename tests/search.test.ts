@@ -25,10 +25,8 @@ afterEach(() => {
 test("search by meaning finds only what is near, in threads the asker is in", async () => {
   const { t, signUp } = world();
   const ada = await signUp("ada");
-  await ada.as.mutation(api.workspace.invite, { email: "grace@acme.com" });
-  await ada.as.mutation(api.workspace.invite, { email: "linus@acme.com" });
-  const grace = await signUp("grace");
-  const linus = await signUp("linus");
+  const grace = await signUp("grace", ada);
+  const linus = await signUp("linus", ada);
   const eve = await signUp("eve");
   await ada.as.mutation(api.threads.start, { body: `${personToken(grace._id)} lunch at noon?` });
   await ada.as.mutation(api.threads.start, { body: `${personToken(grace._id)} the budget` });

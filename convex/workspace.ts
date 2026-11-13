@@ -1,10 +1,51 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { mutation, query } from "./functions";
+import { mutation as rawMutation, query as rawQuery } from "./_generated/server";
+import { mutation, query, signedIn } from "./functions";
 
-export const me = query({
+export const me = rawQuery({
   args: {},
-  handler: async (ctx) => ({ ...ctx.me, workspace: (await ctx.db.get(ctx.me.workspaceId))!.name }),
+  handler: async (ctx) => {
+    const me = await signedIn(ctx);
+    const workspace = me.workspaceId && (await ctx.db.get(me.workspaceId));
+    return { ...me, workspace: workspace?.name };
+  },
+});
+
+export const create = rawMutation({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    const me = await signedIn(ctx);
+    if (me.workspaceId) throw new ConvexError("Already in a workspace");
+    await ctx.db.patch(me._id, { workspaceId: await ctx.db.insert("workspaces", { name }) });
+  },
+});
+
+export const join = rawMutation({
+  args: { link: v.string() },
+  handler: async (ctx, { link }) => {
+    const me = await signedIn(ctx);
+    if (me.workspaceId) throw new ConvexError("Already in a workspace");
+    const invite = link.trim().split("/").pop();
+    const workspace =
+      invite &&
+      (await ctx.db
+        .query("workspaces")
+        .withIndex("invite", (q) => q.eq("invite", invite))
+        .unique());
+    if (workspace) await ctx.db.patch(me._id, { workspaceId: workspace._id });
+    return !!workspace;
+  },
+});
+
+export const inviteLink = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const workspace = (await ctx.db.get(ctx.me.workspaceId))!;
+    const invite = workspace.invite ?? crypto.randomUUID();
+    if (!workspace.invite) await ctx.db.patch(workspace._id, { invite });
+    return `arcthreads://join/${invite}`;
+  },
 });
 
 export const people = query({
@@ -14,16 +55,6 @@ export const people = query({
       .query("users")
       .withIndex("workspace", (q) => q.eq("workspaceId", ctx.me.workspaceId))
       .collect(),
-});
-
-export const invite = mutation({
-  args: { email: v.string() },
-  handler: async (ctx, { email }) => {
-    await ctx.db.insert("invites", {
-      workspaceId: ctx.me.workspaceId,
-      email: email.trim().toLowerCase(),
-    });
-  },
 });
 
 export const groups = query({

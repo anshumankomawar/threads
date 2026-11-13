@@ -13,32 +13,30 @@ export function world() {
   authTest.registerCore(t);
   googleTest.registerGoogleOauth(t);
 
-  const session = (profile: { name: string; email: string; emailVerified: boolean }) => ({
-    claims: { method: "google", profile: { id: profile.name, ...profile } },
-    componentPath: "authGoogle",
-    accessTokenTtlSeconds: 60,
-    refreshInactivityTimeoutSeconds: MONTH,
-    sessionMaxLifetimeSeconds: MONTH,
-  });
-  const signUp = async (name: string, emailVerified = true) => {
-    const profile = { name, email: `${name}@Acme.com`, emailVerified };
+  const signIn = async (name: string) => {
     const tokens = await t.run(async (ctx) =>
       ctx.runMutation(components.auth.public._internal_dangerous_signUp, {
-        ...session(profile),
+        claims: {
+          method: "google",
+          profile: { id: name, name, email: `${name}@acme.com`, emailVerified: true },
+        },
+        componentPath: "authGoogle",
+        accessTokenTtlSeconds: 60,
+        refreshInactivityTimeoutSeconds: MONTH,
+        sessionMaxLifetimeSeconds: MONTH,
         createUserHandle: await createFunctionHandle(internal.auth.createUser),
-        onSignInHandle: await createFunctionHandle(internal.auth.onSignIn),
       }),
     );
-    const as = t.withIdentity(authTest.sessionIdentity(tokens));
-    const signIn = () =>
-      t.run(async (ctx) =>
-        ctx.runMutation(components.auth.public._internal_dangerous_signIn, {
-          ...session(profile),
-          userId: tokens.userId,
-          onSignInHandle: await createFunctionHandle(internal.auth.onSignIn),
-        }),
-      );
-    return { ...(await as.query(api.workspace.me)), as, signIn };
+    return t.withIdentity(authTest.sessionIdentity(tokens));
   };
-  return { t, signUp };
+  const signUp = async (name: string, host?: { as: Awaited<ReturnType<typeof signIn>> }) => {
+    const as = await signIn(name);
+    if (host)
+      await as.mutation(api.workspace.join, {
+        link: await host.as.mutation(api.workspace.inviteLink),
+      });
+    else await as.mutation(api.workspace.create, { name: `${name}'s workspace` });
+    return { ...(await as.query(api.workspace.me)), as };
+  };
+  return { t, signIn, signUp };
 }

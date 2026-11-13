@@ -700,6 +700,28 @@ small {
       animation: none;
     }
   }
+  & form {
+    display: grid;
+    width: 100%;
+  }
+  & input {
+    width: 100%;
+    height: 42px;
+    margin-top: 26px;
+    padding: 0 18px;
+    border: 0.5px solid rgb(255 255 255 / 14%);
+    border-radius: 999px;
+    background: rgb(40 40 44 / 70%);
+    text-align: center;
+    user-select: text;
+
+    &::placeholder {
+      color: rgb(255 255 255 / 40%);
+    }
+  }
+  & [data-slot="field"] + button {
+    margin-top: 10px;
+  }
   & button {
     display: flex;
     gap: 10px;
@@ -724,6 +746,18 @@ small {
     }
     &[data-disabled] {
       opacity: 0.8;
+    }
+    &.secondary,
+    &.link {
+      color: rgb(255 255 255 / 92%);
+      background: rgb(40 40 44 / 70%);
+    }
+    &.link {
+      height: auto;
+      color: rgb(255 255 255 / 55%);
+      background: none;
+      font-size: 13px;
+      font-weight: 400;
     }
   }
   & i {

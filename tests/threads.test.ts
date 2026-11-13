@@ -6,12 +6,8 @@ import { world } from "./world";
 async function setup() {
   const { t, signUp } = world();
   const ada = await signUp("ada");
-  const colleague = async (name: string) => {
-    await ada.as.mutation(api.workspace.invite, { email: `${name}@acme.com` });
-    return signUp(name);
-  };
-  const grace = await colleague("grace");
-  const linus = await colleague("linus");
+  const grace = await signUp("grace", ada);
+  const linus = await signUp("linus", ada);
   const eve = await signUp("eve");
   const inbox = async (who: typeof ada) =>
     (await who.as.query(api.threads.list)).filter((row) => row.inbox);

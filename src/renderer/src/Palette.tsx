@@ -13,7 +13,7 @@ import { useShortcut } from "@ui-sdk/react/shortcuts";
 import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { api, useBuckets, useNames, useThreads, type Doc } from "./data";
+import { api, useBuckets, useCopyInvite, useNames, useThreads, type Doc } from "./data";
 import { Icon } from "./Icon";
 import { MessageBox } from "./MessageBox";
 import { addDraft, go, reset, setDialog, theme } from "./state";
@@ -66,6 +66,7 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
   const buckets = useBuckets();
   const names = useNames();
   const { signOut } = useAuthActions();
+  const copyInvite = useCopyInvite();
   const query = text.trim();
   const worded = useQuery(api.threads.search, query.length > 1 ? { text: query } : "skip") ?? [];
   const related = useAction(api.search.related);
@@ -107,6 +108,7 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
     command("Views", "Settings", () => go({ settings: true }), "⌘,"),
     command("Theme", "Dark", () => theme.set("dark")),
     command("Theme", "Light", () => theme.set("light")),
+    command("Account", "Copy Invite Link", copyInvite),
     command("Account", "Sign Out", () => void signOut().then(reset)),
   ];
   const threads = rows.map((row) => ({

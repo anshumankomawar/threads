@@ -4,17 +4,23 @@ import { ConvexError } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation as rawMutation, query as rawQuery, type QueryCtx } from "./_generated/server";
 
-async function signedIn(ctx: QueryCtx) {
+export async function signedIn(ctx: QueryCtx) {
   const id = await getAuthUserId(ctx);
   const me = id && (await ctx.db.get(id));
   if (!me) throw new ConvexError("Signed out");
-  return { me };
+  return me;
 }
 
-export const query = customQuery(rawQuery, customCtx(signedIn));
-export const mutation = customMutation(rawMutation, customCtx(signedIn));
+async function inWorkspace(ctx: QueryCtx) {
+  const { workspaceId, ...me } = await signedIn(ctx);
+  if (!workspaceId) throw new ConvexError("No workspace");
+  return { me: { ...me, workspaceId } };
+}
 
-export type Ctx = QueryCtx & Awaited<ReturnType<typeof signedIn>>;
+export const query = customQuery(rawQuery, customCtx(inWorkspace));
+export const mutation = customMutation(rawMutation, customCtx(inWorkspace));
+
+export type Ctx = QueryCtx & Awaited<ReturnType<typeof inWorkspace>>;
 
 export async function membership(ctx: Ctx, threadId: Id<"threads">) {
   const row = await ctx.db

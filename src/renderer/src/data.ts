@@ -15,6 +15,10 @@ export type Row = ReturnType<typeof useThreads>[number];
 const EMPTY: never[] = [];
 
 export const useMe = () => useQuery(api.workspace.me);
+export function useCopyInvite() {
+  const link = useMutation(api.workspace.inviteLink);
+  return async () => navigator.clipboard.writeText(await link());
+}
 export const usePeople = () => useQuery(api.workspace.people) ?? EMPTY;
 export const useGroups = () => useQuery(api.workspace.groups) ?? EMPTY;
 export const useBuckets = () => useQuery(api.workspace.buckets) ?? EMPTY;
@@ -83,7 +87,7 @@ export const useSend = () =>
   useMutation(api.threads.send).withOptimisticUpdate((store, { threadId, body }) => {
     const me = store.getQuery(api.workspace.me, {});
     const messages = store.getQuery(api.threads.messages, { threadId });
-    if (!me || !messages) return;
+    if (!me?.workspaceId || !messages) return;
     const sent = {
       _id: crypto.randomUUID() as Id<"messages">,
       _creationTime: Date.now(),

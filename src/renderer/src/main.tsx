@@ -5,8 +5,8 @@ import { ConvexQueryCacheProvider } from "convex-helpers/react/cache";
 import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import { api } from "./data";
-import { SignIn } from "./SignIn";
+import { api, useMe } from "./data";
+import { SignIn, Start } from "./SignIn";
 import { theme } from "./state";
 import "./app.css";
 
@@ -16,6 +16,11 @@ class UntilSignedOut extends Component<{ children: ReactNode }> {
   state = { over: false };
   static getDerivedStateFromError = () => ({ over: true });
   render = () => (this.state.over ? null : this.props.children);
+}
+
+function Home() {
+  const me = useMe();
+  return me && (me.workspaceId ? <App /> : <Start />);
 }
 
 createRoot(document.getElementById("root")!).render(
@@ -28,7 +33,7 @@ createRoot(document.getElementById("root")!).render(
           </Unauthenticated>
           <Authenticated>
             <UntilSignedOut>
-              <App />
+              <Home />
             </UntilSignedOut>
           </Authenticated>
         </Preferences>

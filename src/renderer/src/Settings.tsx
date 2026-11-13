@@ -6,22 +6,26 @@ import { Input } from "@ui-sdk/react/input";
 import { usePreference } from "@ui-sdk/react/preferences";
 import { SegmentedControl, SegmentedControlItem } from "@ui-sdk/react/segmented-control";
 import { useMutation } from "convex/react";
-import { api, useBuckets, useGroups, useMe, usePeople, type Doc, type Id } from "./data";
+import { useState } from "react";
+import {
+  api,
+  useBuckets,
+  useCopyInvite,
+  useGroups,
+  useMe,
+  usePeople,
+  type Doc,
+  type Id,
+} from "./data";
 import { reset, theme } from "./state";
 
-function TextField(props: {
-  name: string;
-  label: string;
-  of: string;
-  type?: string;
-  value?: string;
-}) {
+function TextField(props: { name: string; label: string; of: string; value?: string }) {
   return (
     <Field name={props.name}>
       <FieldLabel className="hidden">
         {props.label} of {props.of}
       </FieldLabel>
-      <Input type={props.type} placeholder={props.label} defaultValue={props.value} required />
+      <Input placeholder={props.label} defaultValue={props.value} required />
     </Field>
   );
 }
@@ -108,7 +112,8 @@ export function Settings() {
   const groups = useGroups();
   const buckets = useBuckets();
   const { value } = usePreference(theme);
-  const invite = useMutation(api.workspace.invite);
+  const copyInvite = useCopyInvite();
+  const [copied, setCopied] = useState(false);
   const { signOut } = useAuthActions();
 
   return (
@@ -148,10 +153,10 @@ export function Settings() {
 
         <h2>People</h2>
         <p>{people.map((person) => person.name).join(", ")}</p>
-        <form action={(form) => void invite({ email: String(form.get("email")) })}>
-          <TextField name="email" type="email" label="Email" of="someone to invite" />
-          <Button type="submit">Invite</Button>
-        </form>
+        <p>Anyone who signs in and pastes the invite link joins {me.workspace}.</p>
+        <Button onClick={() => void copyInvite().then(() => setCopied(true))}>
+          {copied ? "Copied" : "Copy Invite Link"}
+        </Button>
       </article>
     </main>
   );

@@ -1,8 +1,11 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@ui-sdk/react/button";
+import { Field, FieldLabel } from "@ui-sdk/react/field";
+import { Input } from "@ui-sdk/react/input";
 import { useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "./data";
+import { reset } from "./state";
 
 const loaded = Promise.race([
   Promise.all([
@@ -54,6 +57,42 @@ export function SignIn() {
           {failed && <p role="alert">Signing in with Google didn't finish.</p>}
         </div>
       )}
+    </main>
+  );
+}
+
+export function Start() {
+  const create = useMutation(api.workspace.create);
+  const join = useMutation(api.workspace.join);
+  const { signOut } = useAuthActions();
+  const [failed, setFailed] = useState(false);
+
+  return (
+    <main className="welcome">
+      <div>
+        <h1>Start a workspace</h1>
+        <p>Create one for your team, or paste an invite link to join theirs.</p>
+        <form action={(form) => void create({ name: String(form.get("name")).trim() })}>
+          <Field name="name">
+            <FieldLabel className="hidden">Workspace name</FieldLabel>
+            <Input placeholder="Workspace name" required autoFocus />
+          </Field>
+          <Button type="submit">Create Workspace</Button>
+        </form>
+        <form action={async (form) => setFailed(!(await join({ link: String(form.get("link")) })))}>
+          <Field name="link">
+            <FieldLabel className="hidden">Invite link</FieldLabel>
+            <Input placeholder="Invite link" required />
+          </Field>
+          <Button type="submit" className="secondary">
+            Join Workspace
+          </Button>
+        </form>
+        {failed && <p role="alert">That link doesn't lead to a workspace.</p>}
+        <Button className="link" onClick={() => void signOut().then(reset)}>
+          Sign Out
+        </Button>
+      </div>
     </main>
   );
 }
