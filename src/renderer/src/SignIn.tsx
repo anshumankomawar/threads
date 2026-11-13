@@ -5,31 +5,10 @@ import { Field, FieldLabel } from "@ui-sdk/react/field";
 import { Input } from "@ui-sdk/react/input";
 import { PasswordInput, PasswordInputControl } from "@ui-sdk/react/password-input";
 import { useMutation } from "convex/react";
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "./data";
 import horizon from "./horizon.png";
-
-const PICTURE = { width: 640, height: 427 };
-const CELL = 3;
-
-function cover(): CSSProperties {
-  const ratio = devicePixelRatio;
-  const per = Math.max(
-    Math.round(CELL * ratio),
-    Math.ceil((innerWidth * ratio) / PICTURE.width),
-    Math.ceil((innerHeight * ratio) / PICTURE.height),
-  );
-  const [width, height] = [(PICTURE.width * per) / ratio, (PICTURE.height * per) / ratio];
-  const snap = (value: number) => Math.round(value * ratio) / ratio;
-  return {
-    width,
-    height,
-    left: snap((innerWidth - width) / 2),
-    top: snap((innerHeight - height) / 2),
-    backgroundImage: `url(${horizon})`,
-  };
-}
 
 const picture = new Image();
 picture.src = horizon;
@@ -69,14 +48,10 @@ export function SignIn() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
-  const [scene, setScene] = useState(cover);
   const step = STEPS[flow];
 
   useEffect(() => {
     void loaded.then(() => setReady(true));
-    const fit = () => setScene(cover());
-    addEventListener("resize", fit);
-    return () => removeEventListener("resize", fit);
   }, []);
 
   const change = () =>
@@ -103,7 +78,7 @@ export function SignIn() {
 
   return (
     <main className="welcome">
-      <span className={ready ? "scene shown" : "scene"} style={scene} />
+      <span className={ready ? "scene shown" : "scene"} />
       <span className="veil" />
       {ready && (
         <form key={flow} action={submit}>

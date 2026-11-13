@@ -676,13 +676,14 @@ small {
 
   & .scene {
     position: absolute;
-    background-size: 100% 100%;
-    image-rendering: pixelated;
+    inset: -24px;
+    background: url(./horizon.png) center / cover;
+    filter: blur(10px);
     opacity: 0;
     transition: opacity 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
 
     &.shown {
-      opacity: 0.4;
+      opacity: 0.5;
     }
   }
   & .veil {
