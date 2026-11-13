@@ -383,6 +383,9 @@ small {
       font-size: 14px;
       font-weight: 600;
     }
+    & + .text {
+      margin-top: 4px;
+    }
   }
 }
 
@@ -624,7 +627,6 @@ small {
   from {
     opacity: 0;
     transform: translateY(10px);
-    filter: blur(5px);
   }
 }
 @keyframes arrive {
@@ -642,7 +644,6 @@ small {
   to {
     opacity: 0;
     transform: translateY(-10px);
-    filter: blur(4px);
   }
 }
 ::view-transition-group(welcome-step) {
@@ -759,8 +760,7 @@ small {
     transition-property: border-color, background-color, opacity, transform;
   }
   & input {
-    background: rgb(255 255 255 / 6%);
-    backdrop-filter: blur(20px);
+    background: rgb(40 40 44 / 70%);
     user-select: text;
 
     &:focus {

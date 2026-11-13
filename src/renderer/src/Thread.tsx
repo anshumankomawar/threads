@@ -73,6 +73,11 @@ export function Thread({ threadId }: { threadId: Id<"threads"> }) {
   const send = useSend();
   const mark = useMark();
   const [reply] = useState(createTokenInputController);
+  const turns = messages.reduce<(typeof messages)[]>((turns, message) => {
+    if (turns.at(-1)?.[0].authorId === message.authorId) turns.at(-1)!.push(message);
+    else turns.push([message]);
+    return turns;
+  }, []);
   const end = useRef<HTMLDivElement>(null);
 
   useShortcut("r", () => reply.focus(), { description: "Reply" });
@@ -86,17 +91,19 @@ export function Thread({ threadId }: { threadId: Id<"threads"> }) {
   return (
     <main className="thread">
       <article>
-        {messages.map((message, index) => (
-          <section key={message._id} className="turn">
-            <Identicon seed={message.authorId} />
+        {turns.map((turn) => (
+          <section key={turn[0]._id} className="turn">
+            <Identicon seed={turn[0].authorId} />
             <div>
               <div className="meta">
-                <b>{name(message.authorId)}</b>
-                <time>{ago(message._creationTime)}</time>
+                <b>{name(turn[0].authorId)}</b>
+                <time>{ago(turn[0]._creationTime)}</time>
               </div>
-              <p className={index === 0 ? "text title" : "text"}>
-                <Body body={message.body} />
-              </p>
+              {turn.map((message) => (
+                <p key={message._id} className={message === messages[0] ? "text title" : "text"}>
+                  <Body body={message.body} />
+                </p>
+              ))}
             </div>
           </section>
         ))}
