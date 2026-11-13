@@ -1,9 +1,10 @@
 import { createLocalStorage, createPreference } from "@ui-sdk/core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { Id } from "../../../convex/_generated/dataModel";
 
 export type Box = "inbox" | "unsorted" | "all" | "drafts" | (string & {});
-export type View = { box: Box; thread?: string; draft?: string; settings?: boolean };
+export type View = { box: Box; thread?: Id<"threads">; draft?: string; settings?: boolean };
 export type Draft = { id: string; text: string; at: number };
 export type Dialog = "search" | "find" | "new";
 

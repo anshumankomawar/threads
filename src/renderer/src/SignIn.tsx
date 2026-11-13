@@ -23,7 +23,6 @@ const STEPS = {
     lede: "Log in to Arc with your email.",
     action: "Log In",
     other: "Create an Account",
-    problems: {} as Record<string, string>,
     problem: "Wrong email or password.",
   },
   signUp: {
@@ -31,7 +30,6 @@ const STEPS = {
     lede: "You get a workspace of your own, or join the one you were invited to.",
     action: "Create Account",
     other: "I Already Have an Account",
-    problems: { USERNAME_TAKEN: "That email already has an account." } as Record<string, string>,
     problem: "Choose a longer, less common password.",
   },
 };
@@ -68,7 +66,12 @@ export function SignIn() {
         ? await signUp({ name, email, password })
         : await signIn({ username: email.trim().toLowerCase(), password });
     if (result.status === "complete") await setSession(result.tokens);
-    else setProblem(step.problems[result.userError.error] ?? step.problem);
+    else
+      setProblem(
+        result.userError.error === "USERNAME_TAKEN"
+          ? "That email already has an account."
+          : step.problem,
+      );
     setBusy(false);
   };
 

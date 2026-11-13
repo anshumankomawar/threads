@@ -18,13 +18,11 @@ import { useMemo, useState } from "react";
 import { parts, useGroups, useMe, useNames, usePeople } from "./data";
 import { Identicon } from "./Identicon";
 
-export type MessageInput = ReturnType<typeof createTokenInputController>;
-
 export function MessageBox(props: {
   label: string;
   placeholder: string;
   defaultText?: string;
-  input?: MessageInput;
+  input?: ReturnType<typeof createTokenInputController>;
   onSend: (body: string) => void;
   onChange?: (text: string) => void;
 }) {

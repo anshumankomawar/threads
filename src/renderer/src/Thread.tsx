@@ -5,11 +5,11 @@ import { createTokenInputController } from "@ui-sdk/react/token-input";
 import { useEffect, useRef, useState } from "react";
 import { api, parts, useMark, useMe, useNames, useSend, useThreads, type Id } from "./data";
 import { Identicon } from "./Identicon";
-import { MessageBox, type MessageInput } from "./MessageBox";
+import { MessageBox } from "./MessageBox";
 import { editDraft, go, removeDraft, type Draft } from "./state";
 import { ago } from "./time";
 
-export function Body({ body }: { body: string }) {
+function Body({ body }: { body: string }) {
   const { name } = useNames();
   return parts(body).map((part, index) =>
     typeof part === "string" ? (
@@ -22,14 +22,7 @@ export function Body({ body }: { body: string }) {
   );
 }
 
-function Compose(props: {
-  label: string;
-  placeholder: string;
-  input?: MessageInput;
-  defaultText?: string;
-  onSend: (body: string) => void;
-  onChange?: (text: string) => void;
-}) {
+function Compose(props: Parameters<typeof MessageBox>[0]) {
   const me = useMe()!;
   return (
     <section className="turn">
@@ -112,7 +105,7 @@ export function Thread({ threadId }: { threadId: Id<"threads"> }) {
           input={reply}
           label="Reply"
           placeholder="Reply, @mention someone to bring them in, ⌘↵ to send"
-          onSend={(body) => void send(threadId, body)}
+          onSend={(body) => void send({ threadId, body })}
         />
         <div ref={end} />
       </article>

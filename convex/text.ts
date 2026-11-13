@@ -1,6 +1,6 @@
 const TOKEN = /\[\[(person|group):(\w+)\]\]/g;
 
-export type Part = string | { kind: "person" | "group"; id: string };
+type Part = string | { kind: "person" | "group"; id: string };
 
 export const personToken = (id: string) => `[[person:${id}]]`;
 export const groupToken = (id: string) => `[[group:${id}]]`;

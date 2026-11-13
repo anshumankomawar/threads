@@ -1,16 +1,16 @@
 import { useMutation } from "convex/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import { useQuery } from "convex-helpers/react/cache";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 import { plain } from "../../../convex/text";
 import type { Box } from "./state";
 
 export { api };
-export { groupToken, parts, personToken, plain } from "../../../convex/text";
+export { parts } from "../../../convex/text";
 export type { Doc, Id };
-export type Row = NonNullable<ReturnType<typeof useThreads>>[number];
+export type Row = ReturnType<typeof useThreads>[number];
 
 const EMPTY: never[] = [];
 
@@ -79,8 +79,8 @@ export const useMove = () =>
     patchRow(store, threadId, { bucketId }),
   );
 
-export function useSend() {
-  const send = useMutation(api.threads.send).withOptimisticUpdate((store, { threadId, body }) => {
+export const useSend = () =>
+  useMutation(api.threads.send).withOptimisticUpdate((store, { threadId, body }) => {
     const me = store.getQuery(api.workspace.me, {});
     const messages = store.getQuery(api.threads.messages, { threadId });
     if (!me || !messages) return;
@@ -95,8 +95,3 @@ export function useSend() {
     store.setQuery(api.threads.messages, { threadId }, [...messages, sent]);
     patchRow(store, threadId, { lastAuthorId: me._id, lastBody: body, activeAt: Date.now() });
   });
-  return useCallback(
-    (threadId: string, body: string) => send({ threadId: threadId as Id<"threads">, body }),
-    [send],
-  );
-}

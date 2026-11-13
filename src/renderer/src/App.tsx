@@ -3,7 +3,7 @@ import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resiza
 import { useShortcut } from "@ui-sdk/react/shortcuts";
 import { Toolbar, ToolbarButton, ToolbarGroup } from "@ui-sdk/react/toolbar";
 import { useEffect } from "react";
-import { sections, useBuckets, useMark, useMe, useThreads, type Id } from "./data";
+import { sections, useBuckets, useMark, useMe, useThreads } from "./data";
 import { Icon } from "./Icon";
 import { List } from "./List";
 import { NewMessage, Search } from "./Palette";
@@ -19,7 +19,7 @@ function useShortcuts() {
   const rows = useThreads();
   const buckets = useBuckets();
   const mark = useMark();
-  const threadId = view.thread as Id<"threads"> | undefined;
+  const threadId = view.thread;
   const order = sections(rows, view.box, buckets).flatMap((section) => section.rows);
   const at = order.findIndex((row) => row.threadId === threadId);
 
@@ -40,7 +40,7 @@ function useShortcuts() {
   const leave = () => {
     const focused = document.activeElement as HTMLElement | null;
     if (focused?.isContentEditable) focused.blur();
-    else go({ thread: undefined, settings: false });
+    else go({ thread: undefined });
   };
 
   useShortcut("mod+k", () => setDialog("search"), { description: "Search" });
@@ -134,11 +134,7 @@ export function App() {
                 </ResizablePanel>
                 <ResizableHandle aria-label="Resize list" />
                 <ResizablePanel id="thread">
-                  {draft ? (
-                    <DraftView draft={draft} />
-                  ) : (
-                    <Thread threadId={view.thread as Id<"threads">} />
-                  )}
+                  {draft ? <DraftView draft={draft} /> : <Thread threadId={view.thread!} />}
                 </ResizablePanel>
               </Resizable>
             ) : (
