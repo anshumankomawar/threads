@@ -124,19 +124,19 @@ export function App() {
           </>
         )}
         <ResizablePanel id="main">
-          {view.thread || draft ? (
-            <Resizable className="columns" autoSaveId="list">
-              <ResizablePanel id="list" defaultSize="374px" minSize="310px" maxSize="660px">
-                <List />
-              </ResizablePanel>
-              <ResizableHandle aria-label="Resize list" />
-              <ResizablePanel id="thread">
-                {draft ? <DraftView draft={draft} /> : <Thread threadId={view.thread!} />}
-              </ResizablePanel>
-            </Resizable>
-          ) : (
-            <List />
-          )}
+          <Resizable className="columns" autoSaveId="list">
+            <ResizablePanel id="list" defaultSize="374px" minSize="310px" maxSize="660px">
+              <List />
+            </ResizablePanel>
+            <ResizableHandle aria-label="Resize list" />
+            <ResizablePanel id="thread">
+              {draft ? (
+                <DraftView draft={draft} />
+              ) : (
+                view.thread && <Thread threadId={view.thread} />
+              )}
+            </ResizablePanel>
+          </Resizable>
         </ResizablePanel>
       </Resizable>
       {dialog === "new" && <NewMessage />}
