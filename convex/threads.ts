@@ -8,7 +8,8 @@ import { mentions, titleOf } from "./text";
 export async function post(ctx: MutationCtx & Ctx, threadId: Id<"threads">, body: string) {
   const { _id: authorId, workspaceId } = ctx.me;
   const activeAt = Date.now();
-  await ctx.db.insert("messages", { workspaceId, threadId, authorId, body });
+  const messageId = await ctx.db.insert("messages", { workspaceId, threadId, authorId, body });
+  await ctx.scheduler.runAfter(0, internal.search.index, { messageId });
   await ctx.db.patch(threadId, { lastAuthorId: authorId, lastBody: body });
 
   const colleague = async (id: string) => {

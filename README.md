@@ -26,6 +26,13 @@ To have new threads sorted into buckets (without it they stay in Sorting):
 bunx convex env set ANTHROPIC_API_KEY ...
 ```
 
+The same key lets Search answer a question when nothing matches (Ask Arc). To have Search also find messages by
+meaning, give it a Voyage key; each new message is then embedded as it's posted:
+
+```sh
+bunx convex env set VOYAGE_API_KEY ...
+```
+
 People sign in with Google, or with an email and a password. A new account gets its own workspace, unless someone has
 invited that email (Settings, People), in which case it joins theirs. Google returns the app its sign-in through
 `http://127.0.0.1:47201`, which the app listens on only while you sign in.

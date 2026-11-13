@@ -37,6 +37,17 @@ export default defineSchema({
     .index("thread", ["threadId"])
     .searchIndex("search", { searchField: "body", filterFields: ["workspaceId"] }),
 
+  vectors: defineTable({
+    workspaceId: v.id("workspaces"),
+    threadId: v.id("threads"),
+    messageId: v.id("messages"),
+    vector: v.array(v.float64()),
+  }).vectorIndex("near", {
+    vectorField: "vector",
+    dimensions: 1024,
+    filterFields: ["workspaceId"],
+  }),
+
   members: defineTable({
     workspaceId: v.id("workspaces"),
     threadId: v.id("threads"),

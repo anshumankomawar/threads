@@ -39,5 +39,6 @@ Styles are plain CSS in `src/renderer/src/app.css`, on class names and ui-sdk's 
 - Every Convex function is made with `query` and `mutation` from `convex/functions.ts`, never the ones in
   `_generated/server`: they sign the caller in and give you `ctx.me`. Read and write only inside `ctx.me.workspaceId`,
   and reach a thread through `membership`.
+- An action has no `ctx.me`: it reaches data only through those queries and mutations (`convex/search.ts`).
 - A message's delivery lives in `post` in `convex/threads.ts`. Change it with its tests, in `tests/`.
 - After adding or removing a dependency, restart `bun run dev`: a running dev server keeps its old bundle of them.

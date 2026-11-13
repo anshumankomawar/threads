@@ -1,4 +1,5 @@
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useAsyncOptions } from "@ui-sdk/react/async-options";
 import {
   Command,
   CommandGroup,
@@ -9,10 +10,10 @@ import {
 } from "@ui-sdk/react/command";
 import { Dialog, DialogContent, DialogTitle } from "@ui-sdk/react/dialog";
 import { useShortcut } from "@ui-sdk/react/shortcuts";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { api, useBuckets, useNames, useThreads } from "./data";
+import { api, useBuckets, useNames, useThreads, type Doc } from "./data";
 import { Icon } from "./Icon";
 import { MessageBox } from "./MessageBox";
 import { addDraft, go, reset, setDialog, theme } from "./state";
@@ -57,7 +58,7 @@ function Modal(props: {
   );
 }
 
-type Item = { section: string; value: string; label: string; hint?: string; run: () => void };
+type Item = { section: string; value: string; label: string; hint?: string; run: () => unknown };
 
 export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
   const [text, setText] = useState("");
@@ -66,7 +67,22 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
   const names = useNames();
   const { signOut } = useAuthActions();
   const query = text.trim();
-  const hits = useQuery(api.threads.search, query.length > 1 ? { text: query } : "skip") ?? [];
+  const worded = useQuery(api.threads.search, query.length > 1 ? { text: query } : "skip") ?? [];
+  const related = useAction(api.search.related);
+  const near = useAsyncOptions<Doc<"messages">>(async (text) =>
+    text.length > 1 ? related({ text }) : [],
+  );
+  const ask = useAction(api.search.ask);
+  const [answer, setAnswer] = useState<{ answer: string; threadIds: string[] }>();
+  const asked = useRef("");
+
+  const consult = async () => {
+    asked.current = query;
+    setAnswer({ answer: "Asking Arc", threadIds: [] });
+    const reply = await ask({ question: query }).catch(() => null);
+    if (asked.current === query)
+      setAnswer(reply ?? { answer: "Arc couldn't answer that.", threadIds: [] });
+  };
 
   const command = (section: string, label: string, run: () => void, hint?: string): Item => ({
     section,
@@ -100,26 +116,40 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
     hint: names.text(row.lastBody),
     run: () => go({ thread: row.threadId }),
   }));
-  const messages = hits.map((hit) => ({
+  const hits = new Map([...worded, ...near.items].map((hit) => [hit._id, hit]));
+  const messages = [...hits.values()].map((hit) => ({
     section: "Messages",
     value: hit._id,
     label: names.text(hit.body),
     hint: rows.find((row) => row.threadId === hit.threadId)?.title,
     run: () => go({ thread: hit.threadId }),
   }));
-  const items: Item[] = [...(threadsOnly ? [] : commands), ...threads, ...messages];
+  const found = [...(threadsOnly ? [] : commands), ...threads]
+    .filter((item) => item.label.toLowerCase().includes(query.toLowerCase()))
+    .concat(messages);
+  const items: Item[] = answer
+    ? threads
+        .filter((thread) => answer.threadIds.includes(thread.value))
+        .map((thread) => ({ ...thread, section: "From these threads" }))
+    : found.length > 0 || !query || near.status === "loading"
+      ? found
+      : [{ section: "No matches", value: "ask", label: "Ask Arc", hint: "↵", run: consult }];
   const groups = Map.groupBy(items, (item) => item.section);
 
   return (
     <Modal grow title="Search">
       <Command
-        filter="contains"
-        onQueryChange={(next, details) =>
-          details.reason === "escape-key" ? setDialog(null) : setText(next)
-        }
+        filter={false}
+        onQueryChange={(next, details) => {
+          if (details.reason === "escape-key") return setDialog(null);
+          asked.current = "";
+          setAnswer(undefined);
+          setText(next);
+          near.setQuery(next.trim());
+        }}
         onAction={(value) => {
-          setDialog(null);
-          items.find((item) => item.value === value)?.run();
+          if (value !== "ask") setDialog(null);
+          void items.find((item) => item.value === value)?.run();
         }}
       >
         <label className="field">
@@ -127,17 +157,13 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
           <CommandInput aria-label="Search" placeholder="Search" />
           <kbd>{threadsOnly ? "⌘F" : "⌘K"}</kbd>
         </label>
+        {answer && <p className="answer">{answer.answer}</p>}
         <CommandList className="options">
           {[...groups].map(([section, group]) => (
             <CommandGroup key={section}>
               <CommandGroupLabel>{section}</CommandGroupLabel>
               {group.map((item) => (
-                <CommandItem
-                  key={item.value}
-                  value={item.value}
-                  label={item.label}
-                  keywords={section === "Messages" ? [query] : undefined}
-                >
+                <CommandItem key={item.value} value={item.value} label={item.label}>
                   <span className="label clip">{item.label}</span>
                   <span className="detail clip">{item.hint}</span>
                 </CommandItem>
