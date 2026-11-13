@@ -20,24 +20,19 @@ test("a new account gets its own workspace and buckets, or joins the one that in
 });
 
 test("an invite moves someone who already has an account the next time they sign in", async () => {
-  const { t, signUp } = world();
+  const { signUp } = world();
   const ada = await signUp("ada");
   const grace = await signUp("grace");
   await ada.as.mutation(api.workspace.invite, { email: grace.email });
-
-  const signIn = (password: string) =>
-    t.mutation(api.auth.signInWithUsernamePassword, { username: grace.email, password });
-  expect(await signIn("wrong horse battery staple")).toMatchObject({ status: "error" });
-  expect(await signIn("correct horse battery staple")).toMatchObject({ status: "complete" });
+  await grace.signIn();
   expect((await grace.as.query(api.workspace.me)).workspaceId).toBe(ada.workspaceId);
 });
 
-test("an email can only sign up once", async () => {
-  const { t, signUp } = world();
-  await signUp("ada");
-  const again = { name: "ada", email: "ADA@acme.com", password: "another long password" };
-  expect(await t.mutation(api.auth.signUp, again)).toMatchObject({
-    status: "error",
-    userError: { error: "USERNAME_TAKEN" },
-  });
+test("an email Google hasn't verified can't take an invite", async () => {
+  const { signUp } = world();
+  const ada = await signUp("ada");
+  await ada.as.mutation(api.workspace.invite, { email: "grace@acme.com" });
+  const grace = await signUp("grace", false);
+  expect(grace).toMatchObject({ email: "" });
+  expect(grace.workspaceId).not.toBe(ada.workspaceId);
 });

@@ -649,24 +649,6 @@ small {
     transform: rotate(360deg);
   }
 }
-@keyframes lift {
-  to {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-}
-::view-transition-group(welcome-step) {
-  animation-duration: 0s;
-}
-::view-transition-old(welcome-step) {
-  animation: 200ms cubic-bezier(0.4, 0, 1, 1) both lift;
-}
-::view-transition-new(welcome-step),
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-}
-
 .welcome {
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   position: relative;
@@ -683,15 +665,12 @@ small {
     sans-serif;
   -webkit-app-region: drag;
 
-  & form {
-    position: relative;
+  & > div {
     display: flex;
     flex-direction: column;
     align-items: center;
     width: 360px;
-    min-height: 400px;
     text-align: center;
-    view-transition-name: welcome-step;
     -webkit-app-region: no-drag;
   }
   & h1 {
@@ -716,53 +695,26 @@ small {
     animation: arrive 600ms var(--ease) 300ms backwards;
 
     &[role="alert"] {
-      margin: 0;
       color: #ff8a80;
       font-size: 13px;
       animation: none;
     }
   }
-  & form > div {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    width: 100%;
-    margin-top: 26px;
-    animation: arrive 600ms var(--ease) 420ms backwards;
-  }
-  & [data-slot="field"],
-  & [data-slot="password-input"] {
-    display: grid;
-  }
-  & input,
   & button {
     display: flex;
     gap: 10px;
     align-items: center;
     justify-content: center;
+    width: 100%;
     height: 42px;
-    padding: 0 18px;
-    border: 0.5px solid rgb(255 255 255 / 14%);
+    margin-top: 26px;
     border-radius: 999px;
-    transition: 160ms;
-    transition-property: border-color, background-color, opacity, transform;
-  }
-  & input {
-    background: rgb(40 40 44 / 70%);
-    user-select: text;
-
-    &:focus {
-      border-color: rgb(255 255 255 / 34%);
-    }
-    &::placeholder {
-      color: rgb(255 255 255 / 40%);
-    }
-  }
-  & button {
-    border-color: transparent;
     color: #101010;
     background: rgb(255 255 255 / 94%);
     font-weight: 500;
+    transition: 160ms;
+    transition-property: background-color, opacity, transform;
+    animation: arrive 600ms var(--ease) 420ms backwards;
 
     &:hover {
       background: rgb(255 255 255 / 84%);
@@ -774,15 +726,6 @@ small {
       opacity: 0.8;
     }
   }
-  & .secondary {
-    border-color: rgb(255 255 255 / 14%);
-    color: rgb(255 255 255 / 92%);
-    background: rgb(40 40 44 / 70%);
-
-    &:hover {
-      background: rgb(56 56 62 / 70%);
-    }
-  }
   & i {
     width: 14px;
     height: 14px;
@@ -791,19 +734,6 @@ small {
     border-radius: 50%;
     opacity: 0.7;
     animation: turn 700ms linear infinite;
-  }
-  & .link {
-    height: auto;
-    margin-top: 6px;
-    color: rgb(255 255 255 / 55%);
-    background: none;
-    font-size: 13px;
-    font-weight: 400;
-
-    &:hover {
-      color: rgb(255 255 255 / 92%);
-      background: none;
-    }
   }
 }
 
