@@ -674,18 +674,6 @@ small {
     sans-serif;
   -webkit-app-region: drag;
 
-  & .scene {
-    position: absolute;
-    top: 0;
-    left: 0;
-    image-rendering: pixelated;
-    opacity: 0;
-    transition: opacity 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
-
-    &.shown {
-      opacity: 1;
-    }
-  }
   & form {
     position: relative;
     display: flex;
@@ -714,7 +702,7 @@ small {
   }
   & p {
     margin-top: 10px;
-    color: rgb(255 255 255 / 90%);
+    color: rgb(255 255 255 / 62%);
     text-wrap: balance;
     animation: arrive 600ms var(--ease) 300ms backwards;
 
@@ -789,7 +777,7 @@ small {
   & .link {
     height: auto;
     margin-top: 6px;
-    color: rgb(255 255 255 / 85%);
+    color: rgb(255 255 255 / 55%);
     background: none;
     font-size: 13px;
     font-weight: 400;

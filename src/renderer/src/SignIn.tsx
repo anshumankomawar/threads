@@ -5,55 +5,17 @@ import { Field, FieldLabel } from "@ui-sdk/react/field";
 import { Input } from "@ui-sdk/react/input";
 import { PasswordInput, PasswordInputControl } from "@ui-sdk/react/password-input";
 import { useMutation } from "convex/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "./data";
-import horizon from "./horizon.png";
 
-const picture = new Image();
-picture.src = horizon;
 const loaded = Promise.race([
   Promise.all([
-    picture.decode().catch(() => {}),
     document.fonts.load('300 36px "Fraunces"'),
     document.fonts.load('400 14px "Hanken Grotesk"'),
   ]),
   new Promise((resolve) => setTimeout(resolve, 1000)),
 ]);
-
-const DOT = 2;
-const GROUND = [16, 16, 16];
-
-function threshold(x: number, y: number) {
-  let value = 0;
-  for (let bit = 0; bit < 3; bit++)
-    value = (value << 2) | ((((x ^ y) >> bit) & 1) << 1) | ((y >> bit) & 1);
-  return (value + 0.5) / 64;
-}
-
-function paint(canvas: HTMLCanvasElement) {
-  const width = Math.ceil(innerWidth / DOT);
-  const height = Math.ceil(innerHeight / DOT);
-  canvas.width = width;
-  canvas.height = height;
-  canvas.style.width = `${width * DOT}px`;
-  const context = canvas.getContext("2d", { willReadFrequently: true })!;
-  const scale = Math.max(width / picture.width, height / picture.height);
-  const [drawn, tall] = [picture.width * scale, picture.height * scale];
-  context.filter = "blur(2px)";
-  context.drawImage(picture, (width - drawn) / 2, (height - tall) / 2, drawn, tall);
-
-  const image = context.getImageData(0, 0, width, height);
-  for (let y = 0; y < height; y++)
-    for (let x = 0; x < width; x++) {
-      const at = (y * width + x) * 4;
-      const color = image.data.slice(at, at + 3);
-      const peak = Math.max(...color, 1);
-      const lit = (peak / 255) ** 2 > threshold(x, y);
-      image.data.set(lit ? color.map((channel) => (channel / peak) * 200) : GROUND, at);
-    }
-  context.putImageData(image, 0, 0);
-}
 
 const STEPS = {
   signIn: {
@@ -79,17 +41,13 @@ export function SignIn() {
   const { signIn } = useSignInWithUsernamePassword(api.auth);
   const signUp = useMutation(api.auth.signUp);
   const [flow, setFlow] = useState<keyof typeof STEPS>("signIn");
-  const scene = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string>();
   const step = STEPS[flow];
 
   useEffect(() => {
-    const fit = () => paint(scene.current!);
-    void loaded.then(() => (fit(), setReady(true)));
-    addEventListener("resize", fit);
-    return () => removeEventListener("resize", fit);
+    void loaded.then(() => setReady(true));
   }, []);
 
   const change = () =>
@@ -116,7 +74,6 @@ export function SignIn() {
 
   return (
     <main className="welcome">
-      <canvas ref={scene} className={ready ? "scene shown" : "scene"} />
       {ready && (
         <form key={flow} action={submit}>
           <h1>
