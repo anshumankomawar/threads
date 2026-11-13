@@ -85,10 +85,9 @@ export function SignIn() {
         originalColors
         type="8x8"
         size={2}
-        colorSteps={2}
+        colorSteps={4}
         fit="cover"
       />
-      <span className="veil" />
       {ready && (
         <form key={flow} action={submit}>
           <h1>

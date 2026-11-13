@@ -677,22 +677,13 @@ small {
   & .scene {
     position: absolute;
     inset: 0;
+    mix-blend-mode: screen;
     opacity: 0;
     transition: opacity 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
 
     &.shown {
       opacity: 1;
     }
-  }
-  & .veil {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      ellipse 520px 440px at 50% 48%,
-      rgb(16 16 16 / 92%),
-      rgb(16 16 16 / 70%) 55%,
-      transparent
-    );
   }
   & form {
     position: relative;
@@ -722,7 +713,7 @@ small {
   }
   & p {
     margin-top: 10px;
-    color: rgb(255 255 255 / 62%);
+    color: rgb(255 255 255 / 90%);
     text-wrap: balance;
     animation: arrive 600ms var(--ease) 300ms backwards;
 
@@ -797,7 +788,7 @@ small {
   & .link {
     height: auto;
     margin-top: 6px;
-    color: rgb(255 255 255 / 55%);
+    color: rgb(255 255 255 / 85%);
     background: none;
     font-size: 13px;
     font-weight: 400;
