@@ -37,6 +37,9 @@
 :focus {
   outline: none;
 }
+::selection {
+  background: color-mix(in srgb, currentColor 22%, transparent);
+}
 body {
   height: 100vh;
   overflow: hidden;
