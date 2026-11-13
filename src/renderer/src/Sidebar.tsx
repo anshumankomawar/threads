@@ -50,8 +50,6 @@ export function Sidebar() {
           {row("all", "All Threads", "archive")}
           {row("drafts", "Drafts", "draft")}
           {row("inbox", "Buckets", "inbox", count("inbox"))}
-          {count("unsorted") > 0 &&
-            row("unsorted", "Sorting", "folder", count("unsorted"), undefined, true)}
           {buckets.map((bucket) =>
             row(
               bucket._id,

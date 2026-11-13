@@ -37,15 +37,10 @@ export function useNames() {
 export const inBox = (rows: Row[], box: Box) =>
   box === "all"
     ? rows
-    : rows.filter(
-        (row) =>
-          row.inbox &&
-          (box === "inbox" || (box === "unsorted" ? !row.bucketId : row.bucketId === box)),
-      );
+    : rows.filter((row) => row.inbox && (box === "inbox" ? row.bucketId : row.bucketId === box));
 
 const BOXES: Record<string, string> = {
   inbox: "Buckets",
-  unsorted: "Sorting",
   all: "All Threads",
   drafts: "Drafts",
 };
@@ -55,10 +50,10 @@ export const boxTitle = (box: Box, buckets: Doc<"buckets">[]) =>
 export function sections(rows: Row[], box: Box, buckets: Doc<"buckets">[]) {
   const listed = inBox(rows, box);
   if (box !== "inbox") return [{ title: "", rows: listed }];
-  return [...buckets, undefined]
+  return buckets
     .map((bucket) => ({
-      title: bucket?.name ?? "Sorting",
-      rows: listed.filter((row) => row.bucketId === bucket?._id),
+      title: bucket.name,
+      rows: listed.filter((row) => row.bucketId === bucket._id),
     }))
     .filter((section) => section.rows.length > 0);
 }

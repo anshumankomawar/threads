@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { api } from "../convex/_generated/api";
 import { groupToken, personToken } from "../convex/text";
 import { world } from "./world";
@@ -82,4 +82,15 @@ test("threads stay inside their workspace and their members", async () => {
   await expect(linus.as.mutation(api.threads.send, { threadId, body: "hi" })).rejects.toThrow();
   expect(await linus.as.query(api.threads.search, { text: "secret" })).toEqual([]);
   expect(await grace.as.query(api.threads.search, { text: "secret" })).toHaveLength(1);
+});
+
+test("a thread that can't be sorted by what it says goes to the first bucket", async () => {
+  vi.useFakeTimers();
+  const { t, ada, grace, inbox } = await setup();
+  await ada.as.mutation(api.threads.start, { body: `${personToken(grace._id)} hi` });
+  await t.finishAllScheduledFunctions(vi.runAllTimers);
+  vi.useRealTimers();
+
+  const [first] = await grace.as.query(api.workspace.buckets);
+  expect(await inbox(grace)).toMatchObject([{ bucketId: first._id }]);
 });
