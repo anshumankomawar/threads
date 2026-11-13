@@ -1,15 +1,6 @@
 import { Listbox, ListboxGroup, ListboxGroupLabel, ListboxItem } from "@ui-sdk/react/listbox";
 import { useState } from "react";
-import {
-  boxTitle,
-  sections,
-  useBuckets,
-  useMark,
-  useMove,
-  useNames,
-  useThreads,
-  type Row,
-} from "./data";
+import { sections, useBuckets, useMark, useMove, useNames, useThreads, type Row } from "./data";
 import { Icon } from "./Icon";
 import { ContextMenu, type MenuEntry } from "./Menu";
 import { go, removeDraft, useUI, useView } from "./state";
@@ -26,9 +17,7 @@ export function List() {
   const [menu, setMenu] = useState<MenuEntry[]>([]);
   const groups = sections(rows, box, buckets);
   const listed = groups.flatMap((group) => group.rows);
-  const unread = listed.filter((row) => row.unread).length;
   const total = box === "drafts" ? drafts.length : listed.length;
-  const noun = box === "drafts" ? "draft" : "thread";
 
   const entries = ({ threadId, inbox, bucketId }: Row): MenuEntry[] => [
     { label: "Open", run: () => go({ thread: threadId }) },
@@ -66,12 +55,6 @@ export function List() {
 
   return (
     <section className="list">
-      <h1>
-        <span className="clip">{boxTitle(box, buckets)}</span>
-        <small>
-          {unread > 0 ? `${unread} unread` : `${total} ${noun}${total === 1 ? "" : "s"}`}
-        </small>
-      </h1>
       <ContextMenu entries={menu}>
         {box === "drafts" ? (
           <Listbox

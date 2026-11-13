@@ -288,23 +288,9 @@ small {
 }
 
 .list {
-  & h1 {
-    display: flex;
-    gap: 6px;
-    align-items: baseline;
-    flex-shrink: 0;
-    padding: 15px 18px 0;
-    height: 48px;
-    font-size: 14px;
-    font-weight: 500;
-
-    & .clip {
-      flex: 0 1 auto;
-    }
-  }
   & .scroll {
     flex: 1;
-    padding: 0 8px 26px;
+    padding: 9px 8px 26px;
     overflow-y: auto;
 
     &:empty {
@@ -319,6 +305,9 @@ small {
     color: var(--text-3);
     font-size: 12px;
     font-weight: 500;
+  }
+  & [data-slot="listbox-group"]:first-child [data-slot="listbox-group-label"] {
+    padding-top: 7px;
   }
   & .card {
     display: flex;

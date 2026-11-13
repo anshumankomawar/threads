@@ -51,14 +51,6 @@ export const inBox = (rows: Row[], box: Box) =>
     ? rows
     : rows.filter((row) => row.inbox && (box === "inbox" ? row.bucketId : row.bucketId === box));
 
-const BOXES: Record<string, string> = {
-  inbox: "Buckets",
-  all: "All Threads",
-  drafts: "Drafts",
-};
-export const boxTitle = (box: Box, buckets: Doc<"buckets">[]) =>
-  BOXES[box] ?? buckets.find((bucket) => bucket._id === box)?.name ?? "";
-
 export function sections(rows: Row[], box: Box, buckets: Doc<"buckets">[]) {
   const listed = inBox(rows, box);
   if (box !== "inbox") return [{ title: "", rows: listed }];
