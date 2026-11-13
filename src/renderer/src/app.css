@@ -676,25 +676,15 @@ small {
 
   & .scene {
     position: absolute;
-    inset: -24px;
-    background: url(./horizon.png) center / cover;
-    filter: blur(10px);
+    top: 0;
+    left: 0;
+    image-rendering: pixelated;
     opacity: 0;
     transition: opacity 1.2s cubic-bezier(0.25, 0.1, 0.25, 1);
 
     &.shown {
-      opacity: 0.5;
+      opacity: 1;
     }
-  }
-  & .veil {
-    position: absolute;
-    inset: 0;
-    background: radial-gradient(
-      ellipse 460px 400px at 50% 48%,
-      rgb(12 12 13 / 80%),
-      rgb(12 12 13 / 50%) 50%,
-      transparent
-    );
   }
   & form {
     position: relative;
