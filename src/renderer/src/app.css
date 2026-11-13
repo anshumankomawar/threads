@@ -299,15 +299,14 @@ small {
   }
   & [data-slot="listbox-group-label"] {
     display: flex;
-    gap: 6px;
+    gap: 8px;
     align-items: center;
-    padding: 10px 12px 2px;
-    color: var(--text-3);
-    font-size: 12px;
-    font-weight: 500;
+    height: 30px;
+    padding: 0 10px;
+    color: var(--text-2);
   }
-  & [data-slot="listbox-group"]:first-child [data-slot="listbox-group-label"] {
-    padding-top: 7px;
+  & [data-slot="listbox-group"] + [data-slot="listbox-group"] {
+    margin-top: 8px;
   }
   & .card {
     display: flex;
