@@ -10,15 +10,25 @@ bun run convex   # the backend, watching convex/
 bun run dev      # the app
 ```
 
-The first `bun run convex` creates a deployment and writes `.env.local`. Sign-in needs no setup: Convex Auth signs its
-sessions with the deployment's own key. To have new threads sorted into buckets (without it they stay in Sorting):
+The first `bun run convex` creates a deployment and writes `.env.local`. Convex Auth signs its sessions with the
+deployment's own key. Signing in with Google needs a Google Cloud OAuth client (Web application) whose redirect URI is
+the deployment's site URL (`VITE_CONVEX_SITE_URL` in `.env.local`) followed by `/oauth/google/callback`, and its id and
+secret on the deployment; the deployment won't start without them:
+
+```sh
+bunx convex env set AUTH_GOOGLE_CLIENT_ID ...
+bunx convex env set AUTH_GOOGLE_CLIENT_SECRET ...
+```
+
+To have new threads sorted into buckets (without it they stay in Sorting):
 
 ```sh
 bunx convex env set ANTHROPIC_API_KEY ...
 ```
 
-People sign in with an email and a password. A new account gets its own workspace, unless someone has invited that
-email (Settings, People), in which case it joins theirs.
+People sign in with Google, or with an email and a password. A new account gets its own workspace, unless someone has
+invited that email (Settings, People), in which case it joins theirs. Google returns the app its sign-in through
+`http://127.0.0.1:47201`, which the app listens on only while you sign in.
 
 ## Check it
 

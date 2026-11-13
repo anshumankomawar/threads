@@ -38,6 +38,8 @@ export function SignIn() {
   const { setSession } = useAuthActions();
   const { signIn } = useSignInWithUsernamePassword(api.auth);
   const signUp = useMutation(api.auth.signUp);
+  const startGoogle = useMutation(api.auth.startSignInWithGoogle);
+  const completeGoogle = useMutation(api.auth.completeSignInWithGoogle);
   const [flow, setFlow] = useState<keyof typeof STEPS>("signIn");
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,6 +57,16 @@ export function SignIn() {
         setProblem(undefined);
       }),
     );
+  const google = async () => {
+    setBusy(true);
+    setProblem(undefined);
+    const { redirect, state } = await startGoogle({ redirectTo: "http://127.0.0.1:47201/" });
+    const code = await window.desktop.google(redirect);
+    const result = code ? await completeGoogle({ code, state }) : undefined;
+    if (result?.status === "complete") await setSession(result.tokens);
+    else setProblem("Signing in with Google didn't finish.");
+    setBusy(false);
+  };
   const submit = async (form: FormData) => {
     const [name, email, password] = ["name", "email", "password"].map((key) =>
       String(form.get(key) ?? ""),
@@ -107,6 +119,9 @@ export function SignIn() {
             <Button type="submit" disabled={busy}>
               {busy && <i />}
               {step.action}
+            </Button>
+            <Button className="secondary" onClick={google} disabled={busy}>
+              Continue with Google
             </Button>
             {problem && <p role="alert">{problem}</p>}
             <Button className="link" onClick={change}>

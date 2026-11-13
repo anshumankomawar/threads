@@ -1,3 +1,4 @@
+import { setupGoogle, vGoogleProfile } from "@convex-dev/auth/methods/google/server";
 import {
   setupUsernamePassword,
   type SignUpResult,
@@ -21,7 +22,15 @@ export const { signUpWithUsernamePassword, signInWithUsernamePassword } = setupU
   { component: components.authPassword, usernameComponent: components.authUsername },
 ).attachUserCallbacks({ createUser: internal.auth.createUser, onSignIn: internal.auth.onSignIn });
 
-const method = v.object({ name: v.literal("usernamePassword"), profile: v.object({}) });
+export const { startSignInWithGoogle, completeSignInWithGoogle } = setupGoogle(auth, {
+  component: components.authGoogle,
+  allowedRedirectOrigins: ["http://127.0.0.1:47201"],
+}).attachUserCallbacks({ createUser: internal.auth.createUser, onSignIn: internal.auth.onSignIn });
+
+const method = v.union(
+  v.object({ name: v.literal("usernamePassword"), profile: v.object({}) }),
+  v.object({ name: v.literal("google"), profile: vGoogleProfile }),
+);
 
 async function invitedTo(ctx: MutationCtx, email: string) {
   const invite = await ctx.db
@@ -35,9 +44,14 @@ async function invitedTo(ctx: MutationCtx, email: string) {
 export const createUser = internalMutation({
   args: { method },
   returns: v.id("users"),
-  handler: async (ctx) => {
-    const workspaceId = await ctx.db.insert("workspaces", { name: "" });
-    const userId = await ctx.db.insert("users", { name: "", email: "", workspaceId });
+  handler: async (ctx, { method }) => {
+    const google = method.name === "google" ? method.profile : undefined;
+    const name = google?.name ?? "";
+    const email = google?.emailVerified ? (google.email ?? "").toLowerCase() : "";
+    const workspaceId =
+      (email && (await invitedTo(ctx, email))) ||
+      (await ctx.db.insert("workspaces", { name: name && `${name}'s workspace` }));
+    const userId = await ctx.db.insert("users", { name, email, workspaceId });
     for (const [name, description] of BUCKETS)
       await ctx.db.insert("buckets", { userId, name, description });
     return userId;

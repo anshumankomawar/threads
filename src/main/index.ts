@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
+import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import icon from "../../build/icon.png?asset";
 import iconDark from "../../resources/icon-dark.png?asset";
@@ -44,6 +45,34 @@ function createWindow() {
   if (home) void created.loadURL(home);
   else void created.loadFile(join(__dirname, "../renderer/index.html"));
 }
+
+let waiting: Server | undefined;
+
+ipcMain.handle(
+  "google",
+  (_event, url: string) =>
+    new Promise<string | null>((resolve) => {
+      waiting?.close();
+      const server = createServer((request, response) => {
+        const params = new URL(request.url ?? "/", "http://127.0.0.1").searchParams;
+        if (!params.has("convexAuthCode") && !params.has("convexAuthError"))
+          return void response.writeHead(404).end();
+        response.end(
+          params.has("convexAuthCode")
+            ? "Signed in. You can close this tab and go back to Arc."
+            : "Signing in didn't finish. Go back to Arc to try again.",
+        );
+        server.close();
+        show();
+        resolve(params.get("convexAuthCode"));
+      });
+      waiting = server;
+      server.on("close", () => resolve(null));
+      server.on("error", () => resolve(null));
+      server.listen(47201, "127.0.0.1", () => void shell.openExternal(url));
+      setTimeout(() => server.close(), 300_000);
+    }),
+);
 
 ipcMain.on("theme", (_event, theme: "dark" | "light") => {
   nativeTheme.themeSource = theme;
