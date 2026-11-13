@@ -169,7 +169,7 @@ export function NewMessage({ draft }: { draft?: Draft }) {
     <Modal title="New Message" onClose={keep}>
       <MessageBox
         label="New Message"
-        placeholder="What do you need? @mention who it's for, ⌘↵ to send"
+        placeholder="Write a message, @mention who it's for, ⌘↵ to send"
         defaultText={draft?.text}
         onSend={(body) => void send(body)}
         onChange={(text) => (written.current = text)}
