@@ -147,7 +147,6 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
         <label className="field">
           <Icon name="search" />
           <CommandInput aria-label="Search" placeholder="Search" />
-          <kbd>{threadsOnly ? "⌘F" : "⌘K"}</kbd>
         </label>
         {answer && <p className="answer">{answer.answer}</p>}
         <CommandList className="options">
