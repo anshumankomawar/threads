@@ -490,12 +490,6 @@ small {
   }
 }
 
-.answer {
-  padding: 8px 15px 4px;
-  line-height: 20px;
-  white-space: pre-wrap;
-}
-
 .palette {
   position: fixed;
   inset: 0;

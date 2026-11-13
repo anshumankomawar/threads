@@ -68,15 +68,14 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
     text.length > 1 ? related({ text }) : [],
   );
   const ask = useAction(api.search.ask);
-  const [answer, setAnswer] = useState<{ answer: string; threadIds: string[] }>();
+  const [found, setFound] = useState<string[] | "asking">();
   const asked = useRef("");
 
   const consult = async () => {
     asked.current = query;
-    setAnswer({ answer: "Asking Arc", threadIds: [] });
-    const reply = await ask({ question: query }).catch(() => null);
-    if (asked.current === query)
-      setAnswer(reply ?? { answer: "Arc couldn't answer that.", threadIds: [] });
+    setFound("asking");
+    const threadIds = await ask({ question: query }).catch(() => null);
+    if (asked.current === query) setFound(threadIds ?? []);
   };
 
   const command = (label: string, run: () => void, hint?: string): Item => ({
@@ -122,10 +121,19 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
     .filter(({ score }) => score > 0)
     .sort((a, b) => b.score - a.score)
     .map(({ item }) => item);
-  const items: Item[] = answer
-    ? threads.filter((thread) => answer.threadIds.includes(thread.value))
+  const picked = Array.isArray(found)
+    ? found.flatMap((id) => threads.filter((thread) => thread.value === id))
+    : [];
+  const asking =
+    found === "asking"
+      ? "Asking Arc"
+      : found
+        ? `Arc found no threads about “${query}”`
+        : `Ask Arc for threads about “${query}”`;
+  const items: Item[] = picked.length
+    ? picked
     : query
-      ? [...scored, ...messages, { value: "ask", label: `Ask Arc about “${query}”`, run: consult }]
+      ? [...scored, ...messages, { value: "ask", label: asking, run: consult }]
       : local;
 
   return (
@@ -135,7 +143,7 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
         onQueryChange={(next, details) => {
           if (details.reason === "escape-key") return setDialog(null);
           asked.current = "";
-          setAnswer(undefined);
+          setFound(undefined);
           setText(next);
           near.setQuery(next.trim());
         }}
@@ -148,7 +156,6 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
           <Icon name="search" />
           <CommandInput aria-label="Search" placeholder="Search" />
         </label>
-        {answer && <p className="answer">{answer.answer}</p>}
         <CommandList className="options">
           {items.map((item) => (
             <CommandItem key={item.value} value={item.value} label={item.label}>

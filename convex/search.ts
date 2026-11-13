@@ -108,7 +108,7 @@ export const related = action({
 
 export const ask = action({
   args: { question: v.string() },
-  handler: async (ctx, { question }): Promise<{ answer: string; threadIds: string[] } | null> => {
+  handler: async (ctx, { question }): Promise<string[] | null> => {
     if (!process.env.ANTHROPIC_API_KEY) return null;
     const named = [
       ...(await ctx.runQuery(api.workspace.people)),
@@ -119,7 +119,7 @@ export const ask = action({
     const search = betaTool({
       name: "search",
       description:
-        "Search the team's messages by words and by meaning. Returns messages, each with the id of the thread it is in. Call it again with other wording when the first results don't answer the question.",
+        "Search the team's messages by words and by meaning. Returns messages, each with the id of the thread it is in. Call it again with other wording when the first results don't fit the request.",
       inputSchema: {
         type: "object",
         properties: { query: { type: "string" } },
@@ -150,22 +150,19 @@ export const ask = action({
           type: "json_schema",
           schema: {
             type: "object",
-            properties: {
-              answer: { type: "string" },
-              threadIds: { type: "array", items: { type: "string" } },
-            },
-            required: ["answer", "threadIds"],
+            properties: { threadIds: { type: "array", items: { type: "string" } } },
+            required: ["threadIds"],
             additionalProperties: false,
           },
         },
       },
       system:
-        "You answer a question about a team's work from their message threads, which you search. Answer in at most three short sentences, in plain words, using only what the messages say. If they don't answer the question, say so briefly. In threadIds, list the threads you used.",
+        "You find the threads in a team's messages that a request is about. Search, then list the ids of the threads that fit, best first. List none when nothing fits.",
       tools: [search],
       messages: [{ role: "user", content: question }],
     });
-    const answer = response.content.find((block) => block.type === "text");
-    if (response.stop_reason !== "end_turn" || !answer) return null;
-    return JSON.parse(answer.text);
+    const found = response.content.find((block) => block.type === "text");
+    if (response.stop_reason !== "end_turn" || !found) return null;
+    return JSON.parse(found.text).threadIds;
   },
 });

@@ -26,7 +26,7 @@ To have new threads sorted into buckets (without it they never reach Buckets, on
 bunx convex env set ANTHROPIC_API_KEY ...
 ```
 
-The same key lets Search answer a question when nothing matches (Ask Arc). To have Search also find messages by
+The same key lets Search ask a model for the threads a question is about (Ask Arc). To have Search also find messages by
 meaning, give it a Voyage key; each new message is then embedded as it's posted:
 
 ```sh
