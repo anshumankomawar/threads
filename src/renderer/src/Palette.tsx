@@ -15,7 +15,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { api, useBuckets, useNames, useThreads } from "./data";
 import { Icon } from "./Icon";
 import { MessageBox } from "./MessageBox";
-import { go, removeDraft, reset, saveDraft, setDialog, theme, type Draft } from "./state";
+import { addDraft, go, reset, setDialog, theme } from "./state";
 
 const GROW = { duration: 260, easing: "cubic-bezier(0.32, 0.72, 0, 1)" };
 
@@ -76,7 +76,7 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
     run,
   });
   const commands = [
-    command("Quick actions", "New Message", () => setDialog({ kind: "new" }), "⌘N"),
+    command("Quick actions", "New Message", () => setDialog("new"), "⌘N"),
     command("Views", "Buckets", () => go({ box: "inbox", thread: undefined })),
     ...buckets.map((bucket, index) =>
       command(
@@ -150,17 +150,14 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
   );
 }
 
-export function NewMessage({ draft }: { draft?: Draft }) {
+export function NewMessage() {
   const start = useMutation(api.threads.start);
-  const [id] = useState(() => draft?.id ?? crypto.randomUUID());
-  const written = useRef(draft?.text ?? "");
+  const written = useRef("");
 
   const keep = () => {
-    if (written.current.trim()) saveDraft({ id, text: written.current, at: Date.now() });
-    else removeDraft(id);
+    if (written.current.trim()) addDraft(written.current);
   };
   const send = async (body: string) => {
-    removeDraft(id);
     setDialog(null);
     go({ thread: await start({ body }) });
   };
@@ -170,7 +167,6 @@ export function NewMessage({ draft }: { draft?: Draft }) {
       <MessageBox
         label="New Message"
         placeholder="Write a message, @mention who it's for, ⌘↵ to send"
-        defaultText={draft?.text}
         onSend={(body) => void send(body)}
         onChange={(text) => (written.current = text)}
       />

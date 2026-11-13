@@ -1,10 +1,12 @@
+import { useMutation } from "convex/react";
 import { useQuery } from "convex-helpers/react/cache";
 import { useShortcut } from "@ui-sdk/react/shortcuts";
 import { createTokenInputController } from "@ui-sdk/react/token-input";
 import { useEffect, useRef, useState } from "react";
 import { api, parts, useMark, useMe, useNames, useSend, useThreads, type Id } from "./data";
 import { Identicon } from "./Identicon";
-import { MessageBox } from "./MessageBox";
+import { MessageBox, type MessageInput } from "./MessageBox";
+import { editDraft, go, removeDraft, type Draft } from "./state";
 import { ago } from "./time";
 
 export function Body({ body }: { body: string }) {
@@ -20,10 +22,53 @@ export function Body({ body }: { body: string }) {
   );
 }
 
+function Compose(props: {
+  label: string;
+  placeholder: string;
+  input?: MessageInput;
+  defaultText?: string;
+  onSend: (body: string) => void;
+  onChange?: (text: string) => void;
+}) {
+  const me = useMe()!;
+  return (
+    <section className="turn">
+      <Identicon seed={me._id} />
+      <div>
+        <div className="meta">
+          <b>{me.name}</b>
+        </div>
+        <MessageBox {...props} />
+      </div>
+    </section>
+  );
+}
+
+export function DraftView({ draft }: { draft: Draft }) {
+  const start = useMutation(api.threads.start);
+  const send = async (body: string) => {
+    removeDraft(draft.id);
+    go({ thread: await start({ body }) });
+  };
+  return (
+    <main className="thread">
+      <article>
+        <Compose
+          key={draft.id}
+          label="Draft"
+          placeholder="Write a message, @mention who it's for, ⌘↵ to send"
+          defaultText={draft.text}
+          onSend={(body) => void send(body)}
+          onChange={(text) => editDraft(draft.id, text)}
+        />
+      </article>
+    </main>
+  );
+}
+
 export function Thread({ threadId }: { threadId: Id<"threads"> }) {
   const messages = useQuery(api.threads.messages, { threadId }) ?? [];
   const unread = useThreads().find((row) => row.threadId === threadId)?.unread;
-  const me = useMe()!;
   const { name } = useNames();
   const send = useSend();
   const mark = useMark();
@@ -55,21 +100,13 @@ export function Thread({ threadId }: { threadId: Id<"threads"> }) {
             </div>
           </section>
         ))}
-        <section className="turn">
-          <Identicon seed={me._id} />
-          <div>
-            <div className="meta">
-              <b>{me.name}</b>
-            </div>
-            <MessageBox
-              key={threadId}
-              input={reply}
-              label="Reply"
-              placeholder="Reply, @mention someone to bring them in, ⌘↵ to send"
-              onSend={(body) => void send(threadId, body)}
-            />
-          </div>
-        </section>
+        <Compose
+          key={threadId}
+          input={reply}
+          label="Reply"
+          placeholder="Reply, @mention someone to bring them in, ⌘↵ to send"
+          onSend={(body) => void send(threadId, body)}
+        />
         <div ref={end} />
       </article>
     </main>

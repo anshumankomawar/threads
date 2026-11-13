@@ -12,11 +12,11 @@ import {
 } from "./data";
 import { Icon } from "./Icon";
 import { ContextMenu, type MenuEntry } from "./Menu";
-import { go, removeDraft, setDialog, useUI, useView } from "./state";
+import { go, removeDraft, useUI, useView } from "./state";
 import { stamp } from "./time";
 
 export function List() {
-  const { box, thread } = useView();
+  const { box, thread, draft: open } = useView();
   const rows = useThreads();
   const buckets = useBuckets();
   const drafts = useUI((ui) => ui.drafts);
@@ -77,10 +77,8 @@ export function List() {
           <Listbox
             aria-label="Drafts"
             className="scroll"
-            value={null}
-            onValueChange={(id) =>
-              setDialog({ kind: "new", draft: drafts.find((d) => d.id === id) })
-            }
+            value={open ?? null}
+            onValueChange={(id) => id && go({ draft: id, thread: undefined })}
           >
             {drafts.map((draft) => (
               <ListboxItem

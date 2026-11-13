@@ -10,7 +10,7 @@ import { NewMessage, Search } from "./Palette";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
 import { back, forward, go, setDialog, theme, toggleSidebar, useUI, useView } from "./state";
-import { Thread } from "./Thread";
+import { DraftView, Thread } from "./Thread";
 
 const BUCKET_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
@@ -43,9 +43,9 @@ function useShortcuts() {
     else go({ thread: undefined, settings: false });
   };
 
-  useShortcut("mod+k", () => setDialog({ kind: "search" }), { description: "Search" });
-  useShortcut("mod+f", () => setDialog({ kind: "find" }), { description: "Search threads" });
-  useShortcut("mod+n", () => setDialog({ kind: "new" }), { description: "New message" });
+  useShortcut("mod+k", () => setDialog("search"), { description: "Search" });
+  useShortcut("mod+f", () => setDialog("find"), { description: "Search threads" });
+  useShortcut("mod+n", () => setDialog("new"), { description: "New message" });
   useShortcut("mod+,", () => go({ settings: true }), { description: "Settings" });
   useShortcut("mod+[", back, { description: "Back" });
   useShortcut("mod+]", forward, { description: "Forward" });
@@ -67,7 +67,8 @@ function useShortcuts() {
 export function App() {
   const me = useMe();
   const view = useView();
-  const { at, history, sidebar, dialog } = useUI();
+  const { at, history, sidebar, dialog, drafts } = useUI();
+  const draft = drafts.find(({ id }) => id === view.draft);
   const { value } = usePreference(theme);
   useEffect(() => window.desktop.setTheme(value), [value]);
   useShortcuts();
@@ -94,8 +95,8 @@ export function App() {
         <ToolbarButton
           data-search
           className="search"
-          style={{ visibility: dialog && dialog.kind !== "new" ? "hidden" : undefined }}
-          onClick={() => setDialog({ kind: "search" })}
+          style={{ visibility: dialog && dialog !== "new" ? "hidden" : undefined }}
+          onClick={() => setDialog("search")}
         >
           <Icon name="search" />
           <span>Search</span>
@@ -120,14 +121,18 @@ export function App() {
             </>
           )}
           <ResizablePanel id="main">
-            {view.thread ? (
+            {view.thread || draft ? (
               <Resizable className="columns" autoSaveId="list">
                 <ResizablePanel id="list" defaultSize="374px" minSize="310px" maxSize="660px">
                   <List />
                 </ResizablePanel>
                 <ResizableHandle aria-label="Resize list" />
                 <ResizablePanel id="thread">
-                  <Thread threadId={view.thread as Id<"threads">} />
+                  {draft ? (
+                    <DraftView draft={draft} />
+                  ) : (
+                    <Thread threadId={view.thread as Id<"threads">} />
+                  )}
                 </ResizablePanel>
               </Resizable>
             ) : (
@@ -136,8 +141,8 @@ export function App() {
           </ResizablePanel>
         </Resizable>
       )}
-      {dialog?.kind === "new" && <NewMessage draft={dialog.draft} />}
-      {dialog && dialog.kind !== "new" && <Search threadsOnly={dialog.kind === "find"} />}
+      {dialog === "new" && <NewMessage />}
+      {dialog && dialog !== "new" && <Search threadsOnly={dialog === "find"} />}
     </>
   );
 }
