@@ -105,7 +105,7 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
         index < 9 ? `⌘${index + 1}` : undefined,
       ),
     ),
-    command("Views", "Settings", () => go({ settings: true }), "⌘,"),
+    command("Views", "Settings", () => setDialog("settings"), "⌘,"),
     command("Theme", "Dark", () => theme.set("dark")),
     command("Theme", "Light", () => theme.set("light")),
     command("Account", "Copy Invite Link", copyInvite),

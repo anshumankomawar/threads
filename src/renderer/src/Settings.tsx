@@ -1,12 +1,14 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@ui-sdk/react/button";
-import { Checkbox, CheckboxIndicator } from "@ui-sdk/react/checkbox";
-import { Field, FieldLabel } from "@ui-sdk/react/field";
+import { Checkbox, CheckboxGroup } from "@ui-sdk/react/checkbox";
+import { Dialog, DialogContent, DialogTitle } from "@ui-sdk/react/dialog";
 import { Input } from "@ui-sdk/react/input";
 import { usePreference } from "@ui-sdk/react/preferences";
 import { SegmentedControl, SegmentedControlItem } from "@ui-sdk/react/segmented-control";
+import { Tabs, TabsList, TabsPanel, TabsTab } from "@ui-sdk/react/tabs";
+import { Textarea } from "@ui-sdk/react/textarea";
 import { useMutation } from "convex/react";
-import { useState } from "react";
+import { useState, type FocusEvent, type ReactNode } from "react";
 import {
   api,
   useBuckets,
@@ -17,45 +19,56 @@ import {
   type Doc,
   type Id,
 } from "./data";
-import { reset, theme } from "./state";
+import { Identicon } from "./Identicon";
+import { reset, setDialog, theme, useUI } from "./state";
 
-function TextField(props: { name: string; label: string; of: string; value?: string }) {
+const saveOnLeave = (event: FocusEvent<HTMLFormElement>) => {
+  if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.requestSubmit();
+};
+
+function Section(props: { title: string; heading?: string; hint: string; children: ReactNode }) {
   return (
-    <Field name={props.name}>
-      <FieldLabel className="hidden">
-        {props.label} of {props.of}
-      </FieldLabel>
-      <Input placeholder={props.label} defaultValue={props.value} required />
-    </Field>
+    <TabsPanel value={props.title}>
+      <h2>{props.heading ?? props.title}</h2>
+      <p>{props.hint}</p>
+      {props.children}
+    </TabsPanel>
   );
 }
 
-function BucketForm({ bucket }: { bucket?: Doc<"buckets"> }) {
+function Bucket({ bucket }: { bucket?: Doc<"buckets"> }) {
   const save = useMutation(api.workspace.saveBucket);
   const remove = useMutation(api.workspace.removeBucket);
   const of = bucket?.name ?? "a new bucket";
   return (
     <form
-      action={(form) =>
-        void save({
-          id: bucket?._id,
-          name: String(form.get("name")),
-          description: String(form.get("description")),
-        })
-      }
+      className="row"
+      onBlur={saveOnLeave}
+      action={async (form) => {
+        const name = String(form.get("name")).trim();
+        const description = String(form.get("description")).trim();
+        if (!name || (name === bucket?.name && description === bucket.description)) return;
+        await save({ id: bucket?._id, name, description });
+      }}
     >
-      <TextField name="name" label="Name" of={of} value={bucket?.name} />
-      <TextField
-        name="description"
-        label="What belongs in it"
-        of={of}
-        value={bucket?.description}
+      <Input
+        name="name"
+        className="name"
+        aria-label={`Name of ${of}`}
+        placeholder="Add a bucket"
+        defaultValue={bucket?.name}
       />
-      <Button type="submit" aria-label={`Save ${of}`}>
-        {bucket ? "Save" : "Add"}
-      </Button>
+      <Textarea
+        name="description"
+        rows={1}
+        autoResize
+        submitShortcut="enter"
+        aria-label={`What belongs in ${of}`}
+        placeholder="What belongs in it"
+        defaultValue={bucket?.description}
+      />
       {bucket && (
-        <Button aria-label={`Delete ${of}`} onClick={() => void remove({ id: bucket._id })}>
+        <Button className="quiet" onClick={() => void remove({ id: bucket._id })}>
           Delete
         </Button>
       )}
@@ -63,44 +76,50 @@ function BucketForm({ bucket }: { bucket?: Doc<"buckets"> }) {
   );
 }
 
-function GroupForm({ group }: { group?: Doc<"groups"> }) {
+function Group({ group }: { group?: Doc<"groups"> }) {
   const people = usePeople();
   const save = useMutation(api.workspace.saveGroup);
   const remove = useMutation(api.workspace.removeGroup);
   const of = group?.name ?? "a new group";
   return (
     <form
-      action={(form) =>
-        void save({
-          id: group?._id,
-          name: String(form.get("name")),
-          userIds: form.getAll("userIds") as Id<"users">[],
-        })
-      }
+      className="row"
+      onBlur={saveOnLeave}
+      action={async (form) => {
+        const name = String(form.get("name")).trim();
+        const userIds = form.getAll("userIds") as Id<"users">[];
+        if (!name || (name === group?.name && userIds.join() === group.userIds.join())) return;
+        await save({ id: group?._id, name, userIds });
+      }}
     >
-      <TextField name="name" label="Name" of={of} value={group?.name} />
-      <span className="choices">
-        {people.map((person) => (
-          <label key={person._id}>
-            <Checkbox
-              name="userIds"
-              value={person._id}
-              defaultChecked={group?.userIds.includes(person._id)}
-              aria-label={`${person.name} in ${of}`}
-            >
-              <CheckboxIndicator>✓</CheckboxIndicator>
-            </Checkbox>
-            {person.name}
-          </label>
-        ))}
-      </span>
-      <Button type="submit" aria-label={`Save ${of}`}>
-        {group ? "Save" : "Add"}
-      </Button>
+      <Input
+        name="name"
+        className="name"
+        aria-label={`Name of ${of}`}
+        placeholder="Add a group"
+        defaultValue={group?.name}
+      />
       {group && (
-        <Button aria-label={`Delete ${of}`} onClick={() => void remove({ id: group._id })}>
-          Delete
-        </Button>
+        <>
+          <CheckboxGroup
+            name="userIds"
+            className="chips"
+            aria-label={`People in ${of}`}
+            defaultValue={group.userIds}
+            onValueChange={(userIds) =>
+              void save({ id: group._id, name: group.name, userIds: userIds as Id<"users">[] })
+            }
+          >
+            {people.map((person) => (
+              <Checkbox key={person._id} value={person._id}>
+                {person.name}
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
+          <Button className="quiet" onClick={() => void remove({ id: group._id })}>
+            Delete
+          </Button>
+        </>
       )}
     </form>
   );
@@ -117,47 +136,81 @@ export function Settings() {
   const { signOut } = useAuthActions();
 
   return (
-    <main className="settings">
-      <article>
-        <h1>Settings</h1>
+    <Dialog open onOpenChange={(open) => !open && setDialog(null)}>
+      <DialogContent className="panel settings">
+        <DialogTitle className="hidden">Settings</DialogTitle>
+        <Tabs defaultValue={useUI.getState().tab} orientation="vertical">
+          <TabsList>
+            {["Workspace", "Account", "Appearance", "Buckets", "Groups"].map((title) => (
+              <TabsTab key={title} value={title}>
+                {title}
+              </TabsTab>
+            ))}
+          </TabsList>
 
-        <h2>Account</h2>
-        <p>
-          {me.name}, {me.email}, in {me.workspace}
-        </p>
-        <Button onClick={() => void signOut().then(reset)}>Sign Out</Button>
+          <Section
+            title="Workspace"
+            heading={me.workspace}
+            hint="Members of this workspace. Anyone with the invite link can join."
+          >
+            <div className="people">
+              {people.map((person) => (
+                <div key={person._id} className="row">
+                  <Identicon seed={person._id} size={20} />
+                  <span className="clip">{person.name}</span>
+                  <small>{person.email}</small>
+                </div>
+              ))}
+            </div>
+            <div className="row">
+              <span className="clip">Invite people</span>
+              <Button onClick={() => void copyInvite().then(() => setCopied(true))}>
+                {copied ? "Copied" : "Copy Invite Link"}
+              </Button>
+            </div>
+          </Section>
 
-        <h2>Appearance</h2>
-        <SegmentedControl
-          aria-label="Theme"
-          value={value}
-          onValueChange={(next) => next && theme.set(next as typeof value)}
-        >
-          <SegmentedControlItem value="dark">Dark</SegmentedControlItem>
-          <SegmentedControlItem value="light">Light</SegmentedControlItem>
-        </SegmentedControl>
+          <Section title="Account" hint="Signed in with Google.">
+            <div className="row">
+              <Identicon seed={me._id} size={20} />
+              <span className="clip">{me.name}</span>
+              <small>{me.email}</small>
+              <Button onClick={() => void signOut().then(reset)}>Sign Out</Button>
+            </div>
+          </Section>
 
-        <h2>Buckets</h2>
-        <p>New threads are sorted into the bucket whose description fits them best.</p>
-        {buckets.map((bucket) => (
-          <BucketForm key={bucket._id} bucket={bucket} />
-        ))}
-        <BucketForm />
+          <Section title="Appearance" hint="How Arc looks on this Mac.">
+            <div className="row">
+              <span className="clip">Theme</span>
+              <SegmentedControl
+                aria-label="Theme"
+                value={value}
+                onValueChange={(next) => next && theme.set(next as typeof value)}
+              >
+                <SegmentedControlItem value="dark">Dark</SegmentedControlItem>
+                <SegmentedControlItem value="light">Light</SegmentedControlItem>
+              </SegmentedControl>
+            </div>
+          </Section>
 
-        <h2>Groups</h2>
-        <p>Mention a group to bring everyone in it into a thread.</p>
-        {groups.map((group) => (
-          <GroupForm key={group._id} group={group} />
-        ))}
-        <GroupForm />
+          <Section
+            title="Buckets"
+            hint="A new thread goes to the bucket whose description fits it best."
+          >
+            {buckets.map((bucket) => (
+              <Bucket key={bucket._id} bucket={bucket} />
+            ))}
+            <Bucket key={buckets.length} />
+          </Section>
 
-        <h2>People</h2>
-        <p>{people.map((person) => person.name).join(", ")}</p>
-        <p>Anyone who signs in and pastes the invite link joins {me.workspace}.</p>
-        <Button onClick={() => void copyInvite().then(() => setCopied(true))}>
-          {copied ? "Copied" : "Copy Invite Link"}
-        </Button>
-      </article>
-    </main>
+          <Section title="Groups" hint="Mention a group to bring everyone in it into a thread.">
+            {groups.map((group) => (
+              <Group key={group._id} group={group} />
+            ))}
+            <Group key={groups.length} />
+          </Section>
+        </Tabs>
+      </DialogContent>
+    </Dialog>
   );
 }

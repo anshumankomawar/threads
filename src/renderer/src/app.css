@@ -60,7 +60,8 @@ body {
   height: 100%;
 }
 button,
-input {
+input,
+textarea {
   padding: 0;
   border: 0;
   color: inherit;
@@ -121,7 +122,7 @@ small {
   align-items: center;
   flex-shrink: 0;
   height: 38px;
-  padding: 0 8px 0 82px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--line);
   -webkit-app-region: drag;
 
@@ -129,6 +130,9 @@ small {
     display: flex;
     gap: 2px;
 
+    &:first-child {
+      padding-left: 74px;
+    }
     &:last-child {
       justify-content: flex-end;
     }
@@ -551,82 +555,139 @@ small {
 }
 
 .settings {
-  flex: 1;
-  overflow-y: auto;
+  position: fixed;
+  inset: 0;
+  width: 760px;
+  max-width: calc(100vw - 32px);
+  height: min(520px, 82vh);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
 
-  & article {
+  & > div {
+    display: flex;
+    height: 100%;
+  }
+  & [role="tablist"] {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    align-items: flex-start;
-    max-width: 760px;
-    padding: 14px 31px 44px;
+    gap: 2px;
+    flex: 0 0 180px;
+    padding: 9px 8px;
+    border-right: 1px solid var(--line);
   }
-  & h1 {
-    font-size: 20px;
-    line-height: 26px;
+  & [role="tab"] {
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 8px;
+    overflow: hidden;
+    text-align: left;
+    white-space: nowrap;
+
+    &[data-selected] {
+      background: var(--selected);
+    }
+  }
+  & [role="tabpanel"] {
+    flex: 1;
+    min-width: 0;
+    padding: 16px 20px;
+    overflow-y: auto;
   }
   & h2 {
-    margin-top: 18px;
-    font-size: 14px;
+    font-size: 13px;
+    font-weight: 600;
   }
-  & p {
-    color: var(--text-2);
+  & p,
+  & small {
+    color: var(--text-3);
+    font-size: 12px;
     user-select: text;
   }
-  & form,
-  & .choices {
+  & p {
+    margin: 2px 0 8px;
+  }
+  & .row {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px;
     align-items: center;
-    width: 100%;
-  }
-  & form .choices {
-    flex: 2;
-    width: auto;
-  }
-  & label,
-  & [data-slot="segmented-control"] {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-  }
-  & [data-slot="field"] {
-    display: flex;
-    flex: 1;
-    min-width: 160px;
-  }
-  & button,
-  & [data-slot="input"] {
-    flex: 1;
-    height: 28px;
-    padding: 0 10px;
-    border: 1px solid var(--line);
-    border-radius: 8px;
+    min-height: 40px;
+    padding: 6px 0;
 
+    & + .row,
+    .people + & {
+      border-top: 1px solid var(--line);
+    }
+  }
+  & .people {
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  & input,
+  & textarea {
+    flex: 1;
+    min-width: 0;
+    min-height: 26px;
+    margin: 0 -6px;
+    padding: 5px 6px;
+    border-radius: 6px;
+    color: var(--text-2);
+    resize: none;
+    user-select: text;
+
+    &.name {
+      flex: 0 0 150px;
+      color: var(--text);
+    }
     &::placeholder {
       color: var(--text-3);
     }
+    &:hover {
+      background: var(--hover);
+    }
     &:focus {
-      border-color: var(--text-3);
+      color: var(--text);
+      background: var(--selected);
     }
   }
-  & button {
-    flex: none;
+  & .row:has(textarea) {
+    align-items: flex-start;
+  }
+  & [role="tabpanel"] button {
+    flex-shrink: 0;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
 
     &:hover,
     &[data-checked] {
       background: var(--selected);
     }
   }
-  & [data-slot="checkbox"] {
-    display: grid;
-    place-items: center;
-    width: 16px;
-    height: 16px;
-    padding: 0;
-    border-radius: 4px;
+  & .quiet {
+    border-color: transparent;
+    color: var(--text-3);
+    opacity: 0;
+
+    .row:hover &,
+    &:focus-visible {
+      opacity: 1;
+    }
+  }
+  & .chips {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 4px;
+
+    & button:not([data-checked]) {
+      color: var(--text-3);
+    }
+  }
+  & [data-slot="segmented-control"] {
+    display: flex;
+    gap: 4px;
   }
 }
 

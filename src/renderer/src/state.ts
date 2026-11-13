@@ -4,9 +4,9 @@ import { persist } from "zustand/middleware";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 export type Box = "inbox" | "all" | "drafts" | (string & {});
-export type View = { box: Box; thread?: Id<"threads">; draft?: string; settings?: boolean };
+export type View = { box: Box; thread?: Id<"threads">; draft?: string };
 export type Draft = { id: string; text: string; at: number };
-export type Dialog = "search" | "find" | "new";
+export type Dialog = "search" | "find" | "new" | "settings";
 
 export const theme = createPreference({
   values: ["dark", "light"],
@@ -22,11 +22,19 @@ type UI = {
   sidebar: boolean;
   drafts: Draft[];
   dialog: Dialog | null;
+  tab: string;
 };
 
 export const useUI = create<UI>()(
   persist(
-    (): UI => ({ history: [{ box: "inbox" }], at: 0, sidebar: true, drafts: [], dialog: null }),
+    (): UI => ({
+      history: [{ box: "inbox" }],
+      at: 0,
+      sidebar: true,
+      drafts: [],
+      dialog: null,
+      tab: "Workspace",
+    }),
     { name: "ui", partialize: ({ sidebar, drafts }) => ({ sidebar, drafts }) },
   ),
 );
@@ -39,12 +47,8 @@ export const useView = () => useUI((ui) => ui.history[ui.at]);
 export function go(view: Partial<View>) {
   const { history, at } = useUI.getState();
   const here = history[at];
-  const next = { ...here, settings: false, draft: undefined, ...view };
-  const same =
-    next.box === here.box &&
-    next.thread === here.thread &&
-    next.draft === here.draft &&
-    next.settings === !!here.settings;
+  const next = { ...here, draft: undefined, ...view };
+  const same = next.box === here.box && next.thread === here.thread && next.draft === here.draft;
   if (same) return set({ dialog: null });
   set({ history: [...history.slice(0, at + 1), next], at: at + 1, dialog: null });
 }
@@ -52,7 +56,7 @@ export const back = () => set(({ at }) => ({ at: Math.max(0, at - 1) }));
 export const forward = () =>
   set(({ at, history }) => ({ at: Math.min(history.length - 1, at + 1) }));
 
-export const setDialog = (dialog: Dialog | null) => set({ dialog });
+export const setDialog = (dialog: Dialog | null, tab = "Workspace") => set({ dialog, tab });
 export const toggleSidebar = () => set(({ sidebar }) => ({ sidebar: !sidebar }));
 
 export const addDraft = (text: string) =>

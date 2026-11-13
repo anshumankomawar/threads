@@ -16,16 +16,17 @@ The interface is built from ui-sdk (`@ui-sdk/react`, with `@ui-sdk/core` under i
 
 What's already in use, and where:
 
-| For                                   | Component                                         | In                           |
-| ------------------------------------- | ------------------------------------------------- | ---------------------------- |
-| Reply and New Message, with @mentions | Token Input, Trigger Menu                         | `MessageBox.tsx`             |
-| Mailboxes and the thread list         | Listbox                                           | `Sidebar.tsx`, `List.tsx`    |
-| ⌘K, ⌘F and New Message                | Command, Dialog                                   | `Palette.tsx`                |
-| Right-click menus                     | Menu                                              | `Menu.tsx`                   |
-| Columns                               | Resizable                                         | `App.tsx`                    |
-| Keys                                  | `useShortcut`                                     | `App.tsx`, `Thread.tsx`      |
-| Theme                                 | `createPreference`                                | `state.ts`                   |
-| Forms                                 | Field, Input, Checkbox, Segmented Control, Button | `Settings.tsx`, `SignIn.tsx` |
+| For                                   | Component                                                   | In                           |
+| ------------------------------------- | ----------------------------------------------------------- | ---------------------------- |
+| Reply and New Message, with @mentions | Token Input, Trigger Menu                                   | `MessageBox.tsx`             |
+| Mailboxes and the thread list         | Listbox                                                     | `Sidebar.tsx`, `List.tsx`    |
+| ⌘K, ⌘F and New Message                | Command, Dialog                                             | `Palette.tsx`                |
+| Right-click menus                     | Menu                                                        | `Menu.tsx`                   |
+| Columns                               | Resizable                                                   | `App.tsx`                    |
+| Keys                                  | `useShortcut`                                               | `App.tsx`, `Thread.tsx`      |
+| Theme                                 | `createPreference`                                          | `state.ts`                   |
+| Settings popup                        | Dialog, Tabs                                                | `Settings.tsx`               |
+| Settings and the first-run screens    | Input, Textarea, Checkbox, Segmented Control, Field, Button | `Settings.tsx`, `SignIn.tsx` |
 
 Styles are plain CSS in `src/renderer/src/app.css`, on class names and ui-sdk's `data-slot` and state attributes
 (`data-selected`, `data-highlighted`, `data-open`).

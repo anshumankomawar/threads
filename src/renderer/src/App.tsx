@@ -46,7 +46,7 @@ function useShortcuts() {
   useShortcut("mod+k", () => setDialog("search"), { description: "Search" });
   useShortcut("mod+f", () => setDialog("find"), { description: "Search threads" });
   useShortcut("mod+n", () => setDialog("new"), { description: "New message" });
-  useShortcut("mod+,", () => go({ settings: true }), { description: "Settings" });
+  useShortcut("mod+,", () => setDialog("settings"), { description: "Settings" });
   useShortcut("mod+[", back, { description: "Back" });
   useShortcut("mod+]", forward, { description: "Forward" });
   useShortcut("mod+\\", toggleSidebar, { description: "Show or hide the sidebar" });
@@ -101,7 +101,7 @@ export function App() {
         <ToolbarButton
           data-search
           className="search"
-          style={{ visibility: dialog && dialog !== "new" ? "hidden" : undefined }}
+          style={{ visibility: dialog === "search" || dialog === "find" ? "hidden" : undefined }}
           onClick={() => setDialog("search")}
         >
           <Icon name="search" />
@@ -109,42 +109,39 @@ export function App() {
           <kbd>⌘K</kbd>
         </ToolbarButton>
         <ToolbarGroup>
-          <ToolbarButton aria-label="Settings" onClick={() => go({ settings: true })}>
+          <ToolbarButton aria-label="Settings" onClick={() => setDialog("settings")}>
             <Icon name="settings" />
           </ToolbarButton>
         </ToolbarGroup>
       </Toolbar>
-      {view.settings ? (
-        <Settings />
-      ) : (
-        <Resizable className="columns" autoSaveId="sidebar">
-          {sidebar && (
-            <>
-              <ResizablePanel id="sidebar" defaultSize="242px" minSize="200px" maxSize="350px">
-                <Sidebar />
+      <Resizable className="columns" autoSaveId="sidebar">
+        {sidebar && (
+          <>
+            <ResizablePanel id="sidebar" defaultSize="242px" minSize="200px" maxSize="350px">
+              <Sidebar />
+            </ResizablePanel>
+            <ResizableHandle aria-label="Resize sidebar" />
+          </>
+        )}
+        <ResizablePanel id="main">
+          {view.thread || draft ? (
+            <Resizable className="columns" autoSaveId="list">
+              <ResizablePanel id="list" defaultSize="374px" minSize="310px" maxSize="660px">
+                <List />
               </ResizablePanel>
-              <ResizableHandle aria-label="Resize sidebar" />
-            </>
+              <ResizableHandle aria-label="Resize list" />
+              <ResizablePanel id="thread">
+                {draft ? <DraftView draft={draft} /> : <Thread threadId={view.thread!} />}
+              </ResizablePanel>
+            </Resizable>
+          ) : (
+            <List />
           )}
-          <ResizablePanel id="main">
-            {view.thread || draft ? (
-              <Resizable className="columns" autoSaveId="list">
-                <ResizablePanel id="list" defaultSize="374px" minSize="310px" maxSize="660px">
-                  <List />
-                </ResizablePanel>
-                <ResizableHandle aria-label="Resize list" />
-                <ResizablePanel id="thread">
-                  {draft ? <DraftView draft={draft} /> : <Thread threadId={view.thread!} />}
-                </ResizablePanel>
-              </Resizable>
-            ) : (
-              <List />
-            )}
-          </ResizablePanel>
-        </Resizable>
-      )}
+        </ResizablePanel>
+      </Resizable>
       {dialog === "new" && <NewMessage />}
-      {dialog && dialog !== "new" && <Search threadsOnly={dialog === "find"} />}
+      {dialog === "settings" && <Settings />}
+      {(dialog === "search" || dialog === "find") && <Search threadsOnly={dialog === "find"} />}
     </>
   );
 }

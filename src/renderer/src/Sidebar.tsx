@@ -6,7 +6,7 @@ import { api, inBox, useBuckets, useMe, useThreads } from "./data";
 import { Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 import { ContextMenu, type MenuEntry } from "./Menu";
-import { go, useView, type Box } from "./state";
+import { go, setDialog, useView, type Box } from "./state";
 
 export function Sidebar() {
   const me = useMe()!;
@@ -14,7 +14,10 @@ export function Sidebar() {
   const rows = useThreads();
   const buckets = useBuckets();
   const removeBucket = useMutation(api.workspace.removeBucket);
-  const editBuckets: MenuEntry = { label: "Edit Buckets", run: () => go({ settings: true }) };
+  const editBuckets: MenuEntry = {
+    label: "Edit Buckets",
+    run: () => setDialog("settings", "Buckets"),
+  };
   const [menu, setMenu] = useState<MenuEntry[]>([editBuckets]);
 
   const row = (
@@ -44,7 +47,7 @@ export function Sidebar() {
       <ContextMenu entries={menu}>
         <Listbox
           aria-label="Mailboxes"
-          value={view.settings ? null : view.box}
+          value={view.box}
           onValueChange={(box) => box && go({ box, thread: undefined })}
         >
           {row("all", "All Threads", "archive")}
@@ -66,7 +69,7 @@ export function Sidebar() {
           )}
         </Listbox>
       </ContextMenu>
-      <Button className="profile" onClick={() => go({ settings: true })}>
+      <Button className="profile" onClick={() => setDialog("settings")}>
         <Identicon seed={me._id} size={20} />
         <span className="clip">{me.name}</span>
       </Button>
