@@ -5,8 +5,9 @@ import { components, internal } from "./_generated/api";
 import { internalMutation } from "./_generated/server";
 
 const BUCKETS = [
-  ["Messages that require action", "Someone is asking me to do, decide or answer something."],
-  ["Messages to read", "Updates and conversations I only need to follow."],
+  ["Reviews", "Someone wants me to review something: code, a design, a spec or a document."],
+  ["Requests", "Someone needs something else from me: an answer, a fix, a decision or a task."],
+  ["Social", "Nothing is asked of me: banter, plans, celebrations, news and announcements."],
 ];
 
 const auth = setupConvexAuth({ component: components.auth });

@@ -10,7 +10,11 @@ test("a new account has buckets and no workspace until it creates one", async ()
 
   await ada.mutation(api.workspace.create, { name: "Acme" });
   expect(await ada.query(api.workspace.me)).toMatchObject({ workspace: "Acme" });
-  expect(await ada.query(api.workspace.buckets)).toHaveLength(2);
+  expect(await ada.query(api.workspace.buckets)).toMatchObject([
+    { name: "Reviews" },
+    { name: "Requests" },
+    { name: "Social" },
+  ]);
 });
 
 test("an invite link brings someone into its workspace, and nothing else does", async () => {
