@@ -549,7 +549,11 @@ small {
       }
     }
     & .options {
-      padding: 4px 0 8px;
+      padding: 2px 0 4px;
+    }
+    & [role="option"] {
+      height: 26px;
+      padding: 0 5px;
     }
     & [data-highlighted] {
       background: var(--selected);
