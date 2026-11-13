@@ -1,13 +1,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useAsyncOptions } from "@ui-sdk/react/async-options";
-import {
-  Command,
-  CommandGroup,
-  CommandGroupLabel,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@ui-sdk/react/command";
+import { fuzzyScore } from "@ui-sdk/core/text-match";
+import { Command, CommandInput, CommandItem, CommandList } from "@ui-sdk/react/command";
 import { Dialog, DialogContent, DialogTitle } from "@ui-sdk/react/dialog";
 import { useShortcut } from "@ui-sdk/react/shortcuts";
 import { useAction, useMutation } from "convex/react";
@@ -58,7 +52,7 @@ function Modal(props: {
   );
 }
 
-type Item = { section: string; value: string; label: string; hint?: string; run: () => unknown };
+type Item = { value: string; label: string; hint?: string; run: () => unknown };
 
 export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
   const [text, setText] = useState("");
@@ -85,34 +79,31 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
       setAnswer(reply ?? { answer: "Arc couldn't answer that.", threadIds: [] });
   };
 
-  const command = (section: string, label: string, run: () => void, hint?: string): Item => ({
-    section,
+  const command = (label: string, run: () => void, hint?: string): Item => ({
     value: label,
     label,
     hint,
     run,
   });
   const commands = [
-    command("Quick actions", "New Message", () => setDialog("new"), "⌘N"),
-    command("Views", "All Threads", () => go({ box: "all", thread: undefined })),
-    command("Views", "Drafts", () => go({ box: "drafts", thread: undefined })),
-    command("Views", "Buckets", () => go({ box: "inbox", thread: undefined })),
+    command("Write a new message", () => setDialog("new"), "⌘N"),
+    command("Go to All Threads", () => go({ box: "all", thread: undefined })),
+    command("Go to Drafts", () => go({ box: "drafts", thread: undefined })),
+    command("Go to Buckets", () => go({ box: "inbox", thread: undefined })),
     ...buckets.map((bucket, index) =>
       command(
-        "Views",
-        bucket.name,
+        `Go to ${bucket.name}`,
         () => go({ box: bucket._id, thread: undefined }),
         index < 9 ? `⌘${index + 1}` : undefined,
       ),
     ),
-    command("Views", "Settings", () => setDialog("settings"), "⌘,"),
-    command("Theme", "Dark", () => theme.set("dark")),
-    command("Theme", "Light", () => theme.set("light")),
-    command("Account", "Copy Invite Link", copyInvite),
-    command("Account", "Sign Out", () => void signOut().then(reset)),
+    command("Open Settings", () => setDialog("settings"), "⌘,"),
+    command("Switch to the dark theme", () => theme.set("dark")),
+    command("Switch to the light theme", () => theme.set("light")),
+    command("Copy the invite link", copyInvite),
+    command("Sign out", () => void signOut().then(reset)),
   ];
   const threads = rows.map((row) => ({
-    section: "Threads",
     value: row.threadId,
     label: row.title,
     hint: names.text(row.lastBody),
@@ -120,23 +111,22 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
   }));
   const hits = new Map([...worded, ...near.items].map((hit) => [hit._id, hit]));
   const messages = [...hits.values()].map((hit) => ({
-    section: "Messages",
     value: hit._id,
     label: names.text(hit.body),
     hint: rows.find((row) => row.threadId === hit.threadId)?.title,
     run: () => go({ thread: hit.threadId }),
   }));
-  const found = [...(threadsOnly ? [] : commands), ...threads]
-    .filter((item) => item.label.toLowerCase().includes(query.toLowerCase()))
-    .concat(messages);
+  const local = [...(threadsOnly ? [] : commands), ...threads];
+  const scored = local
+    .map((item) => ({ item, score: fuzzyScore(item.label, query) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(({ item }) => item);
   const items: Item[] = answer
-    ? threads
-        .filter((thread) => answer.threadIds.includes(thread.value))
-        .map((thread) => ({ ...thread, section: "From these threads" }))
+    ? threads.filter((thread) => answer.threadIds.includes(thread.value))
     : query
-      ? [...found, { section: "Arc", value: "ask", label: "Ask Arc", hint: query, run: consult }]
-      : found;
-  const groups = Map.groupBy(items, (item) => item.section);
+      ? [...scored, ...messages, { value: "ask", label: `Ask Arc about “${query}”`, run: consult }]
+      : local;
 
   return (
     <Modal grow title="Search">
@@ -161,16 +151,11 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
         </label>
         {answer && <p className="answer">{answer.answer}</p>}
         <CommandList className="options">
-          {[...groups].map(([section, group]) => (
-            <CommandGroup key={section}>
-              <CommandGroupLabel>{section}</CommandGroupLabel>
-              {group.map((item) => (
-                <CommandItem key={item.value} value={item.value} label={item.label}>
-                  <span className="label clip">{item.label}</span>
-                  <span className="detail clip">{item.hint}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+          {items.map((item) => (
+            <CommandItem key={item.value} value={item.value} label={item.label}>
+              <span className="label clip">{item.label}</span>
+              <span className="detail clip">{item.hint}</span>
+            </CommandItem>
           ))}
         </CommandList>
       </Command>
