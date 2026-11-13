@@ -6,14 +6,13 @@ import { api, inBox, useBuckets, useMe, useThreads } from "./data";
 import { Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 import { ContextMenu, type MenuEntry } from "./Menu";
-import { go, useUI, useView, type Box } from "./state";
+import { go, useView, type Box } from "./state";
 
 export function Sidebar() {
   const me = useMe()!;
   const view = useView();
   const rows = useThreads();
   const buckets = useBuckets();
-  const drafts = useUI((ui) => ui.drafts);
   const removeBucket = useMutation(api.workspace.removeBucket);
   const editBuckets: MenuEntry = { label: "Edit Buckets", run: () => go({ settings: true }) };
   const [menu, setMenu] = useState<MenuEntry[]>([editBuckets]);
@@ -22,7 +21,7 @@ export function Sidebar() {
     box: Box,
     label: string,
     icon: IconName,
-    count: number,
+    count?: number,
     entries: MenuEntry[] = [editBuckets],
     nested = false,
   ) => (
@@ -35,7 +34,7 @@ export function Sidebar() {
     >
       <Icon name={icon} color={`var(--${icon})`} />
       <span className="clip">{label}</span>
-      <span className="count">{count}</span>
+      {count !== undefined && <span className="count">{count}</span>}
     </ListboxItem>
   );
   const count = (box: Box) => inBox(rows, box).length;
@@ -48,8 +47,8 @@ export function Sidebar() {
           value={view.settings ? null : view.box}
           onValueChange={(box) => box && go({ box, thread: undefined })}
         >
-          {row("all", "All Threads", "archive", rows.length)}
-          {row("drafts", "Drafts", "draft", drafts.length)}
+          {row("all", "All Threads", "archive")}
+          {row("drafts", "Drafts", "draft")}
           {row("inbox", "Buckets", "inbox", count("inbox"))}
           {count("unsorted") > 0 &&
             row("unsorted", "Sorting", "folder", count("unsorted"), undefined, true)}
