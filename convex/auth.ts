@@ -15,7 +15,7 @@ export const { signOut, refreshSession, isAuthenticated } = auth;
 
 export const { startSignInWithGoogle, completeSignInWithGoogle } = setupGoogle(auth, {
   component: components.authGoogle,
-  allowedRedirectOrigins: ["http://127.0.0.1:47201"],
+  allowedRedirectOrigins: ["http://127.0.0.1:47201", process.env.SITE_URL!],
 }).attachUserCallbacks({ createUser: internal.auth.createUser });
 
 const method = v.object({ name: v.literal("google"), profile: vGoogleProfile });

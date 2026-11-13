@@ -7,6 +7,8 @@
     "postinstall": "install-electron",
     "dev": "electron-vite dev",
     "convex": "convex dev",
+    "web": "vite -c vite.web.config.ts",
+    "build:web": "vite build -c vite.web.config.ts",
     "build": "tsc --noEmit && electron-vite build",
     "build:mac": "bun run build && electron-builder --mac",
     "test": "vitest run",

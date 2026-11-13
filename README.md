@@ -34,9 +34,20 @@ bunx convex env set VOYAGE_API_KEY ...
 ```
 
 People sign in with Google. A new account has no workspace: it creates one, or joins one through the invite link
-a member copied from Settings. The link is a page on the deployment that opens the app (`arc://join/`), and it can
-also be pasted on the first screen. Google returns the app its sign-in through
-`http://127.0.0.1:47201`, which the app listens on only while you sign in.
+a member copied from Settings. Google returns the app its sign-in through `http://127.0.0.1:47201`, which the app
+listens on only while you sign in.
+
+## The website
+
+`src/web` is the site at arcteams.chat: the landing page, Google sign-in, and `/join/<code>`, where an invite link
+leads and where signing in joins the workspace. It shares the app's components, styles and backend.
+
+```sh
+bun run web                                         # http://localhost:5173
+bunx convex env set SITE_URL http://localhost:5173  # once: where invite links point, and where Google may return to
+```
+
+`bun run build:web` writes the static site to `dist/web`; serve `index.html` for every path.
 
 ## The shared deployment
 

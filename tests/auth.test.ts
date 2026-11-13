@@ -18,7 +18,7 @@ test("a new account has buckets and no workspace until it creates one", async ()
 });
 
 test("an invite link brings someone into its workspace, and nothing else does", async () => {
-  const { signIn, signUp } = world();
+  const { t, signIn, signUp } = world();
   const ada = await signUp("ada");
   const grace = await signUp("grace", ada);
   expect(grace.workspaceId).toBe(ada.workspaceId);
@@ -26,6 +26,12 @@ test("an invite link brings someone into its workspace, and nothing else does", 
     { name: "ada" },
     { name: "grace" },
   ]);
+
+  const link = await ada.as.mutation(api.workspace.inviteLink);
+  expect(await t.query(api.workspace.invited, { invite: link.split("/").pop()! })).toBe(
+    "ada's workspace",
+  );
+  expect(await t.query(api.workspace.invited, { invite: "guess" })).toBeNull();
 
   const linus = await signIn("linus");
   expect(await linus.mutation(api.workspace.join, { link: "arc://join/guess" })).toBe(false);

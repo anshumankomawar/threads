@@ -68,15 +68,6 @@ export function Start() {
   const [failed, setFailed] = useState(false);
   const enter = async (link: string) => setFailed(!(await join({ link })));
 
-  useEffect(() => {
-    const take = async () => {
-      const link = await window.desktop.invite();
-      if (link) void enter(link);
-    };
-    void take();
-    return window.desktop.onInvite(take);
-  }, []);
-
   return (
     <main className="welcome">
       <div>

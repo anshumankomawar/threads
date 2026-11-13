@@ -12,6 +12,17 @@ export const me = rawQuery({
   },
 });
 
+export const invited = rawQuery({
+  args: { invite: v.string() },
+  handler: async (ctx, { invite }) =>
+    (
+      await ctx.db
+        .query("workspaces")
+        .withIndex("invite", (q) => q.eq("invite", invite))
+        .unique()
+    )?.name ?? null,
+});
+
 export const create = rawMutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
@@ -44,7 +55,7 @@ export const inviteLink = mutation({
     const workspace = (await ctx.db.get(ctx.me.workspaceId))!;
     const invite = workspace.invite ?? crypto.randomUUID();
     if (!workspace.invite) await ctx.db.patch(workspace._id, { invite });
-    return `${process.env.CONVEX_SITE_URL}/join/${invite}`;
+    return `${process.env.SITE_URL}/join/${invite}`;
   },
 });
 

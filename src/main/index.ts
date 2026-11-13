@@ -94,20 +94,8 @@ ipcMain.handle(
     }),
 );
 
-let invite: string | null = null;
-
 app.setAsDefaultProtocolClient("arc");
-app.on("open-url", (event, url) => {
-  event.preventDefault();
-  invite = url;
-  show();
-  window?.webContents.send("invite");
-});
-ipcMain.handle("invite", () => {
-  const link = invite;
-  invite = null;
-  return link;
-});
+app.on("open-url", show);
 
 ipcMain.on("saved", (event) => event.sender.session.flushStorageData());
 

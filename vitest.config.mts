@@ -4,6 +4,6 @@ export default defineConfig({
   test: {
     environment: "edge-runtime",
     include: ["tests/**/*.test.ts"],
-    env: { CONVEX_CLOUD_URL: "https://test.convex.cloud" },
+    env: { CONVEX_CLOUD_URL: "https://test.convex.cloud", SITE_URL: "https://test.site" },
   },
 });
