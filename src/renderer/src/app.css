@@ -44,7 +44,7 @@ body {
   height: 100vh;
   overflow: hidden;
   color: var(--text);
-  background: var(--chrome);
+  background: linear-gradient(var(--chrome), var(--chrome));
   font:
     13px/16px -apple-system,
     BlinkMacSystemFont,
