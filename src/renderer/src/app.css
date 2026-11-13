@@ -18,7 +18,7 @@
   --blue: light-dark(#007aff, #0a84ff);
   --inbox: light-dark(#1373d9, #58c9ff);
   --folder: light-dark(#eabd08, #fee78a);
-  --archive: light-dark(#713f12, #fee78a);
+  --archive: light-dark(#15803d, #86efac);
   --draft: light-dark(#ae55f7, #ddb4fe);
   --avatar-ring: light-dark(rgb(0 0 0 / 14%), transparent);
 }

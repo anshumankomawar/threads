@@ -133,9 +133,9 @@ export function Search({ threadsOnly }: { threadsOnly?: boolean }) {
     ? threads
         .filter((thread) => answer.threadIds.includes(thread.value))
         .map((thread) => ({ ...thread, section: "From these threads" }))
-    : found.length > 0 || !query || near.status === "loading"
-      ? found
-      : [{ section: "No matches", value: "ask", label: "Ask Arc", hint: "↵", run: consult }];
+    : query
+      ? [...found, { section: "Arc", value: "ask", label: "Ask Arc", hint: query, run: consult }]
+      : found;
   const groups = Map.groupBy(items, (item) => item.section);
 
   return (
