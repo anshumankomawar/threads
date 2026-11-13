@@ -38,7 +38,14 @@ export const useView = () => useUI((ui) => ui.history[ui.at]);
 
 export function go(view: Partial<View>) {
   const { history, at } = useUI.getState();
-  const next = { ...history[at], settings: false, draft: undefined, ...view };
+  const here = history[at];
+  const next = { ...here, settings: false, draft: undefined, ...view };
+  const same =
+    next.box === here.box &&
+    next.thread === here.thread &&
+    next.draft === here.draft &&
+    next.settings === !!here.settings;
+  if (same) return set({ dialog: null });
   set({ history: [...history.slice(0, at + 1), next], at: at + 1, dialog: null });
 }
 export const back = () => set(({ at }) => ({ at: Math.max(0, at - 1) }));

@@ -1,8 +1,11 @@
 import { app, BrowserWindow, ipcMain, nativeTheme, shell, systemPreferences } from "electron";
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import icon from "../../build/icon.png?asset";
 import iconDark from "../../resources/icon-dark.png?asset";
+import fraunces from "../renderer/src/fonts/fraunces-latin-wght.woff2?asset";
+import hanken from "../renderer/src/fonts/hanken-grotesk-latin-wght.woff2?asset";
 
 const GROUND = { dark: "#101010", light: "#fafafa" };
 
@@ -46,6 +49,22 @@ function createWindow() {
   else void created.loadFile(join(__dirname, "../renderer/index.html"));
 }
 
+const face = (family: string, file: string) =>
+  `@font-face { font-family: "${family}"; font-weight: 100 900; src: url(data:font/woff2;base64,${readFileSync(file).toString("base64")}); }`;
+const page = (title: string, line: string) => `<!doctype html>
+<meta charset="utf-8">
+<title>Arc</title>
+<style>
+  ${face("Fraunces", fraunces)}
+  ${face("Hanken Grotesk", hanken)}
+  body { display: grid; place-content: center; height: 100vh; margin: 0; text-align: center;
+    color: rgb(255 255 255 / 92%); background: #101010; font: 14px/1.45 "Hanken Grotesk", sans-serif; }
+  h1 { margin: 0; font: 300 36px/1.08 "Fraunces", serif; letter-spacing: -0.02em; }
+  p { margin: 10px 0 0; color: rgb(255 255 255 / 62%); }
+</style>
+<h1>${title}</h1>
+<p>${line}</p>`;
+
 let waiting: Server | undefined;
 
 ipcMain.handle(
@@ -57,10 +76,11 @@ ipcMain.handle(
         const params = new URL(request.url ?? "/", "http://127.0.0.1").searchParams;
         if (!params.has("convexAuthCode") && !params.has("convexAuthError"))
           return void response.writeHead(404).end();
+        response.setHeader("Content-Type", "text/html");
         response.end(
           params.has("convexAuthCode")
-            ? "Signed in. You can close this tab and go back to Arc."
-            : "Signing in didn't finish. Go back to Arc to try again.",
+            ? page("You’re signed in", "You can close this tab and go back to Arc.")
+            : page("Signing in didn’t finish", "Go back to Arc to try again."),
         );
         server.close();
         show();
