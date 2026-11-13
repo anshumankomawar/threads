@@ -66,6 +66,16 @@ export function Start() {
   const join = useMutation(api.workspace.join);
   const { signOut } = useAuthActions();
   const [failed, setFailed] = useState(false);
+  const enter = async (link: string) => setFailed(!(await join({ link })));
+
+  useEffect(() => {
+    const take = async () => {
+      const link = await window.desktop.invite();
+      if (link) void enter(link);
+    };
+    void take();
+    return window.desktop.onInvite(take);
+  }, []);
 
   return (
     <main className="welcome">
@@ -79,7 +89,7 @@ export function Start() {
           </Field>
           <Button type="submit">Create Workspace</Button>
         </form>
-        <form action={async (form) => setFailed(!(await join({ link: String(form.get("link")) })))}>
+        <form action={(form) => enter(String(form.get("link")))}>
           <Field name="link">
             <FieldLabel className="hidden">Invite link</FieldLabel>
             <Input placeholder="Invite link" required />

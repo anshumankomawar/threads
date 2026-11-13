@@ -44,7 +44,7 @@ export const inviteLink = mutation({
     const workspace = (await ctx.db.get(ctx.me.workspaceId))!;
     const invite = workspace.invite ?? crypto.randomUUID();
     if (!workspace.invite) await ctx.db.patch(workspace._id, { invite });
-    return `arcthreads://join/${invite}`;
+    return `${process.env.CONVEX_SITE_URL}/join/${invite}`;
   },
 });
 

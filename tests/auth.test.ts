@@ -28,7 +28,7 @@ test("an invite link brings someone into its workspace, and nothing else does", 
   ]);
 
   const linus = await signIn("linus");
-  expect(await linus.mutation(api.workspace.join, { link: "arcthreads://join/guess" })).toBe(false);
+  expect(await linus.mutation(api.workspace.join, { link: "arc://join/guess" })).toBe(false);
   expect(await linus.mutation(api.workspace.join, { link: "" })).toBe(false);
   expect(await linus.query(api.workspace.me)).not.toHaveProperty("workspaceId");
 });

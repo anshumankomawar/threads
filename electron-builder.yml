@@ -4,6 +4,10 @@ directories:
   buildResources: build
 files:
   - out
+protocols:
+  - name: Arc
+    schemes:
+      - arc
 mac:
   icon: build/AppIcon.icon
   entitlementsInherit: build/entitlements.mac.plist

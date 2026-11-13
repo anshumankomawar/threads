@@ -33,8 +33,9 @@ meaning, give it a Voyage key; each new message is then embedded as it's posted:
 bunx convex env set VOYAGE_API_KEY ...
 ```
 
-People sign in with Google. A new account has no workspace: it creates one, or joins one by pasting the invite link
-a member copied from Settings, People. Google returns the app its sign-in through
+People sign in with Google. A new account has no workspace: it creates one, or joins one through the invite link
+a member copied from Settings. The link is a page on the deployment that opens the app (`arc://join/`), and it can
+also be pasted on the first screen. Google returns the app its sign-in through
 `http://127.0.0.1:47201`, which the app listens on only while you sign in.
 
 ## The shared deployment
