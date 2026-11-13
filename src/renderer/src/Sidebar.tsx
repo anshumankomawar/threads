@@ -1,85 +1,78 @@
+import { Button } from "@ui-sdk/react/button";
+import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
 import { useMutation } from "convex/react";
+import { useState } from "react";
 import { api, inBox, useBuckets, useMe, useThreads } from "./data";
 import { Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
-import { useResize } from "./resize";
-import { go, showMenu, useUI, useView, type Box, type MenuItem } from "./state";
-
-function BoxRow(props: {
-  box: Box;
-  label: string;
-  icon: IconName;
-  count: number;
-  nested?: boolean;
-  menu?: MenuItem[];
-}) {
-  const view = useView();
-  return (
-    <li>
-      <button
-        className={props.nested ? "box nested" : "box"}
-        aria-current={view.box === props.box && !view.settings}
-        onClick={() => go({ box: props.box, thread: undefined })}
-        onContextMenu={(event) => props.menu && showMenu(event, props.menu)}
-      >
-        <Icon name={props.icon} color={`var(--${props.icon})`} />
-        <span className="clip">{props.label}</span>
-        <span className="count">{props.count}</span>
-      </button>
-    </li>
-  );
-}
+import { ContextMenu, type MenuEntry } from "./Menu";
+import { go, useUI, useView, type Box } from "./state";
 
 export function Sidebar() {
   const me = useMe()!;
+  const view = useView();
   const rows = useThreads();
   const buckets = useBuckets();
   const drafts = useUI((ui) => ui.drafts);
   const removeBucket = useMutation(api.workspace.removeBucket);
-  const { width, edge } = useResize("sidebar-width", 242, 200, 350);
+  const editBuckets: MenuEntry = { label: "Edit Buckets", run: () => go({ settings: true }) };
+  const [menu, setMenu] = useState<MenuEntry[]>([editBuckets]);
+
+  const row = (
+    box: Box,
+    label: string,
+    icon: IconName,
+    count: number,
+    entries: MenuEntry[] = [editBuckets],
+    nested = false,
+  ) => (
+    <ListboxItem
+      key={box}
+      value={box}
+      label={label}
+      className={nested ? "box nested" : "box"}
+      onContextMenu={() => setMenu(entries)}
+    >
+      <Icon name={icon} color={`var(--${icon})`} />
+      <span className="clip">{label}</span>
+      <span className="count">{count}</span>
+    </ListboxItem>
+  );
   const count = (box: Box) => inBox(rows, box).length;
-  const editBuckets = { label: "Edit Buckets", run: () => go({ settings: true }) };
 
   return (
-    <aside className="sidebar" style={{ width }}>
-      <nav>
-        <ul>
-          <BoxRow
-            box="inbox"
-            label="Buckets"
-            icon="inbox"
-            count={count("inbox")}
-            menu={[editBuckets]}
-          />
-          {count("unsorted") > 0 && (
-            <BoxRow box="unsorted" label="Sorting" icon="folder" count={count("unsorted")} nested />
-          )}
-          {buckets.map((bucket) => (
-            <BoxRow
-              key={bucket._id}
-              box={bucket._id}
-              label={bucket.name}
-              icon="folder"
-              count={count(bucket._id)}
-              nested
-              menu={[
+    <aside className="sidebar">
+      <ContextMenu entries={menu}>
+        <Listbox
+          aria-label="Mailboxes"
+          value={view.settings ? null : view.box}
+          onValueChange={(box) => box && go({ box, thread: undefined })}
+        >
+          {row("inbox", "Buckets", "inbox", count("inbox"))}
+          {count("unsorted") > 0 &&
+            row("unsorted", "Sorting", "folder", count("unsorted"), undefined, true)}
+          {buckets.map((bucket) =>
+            row(
+              bucket._id,
+              bucket.name,
+              "folder",
+              count(bucket._id),
+              [
                 editBuckets,
                 "separator",
                 { label: "Delete Bucket", run: () => void removeBucket({ id: bucket._id }) },
-              ]}
-            />
-          ))}
-        </ul>
-        <ul>
-          <BoxRow box="all" label="All Threads" icon="archive" count={rows.length} />
-          <BoxRow box="drafts" label="Drafts" icon="draft" count={drafts.length} />
-        </ul>
-      </nav>
-      <button className="profile" onClick={() => go({ settings: true })}>
+              ],
+              true,
+            ),
+          )}
+          {row("all", "All Threads", "archive", rows.length)}
+          {row("drafts", "Drafts", "draft", drafts.length)}
+        </Listbox>
+      </ContextMenu>
+      <Button className="profile" onClick={() => go({ settings: true })}>
         <Identicon seed={me._id} size={20} />
         <span className="clip">{me.name}</span>
-      </button>
-      {edge}
+      </Button>
     </aside>
   );
 }

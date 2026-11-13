@@ -1,5 +1,7 @@
 import { useQuery } from "convex-helpers/react/cache";
-import { useEffect, useRef } from "react";
+import { useShortcut } from "@ui-sdk/react/shortcuts";
+import { createTokenInputController } from "@ui-sdk/react/token-input";
+import { useEffect, useRef, useState } from "react";
 import { api, parts, useMark, useMe, useNames, useSend, useThreads, type Id } from "./data";
 import { Identicon } from "./Identicon";
 import { MessageBox } from "./MessageBox";
@@ -25,8 +27,10 @@ export function Thread({ threadId }: { threadId: Id<"threads"> }) {
   const { name } = useNames();
   const send = useSend();
   const mark = useMark();
+  const [reply] = useState(createTokenInputController);
   const end = useRef<HTMLDivElement>(null);
 
+  useShortcut("r", () => reply.focus(), { description: "Reply" });
   useEffect(() => {
     if (unread) void mark({ threadId, unread: false });
   }, [threadId, unread, mark]);
@@ -59,6 +63,8 @@ export function Thread({ threadId }: { threadId: Id<"threads"> }) {
             </div>
             <MessageBox
               key={threadId}
+              input={reply}
+              label="Reply"
               placeholder="Reply, @mention someone to bring them in, ⌘↵ to send"
               onSend={(body) => void send(threadId, body)}
             />

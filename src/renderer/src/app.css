@@ -1,3 +1,5 @@
+@layer ui-sdk;
+
 :root {
   color-scheme: dark;
   --chrome: light-dark(#fafafa, #101010);
@@ -73,6 +75,13 @@ small {
   font: inherit;
   font-size: 11px;
 }
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .clip {
   flex: 1;
   min-width: 0;
@@ -88,8 +97,12 @@ small {
   stroke: var(--avatar-ring);
   stroke-width: 0.5;
 }
-.mention {
+.mention,
+[data-token-type="mention"] {
   color: var(--accent);
+}
+[data-slot="token-input-token-label"] {
+  display: none;
 }
 .panel {
   border: 1px solid var(--panel-line);
@@ -98,15 +111,6 @@ small {
   background: var(--panel);
   box-shadow: var(--shadow);
 }
-.edge {
-  position: absolute;
-  inset: 0 -3px 0 auto;
-  z-index: 1;
-  width: 5px;
-  border: 0;
-  cursor: col-resize;
-}
-
 .topbar {
   display: grid;
   grid-template-columns: 1fr minmax(220px, 460px) 1fr;
@@ -133,10 +137,10 @@ small {
       border-radius: 11px;
       -webkit-app-region: no-drag;
 
-      &:hover:enabled {
+      &:hover:not([data-disabled]) {
         background: var(--selected);
       }
-      &:disabled {
+      &[data-disabled] {
         opacity: 0.35;
       }
     }
@@ -164,54 +168,67 @@ small {
 }
 
 .columns {
-  display: flex;
   flex: 1;
   min-height: 0;
+
+  & [data-slot="resizable-panel"] {
+    display: flex;
+    min-width: 0;
+  }
+  & [data-slot="resizable-handle"] {
+    position: relative;
+    width: 1px;
+    background: var(--line);
+    cursor: col-resize;
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: 0 -3px;
+    }
+  }
 }
 .sidebar,
 .list {
-  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.sidebar [data-slot="listbox"],
+.list .scroll,
+.list [data-slot="listbox-group"] {
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-  border-right: 1px solid var(--line);
-  background: var(--chrome);
-  color: var(--text);
+  gap: 2px;
 }
 
 .sidebar {
-  & nav {
+  & [data-slot="listbox"] {
     flex: 1;
     padding: 9px 8px 12px;
     overflow-y: auto;
-  }
-  & ul {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    margin-bottom: 8px;
   }
   & .box,
   & .profile {
     display: flex;
     gap: 8px;
     align-items: center;
-    width: 100%;
+    flex-shrink: 0;
     height: 30px;
     padding: 0 8px;
     border-radius: 8px;
 
-    &[aria-current="true"] {
+    &[data-selected] {
       background: var(--selected);
     }
   }
   & .nested {
-    width: auto;
     margin-left: 15px;
-  }
-  & li {
-    display: flex;
-    flex-direction: column;
+
+    & + :not(.nested) {
+      margin-top: 8px;
+    }
   }
   & .count {
     color: var(--text-3);
@@ -219,7 +236,6 @@ small {
     font-variant-numeric: tabular-nums;
   }
   & .profile {
-    width: auto;
     margin: 0 8px 9px;
     color: var(--text-2);
 
@@ -230,10 +246,6 @@ small {
 }
 
 .list {
-  &.alone {
-    flex: 1;
-    border-right: 0;
-  }
   & h1 {
     display: flex;
     gap: 6px;
@@ -252,13 +264,12 @@ small {
     flex: 1;
     padding: 0 8px 26px;
     overflow-y: auto;
+
+    &:empty {
+      display: none;
+    }
   }
-  & ul {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  & h2 {
+  & [data-slot="listbox-group-label"] {
     display: flex;
     gap: 6px;
     align-items: center;
@@ -271,11 +282,11 @@ small {
     display: flex;
     flex-direction: column;
     gap: 1px;
-    width: 100%;
+    flex-shrink: 0;
     padding: 7px 10px;
     border-radius: 8px;
 
-    &[aria-current="true"] {
+    &[data-selected] {
       background: var(--selected);
     }
     & .line {
@@ -375,30 +386,18 @@ small {
   }
 }
 
-.message-box {
-  display: flex;
-  flex-direction: column;
+.editor {
+  min-height: 19px;
+  line-height: 19px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
   cursor: text;
 
-  & .editor {
-    min-height: 19px;
-    line-height: 19px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    user-select: text;
-  }
-  & p.is-editor-empty:first-child::before {
-    content: attr(data-placeholder);
-    float: left;
-    height: 0;
+  &[data-empty]::before {
+    content: attr(aria-placeholder);
     color: var(--text-3);
     pointer-events: none;
-  }
-  & .mentions {
-    position: fixed;
-    z-index: 2;
-    width: 330px;
-    padding: 4px 0;
   }
 }
 
@@ -408,13 +407,16 @@ small {
   min-height: 0;
   overflow-y: auto;
 
-  & h2 {
+  &[data-slot="trigger-menu-content"] {
+    width: 330px;
+    padding: 4px 0;
+  }
+  & [data-slot="command-group-label"] {
     padding: 8px 15px 4px;
     color: var(--text-2);
     font-size: 10px;
-    font-weight: 400;
   }
-  & button {
+  & [role="option"] {
     display: flex;
     gap: 9px;
     align-items: center;
@@ -424,7 +426,7 @@ small {
     padding: 0 9px 0 7px;
     border-radius: 7px;
 
-    &[aria-selected="true"] {
+    &[data-highlighted] {
       background: var(--panel-selected);
     }
   }
@@ -443,27 +445,30 @@ small {
   flex-direction: column;
   width: 704px;
   max-width: calc(100vw - 32px);
+  height: fit-content;
   max-height: min(616px, 82vh);
   margin: max(80px, 18vh) auto auto;
   padding: 0;
   overflow: hidden;
 
-  &[open] {
+  &[data-open] {
     display: flex;
   }
   &::backdrop {
     background: none;
   }
-  & .message-box {
+  & [data-slot="command"] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  & .editor {
+    min-height: 42px;
+    max-height: 350px;
     padding: 10px 15px;
-
-    & .editor {
-      min-height: 22px;
-      max-height: 350px;
-      overflow-y: auto;
-      font-size: 14px;
-      line-height: 22px;
-    }
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 22px;
   }
   &.grow {
     inset: auto;
@@ -490,36 +495,35 @@ small {
     & .options {
       padding: 4px 0 8px;
     }
-    & [aria-selected="true"] {
+    & [data-highlighted] {
       background: var(--selected);
     }
   }
 }
 
 .menu {
-  position: fixed;
-  z-index: 3;
   display: flex;
   flex-direction: column;
   min-width: 180px;
   padding: 4px 0;
   border-radius: 12px;
 
-  & button {
+  & [data-slot="menu-item"] {
+    display: flex;
+    align-items: center;
     height: 24px;
     margin: 0 5px;
     padding: 0 8px;
     border-radius: 5px;
     white-space: nowrap;
 
-    &:hover {
+    &[data-highlighted] {
       background: var(--panel-selected);
     }
   }
-  & hr {
+  & [data-slot="menu-separator"] {
     height: 1px;
     margin: 5px 17px;
-    border: 0;
     background: var(--line);
   }
 }
@@ -560,23 +564,24 @@ small {
     flex: 2;
     width: auto;
   }
-  & label {
+  & label,
+  & [data-slot="segmented-control"] {
     display: flex;
-    gap: 4px;
+    gap: 6px;
     align-items: center;
   }
+  & [data-slot="field"] {
+    display: flex;
+    flex: 1;
+    min-width: 160px;
+  }
   & button,
-  & input:not([type="checkbox"]) {
+  & [data-slot="input"] {
+    flex: 1;
     height: 28px;
     padding: 0 10px;
     border: 1px solid var(--line);
     border-radius: 8px;
-    text-transform: capitalize;
-  }
-  & input:not([type="checkbox"]) {
-    flex: 1;
-    min-width: 160px;
-    text-transform: none;
 
     &::placeholder {
       color: var(--text-3);
@@ -585,9 +590,21 @@ small {
       border-color: var(--text-3);
     }
   }
-  & button:hover,
-  & button[aria-pressed="true"] {
-    background: var(--selected);
+  & button {
+    flex: none;
+
+    &:hover,
+    &[data-checked] {
+      background: var(--selected);
+    }
+  }
+  & [data-slot="checkbox"] {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border-radius: 4px;
   }
 }
 
@@ -716,13 +733,17 @@ small {
       animation: none;
     }
   }
-  & div {
+  & form > div {
     display: flex;
     flex-direction: column;
     gap: 10px;
     width: 100%;
     margin-top: 26px;
     animation: arrive 600ms var(--ease) 420ms backwards;
+  }
+  & [data-slot="field"],
+  & [data-slot="password-input"] {
+    display: grid;
   }
   & input,
   & button {
@@ -761,7 +782,7 @@ small {
     &:active:enabled {
       transform: scale(0.985);
     }
-    &:disabled {
+    &[data-disabled] {
       opacity: 0.8;
     }
   }
@@ -774,14 +795,17 @@ small {
     opacity: 0.7;
     animation: turn 700ms linear infinite;
   }
-  & a {
+  & .link {
+    height: auto;
     margin-top: 6px;
     color: rgb(255 255 255 / 55%);
+    background: none;
     font-size: 13px;
-    transition: color 160ms;
+    font-weight: 400;
 
     &:hover {
       color: rgb(255 255 255 / 92%);
+      background: none;
     }
   }
 }

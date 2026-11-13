@@ -1,119 +1,97 @@
-import { useEffect, useRef } from "react";
+import { usePreference } from "@ui-sdk/react/preferences";
+import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
+import { useShortcut } from "@ui-sdk/react/shortcuts";
+import { Toolbar, ToolbarButton, ToolbarGroup } from "@ui-sdk/react/toolbar";
+import { useEffect } from "react";
 import { sections, useBuckets, useMark, useMe, useThreads, type Id } from "./data";
-import { Icon, type IconName } from "./Icon";
+import { Icon } from "./Icon";
 import { List } from "./List";
-import { Menu } from "./Menu";
 import { NewMessage, Search } from "./Palette";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
-import { back, currentView, forward, go, setDialog, toggleSidebar, useUI, useView } from "./state";
+import { back, forward, go, setDialog, theme, toggleSidebar, useUI, useView } from "./state";
 import { Thread } from "./Thread";
 
-function useHotkeys() {
+const BUCKET_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+function useShortcuts() {
+  const view = useView();
   const rows = useThreads();
   const buckets = useBuckets();
   const mark = useMark();
-  const live = useRef({ rows, buckets, mark });
-  live.current = { rows, buckets, mark };
+  const threadId = view.thread as Id<"threads"> | undefined;
+  const order = sections(rows, view.box, buckets).flatMap((section) => section.rows);
+  const at = order.findIndex((row) => row.threadId === threadId);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.altKey || event.ctrlKey) return;
-      const { rows, buckets, mark } = live.current;
-      const view = currentView();
-      const threadId = view.thread as Id<"threads"> | undefined;
-      const order = sections(rows, view.box, buckets).flatMap((section) => section.rows);
-      const at = order.findIndex((row) => row.threadId === threadId);
-      const open = (index: number) => {
-        const row = order[Math.max(0, Math.min(order.length - 1, index))];
-        if (row) go({ thread: row.threadId });
-      };
-      const done = () => {
-        if (!threadId) return;
-        void mark({ threadId, inbox: false });
-        go({ thread: (order[at + 1] ?? order[at - 1])?.threadId });
-      };
-      const unread = () => {
-        if (!threadId) return;
-        go({ thread: undefined });
-        void mark({ threadId, unread: true });
-      };
+  const open = (index: number) => {
+    const row = order[Math.max(0, Math.min(order.length - 1, index))];
+    if (row) go({ thread: row.threadId });
+  };
+  const done = () => {
+    if (!threadId) return;
+    void mark({ threadId, inbox: false });
+    go({ thread: (order[at + 1] ?? order[at - 1])?.threadId });
+  };
+  const unread = () => {
+    if (!threadId) return;
+    go({ thread: undefined });
+    void mark({ threadId, unread: true });
+  };
+  const leave = () => {
+    const focused = document.activeElement as HTMLElement | null;
+    if (focused?.isContentEditable) focused.blur();
+    else go({ thread: undefined, settings: false });
+  };
 
-      const target = event.target as HTMLElement;
-      const typing = target.closest("input, textarea, [contenteditable=true]");
-      const key = event.key.toLowerCase();
-      if (!event.metaKey && document.querySelector("dialog[open], .mentions")) return;
-      const bucket = event.metaKey && buckets[Number(key) - 1];
-      const command = event.metaKey
-        ? {
-            k: () => setDialog({ kind: "search" }),
-            f: () => setDialog({ kind: "find" }),
-            n: () => setDialog({ kind: "new" }),
-            ",": () => go({ settings: true }),
-            "[": back,
-            "]": forward,
-            "\\": toggleSidebar,
-            e: done,
-          }[key]
-        : !typing
-          ? {
-              j: () => open(at + 1),
-              arrowdown: () => open(at + 1),
-              k: () => open(at - 1),
-              arrowup: () => open(at - 1),
-              e: done,
-              u: unread,
-              r: () => document.querySelector<HTMLElement>(".thread .editor")?.focus(),
-              escape: () => go({ thread: undefined, settings: false }),
-            }[key]
-          : key === "escape" && (() => target.blur());
-      const run = bucket ? () => go({ box: bucket._id, thread: undefined }) : command;
-      if (!run) return;
-      event.preventDefault();
-      run();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  useShortcut("mod+k", () => setDialog({ kind: "search" }), { description: "Search" });
+  useShortcut("mod+f", () => setDialog({ kind: "find" }), { description: "Search threads" });
+  useShortcut("mod+n", () => setDialog({ kind: "new" }), { description: "New message" });
+  useShortcut("mod+,", () => go({ settings: true }), { description: "Settings" });
+  useShortcut("mod+[", back, { description: "Back" });
+  useShortcut("mod+]", forward, { description: "Forward" });
+  useShortcut("mod+\\", toggleSidebar, { description: "Show or hide the sidebar" });
+  useShortcut("mod+e", done, { description: "Mark done" });
+  useShortcut("e", done, { description: "Mark done" });
+  useShortcut("u", unread, { description: "Mark unread" });
+  useShortcut("j", () => open(at + 1), { description: "Next thread" });
+  useShortcut("k", () => open(at - 1), { description: "Previous thread" });
+  useShortcut("escape", leave, { allowInInput: true, description: "Close" });
+  for (const key of BUCKET_KEYS)
+    useShortcut(
+      buckets[key - 1] ? `mod+${key}` : null,
+      () => go({ box: buckets[key - 1]._id, thread: undefined }),
+      { description: `Bucket ${key}` },
+    );
 }
-
-const TopButton = (props: {
-  label: string;
-  icon: IconName;
-  disabled?: boolean;
-  run: () => void;
-}) => (
-  <button
-    title={props.label}
-    aria-label={props.label}
-    disabled={props.disabled}
-    onClick={props.run}
-  >
-    <Icon name={props.icon} />
-  </button>
-);
 
 export function App() {
   const me = useMe();
   const view = useView();
   const { at, history, sidebar, dialog } = useUI();
-  useHotkeys();
+  const { value } = usePreference(theme);
+  useEffect(() => window.desktop.setTheme(value), [value]);
+  useShortcuts();
   if (!me) return null;
 
   return (
     <>
-      <header className="topbar">
-        <div>
-          <TopButton label="Sidebar (⌘\)" icon="layout" run={toggleSidebar} />
-          <TopButton label="Back (⌘[)" icon="nav-back" disabled={at === 0} run={back} />
-          <TopButton
-            label="Forward (⌘])"
-            icon="nav-forward"
+      <Toolbar className="topbar" aria-label="Window">
+        <ToolbarGroup>
+          <ToolbarButton aria-label="Sidebar" onClick={toggleSidebar}>
+            <Icon name="layout" />
+          </ToolbarButton>
+          <ToolbarButton aria-label="Back" disabled={at === 0} onClick={back}>
+            <Icon name="nav-back" />
+          </ToolbarButton>
+          <ToolbarButton
+            aria-label="Forward"
             disabled={at === history.length - 1}
-            run={forward}
-          />
-        </div>
-        <button
+            onClick={forward}
+          >
+            <Icon name="nav-forward" />
+          </ToolbarButton>
+        </ToolbarGroup>
+        <ToolbarButton
           data-search
           className="search"
           style={{ visibility: dialog && dialog.kind !== "new" ? "hidden" : undefined }}
@@ -122,25 +100,44 @@ export function App() {
           <Icon name="search" />
           <span>Search</span>
           <kbd>⌘K</kbd>
-        </button>
-        <div>
-          <TopButton label="Settings (⌘,)" icon="settings" run={() => go({ settings: true })} />
-        </div>
-      </header>
-      <div className="columns">
-        {view.settings ? (
-          <Settings />
-        ) : (
-          <>
-            {sidebar && <Sidebar />}
-            <List alone={!view.thread} />
-            {view.thread && <Thread threadId={view.thread as Id<"threads">} />}
-          </>
-        )}
-      </div>
+        </ToolbarButton>
+        <ToolbarGroup>
+          <ToolbarButton aria-label="Settings" onClick={() => go({ settings: true })}>
+            <Icon name="settings" />
+          </ToolbarButton>
+        </ToolbarGroup>
+      </Toolbar>
+      {view.settings ? (
+        <Settings />
+      ) : (
+        <Resizable className="columns" autoSaveId="sidebar">
+          {sidebar && (
+            <>
+              <ResizablePanel id="sidebar" defaultSize="242px" minSize="200px" maxSize="350px">
+                <Sidebar />
+              </ResizablePanel>
+              <ResizableHandle aria-label="Resize sidebar" />
+            </>
+          )}
+          <ResizablePanel id="main">
+            {view.thread ? (
+              <Resizable className="columns" autoSaveId="list">
+                <ResizablePanel id="list" defaultSize="374px" minSize="310px" maxSize="660px">
+                  <List />
+                </ResizablePanel>
+                <ResizableHandle aria-label="Resize list" />
+                <ResizablePanel id="thread">
+                  <Thread threadId={view.thread as Id<"threads">} />
+                </ResizablePanel>
+              </Resizable>
+            ) : (
+              <List />
+            )}
+          </ResizablePanel>
+        </Resizable>
+      )}
       {dialog?.kind === "new" && <NewMessage draft={dialog.draft} />}
       {dialog && dialog.kind !== "new" && <Search threadsOnly={dialog.kind === "find"} />}
-      <Menu />
     </>
   );
 }

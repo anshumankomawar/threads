@@ -1,4 +1,8 @@
 import { useAuthActions } from "@convex-dev/auth/react";
+import { Button } from "@ui-sdk/react/button";
+import { Field, FieldLabel } from "@ui-sdk/react/field";
+import { Input } from "@ui-sdk/react/input";
+import { PasswordInput, PasswordInputControl } from "@ui-sdk/react/password-input";
 import { useEffect, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
 import horizon from "./horizon.png";
@@ -98,15 +102,30 @@ export function SignIn() {
           <p>{step.lede}</p>
           <div>
             <input name="flow" type="hidden" value={flow} />
-            {flow === "signUp" && <input name="name" placeholder="Name" required autoFocus />}
-            <input name="email" type="email" placeholder="Email" required autoFocus />
-            <input name="password" type="password" placeholder="Password" minLength={8} required />
-            <button disabled={busy}>
+            {flow === "signUp" && (
+              <Field name="name">
+                <FieldLabel className="hidden">Name</FieldLabel>
+                <Input placeholder="Name" required autoFocus />
+              </Field>
+            )}
+            <Field name="email">
+              <FieldLabel className="hidden">Email</FieldLabel>
+              <Input type="email" placeholder="Email" required autoFocus />
+            </Field>
+            <Field>
+              <FieldLabel className="hidden">Password</FieldLabel>
+              <PasswordInput name="password" required>
+                <PasswordInputControl placeholder="Password" pattern=".{8,}" />
+              </PasswordInput>
+            </Field>
+            <Button type="submit" disabled={busy}>
               {busy && <i />}
               {step.action}
-            </button>
+            </Button>
             {failed && <p role="alert">{step.problem}</p>}
-            <a onClick={change}>{step.other}</a>
+            <Button className="link" onClick={change}>
+              {step.other}
+            </Button>
           </div>
         </form>
       )}

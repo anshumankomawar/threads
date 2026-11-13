@@ -1,39 +1,28 @@
-import { useEffect } from "react";
-import { hideMenu, useUI } from "./state";
+import {
+  Menu,
+  MenuContent,
+  MenuContextTrigger,
+  MenuItems,
+  type MenuData,
+} from "@ui-sdk/react/menu";
+import type { ReactElement } from "react";
 
-const WIDTH = 300;
-const ROW = 24;
+export type MenuEntry = { label: string; run: () => void } | "separator";
 
-export function Menu() {
-  const menu = useUI((ui) => ui.menu);
-  useEffect(() => {
-    if (!menu) return;
-    const events = ["pointerdown", "keydown", "blur", "resize"];
-    for (const event of events) window.addEventListener(event, hideMenu);
-    return () => {
-      for (const event of events) window.removeEventListener(event, hideMenu);
-    };
-  }, [menu]);
-  if (!menu) return null;
-
-  const left = Math.min(menu.x, innerWidth - WIDTH - 8);
-  const top = Math.min(menu.y, innerHeight - menu.items.length * ROW - 16);
+export function ContextMenu(props: {
+  entries: MenuEntry[];
+  children: ReactElement<Record<string, unknown>>;
+}) {
+  const actions = props.entries.filter((entry) => entry !== "separator");
+  const items: MenuData = props.entries.map((entry) =>
+    entry === "separator" ? { type: "separator" } : entry.label,
+  );
   return (
-    <div
-      className="panel menu"
-      role="menu"
-      style={{ left, top }}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      {menu.items.map((item, index) =>
-        item === "separator" ? (
-          <hr key={index} />
-        ) : (
-          <button key={index} role="menuitem" onClick={() => (hideMenu(), item.run())}>
-            {item.label}
-          </button>
-        ),
-      )}
-    </div>
+    <Menu items={items} onAction={(label) => actions.find((entry) => entry.label === label)?.run()}>
+      <MenuContextTrigger render={props.children} />
+      <MenuContent className="panel menu">
+        <MenuItems items={items} />
+      </MenuContent>
+    </Menu>
   );
 }

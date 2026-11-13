@@ -1,13 +1,35 @@
 import { useAuthActions } from "@convex-dev/auth/react";
+import { Button } from "@ui-sdk/react/button";
+import { Checkbox, CheckboxIndicator } from "@ui-sdk/react/checkbox";
+import { Field, FieldLabel } from "@ui-sdk/react/field";
+import { Input } from "@ui-sdk/react/input";
+import { usePreference } from "@ui-sdk/react/preferences";
+import { SegmentedControl, SegmentedControlItem } from "@ui-sdk/react/segmented-control";
 import { useMutation } from "convex/react";
 import { api, useBuckets, useGroups, useMe, usePeople, type Doc, type Id } from "./data";
-import { reset, setTheme, useUI, type Theme } from "./state";
+import { reset, theme } from "./state";
 
-const THEMES: Theme[] = ["dark", "light"];
+function TextField(props: {
+  name: string;
+  label: string;
+  of: string;
+  type?: string;
+  value?: string;
+}) {
+  return (
+    <Field name={props.name}>
+      <FieldLabel className="hidden">
+        {props.label} of {props.of}
+      </FieldLabel>
+      <Input type={props.type} placeholder={props.label} defaultValue={props.value} required />
+    </Field>
+  );
+}
 
 function BucketForm({ bucket }: { bucket?: Doc<"buckets"> }) {
   const save = useMutation(api.workspace.saveBucket);
   const remove = useMutation(api.workspace.removeBucket);
+  const of = bucket?.name ?? "a new bucket";
   return (
     <form
       action={(form) =>
@@ -18,18 +40,20 @@ function BucketForm({ bucket }: { bucket?: Doc<"buckets"> }) {
         })
       }
     >
-      <input name="name" placeholder="New bucket" defaultValue={bucket?.name} required />
-      <input
+      <TextField name="name" label="Name" of={of} value={bucket?.name} />
+      <TextField
         name="description"
-        placeholder="What belongs in it"
-        defaultValue={bucket?.description}
-        required
+        label="What belongs in it"
+        of={of}
+        value={bucket?.description}
       />
-      <button>{bucket ? "Save" : "Add"}</button>
+      <Button type="submit" aria-label={`Save ${of}`}>
+        {bucket ? "Save" : "Add"}
+      </Button>
       {bucket && (
-        <button type="button" onClick={() => void remove({ id: bucket._id })}>
+        <Button aria-label={`Delete ${of}`} onClick={() => void remove({ id: bucket._id })}>
           Delete
-        </button>
+        </Button>
       )}
     </form>
   );
@@ -39,6 +63,7 @@ function GroupForm({ group }: { group?: Doc<"groups"> }) {
   const people = usePeople();
   const save = useMutation(api.workspace.saveGroup);
   const remove = useMutation(api.workspace.removeGroup);
+  const of = group?.name ?? "a new group";
   return (
     <form
       action={(form) =>
@@ -49,25 +74,29 @@ function GroupForm({ group }: { group?: Doc<"groups"> }) {
         })
       }
     >
-      <input name="name" placeholder="New group" defaultValue={group?.name} required />
+      <TextField name="name" label="Name" of={of} value={group?.name} />
       <span className="choices">
         {people.map((person) => (
           <label key={person._id}>
-            <input
-              type="checkbox"
+            <Checkbox
               name="userIds"
               value={person._id}
               defaultChecked={group?.userIds.includes(person._id)}
-            />
+              aria-label={`${person.name} in ${of}`}
+            >
+              <CheckboxIndicator>✓</CheckboxIndicator>
+            </Checkbox>
             {person.name}
           </label>
         ))}
       </span>
-      <button>{group ? "Save" : "Add"}</button>
+      <Button type="submit" aria-label={`Save ${of}`}>
+        {group ? "Save" : "Add"}
+      </Button>
       {group && (
-        <button type="button" onClick={() => void remove({ id: group._id })}>
+        <Button aria-label={`Delete ${of}`} onClick={() => void remove({ id: group._id })}>
           Delete
-        </button>
+        </Button>
       )}
     </form>
   );
@@ -78,7 +107,7 @@ export function Settings() {
   const people = usePeople();
   const groups = useGroups();
   const buckets = useBuckets();
-  const theme = useUI((ui) => ui.theme);
+  const { value } = usePreference(theme);
   const invite = useMutation(api.workspace.invite);
   const { signOut } = useAuthActions();
 
@@ -91,16 +120,17 @@ export function Settings() {
         <p>
           {me.name}, {me.email}, in {me.workspace}
         </p>
-        <button onClick={() => void signOut().then(reset)}>Sign Out</button>
+        <Button onClick={() => void signOut().then(reset)}>Sign Out</Button>
 
         <h2>Appearance</h2>
-        <div className="choices">
-          {THEMES.map((name) => (
-            <button key={name} aria-pressed={theme === name} onClick={() => setTheme(name)}>
-              {name}
-            </button>
-          ))}
-        </div>
+        <SegmentedControl
+          aria-label="Theme"
+          value={value}
+          onValueChange={(next) => next && theme.set(next as typeof value)}
+        >
+          <SegmentedControlItem value="dark">Dark</SegmentedControlItem>
+          <SegmentedControlItem value="light">Light</SegmentedControlItem>
+        </SegmentedControl>
 
         <h2>Buckets</h2>
         <p>New threads are sorted into the bucket whose description fits them best.</p>
@@ -119,8 +149,8 @@ export function Settings() {
         <h2>People</h2>
         <p>{people.map((person) => person.name).join(", ")}</p>
         <form action={(form) => void invite({ email: String(form.get("email")) })}>
-          <input name="email" type="email" placeholder="Invite by email" required />
-          <button>Invite</button>
+          <TextField name="email" type="email" label="Email" of="someone to invite" />
+          <Button type="submit">Invite</Button>
         </form>
       </article>
     </main>
