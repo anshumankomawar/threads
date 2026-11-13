@@ -118,7 +118,7 @@ small {
   align-items: center;
   flex-shrink: 0;
   height: 38px;
-  padding: 0 8px 0 76px;
+  padding: 0 8px 0 82px;
   border-bottom: 1px solid var(--line);
   -webkit-app-region: drag;
 
