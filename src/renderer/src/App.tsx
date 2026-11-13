@@ -71,6 +71,12 @@ export function App() {
   const draft = drafts.find(({ id }) => id === view.draft);
   const { value } = usePreference(theme);
   useEffect(() => window.desktop.setTheme(value), [value]);
+  useEffect(() => {
+    const onMouseUp = ({ button }: MouseEvent) =>
+      button === 3 ? back() : button === 4 && forward();
+    window.addEventListener("mouseup", onMouseUp);
+    return () => window.removeEventListener("mouseup", onMouseUp);
+  }, []);
   useShortcuts();
   if (!me) return null;
 
