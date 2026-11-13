@@ -1,8 +1,7 @@
 import { Button } from "@ui-sdk/react/button";
 import { Listbox, ListboxItem } from "@ui-sdk/react/listbox";
-import { useMutation } from "convex/react";
 import { useState } from "react";
-import { api, inBox, useBuckets, useMe, useThreads } from "./data";
+import { inBox, useBuckets, useMe, useRemoveBucket, useThreads } from "./data";
 import { Icon, type IconName } from "./Icon";
 import { Identicon } from "./Identicon";
 import { ContextMenu, type MenuEntry } from "./Menu";
@@ -13,7 +12,7 @@ export function Sidebar() {
   const view = useView();
   const rows = useThreads();
   const buckets = useBuckets();
-  const removeBucket = useMutation(api.workspace.removeBucket);
+  const removeBucket = useRemoveBucket();
   const editBuckets: MenuEntry = {
     label: "Edit Buckets",
     run: () => setDialog("settings", "Buckets"),
@@ -62,7 +61,7 @@ export function Sidebar() {
               [
                 editBuckets,
                 "separator",
-                { label: "Delete Bucket", run: () => void removeBucket({ id: bucket._id }) },
+                { label: "Delete Bucket", run: () => void removeBucket(bucket) },
               ],
               true,
             ),

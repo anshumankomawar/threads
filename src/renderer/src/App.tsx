@@ -1,3 +1,4 @@
+import { OverlayHost } from "@ui-sdk/react/overlays";
 import { usePreference } from "@ui-sdk/react/preferences";
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { useShortcut } from "@ui-sdk/react/shortcuts";
@@ -139,6 +140,7 @@ export function App() {
           </Resizable>
         </ResizablePanel>
       </Resizable>
+      <OverlayHost />
       {dialog === "new" && <NewMessage />}
       {dialog === "settings" && <Settings />}
       {(dialog === "search" || dialog === "find") && <Search threadsOnly={dialog === "find"} />}

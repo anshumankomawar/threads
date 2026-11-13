@@ -26,6 +26,7 @@ What's already in use, and where:
 | Keys                                  | `useShortcut`                                               | `App.tsx`, `Thread.tsx`      |
 | Theme                                 | `createPreference`                                          | `state.ts`                   |
 | Settings popup                        | Dialog, Tabs                                                | `Settings.tsx`               |
+| Confirming a delete                   | `confirm`, Overlay Host                                     | `data.ts`, `App.tsx`         |
 | Settings and the first-run screens    | Input, Textarea, Checkbox, Segmented Control, Field, Button | `Settings.tsx`, `SignIn.tsx` |
 
 Styles are plain CSS in `src/renderer/src/app.css`, on class names and ui-sdk's `data-slot` and state attributes

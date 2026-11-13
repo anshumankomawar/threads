@@ -108,12 +108,48 @@ small {
 [data-slot="token-input-token-label"] {
   display: none;
 }
-.panel {
+.panel,
+[role="alertdialog"] {
   border: 1px solid var(--panel-line);
   border-radius: 15px;
   color: var(--text);
   background: var(--panel);
   box-shadow: var(--shadow);
+}
+[role="alertdialog"] {
+  position: fixed;
+  inset: 0;
+  width: 320px;
+  height: fit-content;
+  margin: auto;
+  padding: 16px;
+
+  & h2 {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  & p {
+    margin-top: 2px;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  & div {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    margin-top: 14px;
+  }
+  & button {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--selected);
+    }
+  }
 }
 .topbar {
   display: grid;

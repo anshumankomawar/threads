@@ -16,6 +16,7 @@ import {
   useGroups,
   useMe,
   usePeople,
+  useRemoveBucket,
   type Doc,
   type Id,
 } from "./data";
@@ -38,7 +39,7 @@ function Section(props: { title: string; heading?: string; hint: string; childre
 
 function Bucket({ bucket }: { bucket?: Doc<"buckets"> }) {
   const save = useMutation(api.workspace.saveBucket);
-  const remove = useMutation(api.workspace.removeBucket);
+  const remove = useRemoveBucket();
   const of = bucket?.name ?? "a new bucket";
   return (
     <form
@@ -68,7 +69,7 @@ function Bucket({ bucket }: { bucket?: Doc<"buckets"> }) {
         defaultValue={bucket?.description}
       />
       {bucket && (
-        <Button className="quiet" onClick={() => void remove({ id: bucket._id })}>
+        <Button className="quiet" onClick={() => void remove(bucket)}>
           Delete
         </Button>
       )}

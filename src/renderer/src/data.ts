@@ -1,3 +1,4 @@
+import { confirm } from "@ui-sdk/react/alert-dialog";
 import { useMutation } from "convex/react";
 import type { OptimisticLocalStore } from "convex/browser";
 import { useQuery } from "convex-helpers/react/cache";
@@ -18,6 +19,17 @@ export const useMe = () => useQuery(api.workspace.me);
 export function useCopyInvite() {
   const link = useMutation(api.workspace.inviteLink);
   return async () => navigator.clipboard.writeText(await link());
+}
+export function useRemoveBucket() {
+  const remove = useMutation(api.workspace.removeBucket);
+  return async ({ _id, name }: Doc<"buckets">) => {
+    const sure = await confirm({
+      title: `Delete ${name}?`,
+      description: "Its threads stay in All Threads.",
+      confirmLabel: "Delete",
+    });
+    if (sure) await remove({ id: _id });
+  };
 }
 export const usePeople = () => useQuery(api.workspace.people) ?? EMPTY;
 export const useGroups = () => useQuery(api.workspace.groups) ?? EMPTY;
