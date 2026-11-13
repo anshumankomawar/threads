@@ -12,6 +12,13 @@ import "./app.css";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL);
 
+const kept = (change: () => void) => (change(), window.desktop.saved());
+const storage = {
+  getItem: (key: string) => localStorage.getItem(key),
+  setItem: (key: string, value: string) => kept(() => localStorage.setItem(key, value)),
+  removeItem: (key: string) => kept(() => localStorage.removeItem(key)),
+};
+
 class UntilSignedOut extends Component<{ children: ReactNode }> {
   state = { over: false };
   static getDerivedStateFromError = () => ({ over: true });
@@ -25,7 +32,7 @@ function Home() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ConvexAuthProvider client={convex} api={api.auth}>
+    <ConvexAuthProvider client={convex} api={api.auth} storage={storage}>
       <ConvexQueryCacheProvider>
         <Preferences preferences={[theme]}>
           <Unauthenticated>

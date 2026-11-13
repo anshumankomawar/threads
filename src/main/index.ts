@@ -94,6 +94,8 @@ ipcMain.handle(
     }),
 );
 
+ipcMain.on("saved", (event) => event.sender.session.flushStorageData());
+
 ipcMain.on("theme", (_event, theme: "dark" | "light") => {
   nativeTheme.themeSource = theme;
   window?.setBackgroundColor(GROUND[theme]);
