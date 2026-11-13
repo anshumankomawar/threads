@@ -1,41 +1,16 @@
-import { convexTest } from "convex-test";
-import { exportJWK, exportPKCS8, generateKeyPair } from "jose";
-import { beforeAll, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import { api } from "../convex/_generated/api";
-import schema from "../convex/schema";
-
-const modules = import.meta.glob("../convex/**/*.ts");
-
-beforeAll(async () => {
-  const keys = await generateKeyPair("RS256", { extractable: true });
-  process.env.JWT_PRIVATE_KEY = await exportPKCS8(keys.privateKey);
-  process.env.JWKS = JSON.stringify({
-    keys: [{ use: "sig", ...(await exportJWK(keys.publicKey)) }],
-  });
-  process.env.CONVEX_SITE_URL = "https://example.convex.site";
-});
-
-async function signUp(t: ReturnType<typeof convexTest>, name: string) {
-  const params = { flow: "signUp", name, email: `${name}@Acme.com`, password: "correct horse" };
-  await t.action(api.auth.signIn, { provider: "password", params });
-  const user = await t.run((ctx) =>
-    ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("name"), name))
-      .unique(),
-  );
-  return { ...user!, as: t.withIdentity({ subject: `${user!._id}|session` }) };
-}
+import { world } from "./world";
 
 test("a new account gets its own workspace and buckets, or joins the one that invited it", async () => {
-  const t = convexTest(schema, modules);
-  const ada = await signUp(t, "ada");
-  expect(ada.email).toBe("ada@acme.com");
+  const { signUp } = world();
+  const ada = await signUp("ada");
+  expect(ada).toMatchObject({ email: "ada@acme.com", workspace: "ada's workspace" });
   expect(await ada.as.query(api.workspace.buckets)).toHaveLength(2);
 
   await ada.as.mutation(api.workspace.invite, { email: "Grace@acme.com" });
-  const grace = await signUp(t, "grace");
-  const linus = await signUp(t, "linus");
+  const grace = await signUp("grace");
+  const linus = await signUp("linus");
   expect(grace.workspaceId).toBe(ada.workspaceId);
   expect(linus.workspaceId).not.toBe(ada.workspaceId);
   expect(await ada.as.query(api.workspace.people)).toMatchObject([
@@ -44,9 +19,25 @@ test("a new account gets its own workspace and buckets, or joins the one that in
   ]);
 });
 
-test("the wrong password doesn't sign in", async () => {
-  const t = convexTest(schema, modules);
-  await signUp(t, "ada");
-  const params = { flow: "signIn", email: "ada@acme.com", password: "wrong horse" };
-  await expect(t.action(api.auth.signIn, { provider: "password", params })).rejects.toThrow();
+test("an invite moves someone who already has an account the next time they sign in", async () => {
+  const { t, signUp } = world();
+  const ada = await signUp("ada");
+  const grace = await signUp("grace");
+  await ada.as.mutation(api.workspace.invite, { email: grace.email });
+
+  const signIn = (password: string) =>
+    t.mutation(api.auth.signInWithUsernamePassword, { username: grace.email, password });
+  expect(await signIn("wrong horse battery staple")).toMatchObject({ status: "error" });
+  expect(await signIn("correct horse battery staple")).toMatchObject({ status: "complete" });
+  expect((await grace.as.query(api.workspace.me)).workspaceId).toBe(ada.workspaceId);
+});
+
+test("an email can only sign up once", async () => {
+  const { t, signUp } = world();
+  await signUp("ada");
+  const again = { name: "ada", email: "ADA@acme.com", password: "another long password" };
+  expect(await t.mutation(api.auth.signUp, again)).toMatchObject({
+    status: "error",
+    userError: { error: "USERNAME_TAKEN" },
+  });
 });

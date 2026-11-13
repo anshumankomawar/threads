@@ -10,11 +10,11 @@ bun run convex   # the backend, watching convex/
 bun run dev      # the app
 ```
 
-The first `bun run convex` creates a deployment and writes `.env.local`. Then set it up once:
+The first `bun run convex` creates a deployment and writes `.env.local`. Sign-in needs no setup: Convex Auth signs its
+sessions with the deployment's own key. To have new threads sorted into buckets (without it they stay in Sorting):
 
 ```sh
-bunx @convex-dev/auth                      # signing keys and SITE_URL
-bunx convex env set ANTHROPIC_API_KEY ...  # sorts new threads into buckets; without it they stay in Sorting
+bunx convex env set ANTHROPIC_API_KEY ...
 ```
 
 People sign in with an email and a password. A new account gets its own workspace, unless someone has invited that

@@ -9,7 +9,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "types": ["electron-vite/node", "vite/client"]
+    "types": ["electron-vite/node", "vite/client"],
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "convex", "tests", "*.config.*"]
 }

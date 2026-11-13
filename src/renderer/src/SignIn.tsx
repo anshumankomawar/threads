@@ -1,10 +1,13 @@
+import { useSignInWithUsernamePassword } from "@convex-dev/auth/methods/username-password/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { Button } from "@ui-sdk/react/button";
 import { Field, FieldLabel } from "@ui-sdk/react/field";
 import { Input } from "@ui-sdk/react/input";
 import { PasswordInput, PasswordInputControl } from "@ui-sdk/react/password-input";
+import { useMutation } from "convex/react";
 import { useEffect, useState, type CSSProperties } from "react";
 import { flushSync } from "react-dom";
+import { api } from "./data";
 import horizon from "./horizon.png";
 
 const PICTURE = { width: 640, height: 427 };
@@ -45,6 +48,7 @@ const STEPS = {
     lede: "Log in to Arc with your email.",
     action: "Log In",
     other: "Create an Account",
+    problems: {} as Record<string, string>,
     problem: "Wrong email or password.",
   },
   signUp: {
@@ -52,16 +56,19 @@ const STEPS = {
     lede: "You get a workspace of your own, or join the one you were invited to.",
     action: "Create Account",
     other: "I Already Have an Account",
-    problem: "That didn’t work. Is the email already in use?",
+    problems: { USERNAME_TAKEN: "That email already has an account." } as Record<string, string>,
+    problem: "Choose a longer, less common password.",
   },
 };
 
 export function SignIn() {
-  const { signIn } = useAuthActions();
+  const { setSession } = useAuthActions();
+  const { signIn } = useSignInWithUsernamePassword(api.auth);
+  const signUp = useMutation(api.auth.signUp);
   const [flow, setFlow] = useState<keyof typeof STEPS>("signIn");
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [problem, setProblem] = useState<string>();
   const [scene, setScene] = useState(cover);
   const step = STEPS[flow];
 
@@ -76,13 +83,21 @@ export function SignIn() {
     document.startViewTransition(() =>
       flushSync(() => {
         setFlow(flow === "signIn" ? "signUp" : "signIn");
-        setFailed(false);
+        setProblem(undefined);
       }),
     );
   const submit = async (form: FormData) => {
+    const [name, email, password] = ["name", "email", "password"].map((key) =>
+      String(form.get(key) ?? ""),
+    );
     setBusy(true);
-    setFailed(false);
-    await signIn("password", form).catch(() => setFailed(true));
+    setProblem(undefined);
+    const result =
+      flow === "signUp"
+        ? await signUp({ name, email, password })
+        : await signIn({ username: email.trim().toLowerCase(), password });
+    if (result.status === "complete") await setSession(result.tokens);
+    else setProblem(step.problems[result.userError.error] ?? step.problem);
     setBusy(false);
   };
 
@@ -101,7 +116,6 @@ export function SignIn() {
           </h1>
           <p>{step.lede}</p>
           <div>
-            <input name="flow" type="hidden" value={flow} />
             {flow === "signUp" && (
               <Field name="name">
                 <FieldLabel className="hidden">Name</FieldLabel>
@@ -122,7 +136,7 @@ export function SignIn() {
               {busy && <i />}
               {step.action}
             </Button>
-            {failed && <p role="alert">{step.problem}</p>}
+            {problem && <p role="alert">{problem}</p>}
             <Button className="link" onClick={change}>
               {step.other}
             </Button>
