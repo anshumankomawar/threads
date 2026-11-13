@@ -669,7 +669,7 @@ small {
   place-items: center;
   overflow: hidden;
   color: rgb(255 255 255 / 92%);
-  background: #101010;
+  background: linear-gradient(#101010, #101010);
   font:
     14px/1.45 "Hanken Grotesk",
     -apple-system,
