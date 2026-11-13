@@ -651,11 +651,9 @@ small {
 }
 .welcome {
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  position: relative;
   display: grid;
   flex: 1;
   place-items: center;
-  overflow: hidden;
   color: rgb(255 255 255 / 92%);
   background: linear-gradient(#101010, #101010);
   font:
@@ -747,8 +745,7 @@ small {
     &[data-disabled] {
       opacity: 0.8;
     }
-    &.secondary,
-    &.link {
+    &.secondary {
       color: rgb(255 255 255 / 92%);
       background: rgb(40 40 44 / 70%);
     }
