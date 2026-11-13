@@ -37,6 +37,18 @@ People sign in with Google. A new account gets its own workspace, unless someone
 invited that email (Settings, People), in which case it joins theirs. Google returns the app its sign-in through
 `http://127.0.0.1:47201`, which the app listens on only while you sign in.
 
+## The shared deployment
+
+`bun run dev` talks to your own dev deployment, where you can break things. The built app talks to the one everyone
+shares (`.env.production`), so that is where real conversations live:
+
+```sh
+bun run build && bunx electron-vite preview   # the app, on the shared deployment
+bunx convex deploy                            # the backend in convex/, to the shared deployment
+```
+
+Deploy the backend when `convex/` changes on the `convex` branch. Its keys are set with `bunx convex env set --prod`.
+
 ## Check it
 
 ```sh
