@@ -445,6 +445,17 @@ small {
   }
 }
 
+.alone {
+  margin-top: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+
+  .palette & {
+    margin: 0;
+    padding: 0 15px 10px;
+  }
+}
+
 .answer {
   padding: 8px 15px 4px;
   line-height: 20px;

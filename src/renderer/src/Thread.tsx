@@ -49,6 +49,7 @@ export function DraftView({ draft }: { draft: Draft }) {
         <Compose
           key={draft.id}
           label="Draft"
+          mustMention
           placeholder="Write a message, @mention who it's for, ⌘↵ to send"
           defaultText={draft.text}
           onSend={(body) => void send(body)}

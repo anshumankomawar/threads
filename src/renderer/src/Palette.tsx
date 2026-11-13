@@ -194,6 +194,7 @@ export function NewMessage() {
     <Modal title="New Message" onClose={keep}>
       <MessageBox
         label="New Message"
+        mustMention
         placeholder="Write a message, @mention who it's for, ⌘↵ to send"
         onSend={(body) => void send(body)}
         onChange={(text) => (written.current = text)}

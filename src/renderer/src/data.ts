@@ -8,7 +8,7 @@ import { plain } from "../../../convex/text";
 import type { Box } from "./state";
 
 export { api };
-export { parts } from "../../../convex/text";
+export { mentions, parts } from "../../../convex/text";
 export type { Doc, Id };
 export type Row = ReturnType<typeof useThreads>[number];
 

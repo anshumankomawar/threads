@@ -8,9 +8,6 @@ import { mentions, titleOf } from "./text";
 export async function post(ctx: MutationCtx & Ctx, threadId: Id<"threads">, body: string) {
   const { _id: authorId, workspaceId } = ctx.me;
   const activeAt = Date.now();
-  const messageId = await ctx.db.insert("messages", { workspaceId, threadId, authorId, body });
-  await ctx.scheduler.runAfter(0, internal.search.index, { messageId });
-  await ctx.db.patch(threadId, { lastAuthorId: authorId, lastBody: body });
 
   const colleague = async (id: string) => {
     const userId = ctx.db.normalizeId("users", id);
@@ -37,6 +34,11 @@ export async function post(ctx: MutationCtx & Ctx, threadId: Id<"threads">, body
     ...existing.keys(),
     ...(await Promise.all(mentioned.map(colleague))).flat(),
   ]);
+  if (everyone.size < 2) throw new ConvexError("Nobody to send it to");
+
+  const messageId = await ctx.db.insert("messages", { workspaceId, threadId, authorId, body });
+  await ctx.scheduler.runAfter(0, internal.search.index, { messageId });
+  await ctx.db.patch(threadId, { lastAuthorId: authorId, lastBody: body });
 
   for (const userId of everyone) {
     const row = existing.get(userId);

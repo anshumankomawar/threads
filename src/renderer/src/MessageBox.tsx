@@ -15,7 +15,7 @@ import {
   type TriggerMenuDataItem,
 } from "@ui-sdk/react/trigger-menu";
 import { useMemo, useState } from "react";
-import { parts, useGroups, useMe, useNames, usePeople } from "./data";
+import { mentions, parts, useGroups, useMe, useNames, usePeople } from "./data";
 import { Identicon } from "./Identicon";
 
 export function MessageBox(props: {
@@ -23,6 +23,7 @@ export function MessageBox(props: {
   placeholder: string;
   defaultText?: string;
   input?: ReturnType<typeof createTokenInputController>;
+  mustMention?: boolean;
   onSend: (body: string) => void;
   onChange?: (text: string) => void;
 }) {
@@ -32,6 +33,12 @@ export function MessageBox(props: {
   const { name } = useNames();
   const [own] = useState(createTokenInputController);
   const input = props.input ?? own;
+  const [alone, setAlone] = useState(false);
+  const reaches = (body: string) =>
+    mentions(body, "person").some((id) => id !== me?._id) ||
+    mentions(body, "group").some((id) =>
+      groups.find((group) => group._id === id)?.userIds.some((userId) => userId !== me?._id),
+    );
 
   const codec = useMemo<TokenCodec>(
     () => ({
@@ -53,39 +60,52 @@ export function MessageBox(props: {
   ];
 
   return (
-    <TokenInput
-      controller={input}
-      codec={codec}
-      defaultValue={fromText(props.defaultText ?? "", codec)}
-      submitShortcut="mod+enter"
-      onValueChange={(value) => props.onChange?.(toText(value, codec))}
-      onSubmit={(value) => {
-        const body = toText(value, codec).trim();
-        if (!body) return;
-        props.onSend(body);
-        input.clear();
-      }}
-      renderToken={(token) => <TokenInputToken className="mention">@{token.label}</TokenInputToken>}
-    >
-      <TokenInputEditor
-        className="editor"
-        aria-label={props.label}
-        placeholder={props.placeholder}
-      />
-      <TriggerMenu triggers={[{ char: "@", type: "mention", items: mentionable }]}>
-        <TriggerMenuContent className="panel options" sideOffset={6}>
-          <TriggerMenuList>
-            {(state) =>
-              (state.items as TriggerMenuDataItem<string>[]).map((item) => (
-                <TriggerMenuItem key={item.value} value={item.value} label={item.label}>
-                  <Identicon seed={item.value.split(":")[1]} size={18} />
-                  {item.label}
-                </TriggerMenuItem>
-              ))
-            }
-          </TriggerMenuList>
-        </TriggerMenuContent>
-      </TriggerMenu>
-    </TokenInput>
+    <>
+      <TokenInput
+        controller={input}
+        codec={codec}
+        defaultValue={fromText(props.defaultText ?? "", codec)}
+        submitShortcut="mod+enter"
+        onValueChange={(value) => {
+          setAlone(false);
+          props.onChange?.(toText(value, codec));
+        }}
+        onSubmit={(value) => {
+          const body = toText(value, codec).trim();
+          if (!body) return;
+          if (props.mustMention && !reaches(body)) return setAlone(true);
+          props.onSend(body);
+          input.clear();
+        }}
+        renderToken={(token) => (
+          <TokenInputToken className="mention">@{token.label}</TokenInputToken>
+        )}
+      >
+        <TokenInputEditor
+          className="editor"
+          aria-label={props.label}
+          placeholder={props.placeholder}
+        />
+        <TriggerMenu triggers={[{ char: "@", type: "mention", items: mentionable }]}>
+          <TriggerMenuContent className="panel options" sideOffset={6}>
+            <TriggerMenuList>
+              {(state) =>
+                (state.items as TriggerMenuDataItem<string>[]).map((item) => (
+                  <TriggerMenuItem key={item.value} value={item.value} label={item.label}>
+                    <Identicon seed={item.value.split(":")[1]} size={18} />
+                    {item.label}
+                  </TriggerMenuItem>
+                ))
+              }
+            </TriggerMenuList>
+          </TriggerMenuContent>
+        </TriggerMenu>
+      </TokenInput>
+      {alone && (
+        <p className="alone" role="alert">
+          @mention someone to send this to.
+        </p>
+      )}
+    </>
   );
 }
