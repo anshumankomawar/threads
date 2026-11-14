@@ -47,7 +47,8 @@ bun run web                                         # http://localhost:5173
 bunx convex env set SITE_URL http://localhost:5173  # once: where invite links point, and where Google may return to
 ```
 
-`bun run build:web` writes the static site to `dist/web`; serve `index.html` for every path.
+`bun run deploy:web` builds the site against the shared deployment and publishes it to Cloudflare with the `cf` CLI
+(`cloudflare.config.ts` names it and sends every path to `index.html`).
 
 ## The shared deployment
 
