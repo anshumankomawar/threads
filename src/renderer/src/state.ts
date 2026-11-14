@@ -10,7 +10,7 @@ export type Dialog = "search" | "find" | "new" | "settings";
 
 export const theme = createPreference({
   values: ["dark", "light"],
-  defaultValue: "dark",
+  defaultValue: "light",
   attribute: "data-theme",
   global: true,
   storage: createLocalStorage("theme"),

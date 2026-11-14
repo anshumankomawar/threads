@@ -1,8 +1,8 @@
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { Preferences } from "@ui-sdk/react/preferences";
+import { Preferences, usePreference } from "@ui-sdk/react/preferences";
 import { Authenticated, ConvexReactClient, Unauthenticated } from "convex/react";
 import { ConvexQueryCacheProvider } from "convex-helpers/react/cache";
-import { Component, StrictMode, type ReactNode } from "react";
+import { Component, StrictMode, useEffect, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { api, useMe } from "./data";
@@ -25,6 +25,12 @@ class UntilSignedOut extends Component<{ children: ReactNode }> {
   render = () => (this.state.over ? null : this.props.children);
 }
 
+function Theme() {
+  const { value } = usePreference(theme);
+  useEffect(() => window.desktop.setTheme(value), [value]);
+  return null;
+}
+
 function Home() {
   const me = useMe();
   return me && (me.workspaceId ? <App /> : <Start />);
@@ -35,6 +41,7 @@ createRoot(document.getElementById("root")!).render(
     <ConvexAuthProvider client={convex} api={api.auth} storage={storage}>
       <ConvexQueryCacheProvider>
         <Preferences preferences={[theme]}>
+          <Theme />
           <Unauthenticated>
             <SignIn />
           </Unauthenticated>

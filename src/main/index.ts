@@ -24,7 +24,7 @@ function createWindow() {
     show: false,
     titleBarStyle: "hidden",
     trafficLightPosition: { x: 13, y: 12 },
-    backgroundColor: GROUND.dark,
+    backgroundColor: GROUND.light,
     webPreferences: { preload: join(__dirname, "../preload/index.js") },
   });
   window = created;
@@ -52,15 +52,16 @@ function createWindow() {
 const face = (family: string, file: string) =>
   `@font-face { font-family: "${family}"; font-weight: 100 900; src: url(data:font/woff2;base64,${readFileSync(file).toString("base64")}); }`;
 const page = (title: string, line: string) => `<!doctype html>
+<meta name="color-scheme" content="${nativeTheme.shouldUseDarkColors ? "dark" : "light"}">
 <meta charset="utf-8">
 <title>Arc</title>
 <style>
   ${face("Fraunces", fraunces)}
   ${face("Hanken Grotesk", hanken)}
   body { display: grid; place-content: center; height: 100vh; margin: 0; text-align: center;
-    color: rgb(255 255 255 / 92%); background: #101010; font: 14px/1.45 "Hanken Grotesk", sans-serif; }
+    color: light-dark(rgb(0 0 0 / 86%), rgb(255 255 255 / 92%)); background: light-dark(${GROUND.light}, ${GROUND.dark}); font: 14px/1.45 "Hanken Grotesk", sans-serif; }
   h1 { margin: 0; font: 300 36px/1.08 "Fraunces", serif; letter-spacing: -0.02em; }
-  p { margin: 10px 0 0; color: rgb(255 255 255 / 62%); }
+  p { margin: 10px 0 0; opacity: 0.66; }
 </style>
 <h1>${title}</h1>
 <p>${line}</p>`;

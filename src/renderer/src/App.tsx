@@ -1,5 +1,4 @@
 import { OverlayHost } from "@ui-sdk/react/overlays";
-import { usePreference } from "@ui-sdk/react/preferences";
 import { Resizable, ResizableHandle, ResizablePanel } from "@ui-sdk/react/resizable";
 import { useShortcut } from "@ui-sdk/react/shortcuts";
 import { Toolbar, ToolbarButton, ToolbarGroup } from "@ui-sdk/react/toolbar";
@@ -10,7 +9,7 @@ import { List } from "./List";
 import { NewMessage, Search } from "./Palette";
 import { Settings } from "./Settings";
 import { Sidebar } from "./Sidebar";
-import { back, forward, go, setDialog, show, theme, toggleSidebar, useUI, useView } from "./state";
+import { back, forward, go, setDialog, show, toggleSidebar, useUI, useView } from "./state";
 import { DraftView, Thread } from "./Thread";
 
 const BUCKET_KEYS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -74,8 +73,6 @@ export function App() {
   const view = useView();
   const { at, history, sidebar, dialog, drafts } = useUI();
   const draft = drafts.find(({ id }) => id === view.draft);
-  const { value } = usePreference(theme);
-  useEffect(() => window.desktop.setTheme(value), [value]);
   useEffect(() => {
     const onMouseUp = ({ button }: MouseEvent) =>
       button === 3 ? back() : button === 4 && forward();

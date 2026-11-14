@@ -742,8 +742,8 @@ small {
   flex: 1;
   place-items: center;
   padding-bottom: 10vh;
-  color: rgb(255 255 255 / 92%);
-  background: linear-gradient(#101010, #101010);
+  color: var(--text);
+  background: linear-gradient(var(--chrome), var(--chrome));
   font:
     14px/1.45 "Hanken Grotesk",
     -apple-system,
@@ -776,12 +776,12 @@ small {
   }
   & p {
     margin-top: 10px;
-    color: rgb(255 255 255 / 62%);
+    color: var(--text-3);
     text-wrap: balance;
     animation: arrive 600ms var(--ease) 300ms backwards;
 
     &[role="alert"] {
-      color: #ff8a80;
+      color: light-dark(#c62828, #ff8a80);
       font-size: 13px;
       animation: none;
     }
@@ -795,14 +795,14 @@ small {
     height: 42px;
     margin-top: 26px;
     padding: 0 18px;
-    border: 0.5px solid rgb(255 255 255 / 14%);
+    border: 0.5px solid var(--line);
     border-radius: 999px;
-    background: rgb(40 40 44 / 70%);
+    background: var(--field);
     text-align: center;
     user-select: text;
 
     &::placeholder {
-      color: rgb(255 255 255 / 40%);
+      color: var(--text-3);
     }
   }
   & [data-slot="field"] + button {
@@ -817,15 +817,15 @@ small {
     height: 42px;
     margin-top: 26px;
     border-radius: 999px;
-    color: #101010;
-    background: rgb(255 255 255 / 94%);
+    color: var(--chrome);
+    background: var(--text);
     font-weight: 500;
     transition: 160ms;
     transition-property: background-color, opacity, transform;
     animation: arrive 600ms var(--ease) 420ms backwards;
 
     &:hover {
-      background: rgb(255 255 255 / 84%);
+      background: color-mix(in srgb, var(--text) 86%, var(--chrome));
     }
     &:active:enabled {
       transform: scale(0.985);
@@ -834,12 +834,12 @@ small {
       opacity: 0.8;
     }
     &.secondary {
-      color: rgb(255 255 255 / 92%);
-      background: rgb(40 40 44 / 70%);
+      color: var(--text);
+      background: var(--field);
     }
     &.link {
       height: auto;
-      color: rgb(255 255 255 / 55%);
+      color: var(--text-3);
       background: none;
       font-size: 13px;
       font-weight: 400;
