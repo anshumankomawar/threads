@@ -741,6 +741,7 @@ small {
   display: grid;
   flex: 1;
   place-items: center;
+  padding-bottom: 10vh;
   color: rgb(255 255 255 / 92%);
   background: linear-gradient(#101010, #101010);
   font:
