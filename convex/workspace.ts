@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { mutation as rawMutation, query as rawQuery } from "./_generated/server";
+import { mutation as rawMutation, query as rawQuery, type QueryCtx } from "./_generated/server";
 import { mutation, query, signedIn } from "./functions";
 
 export const me = rawQuery({
@@ -12,15 +12,15 @@ export const me = rawQuery({
   },
 });
 
+const invitedTo = (ctx: QueryCtx, invite: string) =>
+  ctx.db
+    .query("workspaces")
+    .withIndex("invite", (q) => q.eq("invite", invite))
+    .unique();
+
 export const invited = rawQuery({
   args: { invite: v.string() },
-  handler: async (ctx, { invite }) =>
-    (
-      await ctx.db
-        .query("workspaces")
-        .withIndex("invite", (q) => q.eq("invite", invite))
-        .unique()
-    )?.name ?? null,
+  handler: async (ctx, { invite }) => (await invitedTo(ctx, invite))?.name ?? null,
 });
 
 export const create = rawMutation({
@@ -38,12 +38,7 @@ export const join = rawMutation({
     const me = await signedIn(ctx);
     if (me.workspaceId) throw new ConvexError("Already in a workspace");
     const invite = link.trim().split("/").pop();
-    const workspace =
-      invite &&
-      (await ctx.db
-        .query("workspaces")
-        .withIndex("invite", (q) => q.eq("invite", invite))
-        .unique());
+    const workspace = invite && (await invitedTo(ctx, invite));
     if (workspace) await ctx.db.patch(me._id, { workspaceId: workspace._id });
     return !!workspace;
   },
