@@ -5,6 +5,7 @@ import { Input } from "@ui-sdk/react/input";
 import { useMutation } from "convex/react";
 import { useEffect, useState } from "react";
 import { api } from "./data";
+import { Icon } from "./Icon";
 import { reset } from "./state";
 
 const loaded = Promise.race([
@@ -51,7 +52,7 @@ export function SignIn() {
           </h1>
           <p>Sign in to Arc with your Google account.</p>
           <Button onClick={signIn} disabled={busy}>
-            {busy && <i />}
+            {busy ? <i /> : <Icon name="google" size={18} />}
             Continue with Google
           </Button>
           {failed && <p role="alert">Signing in with Google didn't finish.</p>}

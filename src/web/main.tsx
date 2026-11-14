@@ -11,6 +11,7 @@ import {
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { api } from "../../convex/_generated/api";
+import { Icon } from "../renderer/src/Icon";
 import { Start } from "../renderer/src/SignIn";
 import "../renderer/src/app.css";
 
@@ -31,7 +32,10 @@ function Welcome() {
             ? "Sign in with your Google account to accept the invite."
             : "Arc is team messaging in threads that sort themselves. Sign in to start a workspace."}
         </p>
-        <Button onClick={() => void signIn()}>Continue with Google</Button>
+        <Button onClick={() => void signIn()}>
+          <Icon name="google" size={18} />
+          Continue with Google
+        </Button>
         {invite && !workspace && <p role="alert">That invite link doesn't lead to a workspace.</p>}
       </div>
     </main>
